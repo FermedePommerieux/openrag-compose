@@ -50,7 +50,7 @@ spec:
               containerPort: 7860
               protocol: TCP
 
-          command: ["langflow", "run", "--env-file", "/app/.env"]
+          command: ["python", "-m", "langflow", "run", "--env-file", "/app/.env"]
 
           volumeMounts:
             - name: openrag-langflow-dotenv
