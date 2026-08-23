@@ -385,7 +385,13 @@ async def _get_ibm_user(request: Request, required: bool) -> Optional["User"]:
 
 
 async def resolve_current_user(request: Request, session_manager) -> User:
-    """Require JWT cookie authentication and attach request identity state."""
+    """Require browser-cookie or user-bearer authentication.
+
+    Langflow forwards the original end-user JWT to the backend retrieval
+    endpoint.  It is deliberately validated by the same session-manager path
+    as browser cookies: this is never a service identity and preserves the
+    user-scoped OpenSearch/DLS principal context.
+    """
     from config.settings import IBM_AUTH_ENABLED, is_no_auth_mode
     from session_manager import AnonymousUser
 
@@ -401,7 +407,7 @@ async def resolve_current_user(request: Request, session_manager) -> User:
         user = AnonymousUser()
         return await _attach_request_user(request, user, session_manager)
 
-    auth_token = request.cookies.get("auth_token")
+    auth_token = _oss_request_token(request)
     if not auth_token:
         raise HTTPException(status_code=401, detail="Authentication required")
 
@@ -437,7 +443,7 @@ async def resolve_optional_user(request: Request, session_manager) -> User | Non
         user = AnonymousUser()
         return await _attach_request_user(request, user, session_manager)
 
-    auth_token = request.cookies.get("auth_token")
+    auth_token = _oss_request_token(request)
     if not auth_token:
         request.state.user = None
         return None
@@ -453,6 +459,24 @@ async def resolve_optional_user(request: Request, session_manager) -> User | Non
     request.state.user = None
     request.state.db_user_id = None
     return None
+
+
+def _oss_request_token(request: Request) -> str | None:
+    """Return the OSS browser cookie or a valid-shaped Bearer credential.
+
+    Cookie precedence preserves existing browser behavior.  The Bearer path is
+    intentionally restricted to the standard scheme; signature and expiry are
+    still verified by ``SessionManager.get_user_from_token``.
+    """
+    cookie_token = request.cookies.get("auth_token")
+    if cookie_token:
+        return cookie_token
+
+    authorization = request.headers.get("Authorization", "")
+    scheme, _, value = authorization.partition(" ")
+    if scheme.lower() != "bearer" or not value.strip():
+        return None
+    return f"Bearer {value.strip()}"
 
 
 async def resolve_api_key_user(request: Request, api_key_service, session_manager) -> User:

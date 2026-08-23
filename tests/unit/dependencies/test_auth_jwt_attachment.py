@@ -32,10 +32,10 @@ class FakeSessionManager:
         )
 
 
-def _request(cookies: dict[str, str] | None = None):
+def _request(cookies: dict[str, str] | None = None, headers: dict[str, str] | None = None):
     return SimpleNamespace(
         cookies=cookies or {},
-        headers={},
+        headers=headers or {},
         state=SimpleNamespace(),
         app=SimpleNamespace(state=SimpleNamespace(services={})),
     )
@@ -92,3 +92,46 @@ async def test_current_user_cookie_token_is_attached_for_opensearch(monkeypatch)
     assert user.jwt_token == "Bearer session-token"
     assert request.state.user.jwt_token == "Bearer session-token"
     assert session_manager.effective_token_calls == [("user-1", "Bearer session-token")]
+
+
+@pytest.mark.asyncio
+async def test_current_user_bearer_token_is_attached_for_langflow_retrieval(monkeypatch):
+    monkeypatch.setattr("config.settings.is_no_auth_mode", lambda: False)
+    session_manager = FakeSessionManager()
+    request = _request(headers={"Authorization": "Bearer user-token"})
+
+    user = await get_current_user(request, session_manager=session_manager)
+
+    assert user.user_id == "user-1"
+    assert user.jwt_token == "Bearer user-token"
+    assert session_manager.effective_token_calls == [("user-1", "Bearer user-token")]
+
+
+@pytest.mark.asyncio
+async def test_current_user_cookie_remains_preferred_over_bearer(monkeypatch):
+    monkeypatch.setattr("config.settings.is_no_auth_mode", lambda: False)
+    session_manager = FakeSessionManager()
+    request = _request(
+        cookies={"auth_token": "Bearer browser-token"},
+        headers={"Authorization": "Bearer forwarded-token"},
+    )
+
+    await get_current_user(request, session_manager=session_manager)
+
+    assert session_manager.effective_token_calls == [("user-1", "Bearer browser-token")]
+
+
+@pytest.mark.asyncio
+async def test_current_user_rejects_missing_or_invalid_bearer(monkeypatch):
+    monkeypatch.setattr("config.settings.is_no_auth_mode", lambda: False)
+
+    class InvalidSessionManager(FakeSessionManager):
+        def get_user_from_token(self, token):
+            return None
+
+    from fastapi import HTTPException
+
+    for request in (_request(), _request(headers={"Authorization": "Bearer expired-token"})):
+        with pytest.raises(HTTPException, match="Authentication required") as exc:
+            await get_current_user(request, session_manager=InvalidSessionManager())
+        assert exc.value.status_code == 401
