@@ -321,8 +321,9 @@ class TaskProcessor:
             build_owned_document_query,
         )
 
-        # A content hash is not an ownership boundary. This preflight uses the
-        # same owner/shared scope as the later administrative promotion.
+        # Identical bytes produce identical hashes.  Never let a user A's
+        # generation make user B's same-content upload appear already indexed.
+        # DLS is not enough here because later promotion uses an admin client.
         scope_query = (
             build_anonymous_document_query(file_hash)
             if shared or owner_user_id is None
@@ -359,7 +360,7 @@ class TaskProcessor:
         connector_file_id: str | None,
         connector_type: str,
     ) -> None:
-        """Delete prior visible chunks only after a complete new generation exists."""
+        """Delete prior scoped chunks only after a complete new generation exists."""
         from connectors.chunk_cleanup import build_connector_file_chunks_query
         from utils.opensearch_delete import collect_visible_document_hits, delete_document_ids
         from utils.opensearch_queries import (
@@ -374,8 +375,10 @@ class TaskProcessor:
         if write_client is None:
             raise RuntimeError("Backend OpenSearch write client is unavailable")
 
-        # Every administrative delete begins with the caller's ownership
-        # scope. The content hash is not globally unique across users.
+        # A content hash is a logical document identity, not an ownership
+        # boundary.  The trusted writer can see every tenant's chunks, so every
+        # destructive query begins with this owner/shared scope before optional
+        # filename or connector identities are added.
         document_query = (
             build_anonymous_document_query(file_hash)
             if shared or owner_user_id is None
@@ -418,27 +421,81 @@ class TaskProcessor:
                     document_ids=sorted(stale_ids),
                     refresh=True,
                 )
-            except Exception:
+            except Exception as delete_error:
                 # Individual DLS-safe deletes can fail after a subset succeeds.
                 # Restore the snapshot before surfacing the failure so a failed
                 # promotion never leaves the previous generation partially lost.
-                restore_body: list[dict[str, Any]] = []
-                for stale_id in sorted(stale_ids):
-                    source = old_hits[stale_id].get("_source")
-                    if isinstance(source, dict):
-                        restore_body.extend(
-                            [{"index": {"_index": get_index_name(), "_id": stale_id}}, source]
-                        )
-                if restore_body:
-                    try:
-                        await write_client.bulk(body=restore_body, refresh=True)
-                    except Exception as restore_error:
-                        logger.error(
-                            "Failed to restore prior generation after promotion delete failure",
-                            error=str(restore_error),
-                            affected_chunks=len(stale_ids),
-                        )
+                try:
+                    await self._restore_document_snapshot(
+                        write_client=write_client,
+                        index_name=get_index_name(),
+                        snapshot=old_hits,
+                        document_ids=stale_ids,
+                    )
+                except Exception as restore_error:
+                    # This is intentionally fatal.  A partial bulk success is
+                    # not a rollback, and operators need the affected primary
+                    # ids to recover without guessing which generation survived.
+                    logger.error(
+                        "Hybrid promotion rollback failed after partial delete",
+                        error=str(restore_error),
+                        delete_error=str(delete_error),
+                        affected_chunk_ids=sorted(stale_ids),
+                    )
+                    raise RuntimeError(
+                        "Hybrid promotion delete failed and rollback could not be verified; "
+                        f"affected_chunk_ids={sorted(stale_ids)}"
+                    ) from restore_error
                 raise
+
+    @staticmethod
+    async def _restore_document_snapshot(
+        *,
+        write_client,
+        index_name: str,
+        snapshot: dict[str, dict[str, Any]],
+        document_ids: set[str],
+    ) -> None:
+        """Restore and verify every old chunk after a failed promotion.
+
+        OpenSearch bulk responses may be HTTP-successful while individual
+        actions fail.  The previous generation remains the rollback contract,
+        so treating ``errors=true`` or a missing item as success would hide a
+        data-loss incident.
+        """
+        restore_body: list[dict[str, Any]] = []
+        expected_ids: set[str] = set()
+        for document_id in sorted(document_ids):
+            source = snapshot.get(document_id, {}).get("_source")
+            if not isinstance(source, dict):
+                raise RuntimeError(f"Rollback snapshot is missing source for {document_id}")
+            expected_ids.add(document_id)
+            restore_body.extend([{"index": {"_index": index_name, "_id": document_id}}, source])
+        if not restore_body:
+            return
+
+        response = await write_client.bulk(body=restore_body, refresh=True)
+        if not isinstance(response, dict):
+            raise RuntimeError("Rollback bulk response was not an object")
+        failures: list[dict[str, Any]] = []
+        restored_ids: set[str] = set()
+        for item in response.get("items", []):
+            action = item.get("index") if isinstance(item, dict) else None
+            if not isinstance(action, dict):
+                failures.append({"item": item})
+                continue
+            item_id = action.get("_id")
+            if action.get("error") or int(action.get("status", 500)) not in {200, 201}:
+                failures.append({"id": item_id, "status": action.get("status"), "error": action.get("error")})
+                continue
+            if item_id:
+                restored_ids.add(str(item_id))
+        missing_ids = expected_ids - restored_ids
+        if response.get("errors") or failures or missing_ids:
+            raise RuntimeError(
+                "Rollback bulk restore was incomplete: "
+                f"failures={failures}, missing_chunk_ids={sorted(missing_ids)}"
+            )
 
     async def resolve_duplicate_filename(
         self,
@@ -944,6 +1001,9 @@ class TaskProcessor:
                 await cleanup_writer.delete_ingest_run(
                     index_context.ingest_run_id,
                     index_name=get_index_name(),
+                    document_id=file_hash,
+                    owner=owner,
+                    shared=shared,
                 )
             except Exception as cleanup_error:
                 logger.error(

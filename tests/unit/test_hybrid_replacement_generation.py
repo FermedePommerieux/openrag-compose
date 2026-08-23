@@ -26,7 +26,7 @@ async def test_character_existing_to_hybrid_is_not_unchanged():
     }
 
     matches = await TaskProcessor().check_document_matches_chunking(
-        "same-content", client, fingerprint=_fingerprint("hybrid")
+        "same-content", client, fingerprint=_fingerprint("hybrid"), owner_user_id="owner", shared=False
     )
 
     assert matches is False
@@ -41,7 +41,7 @@ async def test_hybrid_existing_with_same_parameters_is_unchanged():
     }
 
     assert await TaskProcessor().check_document_matches_chunking(
-        "same-content", client, fingerprint=fingerprint
+        "same-content", client, fingerprint=fingerprint, owner_user_id="owner", shared=False
     )
 
 
@@ -57,7 +57,11 @@ async def test_hybrid_existing_with_different_parameters_reindexes():
     }
 
     assert not await TaskProcessor().check_document_matches_chunking(
-        "same-content", client, fingerprint=_fingerprint("hybrid", max_tokens=512)
+        "same-content",
+        client,
+        fingerprint=_fingerprint("hybrid", max_tokens=512),
+        owner_user_id="owner",
+        shared=False,
     )
 
 
@@ -157,4 +161,155 @@ async def test_rename_promotion_failure_leaves_old_connector_chunks_untouched(mo
             replace_existing_filename=False,
             connector_file_id="connector-1",
             connector_type="sharepoint",
+        )
+
+
+@pytest.mark.asyncio
+async def test_hybrid_promotion_same_hash_never_selects_another_owner(monkeypatch):
+    """The administrative delete path must scope same-byte documents by owner."""
+    from models import processors as processors_mod
+
+    selected_queries: list[dict] = []
+    deleted_ids: list[str] = []
+
+    class UserClient:
+        async def search(self, *, body, **kwargs):
+            selected_queries.append(body["query"])
+            return {"_scroll_id": None, "hits": {"hits": [{"_id": "owner-a-old", "_source": {"owner": "A"}}]}}
+
+    class WriteClient:
+        async def delete(self, **kwargs):
+            deleted_ids.append(kwargs["id"])
+            return {"result": "deleted"}
+
+    monkeypatch.setattr(processors_mod, "get_index_name", lambda: "documents")
+    monkeypatch.setattr(processors_mod, "clients", SimpleNamespace(opensearch=WriteClient()))
+
+    await TaskProcessor()._promote_document_generation(
+        opensearch_client=UserClient(),
+        new_storage_ids={"owner-a-new"},
+        file_hash="identical-content-hash",
+        filename="same.pdf",
+        owner_user_id="A",
+        shared=False,
+        replace_existing_filename=False,
+        connector_file_id=None,
+        connector_type="local",
+    )
+
+    assert selected_queries == [
+        {
+            "bool": {
+                "filter": [
+                    {"term": {"document_id": "identical-content-hash"}},
+                    {"term": {"owner": "A"}},
+                ]
+            }
+        }
+    ]
+    assert deleted_ids == ["owner-a-old"]
+    assert "owner-b-old" not in deleted_ids
+
+
+@pytest.mark.asyncio
+async def test_hybrid_partial_delete_restores_every_snapshot_chunk(monkeypatch):
+    """A deletion error restores the whole prior generation and then fails."""
+    from models import processors as processors_mod
+
+    class UserClient:
+        async def search(self, **kwargs):
+            return {
+                "_scroll_id": None,
+                "hits": {
+                    "hits": [
+                        {"_id": "old-1", "_source": {"document_id": "hash", "owner": "A"}},
+                        {"_id": "old-2", "_source": {"document_id": "hash", "owner": "A"}},
+                    ]
+                },
+            }
+
+    class WriteClient:
+        def __init__(self):
+            self.deleted = 0
+            self.bulk_calls: list[dict] = []
+
+        async def delete(self, **kwargs):
+            self.deleted += 1
+            if self.deleted == 2:
+                raise RuntimeError("delete second chunk failed")
+            return {"result": "deleted"}
+
+        async def bulk(self, **kwargs):
+            self.bulk_calls.append(kwargs)
+            return {
+                "errors": False,
+                "items": [
+                    {"index": {"_id": "old-1", "status": 201}},
+                    {"index": {"_id": "old-2", "status": 201}},
+                ],
+            }
+
+    write_client = WriteClient()
+    monkeypatch.setattr(processors_mod, "get_index_name", lambda: "documents")
+    monkeypatch.setattr(processors_mod, "clients", SimpleNamespace(opensearch=write_client))
+
+    with pytest.raises(RuntimeError, match="delete second chunk failed"):
+        await TaskProcessor()._promote_document_generation(
+            opensearch_client=UserClient(),
+            new_storage_ids={"new"},
+            file_hash="hash",
+            filename="same.pdf",
+            owner_user_id="A",
+            shared=False,
+            replace_existing_filename=False,
+            connector_file_id=None,
+            connector_type="local",
+        )
+
+    assert len(write_client.bulk_calls) == 1
+    restore_body = write_client.bulk_calls[0]["body"]
+    assert [restore_body[index]["index"]["_id"] for index in range(0, len(restore_body), 2)] == [
+        "old-1",
+        "old-2",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_hybrid_partial_rollback_is_fatal_when_bulk_item_fails(monkeypatch):
+    """A HTTP-successful bulk response with a failed item is not a rollback."""
+    from models import processors as processors_mod
+
+    class UserClient:
+        async def search(self, **kwargs):
+            return {
+                "_scroll_id": None,
+                "hits": {"hits": [{"_id": "old", "_source": {"document_id": "hash", "owner": "A"}}]},
+            }
+
+    class WriteClient:
+        async def delete(self, **kwargs):
+            raise RuntimeError("delete failed")
+
+        async def bulk(self, **kwargs):
+            return {
+                "errors": True,
+                "items": [
+                    {"index": {"_id": "old", "status": 429, "error": {"type": "rejected_execution"}}}
+                ],
+            }
+
+    monkeypatch.setattr(processors_mod, "get_index_name", lambda: "documents")
+    monkeypatch.setattr(processors_mod, "clients", SimpleNamespace(opensearch=WriteClient()))
+
+    with pytest.raises(RuntimeError, match="rollback could not be verified"):
+        await TaskProcessor()._promote_document_generation(
+            opensearch_client=UserClient(),
+            new_storage_ids={"new"},
+            file_hash="hash",
+            filename="same.pdf",
+            owner_user_id="A",
+            shared=False,
+            replace_existing_filename=False,
+            connector_file_id=None,
+            connector_type="local",
         )

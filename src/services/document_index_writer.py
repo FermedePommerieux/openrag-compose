@@ -181,7 +181,12 @@ class DocumentIndexWriter:
         owner: str | None = None,
         shared: bool = False,
     ) -> int:
-        """Delete failed callback chunks only within their signed owner scope."""
+        """Delete only this failed generation in its ownership scope.
+
+        An ingest run id is random, but cleanup uses the administrative writer
+        and must still carry the document/owner boundary.  Content hashes and
+        filenames are not globally unique across workspaces or users.
+        """
         if not ingest_run_id:
             return 0
         if not document_id:
