@@ -160,6 +160,11 @@ async def test_search_service_rrf_fuses_lanes_preserves_provenance_and_emits_deb
     class OpenSearchClient:
         bodies: list[dict] = []
 
+        class indices:
+            @staticmethod
+            async def get_mapping(*, index):
+                return {index: {"mappings": {"properties": {"chunk_id": {"type": "keyword"}}}}}
+
         async def search(self, *, index, body, params):
             self.bodies.append(body)
             if body.get("size") == 0:

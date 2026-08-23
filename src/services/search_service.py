@@ -18,6 +18,7 @@ from services.retrieval_service import (
 )
 from utils.container_utils import transform_localhost_url
 from utils.logging_config import get_logger
+from utils.rrf_mapping import RRFMappingError, require_sortable_chunk_id_mapping
 
 logger = get_logger(__name__)
 
@@ -318,6 +319,19 @@ class SearchService:
         failed_models: list = []
 
         opensearch_client = self.session_manager.get_user_opensearch_client(user_id, jwt_token)
+
+        if use_retrieval_v2:
+            # RRF is deterministic only when OpenSearch can apply its persisted
+            # secondary ``chunk_id`` sort.  Validate the real mapping before
+            # computing embeddings or sending either ranking lane.  Legacy
+            # documents without a value remain valid via ``missing: _last``;
+            # an incompatible *mapping* is a hard operational error.
+            mapping_client = getattr(clients, "opensearch", None) or opensearch_client
+            try:
+                await require_sortable_chunk_id_mapping(mapping_client, get_index_name())
+            except RRFMappingError as exc:
+                logger.error("RRF blocked by incompatible chunk_id mapping", error=str(exc))
+                return {"results": [], "error": str(exc), "retrieval_strategy": "rrf"}
 
         if not is_wildcard_match_all:
             # Build filter clauses first so we can use them in model detection
