@@ -93,3 +93,13 @@ def test_chunk_position_and_strategy_are_indexed_for_retrieval_context():
 
     assert doc["chunk_index"] == 4
     assert doc["chunking_strategy"] == "hybrid"
+    assert doc["chunk_id"].endswith("_c1")
+
+
+def test_logical_chunk_identity_stays_stable_while_generation_storage_id_changes():
+    writer = DocumentIndexWriter()
+    first = _context()
+    replacement = _context(ingest_run_id="new-generation")
+
+    assert writer._logical_chunk_id(first, "c1") == writer._logical_chunk_id(replacement, "c1")
+    assert writer.storage_chunk_id(first, "c1") != writer.storage_chunk_id(replacement, "c1")

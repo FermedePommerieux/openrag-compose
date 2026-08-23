@@ -45,6 +45,7 @@ class DocumentIndexContext:
     chunk_size: int | None = None
     chunk_overlap: int | None = None
     chunking_strategy: str | None = None
+    chunking_config_fingerprint: str | None = None
 
 
 @dataclass
@@ -119,7 +120,7 @@ class DocumentIndexWriter:
                 {
                     "index": {
                         "_index": index_name,
-                        "_id": self._scoped_chunk_id(context, chunk.chunk_id),
+                        "_id": self.storage_chunk_id(context, chunk.chunk_id),
                     }
                 }
             )
@@ -152,11 +153,24 @@ class DocumentIndexWriter:
         }
 
     @staticmethod
-    def _scoped_chunk_id(context: DocumentIndexContext, chunk_id: str) -> str:
-        """Keep idempotent chunk upserts isolated to one ownership scope."""
+    def _logical_chunk_id(context: DocumentIndexContext, chunk_id: str) -> str:
+        """Return the persistent logical identity for one scoped chunk."""
         scope = "shared" if context.owner is None else f"owner:{context.owner}"
         scope_digest = hashlib.sha256(scope.encode("utf-8")).hexdigest()[:24]
         return f"{scope_digest}_{chunk_id}"
+
+    @classmethod
+    def storage_chunk_id(cls, context: DocumentIndexContext, chunk_id: str) -> str:
+        """Return the physical id, isolating an in-progress generation.
+
+        The source ``chunk_id`` remains logical and stable for RRF.  A
+        temporary ingest run changes only the storage id, so a failed replace
+        cannot overwrite the currently promoted generation.
+        """
+        logical_id = cls._logical_chunk_id(context, chunk_id)
+        if context.ingest_run_id:
+            return f"{logical_id}__run_{context.ingest_run_id}"
+        return logical_id
 
     async def delete_ingest_run(
         self,
@@ -235,6 +249,13 @@ class DocumentIndexWriter:
         the mismatch or silently reindexing user data.
         """
         required = {
+            # OpenSearch does not support sorting on its metadata ``_id``.
+            # Persist the scoped logical chunk id instead: it is deterministic
+            # across equivalent re-indexes and has keyword doc_values for RRF's
+            # secondary sort.  Legacy chunks may not have it; query code makes
+            # that degraded ordering explicit rather than rewriting user data.
+            "chunk_id": {"type": "keyword"},
+            "chunking_config_fingerprint": {"type": "keyword"},
             "connector_file_id": {"type": "keyword"},
             "chunk_index": {"type": "integer"},
             "chunking_strategy": {"type": "keyword"},
@@ -296,6 +317,7 @@ class DocumentIndexWriter:
         mimetype = context.mimetype or str(metadata.get("mimetype") or "")
 
         doc: dict[str, Any] = {
+            "chunk_id": self._logical_chunk_id(context, chunk.chunk_id),
             "document_id": document_id,
             "filename": filename,
             "mimetype": mimetype,
@@ -331,6 +353,8 @@ class DocumentIndexWriter:
         chunking_strategy = context.chunking_strategy or metadata.get("chunking_strategy")
         if chunking_strategy:
             doc["chunking_strategy"] = str(chunking_strategy)
+        if context.chunking_config_fingerprint:
+            doc["chunking_config_fingerprint"] = context.chunking_config_fingerprint
 
         for field_name in ("chunk_size", "chunk_overlap"):
             context_value = getattr(context, field_name)

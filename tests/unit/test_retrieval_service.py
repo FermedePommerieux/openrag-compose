@@ -58,6 +58,30 @@ def test_rrf_is_reproducible_across_twenty_reordered_equal_score_responses():
     assert all(sequence == expected for sequence in sequences)
 
 
+def test_rrf_uses_persisted_chunk_id_across_simulated_shard_ties():
+    """A new index stores the same sortable identity independently of shard order."""
+    shard_a = [{"_id": "physical-a", "_source": {"chunk_id": "logical-a", "document_id": "a"}}]
+    shard_b = [{"_id": "physical-b", "_source": {"chunk_id": "logical-b", "document_id": "b"}}]
+
+    sequences = []
+    for iteration in range(20):
+        lanes = [shard_b, shard_a] if iteration % 2 else [shard_a, shard_b]
+        sequences.append(
+            [hit["_source"]["chunk_id"] for hit in reciprocal_rank_fusion(lanes, k=60)]
+        )
+
+    assert all(sequence == ["logical-a", "logical-b"] for sequence in sequences)
+
+
+def test_rrf_legacy_hit_without_sortable_chunk_id_has_explicit_fallback_identity():
+    legacy = _hit("legacy-physical-id", "legacy-document")
+    current = {"_id": "physical-current", "_source": {"chunk_id": "current", "document_id": "current"}}
+
+    fused = reciprocal_rank_fusion([[current], [legacy]], k=60)
+
+    assert [hit.get("_id") for hit in fused] == ["physical-current", "legacy-physical-id"]
+
+
 def test_document_diversity_keeps_rank_order_and_caps_each_document():
     hits = [_hit("a1", "a"), _hit("a2", "a"), _hit("b1", "b"), _hit("a3", "a")]
 
@@ -81,7 +105,7 @@ def test_settings_normalize_invalid_or_unbounded_values():
 
     settings = RetrievalSettings.from_knowledge(knowledge)
 
-    assert settings.strategy == "weighted"
+    assert settings.strategy == "rrf"
     assert settings.mode == "hybrid"
     assert settings.lexical_candidates == 500
     assert settings.vector_candidates == 1
@@ -171,4 +195,11 @@ async def test_search_service_rrf_fuses_lanes_preserves_provenance_and_emits_deb
     assert result["retrieval_debug"]["lanes"] == {"lexical": 2, "vector": 2}
     lane_bodies = [body for body in OpenSearchClient.bodies if body.get("size") != 0]
     assert len(lane_bodies) == 2
-    assert all(body["sort"] == [{"_score": {"order": "desc"}}, {"_id": {"order": "asc"}}] for body in lane_bodies)
+    assert all(
+        body["sort"]
+        == [
+            {"_score": {"order": "desc"}},
+            {"chunk_id": {"order": "asc", "missing": "_last"}},
+        ]
+        for body in lane_bodies
+    )

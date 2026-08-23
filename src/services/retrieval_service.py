@@ -25,7 +25,7 @@ logger = get_logger(__name__)
 class RetrievalSettings:
     """Validated subset of ``KnowledgeConfig`` used at query time."""
 
-    strategy: str = "weighted"
+    strategy: str = "rrf"
     mode: str = "hybrid"
     lexical_candidates: int = 50
     vector_candidates: int = 50
@@ -43,10 +43,10 @@ class RetrievalSettings:
             except (TypeError, ValueError):
                 return default
 
-        strategy = str(getattr(knowledge, "retrieval_strategy", "weighted") or "weighted")
+        strategy = str(getattr(knowledge, "retrieval_strategy", "rrf") or "rrf")
         mode = str(getattr(knowledge, "retrieval_mode", "hybrid") or "hybrid")
         return cls(
-            strategy=strategy if strategy in {"weighted", "rrf"} else "weighted",
+            strategy=strategy if strategy in {"weighted", "rrf"} else "rrf",
             mode=mode if mode in {"hybrid", "lexical", "vector"} else "hybrid",
             lexical_candidates=bounded("retrieval_lexical_candidates", 50, 500),
             vector_candidates=bounded("retrieval_vector_candidates", 50, 500),
@@ -61,7 +61,7 @@ class RetrievalSettings:
 def hit_identity(hit: dict[str, Any]) -> str:
     """Return a stable identity for a raw OpenSearch hit or result item."""
     source = hit.get("_source") if isinstance(hit.get("_source"), dict) else hit
-    for key in ("_id", "chunk_id", "id"):
+    for key in ("chunk_id", "_id", "id"):
         value = hit.get(key) or source.get(key)
         if value is not None:
             return str(value)

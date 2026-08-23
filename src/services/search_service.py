@@ -604,6 +604,7 @@ class SearchService:
             }
 
         source_fields = [
+            "chunk_id",
             "document_id",
             "filename",
             "mimetype",
@@ -635,7 +636,13 @@ class SearchService:
             # OpenSearch does not guarantee the order of equal-score hits.
             # Keep a persistent chunk identity as the secondary sort so RRF
             # receives stable ranked lanes across equivalent executions.
-            "sort": [{"_score": {"order": "desc"}}, {"_id": {"order": "asc"}}],
+            "sort": [
+                {"_score": {"order": "desc"}},
+                # ``_id`` cannot be sorted by OpenSearch.  New backend-indexed
+                # chunks persist this keyword/doc_values field; legacy chunks
+                # sort last and retain best-effort rank compatibility.
+                {"chunk_id": {"order": "asc", "missing": "_last"}},
+            ],
         }
 
         # Add score threshold only for hybrid (not meaningful for match_all)
@@ -644,8 +651,8 @@ class SearchService:
 
         # In RRF mode lexical and vector candidates are intentionally fetched
         # by separate OpenSearch requests.  Their score scales are unrelated;
-        # only their ranks are fused below.  The historical weighted query
-        # stays untouched unless an operator selects ``retrieval_strategy=rrf``.
+        # only their ranks are fused below.  Weighted remains available as an
+        # explicit compatibility strategy, while RRF is the Standard default.
         retrieval_bodies: list[tuple[str, dict[str, Any]]] = []
         if use_retrieval_v2 and not is_wildcard_match_all:
             lexical_body: dict[str, Any] = {
@@ -674,7 +681,10 @@ class SearchService:
                 "aggs": _build_file_facet_aggregations(),
                 "_source": source_fields,
                 "size": retrieval_settings.lexical_candidates,
-                "sort": [{"_score": {"order": "desc"}}, {"_id": {"order": "asc"}}],
+                "sort": [
+                    {"_score": {"order": "desc"}},
+                    {"chunk_id": {"order": "asc", "missing": "_last"}},
+                ],
             }
             vector_body: dict[str, Any] = {
                 "query": {
@@ -689,7 +699,10 @@ class SearchService:
                 "aggs": _build_file_facet_aggregations(),
                 "_source": source_fields,
                 "size": retrieval_settings.vector_candidates,
-                "sort": [{"_score": {"order": "desc"}}, {"_id": {"order": "asc"}}],
+                "sort": [
+                    {"_score": {"order": "desc"}},
+                    {"chunk_id": {"order": "asc", "missing": "_last"}},
+                ],
             }
             if score_threshold > 0:
                 lexical_body["min_score"] = score_threshold
@@ -858,7 +871,9 @@ class SearchService:
                     "parser": source.get("parser"),
                     "chunk_size": source.get("chunk_size"),
                     "chunk_overlap": source.get("chunk_overlap"),
-                    "chunk_id": hit.get("_id"),
+                    # Legacy chunks predate the source ``chunk_id`` mapping;
+                    # keep their existing primary id visible to callers.
+                    "chunk_id": source.get("chunk_id") or hit.get("_id"),
                     "id": hit.get("_id"),
                     # ACL fields (may be missing for some documents)
                     "allowed_users": source.get("allowed_users", []),

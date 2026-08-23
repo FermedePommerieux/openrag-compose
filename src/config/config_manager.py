@@ -202,10 +202,9 @@ class KnowledgeConfig:
     vlm_concurrency: int = 4
     vlm_timeout: int = 120  # per-page VLM API timeout, seconds
     vlm_watsonx_api_version: str = "2023-05-29"
-    # Retrieval v2 remains opt-in. ``weighted`` retains the upstream single
-    # OpenSearch hybrid query; ``rrf`` runs lexical and vector retrieval
-    # independently before deterministic reciprocal-rank fusion.
-    retrieval_strategy: str = "weighted"
+    # RRF is the Standard retrieval baseline. ``weighted`` remains available
+    # only as an explicit compatibility choice for existing deployments.
+    retrieval_strategy: str = "rrf"
     retrieval_mode: str = "hybrid"
     retrieval_lexical_candidates: int = 50
     retrieval_vector_candidates: int = 50
@@ -488,6 +487,13 @@ class ConfigManager:
             config_data["knowledge"]["disable_ingest_with_langflow"] = os.getenv(
                 "DISABLE_INGEST_WITH_LANGFLOW", "false"
             ).lower() in ("true", "1", "yes")
+        # New installations and legacy configs without this key resolve to
+        # KnowledgeConfig's RRF default.  An explicit persisted ``weighted``
+        # choice is preserved; an operator can override a non-edited config
+        # explicitly with this environment variable for deployment control.
+        retrieval_strategy = os.getenv("OPENRAG_RETRIEVAL_STRATEGY")
+        if retrieval_strategy in {"weighted", "rrf"}:
+            config_data["knowledge"]["retrieval_strategy"] = retrieval_strategy
 
         # Agent settings
         if os.getenv("LLM_MODEL"):
