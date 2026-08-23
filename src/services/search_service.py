@@ -632,6 +632,10 @@ class SearchService:
             "aggs": _build_file_facet_aggregations(),
             "_source": source_fields,
             "size": limit,
+            # OpenSearch does not guarantee the order of equal-score hits.
+            # Keep a persistent chunk identity as the secondary sort so RRF
+            # receives stable ranked lanes across equivalent executions.
+            "sort": [{"_score": {"order": "desc"}}, {"_id": {"order": "asc"}}],
         }
 
         # Add score threshold only for hybrid (not meaningful for match_all)
@@ -670,6 +674,7 @@ class SearchService:
                 "aggs": _build_file_facet_aggregations(),
                 "_source": source_fields,
                 "size": retrieval_settings.lexical_candidates,
+                "sort": [{"_score": {"order": "desc"}}, {"_id": {"order": "asc"}}],
             }
             vector_body: dict[str, Any] = {
                 "query": {
@@ -684,6 +689,7 @@ class SearchService:
                 "aggs": _build_file_facet_aggregations(),
                 "_source": source_fields,
                 "size": retrieval_settings.vector_candidates,
+                "sort": [{"_score": {"order": "desc"}}, {"_id": {"order": "asc"}}],
             }
             if score_threshold > 0:
                 lexical_body["min_score"] = score_threshold

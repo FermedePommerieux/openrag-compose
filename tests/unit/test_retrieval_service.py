@@ -34,6 +34,30 @@ def test_rrf_is_deterministic_for_equal_scores():
     assert [hit["_id"] for hit in second] == ["a", "b"]
 
 
+def test_rrf_tie_break_is_independent_of_lane_response_order():
+    """Equal fused scores use a persistent chunk identity, never first_seen."""
+    a = _hit("a", "a")
+    b = _hit("b", "b")
+
+    first = reciprocal_rank_fusion([[a], [b]], k=60)
+    reversed_responses = reciprocal_rank_fusion([[b], [a]], k=60)
+
+    assert [hit["_id"] for hit in first] == ["a", "b"]
+    assert [hit["_id"] for hit in reversed_responses] == ["a", "b"]
+
+
+def test_rrf_is_reproducible_across_twenty_reordered_equal_score_responses():
+    """The final chunk sequence must not vary when OpenSearch shuffles ties."""
+    expected = ("a", "b")
+    sequences = []
+    for iteration in range(20):
+        lexical = [_hit("a", "a"), _hit("b", "b")]
+        vector = list(reversed(lexical)) if iteration % 2 else lexical
+        sequences.append(tuple(hit["_id"] for hit in reciprocal_rank_fusion([lexical, vector])))
+
+    assert all(sequence == expected for sequence in sequences)
+
+
 def test_document_diversity_keeps_rank_order_and_caps_each_document():
     hits = [_hit("a1", "a"), _hit("a2", "a"), _hit("b1", "b"), _hit("a3", "a")]
 
@@ -103,7 +127,10 @@ async def test_search_service_rrf_fuses_lanes_preserves_provenance_and_emits_deb
     vector_same_document = _hit("vector-a", "document-a", "other text")
 
     class OpenSearchClient:
+        bodies: list[dict] = []
+
         async def search(self, *, index, body, params):
+            self.bodies.append(body)
             if body.get("size") == 0:
                 return {"aggregations": {"embedding_models": {"buckets": [{"key": "test-model", "doc_count": 3}]}}}
             should = body.get("query", {}).get("bool", {}).get("should", [])
@@ -130,3 +157,6 @@ async def test_search_service_rrf_fuses_lanes_preserves_provenance_and_emits_deb
     assert result["results"][0]["source_url"] == "https://example.test/b"
     assert result["results"][0]["chunk_index"] == 0
     assert result["retrieval_debug"]["lanes"] == {"lexical": 2, "vector": 2}
+    lane_bodies = [body for body in OpenSearchClient.bodies if body.get("size") != 0]
+    assert len(lane_bodies) == 2
+    assert all(body["sort"] == [{"_score": {"order": "desc"}}, {"_id": {"order": "asc"}}] for body in lane_bodies)

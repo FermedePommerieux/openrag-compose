@@ -8,6 +8,8 @@ becoming the source of truth for API/SDK search.
 
 from __future__ import annotations
 
+import hashlib
+import json
 from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any
@@ -63,9 +65,12 @@ def hit_identity(hit: dict[str, Any]) -> str:
         value = hit.get(key) or source.get(key)
         if value is not None:
             return str(value)
-    # This only occurs for malformed test/third-party responses.  Keeping an
-    # item rather than collapsing it under a shared empty key is safer.
-    return f"anonymous:{id(hit)}"
+    # This only occurs for malformed test/third-party responses.  Do not use
+    # ``id(hit)`` here: it is process-local and makes equal-score ordering
+    # non-deterministic.  The digest is stable for equivalent payloads while
+    # still keeping distinct malformed items separate in normal use.
+    canonical = json.dumps(source, sort_keys=True, default=str, separators=(",", ":"))
+    return f"anonymous:{hashlib.sha256(canonical.encode()).hexdigest()}"
 
 
 def reciprocal_rank_fusion(
@@ -80,20 +85,21 @@ def reciprocal_rank_fusion(
     never mutates a response owned by an OpenSearch client or a caller.
     """
     score_by_id: dict[str, float] = {}
-    first_seen: dict[str, tuple[int, int]] = {}
     hit_by_id: dict[str, dict[str, Any]] = {}
     safe_k = max(1, int(k))
 
-    for list_index, ranked in enumerate(ranked_lists):
+    for ranked in ranked_lists:
         for rank, hit in enumerate(ranked, start=1):
             identity = hit_identity(hit)
             score_by_id[identity] = score_by_id.get(identity, 0.0) + 1.0 / (safe_k + rank)
-            first_seen.setdefault(identity, (list_index, rank))
             hit_by_id.setdefault(identity, dict(hit))
 
     ordered_ids = sorted(
         hit_by_id,
-        key=lambda identity: (-score_by_id[identity], first_seen[identity], identity),
+        # A persistent identity is the final tie-breaker.  It intentionally
+        # does not depend on OpenSearch's incidental response order or on the
+        # order in which a lane was enumerated.
+        key=lambda identity: (-score_by_id[identity], identity),
     )
     if limit is not None:
         ordered_ids = ordered_ids[: max(0, limit)]
