@@ -1251,10 +1251,16 @@ class ConnectorFileProcessor(TaskProcessor):
                     upload_task.successful_files += 1
                     return
 
+                knowledge_config = get_openrag_config().knowledge
                 from config.settings import DISABLE_INGEST_WITH_LANGFLOW
 
                 if (
-                    not DISABLE_INGEST_WITH_LANGFLOW
+                    not knowledge_config.disable_ingest_with_langflow
+                    and not DISABLE_INGEST_WITH_LANGFLOW
+                    # HybridChunker is implemented by the backend-owned
+                    # standard processor.  Do not silently send connectors
+                    # through Langflow's independent chunking path.
+                    and knowledge_config.chunking_strategy != "hybrid"
                     and self.connector_service.langflow_service is not None
                 ):
                     # Delete existing chunks for this document before Langflow re-ingestion

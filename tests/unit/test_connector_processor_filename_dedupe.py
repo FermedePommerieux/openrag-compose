@@ -415,6 +415,29 @@ async def test_langflow_connector_processor_uses_cleaned_filename(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_hybrid_connector_ingestion_bypasses_langflow(monkeypatch):
+    """Hybrid is backend-owned even when Langflow ingestion is normally enabled."""
+    monkeypatch.setattr("config.settings.DISABLE_INGEST_WITH_LANGFLOW", False)
+    processor = _build_langflow_processor(replace_duplicates=False)
+    document = _make_document()
+    _wire_langflow_processor(processor, document, filename_exists=False)
+
+    knowledge = MagicMock(
+        disable_ingest_with_langflow=False,
+        chunking_strategy="hybrid",
+        ocr=False,
+        picture_descriptions=False,
+    )
+    monkeypatch.setattr("models.processors.get_openrag_config", lambda: MagicMock(knowledge=knowledge))
+    processor.process_document_standard = AsyncMock(return_value={"status": "indexed", "id": "hash-1"})
+
+    await processor.process_item(_make_upload_task(), "file-id-1", _make_file_task())
+
+    processor.process_document_standard.assert_awaited_once()
+    processor.connector_service.langflow_service.upload_and_ingest_file.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_langflow_connector_processor_overwrites_when_replace_true(
     monkeypatch, backend_write_client
 ):
