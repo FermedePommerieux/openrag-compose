@@ -110,7 +110,9 @@ async def test_langflow_ingest_callback_indexes_authoritative_token_context():
         }
     ]
     assert chunks[0].chunk_id == "doc-1_1_0"
+    assert chunks[0].chunk_index == 0
     assert chunks[0].metadata["langflow_chunk_id"] == "doc-1_0"
+    assert chunks[0].metadata["chunking_strategy"] == "langflow"
     assert chunks[0].metadata["owner"] == "forged-owner"
     assert final is True
 

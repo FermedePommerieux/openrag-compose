@@ -10,6 +10,12 @@ from agentd.tool_decorator import tool
 from auth_context import get_auth_context
 from config.embedding_constants import get_declared_default_embedding_model
 from config.settings import clients, get_embedding_model, get_index_name, get_openrag_config
+from services.retrieval_service import (
+    HttpReranker,
+    RetrievalSettings,
+    limit_chunks_per_document,
+    reciprocal_rank_fusion,
+)
 from utils.container_utils import transform_localhost_url
 from utils.logging_config import get_logger
 
@@ -270,11 +276,14 @@ class SearchService:
         # Strategy: Use provided model, or default to the configured embedding
         # model. This assumes documents are embedded with that model by default.
         # Future enhancement: Could auto-detect available models in corpus.
+        openrag_config = get_openrag_config()
+        retrieval_settings = RetrievalSettings.from_knowledge(openrag_config.knowledge)
+        use_retrieval_v2 = retrieval_settings.strategy == "rrf"
         embedding_model = (
             embedding_model
             or get_embedding_model()
             or get_declared_default_embedding_model(
-                get_openrag_config().knowledge.embedding_provider
+                openrag_config.knowledge.embedding_provider
             )
         )
         embedding_field_name = get_embedding_field_name(embedding_model)
@@ -284,6 +293,8 @@ class SearchService:
             embedding_model=embedding_model,
             embedding_field=embedding_field_name,
             query_preview=query[:50] if query else None,
+            retrieval_strategy=retrieval_settings.strategy,
+            retrieval_mode=retrieval_settings.mode,
         )
 
         # Get authentication context from the current async context
@@ -592,29 +603,34 @@ class SearchService:
                 }
             }
 
+        source_fields = [
+            "document_id",
+            "filename",
+            "mimetype",
+            "page",
+            "chunk_index",
+            "chunking_strategy",
+            "text",
+            "source_url",
+            "connector_file_id",
+            "owner",
+            "owner_name",
+            "owner_email",
+            "file_size",
+            "connector_type",
+            "embedding_model",
+            "embedding_dimensions",
+            "parser",
+            "chunk_size",
+            "chunk_overlap",
+            "allowed_users",
+            "allowed_groups",
+            "allowed_principal_labels",
+        ]
         search_body: dict[str, Any] = {
             "query": query_block,
             "aggs": _build_file_facet_aggregations(),
-            "_source": [
-                "filename",
-                "mimetype",
-                "page",
-                "text",
-                "source_url",
-                "owner",
-                "owner_name",
-                "owner_email",
-                "file_size",
-                "connector_type",
-                "embedding_model",  # Include embedding model in results
-                "embedding_dimensions",
-                "parser",
-                "chunk_size",
-                "chunk_overlap",
-                "allowed_users",
-                "allowed_groups",
-                "allowed_principal_labels",
-            ],
+            "_source": source_fields,
             "size": limit,
         }
 
@@ -622,23 +638,85 @@ class SearchService:
         if not is_wildcard_match_all and score_threshold > 0:
             search_body["min_score"] = score_threshold
 
-        # Prepare fallback search body without num_candidates for clusters that don't support it.
-        # Only relevant when we actually dispatched KNN queries.
-        fallback_search_body: dict[str, Any] | None = None
-        if not is_wildcard_match_all and query_embeddings:
-            try:
-                fallback_search_body = copy.deepcopy(search_body)
-                knn_query_blocks = fallback_search_body["query"]["bool"]["should"][0]["dis_max"][
-                    "queries"
-                ]
-                for query_candidate in knn_query_blocks:
-                    knn_section = query_candidate.get("knn")
-                    if isinstance(knn_section, dict):
-                        for params in knn_section.values():
-                            if isinstance(params, dict):
-                                params.pop("num_candidates", None)
-            except (KeyError, IndexError, AttributeError, TypeError):
-                fallback_search_body = None
+        # In RRF mode lexical and vector candidates are intentionally fetched
+        # by separate OpenSearch requests.  Their score scales are unrelated;
+        # only their ranks are fused below.  The historical weighted query
+        # stays untouched unless an operator selects ``retrieval_strategy=rrf``.
+        retrieval_bodies: list[tuple[str, dict[str, Any]]] = []
+        if use_retrieval_v2 and not is_wildcard_match_all:
+            lexical_body: dict[str, Any] = {
+                "query": {
+                    "bool": {
+                        "should": [
+                            {
+                                "multi_match": {
+                                    "query": query,
+                                    "fields": ["text^2", "filename^1.5"],
+                                    "type": "best_fields",
+                                    "operator": "or",
+                                    "fuzziness": "AUTO:4,7",
+                                }
+                            },
+                            {
+                                "match_phrase_prefix": {
+                                    "text": {"query": query, "max_expansions": 50}
+                                }
+                            },
+                        ],
+                        "minimum_should_match": 1,
+                        "filter": filter_clauses,
+                    }
+                },
+                "aggs": _build_file_facet_aggregations(),
+                "_source": source_fields,
+                "size": retrieval_settings.lexical_candidates,
+            }
+            vector_body: dict[str, Any] = {
+                "query": {
+                    "bool": {
+                        "should": [
+                            {"dis_max": {"tie_breaker": 0.0, "queries": knn_queries}}
+                        ],
+                        "minimum_should_match": 1,
+                        "filter": all_filters,
+                    }
+                },
+                "aggs": _build_file_facet_aggregations(),
+                "_source": source_fields,
+                "size": retrieval_settings.vector_candidates,
+            }
+            if score_threshold > 0:
+                lexical_body["min_score"] = score_threshold
+                vector_body["min_score"] = score_threshold
+            if retrieval_settings.mode in {"hybrid", "lexical"}:
+                retrieval_bodies.append(("lexical", lexical_body))
+            if retrieval_settings.mode in {"hybrid", "vector"} and knn_queries:
+                retrieval_bodies.append(("vector", vector_body))
+            # Vector-only cannot run if every embedding provider is unavailable.
+            if not retrieval_bodies:
+                retrieval_bodies.append(("lexical", lexical_body))
+
+        def without_num_candidates(body: dict[str, Any]) -> dict[str, Any] | None:
+            """Return a compatibility retry body for older OpenSearch nodes."""
+            if not query_embeddings:
+                return None
+            fallback = copy.deepcopy(body)
+            removed = False
+
+            def walk(value: Any) -> None:
+                nonlocal removed
+                if isinstance(value, dict):
+                    if "num_candidates" in value:
+                        value.pop("num_candidates")
+                        removed = True
+                    for child in value.values():
+                        walk(child)
+                elif isinstance(value, list):
+                    for child in value:
+                        walk(child)
+
+            walk(fallback)
+            return fallback if removed else None
 
         # Authentication required - ACL filter is applied at the application layer above
         logger.debug(
@@ -663,76 +741,107 @@ class SearchService:
 
         search_params = {"terminate_after": 0}
 
-        try:
-            index_name = get_index_name()
-            logger.info(f"Sending query to index '{index_name}'..")
-            results = await opensearch_client.search(
-                index=index_name, body=search_body, params=search_params
-            )
-        except RequestError as e:
-            error_message = str(e)
-            if is_disk_space_error(e):
-                logger.error(
-                    "OpenSearch query blocked by disk space constraint",
-                    error=error_message,
+        async def execute_search(body: dict[str, Any], label: str) -> dict[str, Any]:
+            fallback_body = without_num_candidates(body)
+            try:
+                index_name = get_index_name()
+                logger.info("Sending query to index", retrieval_lane=label, index_name=index_name)
+                return await opensearch_client.search(
+                    index=index_name, body=body, params=search_params
                 )
-                raise OpenSearchDiskSpaceError(DISK_SPACE_ERROR_MESSAGE) from e
-            if (
-                fallback_search_body is not None
-                and "unknown field [num_candidates]" in error_message.lower()
-            ):
-                logger.warning(
-                    "OpenSearch cluster does not support num_candidates; retrying without it"
-                )
-                try:
-                    results = await opensearch_client.search(
-                        index=get_index_name(),
-                        body=fallback_search_body,
-                        params=search_params,
+            except RequestError as error:
+                error_message = str(error)
+                if is_disk_space_error(error):
+                    logger.error("OpenSearch query blocked by disk space constraint", error=error_message)
+                    raise OpenSearchDiskSpaceError(DISK_SPACE_ERROR_MESSAGE) from error
+                if (
+                    fallback_body is not None
+                    and "unknown field [num_candidates]" in error_message.lower()
+                ):
+                    logger.warning(
+                        "OpenSearch cluster does not support num_candidates; retrying without it",
+                        retrieval_lane=label,
                     )
-                except RequestError as retry_error:
-                    if is_disk_space_error(retry_error):
-                        logger.error(
-                            "OpenSearch retry blocked by disk space constraint",
-                            error=str(retry_error),
+                    try:
+                        return await opensearch_client.search(
+                            index=get_index_name(), body=fallback_body, params=search_params
                         )
-                        raise OpenSearchDiskSpaceError(DISK_SPACE_ERROR_MESSAGE) from retry_error
-                    logger.error(
-                        "OpenSearch retry without num_candidates failed",
-                        error=str(retry_error),
-                        search_body=fallback_search_body,
-                    )
-                    raise
-            else:
+                    except RequestError as retry_error:
+                        if is_disk_space_error(retry_error):
+                            logger.error(
+                                "OpenSearch retry blocked by disk space constraint",
+                                error=str(retry_error),
+                            )
+                            raise OpenSearchDiskSpaceError(DISK_SPACE_ERROR_MESSAGE) from retry_error
+                        logger.error(
+                            "OpenSearch retry without num_candidates failed",
+                            error=str(retry_error),
+                            retrieval_lane=label,
+                        )
+                        raise
                 logger.error(
-                    "OpenSearch query failed", error=error_message, search_body=search_body
+                    "OpenSearch query failed",
+                    error=error_message,
+                    retrieval_lane=label,
                 )
                 raise
-        except OpenSearchDiskSpaceError:
-            raise
-        except Exception as e:
-            if is_disk_space_error(e):
-                logger.error(
-                    "OpenSearch query blocked by disk space constraint",
-                    error=str(e),
-                )
-                raise OpenSearchDiskSpaceError(DISK_SPACE_ERROR_MESSAGE) from e
-            logger.error("OpenSearch query failed", error=str(e), search_body=search_body)
-            # Re-raise the exception so the API returns the error to frontend
-            raise
+            except OpenSearchDiskSpaceError:
+                raise
+            except Exception as error:
+                if is_disk_space_error(error):
+                    logger.error("OpenSearch query blocked by disk space constraint", error=str(error))
+                    raise OpenSearchDiskSpaceError(DISK_SPACE_ERROR_MESSAGE) from error
+                logger.error("OpenSearch query failed", error=str(error), retrieval_lane=label)
+                raise
+
+        retrieval_results: dict[str, dict[str, Any]] = {}
+        if retrieval_bodies:
+            lanes = [name for name, _body in retrieval_bodies]
+            lane_results = await asyncio.gather(
+                *[execute_search(body, name) for name, body in retrieval_bodies]
+            )
+            retrieval_results = dict(zip(lanes, lane_results, strict=True))
+            results = retrieval_results.get("lexical") or lane_results[0]
+        else:
+            results = await execute_search(search_body, "weighted")
+
+        raw_hits = results.get("hits", {}).get("hits", [])
+        if retrieval_results:
+            ranked_lists = [
+                lane_result.get("hits", {}).get("hits", [])
+                for lane_result in retrieval_results.values()
+            ]
+            raw_hits = reciprocal_rank_fusion(ranked_lists, k=retrieval_settings.rrf_k)
+            raw_hits = limit_chunks_per_document(
+                raw_hits,
+                max_chunks_per_document=retrieval_settings.max_chunks_per_document,
+            )
+            raw_hits = await HttpReranker(
+                retrieval_settings.reranker_url,
+                retrieval_settings.reranker_timeout,
+            ).rerank(query, raw_hits)
+            raw_hits = raw_hits[:limit]
 
         # Transform results (keep for backward compatibility)
         chunks = []
-        for hit in results["hits"]["hits"]:
+        for hit in raw_hits:
             source = hit.get("_source", {})
             chunks.append(
                 {
+                    "document_id": source.get("document_id"),
                     "filename": source.get("filename"),
                     "mimetype": source.get("mimetype"),
                     "page": source.get("page"),
+                    "chunk_index": source.get("chunk_index"),
+                    "chunking_strategy": source.get("chunking_strategy"),
                     "text": source.get("text"),
-                    "score": hit.get("_score"),
+                    "score": (
+                        hit.get("_retrieval_rerank_score")
+                        or hit.get("_retrieval_fusion_score")
+                        or hit.get("_score")
+                    ),
                     "source_url": source.get("source_url"),
+                    "connector_file_id": source.get("connector_file_id"),
                     "owner": source.get("owner"),
                     "owner_name": source.get("owner_name"),
                     "owner_email": source.get("owner_email"),
@@ -784,6 +893,18 @@ class SearchService:
                     ),
                 }
             ]
+        if retrieval_results and retrieval_settings.debug:
+            response["retrieval_debug"] = {
+                "strategy": "rrf",
+                "mode": retrieval_settings.mode,
+                "lanes": {
+                    lane: len(lane_result.get("hits", {}).get("hits", []))
+                    for lane, lane_result in retrieval_results.items()
+                },
+                "rrf_k": retrieval_settings.rrf_k,
+                "max_chunks_per_document": retrieval_settings.max_chunks_per_document,
+                "reranker_enabled": bool(retrieval_settings.reranker_url),
+            }
         return response
 
     async def search(

@@ -91,7 +91,15 @@ async def ingest_langflow_chunks(
             text=chunk.text,
             vector=chunk.vector,
             page=chunk.page,
-            metadata={**chunk.metadata, "langflow_chunk_id": chunk.id},
+            # Index is local to a Langflow callback batch; the trusted chunk id
+            # remains globally unique.  It still gives clients a stable order
+            # for chunks delivered together by the flow.
+            chunk_index=index,
+            metadata={
+                **chunk.metadata,
+                "langflow_chunk_id": chunk.id,
+                "chunking_strategy": chunk.metadata.get("chunking_strategy", "langflow"),
+            },
         )
         for index, chunk in enumerate(body.chunks)
     ]

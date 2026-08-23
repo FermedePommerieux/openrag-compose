@@ -34,6 +34,8 @@ async def create_index_body(
         "filename": {"type": "keyword"},
         "mimetype": {"type": "keyword"},
         "page": {"type": "integer"},
+        "chunk_index": {"type": "integer"},
+        "chunking_strategy": {"type": "keyword"},
         "text": {"type": "text"},
         # Legacy field - kept for backward compatibility and for clusters where
         # Langflow cannot perform mapping updates with a DLS-filtered JWT.
@@ -42,7 +44,11 @@ async def create_index_body(
         "embedding_model": {"type": "keyword"},
         "embedding_dimensions": {"type": "integer"},
         "source_url": {"type": "keyword"},
+        "connector_file_id": {"type": "keyword"},
         "connector_type": {"type": "keyword"},
+        "parser": {"type": "keyword"},
+        "chunk_size": {"type": "integer"},
+        "chunk_overlap": {"type": "integer"},
         "ingest_run_id": {"type": "keyword"},
         "owner": {"type": "keyword"},
         "owner_email": {"type": "keyword"},

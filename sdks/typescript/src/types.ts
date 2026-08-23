@@ -10,6 +10,11 @@ export interface Source {
   page?: number | null;
   mimetype?: string | null;
   source_url?: string | null;
+  document_id?: string | null;
+  chunk_id?: string | null;
+  chunk_index?: number | null;
+  chunking_strategy?: string | null;
+  connector_file_id?: string | null;
 }
 
 export interface ChatResponse {
@@ -45,6 +50,11 @@ export interface SearchResult {
   page?: number | null;
   mimetype?: string | null;
   source_url?: string | null;
+  document_id?: string | null;
+  chunk_id?: string | null;
+  chunk_index?: number | null;
+  chunking_strategy?: string | null;
+  connector_file_id?: string | null;
 }
 
 export interface SearchResponse {
@@ -189,6 +199,18 @@ export interface KnowledgeSettings {
   table_structure?: boolean | null;
   ocr?: boolean | null;
   picture_descriptions?: boolean | null;
+  chunking_strategy?: "character" | "hybrid" | null;
+  hybrid_max_tokens?: number | null;
+  hybrid_merge_peers?: boolean | null;
+  retrieval_strategy?: "weighted" | "rrf" | null;
+  retrieval_mode?: "hybrid" | "lexical" | "vector" | null;
+  retrieval_lexical_candidates?: number | null;
+  retrieval_vector_candidates?: number | null;
+  retrieval_rrf_k?: number | null;
+  retrieval_max_chunks_per_document?: number | null;
+  retrieval_reranker_url?: string | null;
+  retrieval_reranker_timeout?: number | null;
+  retrieval_debug?: boolean | null;
 }
 
 export interface ArchivingSettings {
@@ -226,6 +248,21 @@ export interface SettingsUpdateOptions {
   picture_descriptions?: boolean;
   /** Keep original local source files after successful ingestion. */
   archive_sources_enabled?: boolean;
+  /** Character splitter or optional structure-aware Docling HybridChunker. */
+  chunking_strategy?: "character" | "hybrid";
+  hybrid_max_tokens?: number;
+  hybrid_merge_peers?: boolean;
+  /** Historical weighted query or deterministic reciprocal-rank fusion. */
+  retrieval_strategy?: "weighted" | "rrf";
+  retrieval_mode?: "hybrid" | "lexical" | "vector";
+  retrieval_lexical_candidates?: number;
+  retrieval_vector_candidates?: number;
+  retrieval_rrf_k?: number;
+  retrieval_max_chunks_per_document?: number;
+  /** Administrator-configured HTTP reranker endpoint. */
+  retrieval_reranker_url?: string;
+  retrieval_reranker_timeout?: number;
+  retrieval_debug?: boolean;
 }
 
 /** Response from settings update. */

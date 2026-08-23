@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any, Literal
 from config.settings import clients, get_embedding_model, get_index_name, get_openrag_config
 from session_manager import AnonymousUser
 from utils.document_processing import (
+    chunk_docling_hybrid,
     extract_relevant,
     process_text_file,
     resplit_chunks_character_windows,
@@ -497,6 +498,7 @@ class TaskProcessor:
             chunk_size = config.knowledge.chunk_size
         if chunk_overlap is None:
             chunk_overlap = config.knowledge.chunk_overlap
+        effective_chunking_strategy = "character"
 
         # Get user's OpenSearch client with JWT for OIDC auth
         opensearch_client = self.document_service.session_manager.get_user_opensearch_client(
@@ -541,11 +543,26 @@ class TaskProcessor:
             slim_doc = extract_relevant(full_doc)
             slim_doc["parser"] = DOCLING_PARSER_LABEL
 
+            if config.knowledge.chunking_strategy == "hybrid":
+                hybrid_chunks = chunk_docling_hybrid(
+                    full_doc,
+                    max_tokens=config.knowledge.hybrid_max_tokens,
+                    merge_peers=config.knowledge.hybrid_merge_peers,
+                )
+                if hybrid_chunks is not None:
+                    slim_doc["chunks"] = hybrid_chunks
+                    effective_chunking_strategy = "hybrid"
+                else:
+                    logger.warning(
+                        "Hybrid chunking requested but docling-core is unavailable; "
+                        "falling back to character chunking"
+                    )
+
         # Override filename with original_filename if provided
         if original_filename:
             slim_doc["filename"] = original_filename
 
-        if chunk_size is not None:
+        if effective_chunking_strategy != "hybrid" and chunk_size is not None:
             try:
                 cs = int(chunk_size)
             except (TypeError, ValueError):
@@ -691,6 +708,7 @@ class TaskProcessor:
             allowed_principals=allowed_principals,
             allowed_principal_labels=allowed_principal_labels,
             is_sample_data=is_sample_data,
+            chunking_strategy=effective_chunking_strategy,
         )
         parser_name = slim_doc.get("parser")
         if not parser_name:
@@ -699,7 +717,10 @@ class TaskProcessor:
             else:
                 parser_name = DOCLING_PARSER_LABEL
 
-        chunk_metadata = {"parser": parser_name}
+        chunk_metadata = {
+            "parser": parser_name,
+            "chunking_strategy": effective_chunking_strategy,
+        }
         if chunk_size is not None:
             chunk_metadata["chunk_size"] = chunk_size
         if chunk_overlap is not None:
@@ -713,6 +734,7 @@ class TaskProcessor:
                 text=chunk["text"],
                 vector=vect,
                 page=chunk["page"],
+                chunk_index=i,
                 metadata=chunk_metadata,
             )
             for i, (chunk, vect) in enumerate(zip(slim_doc["chunks"], embeddings, strict=True))

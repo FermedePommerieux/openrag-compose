@@ -18,6 +18,9 @@ class SettingsUpdateBody(BaseModel):
     system_prompt: str | None = None
     chunk_size: int | None = Field(None, gt=0)
     chunk_overlap: int | None = Field(None, ge=0)
+    chunking_strategy: str | None = Field(None, pattern="^(character|hybrid)$")
+    hybrid_max_tokens: int | None = Field(None, gt=0)
+    hybrid_merge_peers: bool | None = None
     table_structure: bool | None = None
     ocr: bool | None = None
     picture_descriptions: bool | None = None
@@ -35,6 +38,15 @@ class SettingsUpdateBody(BaseModel):
     embedding_model: str | None = Field(None, min_length=1)
     embedding_provider: str | None = Field(None, pattern="^(openai|watsonx|ollama)$")
     index_name: str | None = Field(None, min_length=1)
+    retrieval_strategy: str | None = Field(None, pattern="^(weighted|rrf)$")
+    retrieval_mode: str | None = Field(None, pattern="^(hybrid|lexical|vector)$")
+    retrieval_lexical_candidates: int | None = Field(None, gt=0, le=500)
+    retrieval_vector_candidates: int | None = Field(None, gt=0, le=500)
+    retrieval_rrf_k: int | None = Field(None, gt=0, le=1000)
+    retrieval_max_chunks_per_document: int | None = Field(None, gt=0, le=100)
+    retrieval_reranker_url: str | None = Field(None, max_length=2048)
+    retrieval_reranker_timeout: int | None = Field(None, gt=0, le=120)
+    retrieval_debug: bool | None = None
     openai_api_key: str | None = Field(None, min_length=1)
     anthropic_api_key: str | None = Field(None, min_length=1)
     watsonx_api_key: str | None = Field(None, min_length=1)
@@ -74,6 +86,9 @@ class CitationDisplayData(BaseModel):
     parser: str | None = None
     chunk_size: int | float | str | None = None
     chunk_overlap: int | float | str | None = None
+    chunk_index: int | None = None
+    chunking_strategy: str | None = None
+    document_id: str | None = None
     metadata: dict[str, Any] | None = None
 
 
@@ -89,6 +104,9 @@ class CitationDisplayResult(BaseModel):
     parser: str | None = None
     chunk_size: int | float | str | None = None
     chunk_overlap: int | float | str | None = None
+    chunk_index: int | None = None
+    chunking_strategy: str | None = None
+    document_id: str | None = None
     source_url: str | None = None
     metadata: dict[str, Any] | None = None
 
@@ -182,6 +200,9 @@ class KnowledgeConfig(BaseModel):
     embedding_provider: str | None
     chunk_size: int | None
     chunk_overlap: int | None
+    chunking_strategy: str | None = None
+    hybrid_max_tokens: int | None = None
+    hybrid_merge_peers: bool | None = None
     table_structure: bool | None
     ocr: bool | None
     picture_descriptions: bool | None
@@ -196,6 +217,15 @@ class KnowledgeConfig(BaseModel):
     vlm_concurrency: int | None = None
     vlm_timeout: int | None = None
     vlm_watsonx_api_version: str | None = None
+    retrieval_strategy: str | None = None
+    retrieval_mode: str | None = None
+    retrieval_lexical_candidates: int | None = None
+    retrieval_vector_candidates: int | None = None
+    retrieval_rrf_k: int | None = None
+    retrieval_max_chunks_per_document: int | None = None
+    retrieval_reranker_url: str | None = None
+    retrieval_reranker_timeout: int | None = None
+    retrieval_debug: bool | None = None
 
 
 class AgentConfig(BaseModel):

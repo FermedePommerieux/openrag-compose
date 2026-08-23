@@ -789,6 +789,8 @@ INDEX_BODY = {
             "filename": {"type": "keyword"},
             "mimetype": {"type": "keyword"},
             "page": {"type": "integer"},
+            "chunk_index": {"type": "integer"},
+            "chunking_strategy": {"type": "keyword"},
             "text": {"type": "text"},
             # Legacy field - kept for backward compatibility
             # New documents will use chunk_embedding_{model_name} fields

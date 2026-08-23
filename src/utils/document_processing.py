@@ -206,6 +206,51 @@ def resplit_chunks_character_windows(
     return out
 
 
+def chunk_docling_hybrid(
+    doc_dict: dict,
+    *,
+    max_tokens: int,
+    merge_peers: bool,
+) -> list[dict] | None:
+    """Chunk a Docling JSON document with its structure-aware HybridChunker.
+
+    ``docling-core`` is deliberately optional in the backend image because
+    Docling Serve performs conversion remotely.  Returning ``None`` lets the
+    caller fall back to the established character splitter without making a
+    configured hybrid strategy turn an upload into a hard failure.
+    """
+    try:
+        import tiktoken
+        from docling_core.transforms.chunker.hybrid_chunker import HybridChunker
+        from docling_core.transforms.chunker.tokenizer.openai import OpenAITokenizer
+        from docling_core.types.doc.document import DoclingDocument
+    except ImportError:
+        return None
+
+    try:
+        tokenizer = OpenAITokenizer(
+            tokenizer=tiktoken.get_encoding("cl100k_base"),
+            max_tokens=max(1, int(max_tokens)),
+        )
+        chunker = HybridChunker(tokenizer=tokenizer, merge_peers=merge_peers)
+        document = DoclingDocument.model_validate(doc_dict)
+        chunks: list[dict] = []
+        for chunk in chunker.chunk(dl_doc=document):
+            page = 1
+            for item in getattr(getattr(chunk, "meta", None), "doc_items", []) or []:
+                provenance = getattr(item, "prov", None) or []
+                if provenance:
+                    page = getattr(provenance[0], "page_no", None) or page
+                    break
+            text = chunker.contextualize(chunk=chunk).strip()
+            if text:
+                chunks.append({"page": page, "type": "docling_hybrid", "text": text})
+        return chunks or None
+    except Exception as exc:
+        logger.warning("Docling HybridChunker failed; using character chunking", error=str(exc))
+        return None
+
+
 def split_chunks_by_max_tokens(
     chunks: list[dict], max_tokens: int, model: str | None = None
 ) -> list[dict]:

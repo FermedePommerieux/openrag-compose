@@ -55,6 +55,11 @@ async def test_search_endpoint_preserves_source_url():
                     "page": 3,
                     "mimetype": "application/pdf",
                     "source_url": SOURCE_URL,
+                    "document_id": "document-1",
+                    "chunk_id": "chunk-7",
+                    "chunk_index": 7,
+                    "chunking_strategy": "hybrid",
+                    "connector_file_id": "drive-file-1",
                 }
             ]
         }
@@ -75,3 +80,8 @@ async def test_search_endpoint_preserves_source_url():
 
     payload = json.loads(response.body.decode())
     assert payload["results"][0]["source_url"] == SOURCE_URL
+    assert payload["results"][0]["document_id"] == "document-1"
+    assert payload["results"][0]["chunk_id"] == "chunk-7"
+    assert payload["results"][0]["chunk_index"] == 7
+    assert payload["results"][0]["chunking_strategy"] == "hybrid"
+    assert payload["results"][0]["connector_file_id"] == "drive-file-1"

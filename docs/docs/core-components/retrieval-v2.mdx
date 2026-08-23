@@ -1,0 +1,59 @@
+---
+title: Retrieval v2
+---
+
+# Retrieval v2
+
+Retrieval v2 is a backend-owned search mode for API and SDK callers. It is
+configured in `knowledge` and is deliberately opt-in:
+
+```yaml
+knowledge:
+  retrieval_strategy: rrf
+  retrieval_mode: hybrid
+  retrieval_lexical_candidates: 50
+  retrieval_vector_candidates: 50
+  retrieval_rrf_k: 60
+  retrieval_max_chunks_per_document: 3
+```
+
+`weighted` is the default `retrieval_strategy` and retains the historical
+single OpenSearch hybrid query. With `rrf`, OpenRAG runs lexical and vector
+candidate retrieval independently, then combines ranks with reciprocal-rank
+fusion. This avoids mixing incomparable BM25 and vector score scales. The
+`retrieval_mode` can limit the candidates to `lexical` or `vector` for
+diagnosis.
+
+The optional `retrieval_reranker_url` accepts an administrator-configured HTTP
+endpoint with a `POST` JSON contract of:
+
+```json
+{ "query": "...", "documents": ["..."] }
+```
+
+The response may use `results` (or `data`) items containing `index` and
+`relevance_score` (or `score`). If the endpoint is unavailable or returns an
+unsupported response, OpenRAG logs the issue and safely retains the fused
+order.
+
+## Chunk provenance
+
+Every newly indexed backend-owned chunk carries `document_id`, `chunk_index`,
+and `chunking_strategy`, in addition to the existing `source_url`, page,
+parser, and connector metadata. Search responses expose those fields so an
+application can render a stable citation or source link without inferring it
+from a filename.
+
+`chunking_strategy: hybrid` uses Docling's `HybridChunker` only when the
+optional `docling-core[chunking-openai]` dependency is installed. It receives
+the JSON document returned by Docling Serve, preserves document structure, and
+uses a token-aware limit. When the optional dependency is absent or rejects a
+document, ingestion logs the reason and falls back to the established
+character splitter; the indexed metadata records the effective strategy.
+
+## Langflow boundary
+
+The exported `flows/openrag_agent.json` contains its own OpenSearch component.
+It is not rewritten by this feature, so existing Langflow agent behaviour is
+unchanged. To use retrieval v2 in a Langflow flow, update that flow separately
+to call the OpenRAG search API or an equivalent backend-owned component.

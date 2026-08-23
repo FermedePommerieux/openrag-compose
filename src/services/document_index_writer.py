@@ -44,6 +44,7 @@ class DocumentIndexContext:
     parser: str | None = None
     chunk_size: int | None = None
     chunk_overlap: int | None = None
+    chunking_strategy: str | None = None
 
 
 @dataclass
@@ -52,6 +53,7 @@ class DocumentIndexChunk:
     text: str
     vector: list[float]
     page: int | None = None
+    chunk_index: int | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
@@ -215,12 +217,70 @@ class DocumentIndexWriter:
                 index=index_name,
                 body=await create_index_body(embedding_model, dimensions),
             )
+        await self._ensure_retrieval_metadata_fields(client, index_name)
         return await ensure_embedding_field_exists(
             client,
             embedding_model,
             index_name,
             dimensions,
         )
+
+    @staticmethod
+    async def _ensure_retrieval_metadata_fields(client: Any, index_name: str) -> None:
+        """Add v2 provenance fields to an index created before this release.
+
+        Mapping additions are additive and safe for existing chunks.  A field
+        dynamically created with an incompatible type cannot be changed in
+        place by OpenSearch, so we log an actionable warning instead of hiding
+        the mismatch or silently reindexing user data.
+        """
+        required = {
+            "connector_file_id": {"type": "keyword"},
+            "chunk_index": {"type": "integer"},
+            "chunking_strategy": {"type": "keyword"},
+            "parser": {"type": "keyword"},
+            "chunk_size": {"type": "integer"},
+            "chunk_overlap": {"type": "integer"},
+        }
+        try:
+            mappings = await client.indices.get_mapping(index=index_name)
+            properties: dict[str, Any] = {}
+            for mapping in mappings.values():
+                candidate = mapping.get("mappings", {}).get("properties", {})
+                if isinstance(candidate, dict):
+                    properties.update(candidate)
+            missing = {
+                name: definition
+                for name, definition in required.items()
+                if name not in properties
+            }
+            incompatible = {
+                name: properties[name].get("type")
+                for name, definition in required.items()
+                if name in properties and properties[name].get("type") != definition["type"]
+            }
+            if incompatible:
+                logger.warning(
+                    "Existing retrieval provenance mapping is incompatible; reindex required",
+                    index_name=index_name,
+                    fields=incompatible,
+                )
+            if missing:
+                await client.indices.put_mapping(index=index_name, body={"properties": missing})
+                logger.info(
+                    "Added retrieval provenance mapping fields",
+                    index_name=index_name,
+                    fields=list(missing),
+                )
+        except Exception as exc:
+            # The following embedding-field check is authoritative for write
+            # safety; do not make an additive metadata enhancement block an
+            # otherwise valid existing index.
+            logger.warning(
+                "Unable to ensure retrieval provenance mapping fields",
+                index_name=index_name,
+                error=str(exc),
+            )
 
     def _build_chunk_document(
         self,
@@ -240,6 +300,11 @@ class DocumentIndexWriter:
             "filename": filename,
             "mimetype": mimetype,
             "page": chunk.page if chunk.page is not None else metadata.get("page", 0),
+            "chunk_index": (
+                chunk.chunk_index
+                if chunk.chunk_index is not None
+                else metadata.get("chunk_index")
+            ),
             "text": chunk.text,
             embedding_field: chunk.vector,
             "embedding_model": context.embedding_model,
@@ -262,6 +327,10 @@ class DocumentIndexWriter:
         parser = context.parser or metadata.get("parser")
         if parser:
             doc["parser"] = parser
+
+        chunking_strategy = context.chunking_strategy or metadata.get("chunking_strategy")
+        if chunking_strategy:
+            doc["chunking_strategy"] = str(chunking_strategy)
 
         for field_name in ("chunk_size", "chunk_overlap"):
             context_value = getattr(context, field_name)

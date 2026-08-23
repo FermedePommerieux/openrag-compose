@@ -175,6 +175,12 @@ class KnowledgeConfig:
     embedding_provider: str = "openai"  # Which provider to use for embeddings
     chunk_size: int = 1000
     chunk_overlap: int = 200
+    # ``character`` preserves the historical splitter.  ``hybrid`` is an
+    # opt-in Docling/Core strategy used by retrieval v2 when the optional
+    # Docling chunking dependency is available.
+    chunking_strategy: str = "character"
+    hybrid_max_tokens: int = 512
+    hybrid_merge_peers: bool = True
     table_structure: bool = True
     ocr: bool = False
     picture_descriptions: bool = False
@@ -196,6 +202,18 @@ class KnowledgeConfig:
     vlm_concurrency: int = 4
     vlm_timeout: int = 120  # per-page VLM API timeout, seconds
     vlm_watsonx_api_version: str = "2023-05-29"
+    # Retrieval v2 remains opt-in. ``weighted`` retains the upstream single
+    # OpenSearch hybrid query; ``rrf`` runs lexical and vector retrieval
+    # independently before deterministic reciprocal-rank fusion.
+    retrieval_strategy: str = "weighted"
+    retrieval_mode: str = "hybrid"
+    retrieval_lexical_candidates: int = 50
+    retrieval_vector_candidates: int = 50
+    retrieval_rrf_k: int = 60
+    retrieval_max_chunks_per_document: int = 3
+    retrieval_reranker_url: str = ""
+    retrieval_reranker_timeout: int = 5
+    retrieval_debug: bool = False
 
 
 @dataclass
