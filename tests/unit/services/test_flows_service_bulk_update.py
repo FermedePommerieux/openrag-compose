@@ -241,6 +241,85 @@ async def test_ensure_flows_exist_does_not_auto_update_on_startup():
     assert reset_mock.call_count == 0
 
 
+def _lifecycle_retrieval_flow() -> dict:
+    """Minimal shape of the locked 156f3664 retrieval tool graph."""
+    legacy_id = "ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra-Ji9kZ"
+    return {
+        "id": "1098eea1-6649-4e1d-aed1-b77249fb8dd0",
+        "locked": True,
+        "data": {
+            "nodes": [
+                {
+                    "id": legacy_id,
+                    "data": {
+                        "type": "ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra",
+                        "node": {
+                            "namespaced_id": "ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra"
+                        },
+                    },
+                },
+                {"id": "Agent-Nfw7u", "data": {"node": {"name": "Agent"}}},
+            ],
+            "edges": [{"source": legacy_id, "target": "Agent-Nfw7u"}],
+        },
+    }
+
+
+@pytest.mark.asyncio
+async def test_migrate_known_lifecycle_retrieval_flow_is_backed_up_and_idempotent():
+    service = FlowsService()
+    old_flow = _lifecycle_retrieval_flow()
+    migrated_flow: dict | None = None
+
+    async def mock_langflow_request(method, url, json=None, **kwargs):
+        nonlocal migrated_flow
+        if method == "GET":
+            response = MagicMock(status_code=200)
+            response.json.return_value = migrated_flow or old_flow
+            return response
+        if method == "PUT":
+            migrated_flow = json
+            return MagicMock(status_code=200)
+        raise AssertionError(f"unexpected request {method} {url}")
+
+    with (
+        patch("services.flows_service.clients.langflow_request", side_effect=mock_langflow_request),
+        patch.object(service, "_backup_flow", new_callable=AsyncMock, return_value="/tmp/flow.json") as backup,
+    ):
+        first = await service.migrate_persisted_retrieval_flow()
+        second = await service.migrate_persisted_retrieval_flow()
+
+    assert first["status"] == "migrated"
+    assert first["backup_path"] == "/tmp/flow.json"
+    assert second["status"] == "already_migrated"
+    assert backup.await_count == 1
+    component_types = [
+        node.get("data", {}).get("node", {}).get("namespaced_id")
+        for node in migrated_flow["data"]["nodes"]
+    ]
+    assert "ext:openrag:OpenRAGBackendRetrievalComponent@extra" in component_types
+    assert "ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra" not in component_types
+
+
+@pytest.mark.asyncio
+async def test_migrate_retrieval_flow_refuses_unlocked_or_unknown_graph():
+    service = FlowsService()
+    custom_flow = _lifecycle_retrieval_flow()
+    custom_flow["locked"] = False
+    response = MagicMock(status_code=200)
+    response.json.return_value = custom_flow
+
+    with (
+        patch("services.flows_service.clients.langflow_request", return_value=response),
+        patch.object(service, "_backup_flow", new_callable=AsyncMock) as backup,
+    ):
+        result = await service.migrate_persisted_retrieval_flow()
+
+    assert result["status"] == "failed"
+    assert result["reason"] == "unrecognized_or_custom_flow"
+    backup.assert_not_awaited()
+
+
 @pytest.mark.asyncio
 async def test_get_flows_updates_available_includes_all_flows():
     """Verify that get_flows_updates_available surfaces updates regardless of locked status."""

@@ -3942,7 +3942,7 @@
             },
             "minimized": false,
             "name": "OpenRAGBackendRetrieval",
-            "namespaced_id": "ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra",
+            "namespaced_id": "ext:openrag:OpenRAGBackendRetrievalComponent@extra",
             "output_types": [],
             "outputs": [
               {

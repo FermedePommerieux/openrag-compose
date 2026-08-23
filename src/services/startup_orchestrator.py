@@ -175,6 +175,9 @@ async def startup_tasks(services) -> None:
     try:
         flows_service = services["flows_service"]
         await flows_service.ensure_flows_exist()
+        migration = await flows_service.migrate_persisted_retrieval_flow()
+        if migration.get("status") == "failed":
+            logger.error("Retrieval flow migration did not complete", migration=migration)
 
         # Check if we should upgrade the system prompt (only if it's a legacy or default prompt, preserving user customizations)
         from config.config_manager import DEFAULT_SYSTEM_PROMPT
