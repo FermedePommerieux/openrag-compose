@@ -355,3 +355,32 @@ def test_document_index_writer_outputs_connector_file_id_when_present():
 
     assert doc["document_id"] == "sha-abc"
     assert doc["connector_file_id"] == "sharepoint-item-xyz"
+
+
+@pytest.mark.asyncio
+async def test_explicit_hybrid_chunking_fails_fast_for_plain_text(monkeypatch):
+    """An explicit hybrid request must never silently index character chunks."""
+    processor, opensearch_client = _make_processor_with_mocks()
+    opensearch_client.search = AsyncMock(return_value={"hits": {"hits": []}})
+
+    from models import processors as processors_mod
+
+    config = MagicMock()
+    config.knowledge.embedding_model = "text-embedding-3-small"
+    config.knowledge.chunk_size = 1000
+    config.knowledge.chunk_overlap = 200
+    config.knowledge.chunking_strategy = "hybrid"
+    monkeypatch.setattr(processors_mod, "get_openrag_config", lambda: config)
+
+    with tempfile.NamedTemporaryFile(suffix=".txt", delete=False) as tmp:
+        tmp.write(b"plain text")
+        tmp_path = tmp.name
+    try:
+        with pytest.raises(ValueError, match="requested_chunking_strategy=hybrid"):
+            await processor.process_document_standard(
+                file_path=tmp_path,
+                file_hash="hybrid-text",
+                owner_user_id="alice",
+            )
+    finally:
+        Path(tmp_path).unlink(missing_ok=True)

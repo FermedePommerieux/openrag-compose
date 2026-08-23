@@ -26,6 +26,9 @@ dependencies = [
     "authlib>=1.7.2,<2.0.0",
     "aiohttp>=3.14.1",
     "cryptography>=48.0.1",
+    # HybridChunker runs in the backend-owned ingestion path.  The OpenAI
+    # tokenizer extra is architecture-independent and supports ARM64 wheels.
+    "docling-core[chunking-openai]>=2.0.0",
     "click>=8.3.3",
     "google-api-python-client>=2.143.0",
     "google-auth-httplib2>=0.2.0",
@@ -164,4 +167,3 @@ exclude = ["flows/components"]
 [[tool.mypy.overrides]]
 module = ["api.settings.endpoints", "api.v1.settings"]
 disable_error_code = ["return-value"]
-

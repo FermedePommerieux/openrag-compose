@@ -498,6 +498,7 @@ class TaskProcessor:
             chunk_size = config.knowledge.chunk_size
         if chunk_overlap is None:
             chunk_overlap = config.knowledge.chunk_overlap
+        requested_chunking_strategy = config.knowledge.chunking_strategy
         effective_chunking_strategy = "character"
 
         # Get user's OpenSearch client with JWT for OIDC auth
@@ -524,6 +525,11 @@ class TaskProcessor:
         file_ext = os.path.splitext(file_path)[1].lower()
 
         if file_ext in (".txt", ".md"):
+            if requested_chunking_strategy == "hybrid":
+                raise ValueError(
+                    "Hybrid chunking was requested but is unavailable for plain-text documents; "
+                    "requested_chunking_strategy=hybrid effective_chunking_strategy=none"
+                )
             # Simple text file processing without docling
             logger.info(
                 "Processing as plain text file (bypassing docling)",
@@ -543,20 +549,13 @@ class TaskProcessor:
             slim_doc = extract_relevant(full_doc)
             slim_doc["parser"] = DOCLING_PARSER_LABEL
 
-            if config.knowledge.chunking_strategy == "hybrid":
-                hybrid_chunks = chunk_docling_hybrid(
+            if requested_chunking_strategy == "hybrid":
+                slim_doc["chunks"] = chunk_docling_hybrid(
                     full_doc,
                     max_tokens=config.knowledge.hybrid_max_tokens,
                     merge_peers=config.knowledge.hybrid_merge_peers,
                 )
-                if hybrid_chunks is not None:
-                    slim_doc["chunks"] = hybrid_chunks
-                    effective_chunking_strategy = "hybrid"
-                else:
-                    logger.warning(
-                        "Hybrid chunking requested but docling-core is unavailable; "
-                        "falling back to character chunking"
-                    )
+                effective_chunking_strategy = "hybrid"
 
         # Override filename with original_filename if provided
         if original_filename:
@@ -740,7 +739,12 @@ class TaskProcessor:
             for i, (chunk, vect) in enumerate(zip(slim_doc["chunks"], embeddings, strict=True))
         ]
         await document_index_writer.index_chunks(index_context, index_chunks, final=True)
-        return {"status": "indexed", "id": file_hash}
+        return {
+            "status": "indexed",
+            "id": file_hash,
+            "requested_chunking_strategy": requested_chunking_strategy,
+            "effective_chunking_strategy": effective_chunking_strategy,
+        }
 
     async def process_item(self, upload_task: UploadTask, item: Any, file_task: FileTask) -> None:
         """

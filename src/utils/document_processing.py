@@ -6,6 +6,10 @@ from utils.logging_config import get_logger
 logger = get_logger(__name__)
 
 
+class HybridChunkingError(RuntimeError):
+    """Raised when an explicitly requested Docling hybrid chunk cannot be produced."""
+
+
 def process_text_file(file_path: str) -> dict:
     """
     Process a plain text file without using docling.
@@ -211,21 +215,22 @@ def chunk_docling_hybrid(
     *,
     max_tokens: int,
     merge_peers: bool,
-) -> list[dict] | None:
+) -> list[dict]:
     """Chunk a Docling JSON document with its structure-aware HybridChunker.
 
-    ``docling-core`` is deliberately optional in the backend image because
-    Docling Serve performs conversion remotely.  Returning ``None`` lets the
-    caller fall back to the established character splitter without making a
-    configured hybrid strategy turn an upload into a hard failure.
+    Hybrid is an explicit operator choice.  A missing optional dependency or
+    an incompatible document must therefore fail the upload before character
+    chunks can be written under the wrong strategy.
     """
     try:
         import tiktoken
         from docling_core.transforms.chunker.hybrid_chunker import HybridChunker
         from docling_core.transforms.chunker.tokenizer.openai import OpenAITokenizer
         from docling_core.types.doc.document import DoclingDocument
-    except ImportError:
-        return None
+    except ImportError as exc:
+        raise HybridChunkingError(
+            "Hybrid chunking was requested but docling-core[chunking-openai] is unavailable"
+        ) from exc
 
     try:
         tokenizer = OpenAITokenizer(
@@ -245,10 +250,12 @@ def chunk_docling_hybrid(
             text = chunker.contextualize(chunk=chunk).strip()
             if text:
                 chunks.append({"page": page, "type": "docling_hybrid", "text": text})
-        return chunks or None
+        if not chunks:
+            raise HybridChunkingError("Hybrid chunking produced no usable chunks")
+        return chunks
     except Exception as exc:
-        logger.warning("Docling HybridChunker failed; using character chunking", error=str(exc))
-        return None
+        logger.warning("Docling HybridChunker failed", error=str(exc))
+        raise HybridChunkingError(f"Hybrid chunking failed: {exc}") from exc
 
 
 def split_chunks_by_max_tokens(

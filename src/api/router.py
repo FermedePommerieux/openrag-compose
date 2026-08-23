@@ -97,7 +97,9 @@ async def upload_ingest_router(
     - If DISABLE_INGEST_WITH_LANGFLOW is True: uses traditional OpenRAG upload
     - If DISABLE_INGEST_WITH_LANGFLOW is False (default): uses Langflow upload-ingest via task service
     """
-    disable_ingest_with_langflow = get_openrag_config().knowledge.disable_ingest_with_langflow
+    knowledge_config = get_openrag_config().knowledge
+    disable_ingest_with_langflow = knowledge_config.disable_ingest_with_langflow
+    hybrid_chunking_requested = knowledge_config.chunking_strategy == "hybrid"
     requested_preview = preview.lower() == "true"
     preview_mode = requested_preview and is_ingest_preview_enabled()
     if requested_preview and not preview_mode:
@@ -105,6 +107,7 @@ async def upload_ingest_router(
     logger.debug(
         "Router upload_ingest endpoint called",
         disable_langflow_ingest=disable_ingest_with_langflow,
+        hybrid_chunking_requested=hybrid_chunking_requested,
         preview_mode=preview_mode,
     )
 
@@ -132,8 +135,11 @@ async def upload_ingest_router(
         except ValueError as e:
             return JSONResponse({"error": str(e)}, status_code=400)
 
-    if disable_ingest_with_langflow:
-        logger.debug("Routing to traditional OpenRAG upload via task service")
+    if disable_ingest_with_langflow or hybrid_chunking_requested:
+        logger.debug(
+            "Routing to traditional OpenRAG upload via task service",
+            reason="hybrid_chunking" if hybrid_chunking_requested else "langflow_disabled",
+        )
         return await _traditional_upload_ingest_task(
             upload_files=file,
             replace_duplicates=replace_duplicates.lower() == "true",
