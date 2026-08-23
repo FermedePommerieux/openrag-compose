@@ -1,5 +1,6 @@
 import asyncio
 import copy
+import hashlib
 import json
 import os
 from datetime import UTC, datetime
@@ -31,7 +32,13 @@ _UNSET = object()
 # lifecycle baseline; arbitrary user edits must require an explicit update.
 _LEGACY_RETRIEVAL_COMPONENT = "ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra"
 _BACKEND_RETRIEVAL_COMPONENT = "ext:openrag:OpenRAGBackendRetrievalComponent@extra"
-_RETRIEVAL_FLOW_MIGRATION_VERSION = 2
+_RETRIEVAL_FLOW_MIGRATION_VERSION = 3
+_LEGACY_SYSTEM_FLOW_ID = "1098eea1-6649-4e1d-aed1-b77249fb8dd0"
+# SHA-256 of ``flows/openrag_agent.json`` at lifecycle baseline 156f3664,
+# calculated over canonical ``data`` JSON.  Flow IDs and a lock alone are not
+# sufficient proof that startup owns a graph: a customised system flow must be
+# left untouched and migrated deliberately by its operator.
+_LEGACY_RETRIEVAL_GRAPH_SHA256 = "1b1395db6d9d3890209dfe79820b558ae6e024e436b7985a873751b5ff7c67f0"
 
 
 class FlowsService:
@@ -1020,6 +1027,52 @@ class FlowsService:
         with open(flow_path) as file:
             return json.load(file)
 
+    @staticmethod
+    def _graph_fingerprint(flow_data: dict[str, Any]) -> str | None:
+        """Return the versioned canonical fingerprint of a persisted graph."""
+        graph = flow_data.get("data") if isinstance(flow_data, dict) else None
+        if not isinstance(graph, dict):
+            return None
+        canonical = json.dumps(graph, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+    def _is_known_legacy_retrieval_flow(self, flow_data: dict[str, Any]) -> bool:
+        """Recognise exactly the immutable 156f3664 system agent graph.
+
+        This is intentionally more restrictive than checking for a legacy node.
+        The migration has administrative authority over the persisted flow, so
+        a graph changed by an operator must fail closed rather than be silently
+        rewritten at application startup.
+        """
+        if not isinstance(flow_data, dict):
+            return False
+        if flow_data.get("id") != _LEGACY_SYSTEM_FLOW_ID or not flow_data.get("locked"):
+            return False
+        if flow_data.get("name") != "OpenRAG OpenSearch Agent Flow":
+            return False
+        if flow_data.get("description") != "OpenRAG OpenSearch Agent":
+            return False
+        return self._graph_fingerprint(flow_data) == _LEGACY_RETRIEVAL_GRAPH_SHA256
+
+    def _is_known_migrated_retrieval_flow(self, flow_data: dict[str, Any]) -> bool:
+        """Verify the exact bundled Retrieval v2 graph, not just one new node."""
+        if not isinstance(flow_data, dict) or flow_data.get("id") != _LEGACY_SYSTEM_FLOW_ID:
+            return False
+        graph = flow_data.get("data")
+        if not isinstance(graph, dict):
+            return False
+        if graph.get("openrag_retrieval_version") != _RETRIEVAL_FLOW_MIGRATION_VERSION:
+            return False
+        template = self._load_retrieval_v2_template()
+        expected = copy.deepcopy(template)
+        expected_graph = expected.get("data", {})
+        expected_graph["openrag_retrieval_version"] = _RETRIEVAL_FLOW_MIGRATION_VERSION
+        return (
+            flow_data.get("name") == expected.get("name")
+            and flow_data.get("description") == expected.get("description")
+            and self._graph_fingerprint(flow_data) == self._graph_fingerprint(expected)
+        )
+
     def _migrate_known_legacy_retrieval_flow(self, flow_data: dict[str, Any]) -> dict[str, Any] | None:
         """Replace only the known legacy retrieval tool in a locked default flow.
 
@@ -1031,21 +1084,16 @@ class FlowsService:
         nodes = graph.get("nodes", []) if isinstance(graph, dict) else []
         if not isinstance(nodes, list):
             return None
-
-        has_backend_tool = any(
-            _BACKEND_RETRIEVAL_COMPONENT in self._node_component_type(node) for node in nodes
-        )
-        if has_backend_tool:
-            return copy.deepcopy(flow_data)
+        # The fingerprint checks every node, edge and configured value from the
+        # lifecycle baseline.  Do not weaken this to "locked + legacy tool":
+        # administrators legitimately lock customised flows too.
+        if not self._is_known_legacy_retrieval_flow(flow_data):
+            return None
 
         legacy_nodes = [
-            node
-            for node in nodes
-            if _LEGACY_RETRIEVAL_COMPONENT in self._node_component_type(node)
+            node for node in nodes if _LEGACY_RETRIEVAL_COMPONENT in self._node_component_type(node)
         ]
-        # Only the shipped, locked 156f3664 graph is safe to change without a
-        # human action.  Anything else is reported as requiring manual review.
-        if not flow_data.get("locked") or len(legacy_nodes) != 1:
+        if len(legacy_nodes) != 1:
             return None
 
         template = self._load_retrieval_v2_template()
@@ -1069,23 +1117,32 @@ class FlowsService:
         if not isinstance(new_edge, dict):
             raise RuntimeError("Bundled Retrieval v2 tool edge is missing from the flow template")
 
+        # The source graph matched the complete historical fingerprint, so the
+        # bundled flow is the authoritative replacement.  Reusing the complete
+        # ``data`` graph (rather than splicing one node) verifies all tool
+        # wiring and avoids retaining stale legacy inputs such as embeddings.
         migrated = copy.deepcopy(flow_data)
-        migrated_graph = migrated.setdefault("data", {})
-        legacy_ids = {node.get("id") for node in legacy_nodes}
-        migrated_graph["nodes"] = [
-            node for node in migrated_graph.get("nodes", []) if node.get("id") not in legacy_ids
-        ]
-        migrated_graph["edges"] = [
-            edge
-            for edge in migrated_graph.get("edges", [])
-            if edge.get("source") not in legacy_ids and edge.get("target") not in legacy_ids
-        ]
-        migrated_graph["nodes"].append(copy.deepcopy(new_node))
-        migrated_graph["edges"].append(copy.deepcopy(new_edge))
+        migrated_graph = copy.deepcopy(template_graph)
+        migrated["data"] = migrated_graph
         # Stored with the graph so repeated startups can identify the installed
         # known version without relying on timestamps or an in-memory cache.
         migrated_graph["openrag_retrieval_version"] = _RETRIEVAL_FLOW_MIGRATION_VERSION
+        # Langflow rejects PUT updates to a locked flow.  The caller uses its
+        # native PATCH API to open this narrow maintenance window and restores
+        # the system-flow lock in a finally block after verification.
+        migrated["locked"] = False
         return migrated
+
+    async def _patch_flow_lock(self, flow_id: str, *, locked: bool) -> None:
+        """Use Langflow's supported PATCH primitive for the lock transition."""
+        response = await clients.langflow_request(
+            "PATCH", f"/api/v1/flows/{flow_id}", json={"locked": locked}
+        )
+        if response.status_code != 200:
+            raise RuntimeError(f"Langflow lock update failed: HTTP {response.status_code}")
+        payload = response.json()
+        if not isinstance(payload, dict) or payload.get("locked") is not locked:
+            raise RuntimeError("Langflow lock update did not return the requested state")
 
     async def migrate_persisted_retrieval_flow(self) -> dict[str, Any]:
         """Safely upgrade the known lifecycle agent flow to Retrieval v2.
@@ -1114,9 +1171,7 @@ class FlowsService:
                 }
 
             current = response.json()
-            graph = current.get("data", {}) if isinstance(current, dict) else {}
-            nodes = graph.get("nodes", []) if isinstance(graph, dict) else []
-            if any(_BACKEND_RETRIEVAL_COMPONENT in self._node_component_type(node) for node in nodes):
+            if self._is_known_migrated_retrieval_flow(current) and current.get("locked"):
                 return {"status": "already_migrated", "version": _RETRIEVAL_FLOW_MIGRATION_VERSION}
 
             migrated = self._migrate_known_legacy_retrieval_flow(current)
@@ -1134,25 +1189,43 @@ class FlowsService:
                 logger.error(message, flow_id=flow_id)
                 return {"status": "failed", "reason": "backup_failed", "error": message}
 
+            unlocked = False
             try:
+                await self._patch_flow_lock(flow_id, locked=False)
+                unlocked = True
                 update = await clients.langflow_request(
                     "PUT", f"/api/v1/flows/{flow_id}", json=migrated
                 )
+                if update.status_code not in (200, 201):
+                    raise RuntimeError(f"Langflow flow update failed: HTTP {update.status_code}")
+
+                verify = await clients.langflow_request("GET", f"/api/v1/flows/{flow_id}")
+                if verify.status_code != 200 or not self._is_known_migrated_retrieval_flow(verify.json()):
+                    raise RuntimeError("Langflow persisted flow verification failed after retrieval migration")
+
+                await self._patch_flow_lock(flow_id, locked=True)
+                unlocked = False
+                final_verify = await clients.langflow_request("GET", f"/api/v1/flows/{flow_id}")
+                if final_verify.status_code != 200 or not (
+                    final_verify.json().get("locked")
+                    and self._is_known_migrated_retrieval_flow(final_verify.json())
+                ):
+                    raise RuntimeError("Langflow flow was not verified locked after retrieval migration")
             except Exception as exc:
+                if unlocked:
+                    try:
+                        await self._patch_flow_lock(flow_id, locked=True)
+                    except Exception as lock_error:
+                        logger.error(
+                            "Retrieval flow migration could not restore the system lock",
+                            flow_id=flow_id,
+                            error=str(lock_error),
+                        )
                 logger.error("Retrieval flow migration update failed", flow_id=flow_id, error=str(exc))
                 return {
                     "status": "failed",
-                    "reason": "update_failed",
+                    "reason": "update_or_verification_failed",
                     "error": str(exc),
-                    "backup_path": backup_path,
-                }
-            if update.status_code not in (200, 201):
-                message = f"HTTP {update.status_code}"
-                logger.error("Retrieval flow migration update failed", flow_id=flow_id, error=message)
-                return {
-                    "status": "failed",
-                    "reason": "update_failed",
-                    "error": message,
                     "backup_path": backup_path,
                 }
 

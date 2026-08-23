@@ -1,5 +1,7 @@
 """Tests for flows_service bulk_update_flows with Langflow backup creation."""
 
+import json
+import subprocess
 import sys
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -242,27 +244,13 @@ async def test_ensure_flows_exist_does_not_auto_update_on_startup():
 
 
 def _lifecycle_retrieval_flow() -> dict:
-    """Minimal shape of the locked 156f3664 retrieval tool graph."""
-    legacy_id = "ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra-Ji9kZ"
-    return {
-        "id": "1098eea1-6649-4e1d-aed1-b77249fb8dd0",
-        "locked": True,
-        "data": {
-            "nodes": [
-                {
-                    "id": legacy_id,
-                    "data": {
-                        "type": "ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra",
-                        "node": {
-                            "namespaced_id": "ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra"
-                        },
-                    },
-                },
-                {"id": "Agent-Nfw7u", "data": {"node": {"name": "Agent"}}},
-            ],
-            "edges": [{"source": legacy_id, "target": "Agent-Nfw7u"}],
-        },
-    }
+    """Load the exact production lifecycle baseline, not an approximate graph."""
+    raw = subprocess.check_output(
+        ["git", "show", "156f3664fd2b8d4f4ad20248321a313a7034fc9b:flows/openrag_agent.json"],
+        cwd=ROOT,
+        text=True,
+    )
+    return json.loads(raw)
 
 
 @pytest.mark.asyncio
@@ -270,12 +258,20 @@ async def test_migrate_known_lifecycle_retrieval_flow_is_backed_up_and_idempoten
     service = FlowsService()
     old_flow = _lifecycle_retrieval_flow()
     migrated_flow: dict | None = None
+    calls: list[tuple[str, dict | None]] = []
 
     async def mock_langflow_request(method, url, json=None, **kwargs):
         nonlocal migrated_flow
+        calls.append((method, json))
         if method == "GET":
             response = MagicMock(status_code=200)
             response.json.return_value = migrated_flow or old_flow
+            return response
+        if method == "PATCH":
+            target = migrated_flow or old_flow
+            target["locked"] = json["locked"]
+            response = MagicMock(status_code=200)
+            response.json.return_value = target
             return response
         if method == "PUT":
             migrated_flow = json
@@ -299,6 +295,29 @@ async def test_migrate_known_lifecycle_retrieval_flow_is_backed_up_and_idempoten
     ]
     assert "ext:openrag:OpenRAGBackendRetrievalComponent@extra" in component_types
     assert "ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra" not in component_types
+    assert [payload for method, payload in calls if method == "PATCH"] == [
+        {"locked": False},
+        {"locked": True},
+    ]
+
+
+@pytest.mark.asyncio
+async def test_migrate_retrieval_flow_refuses_locked_custom_graph():
+    service = FlowsService()
+    custom_flow = _lifecycle_retrieval_flow()
+    custom_flow["data"]["nodes"][0]["data"]["node"]["description"] = "operator customization"
+    response = MagicMock(status_code=200)
+    response.json.return_value = custom_flow
+
+    with (
+        patch("services.flows_service.clients.langflow_request", return_value=response),
+        patch.object(service, "_backup_flow", new_callable=AsyncMock) as backup,
+    ):
+        result = await service.migrate_persisted_retrieval_flow()
+
+    assert result["status"] == "failed"
+    assert result["reason"] == "unrecognized_or_custom_flow"
+    backup.assert_not_awaited()
 
 
 @pytest.mark.asyncio
