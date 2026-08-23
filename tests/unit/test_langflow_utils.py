@@ -252,6 +252,48 @@ def test_parse_knowledge_chunks_artifact_list():
     }
 
 
+def test_parse_knowledge_chunks_preserves_retrieval_v2_provenance():
+    result = parse_knowledge_chunks(
+        {
+            "artifact": [
+                {
+                    "data": {
+                        "filename": "archive.pdf",
+                        "text": "retrieved text",
+                        "chunk_id": "chunk-42",
+                        "document_id": "document-42",
+                        "connector_file_id": "drive-file-42",
+                        "chunk_index": 7,
+                        "chunking_strategy": "hybrid",
+                        "source_url": "/api/source-files/document-42.token",
+                    }
+                }
+            ]
+        }
+    )
+
+    assert result == [
+        {
+            "filename": "archive.pdf",
+            "text": "retrieved text",
+            "score": 0,
+            "page": None,
+            "mimetype": None,
+            "chunk_id": "chunk-42",
+            "id": "chunk-42",
+            "embedding_model": None,
+            "parser": None,
+            "chunk_size": None,
+            "chunk_overlap": None,
+            "source_url": "/api/source-files/document-42.token",
+            "document_id": "document-42",
+            "connector_file_id": "drive-file-42",
+            "chunk_index": 7,
+            "chunking_strategy": "hybrid",
+        }
+    ]
+
+
 def test_parse_knowledge_chunks_content_json_string():
     input_data = {
         "content": '[{"filename": "doc2.txt", "text": "content text", "score": 0.8, "chunk_id": "c2"}]'

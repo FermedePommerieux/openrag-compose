@@ -218,6 +218,18 @@ def parse_knowledge_chunks(results: Any) -> list[dict]:
             }
             if "source_url" in data:
                 parsed_chunk["source_url"] = data.get("source_url")
+            # Retrieval v2 owns these identity fields.  Keep them intact
+            # through the Langflow response parser so citations can link a
+            # result back to the indexed document and the exact chunk.  Do not
+            # add absent keys: normalized legacy payloads remain idempotent.
+            for provenance_field in (
+                "document_id",
+                "connector_file_id",
+                "chunk_index",
+                "chunking_strategy",
+            ):
+                if provenance_field in data:
+                    parsed_chunk[provenance_field] = data.get(provenance_field)
             parsed_chunks.append(parsed_chunk)
 
     return parsed_chunks

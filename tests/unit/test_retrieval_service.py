@@ -120,7 +120,14 @@ async def test_search_service_rrf_fuses_lanes_preserves_provenance_and_emits_deb
 
     shared = _hit("shared", "document-b", "shared text")
     shared["_source"].update(
-        {"filename": "b.pdf", "source_url": "https://example.test/b", "chunk_index": 0}
+        {
+            "filename": "b.pdf",
+            "source_url": "https://example.test/b",
+            "connector_file_id": "drive-file-b",
+            "page": 3,
+            "chunk_index": 0,
+            "chunking_strategy": "hybrid",
+        }
     )
     lexical_only = _hit("lexical", "document-a", "lexical text")
     lexical_only["_source"].update({"filename": "a.pdf", "chunk_index": 2})
@@ -155,7 +162,12 @@ async def test_search_service_rrf_fuses_lanes_preserves_provenance_and_emits_deb
 
     assert [item["chunk_id"] for item in result["results"]] == ["shared", "lexical"]
     assert result["results"][0]["source_url"] == "https://example.test/b"
+    assert result["results"][0]["document_id"] == "document-b"
+    assert result["results"][0]["connector_file_id"] == "drive-file-b"
+    assert result["results"][0]["filename"] == "b.pdf"
+    assert result["results"][0]["page"] == 3
     assert result["results"][0]["chunk_index"] == 0
+    assert result["results"][0]["chunking_strategy"] == "hybrid"
     assert result["retrieval_debug"]["lanes"] == {"lexical": 2, "vector": 2}
     lane_bodies = [body for body in OpenSearchClient.bodies if body.get("size") != 0]
     assert len(lane_bodies) == 2
