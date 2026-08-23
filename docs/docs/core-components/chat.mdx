@@ -60,14 +60,7 @@ One or more specialized tools can be attached to the **Tools** port to extend th
 * [**MCP Tools** component](https://docs.langflow.org/mcp-client): Connected to the **Agent** component's **Tools** port, this component can be used to [access any MCP server](https://docs.langflow.org/mcp-server) and the MCP tools provided by that server. In this case, your OpenRAG Langflow instance's [**Starter Project**](https://docs.langflow.org/concepts-flows#projects) is the MCP server, and the [**OpenSearch URL Ingestion** flow](/ingestion#url-flow) is the MCP tool.
 This flow fetches content from URLs, and then stores the content in your OpenRAG OpenSearch knowledge base. By serving this flow as an MCP tool, the agent can selectively call this tool if a URL is detected in the chat input.
 
-* [**OpenSearch** component](https://docs.langflow.org/bundles-elastic#opensearch): Connected to the **Agent** component's **Tools** port, this component lets the agent search your [OpenRAG OpenSearch knowledge base](/knowledge). The agent might not use this database for every request; the agent uses this connection only if it decides that documents in your knowledge base are relevant to your query.
-
-* [**Embedding Model** component](https://docs.langflow.org/components-embedding-models): Connected to the **OpenSearch** component's **Embedding** port, this component generates embeddings from chat input that are used in [similarity search](https://www.ibm.com/think/topics/vector-search) to find content in your knowledge base that is relevant to the chat input. The agent uses this information to generate context-aware responses that are specialized for your data.
-
-   It is critical that the embedding model used here matches the embedding model used when you [upload documents to your knowledge base](/ingestion). Mismatched models and dimensions can degrade the quality of similarity search results causing the agent to retrieve irrelevant documents from your knowledge base.
-
-* [**Text Input** component](https://docs.langflow.org/text-input-and-output#text-input): Connected to the **OpenSearch** component's **Search Filters** port, this component is populated with a Langflow global variable named `OPENRAG-QUERY-FILTER`. If a global or chat-level [knowledge filter](/knowledge-filters) is set, then the variable contains the filter expression, which limits the documents that the agent can access in the knowledge base.
-If no knowledge filter is set, then the `OPENRAG-QUERY-FILTER` variable is empty, and the agent can access all documents in the knowledge base.
+* **OpenRAG Retrieval v2** component: Connected to the **Agent** component's **Tools** port, this thin tool calls the backend `/search` endpoint with the end-user identity and active search context. The backend, not the flow, owns BM25/vector retrieval, RRF, filters, provenance, and user-scoped OpenSearch DLS. See [Retrieval v2](/retrieval-v2).
 
 * [**Chat Output** component](https://docs.langflow.org/chat-input-and-output#chat-output): Connected to the **Agent** component's **Output** port, this component returns the agent's generated response as a chat message.
 
