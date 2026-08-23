@@ -1,11 +1,9 @@
-"""Re-indexing in `process_document_standard` must clear prior chunks for the
-same `document_id` before writing the new ones.
+"""Re-indexing in `process_document_standard` promotes a complete generation
+before deleting the prior chunks.
 
-Chunk indexing uses ids `{file_hash}_{i}` through the centralized
-DocumentIndexWriter upsert path. Without a pre-delete, a re-index that produces
-fewer chunks than the prior pass leaves trailing chunks `{file_hash}_{N..M-1}`
-behind with the OLD metadata — most visibly, the old filename after a
-SharePoint rename. This test pins that invariant.
+The physical ids carry a temporary ingest generation while source ``chunk_id``
+remains stable.  This pins the lifecycle invariant: an unavailable HybridChunker
+or failed promotion must never remove the current searchable document.
 
 Pins: `src/models/processors.py` :: TaskProcessor.process_document_standard.
 """
@@ -104,9 +102,8 @@ def _patch_embedding_pipeline(monkeypatch, chunk_count: int, write_client=None):
 
 
 @pytest.mark.asyncio
-async def test_stale_chunks_cleared_before_reindex(monkeypatch):
-    """Stale chunks must be cleared (via primary-id deletes) before the writer
-    upsert so prior chunks cannot survive a re-index with fewer chunks.
+async def test_stale_chunks_are_cleared_only_after_new_generation_is_indexed(monkeypatch):
+    """Stale chunks are deleted through primary ids after new generation writes.
 
     DLS-safe pattern: enumerate visible chunk _ids via search, then issue a
     `delete` per primary `_id`. `delete_by_query` is silently filtered under
@@ -164,7 +161,7 @@ async def test_stale_chunks_cleared_before_reindex(monkeypatch):
     ops = [op for op, _ in op_order]
     assert ops, "process_document_standard wrote nothing — fixture is broken"
 
-    # 1) The enumerate-via-search runs first.
+    # 1) The first search is a generation compatibility check.
     assert ops[0] == "search", f"search must run before deletes. Saw: {ops}"
     search_kwargs = op_order[0][1]
     assert search_kwargs["body"]["query"] == {
@@ -177,13 +174,13 @@ async def test_stale_chunks_cleared_before_reindex(monkeypatch):
     }
     assert search_kwargs["index"] == "test-index"
 
-    # 2) All deletes complete BEFORE any index() — they must precede re-indexing.
+    # 2) Promotion deletes only after the new generation was fully indexed.
     delete_indices = [i for i, op in enumerate(ops) if op == "delete"]
     index_indices = [i for i, op in enumerate(ops) if op == "index"]
     assert delete_indices, "no delete was issued; stale chunks would survive"
     assert index_indices, "no chunks were indexed"
-    assert max(delete_indices) < min(index_indices), (
-        f"all deletes must complete before any index(). Saw order: {ops}"
+    assert min(index_indices) < min(delete_indices), (
+        f"new generation must index before any old chunk is deleted. Saw order: {ops}"
     )
 
     # 3) One primary-id delete per visible stale chunk, refresh=True.
@@ -207,9 +204,8 @@ async def test_stale_chunks_cleared_before_reindex(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_delete_failure_does_not_abort_reindex(monkeypatch):
-    """A transient delete failure must be logged and swallowed — the per-chunk
-    upsert still runs so the sync isn't worse off than today's behavior."""
+async def test_promotion_query_failure_keeps_old_generation_and_fails(monkeypatch):
+    """A promotion failure never becomes a silent destructive replacement."""
     processor, opensearch_client = _make_processor_with_mocks()
     _patch_embedding_pipeline(monkeypatch, chunk_count=2, write_client=opensearch_client)
 
@@ -231,18 +227,18 @@ async def test_delete_failure_does_not_abort_reindex(monkeypatch):
         tmp_path = tmp.name
 
     try:
-        result = await processor.process_document_standard(
-            file_path=tmp_path,
-            file_hash="abc123",
-            owner_user_id="alice",
-            original_filename="renamed.txt",
-            connector_type="sharepoint",
-        )
+        with pytest.raises(RuntimeError, match="os 503"):
+            await processor.process_document_standard(
+                file_path=tmp_path,
+                file_hash="abc123",
+                owner_user_id="alice",
+                original_filename="renamed.txt",
+                connector_type="sharepoint",
+            )
     finally:
         Path(tmp_path).unlink(missing_ok=True)
 
-    assert result["status"] == "indexed"
-    assert len(index_calls) == 1, "indexing must still happen if the pre-delete fails"
+    assert len(index_calls) == 1, "the temporary generation is attempted before promotion"
     assert len(index_calls[0]["chunks"]) == 2
     assert index_calls[0]["final"] is True
 

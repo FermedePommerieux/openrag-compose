@@ -124,7 +124,9 @@ async def test_standard_processor_uses_shared_writer_for_embedding_mapping_and_w
         embedding_model="text-embedding-3-small",
     )
 
-    assert result == {"status": "indexed", "id": "file-1"}
+    assert result["status"] == "indexed"
+    assert result["id"] == "file-1"
+    assert result["effective_chunking_strategy"] == "character"
     assert mapping_clients == [admin_client]
     owner_scoped_query = {
         "bool": {
@@ -138,7 +140,7 @@ async def test_standard_processor_uses_shared_writer_for_embedding_mapping_and_w
         "index": "documents",
         "body": {
             "size": 1,
-            "_source": False,
+            "_source": ["chunking_config_fingerprint"],
             "query": owner_scoped_query,
         },
     }
@@ -151,7 +153,8 @@ async def test_standard_processor_uses_shared_writer_for_embedding_mapping_and_w
     assert admin_client.bulk_calls
     bulk_body = admin_client.bulk_calls[0]["body"]
     assert bulk_body[0]["index"]["_index"] == "documents"
-    assert bulk_body[0]["index"]["_id"].endswith("_file-1_0")
+    assert "_file-1_0__run_" in bulk_body[0]["index"]["_id"]
     assert bulk_body[1]["document_id"] == "file-1"
+    assert bulk_body[1]["chunk_id"].endswith("_file-1_0")
     assert bulk_body[1]["owner"] == "user-1"
     assert bulk_body[1]["chunk_embedding_text_embedding_3_small"] == [0.1, 0.2, 0.3]
