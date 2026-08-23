@@ -415,7 +415,10 @@ async def test_hybrid_chunker_failure_stops_docling_ingestion_before_indexing(mo
         tmp.write(b"not a real pdf")
         tmp_path = tmp.name
     try:
-        with pytest.raises(HybridChunkingError, match="chunking-openai unavailable"):
+        with pytest.raises(
+            HybridChunkingError,
+            match="requested_chunking_strategy=hybrid effective_chunking_strategy=none",
+        ):
             await processor.process_document_standard(
                 file_path=tmp_path,
                 file_hash="hybrid-pdf",

@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any, Literal
 from config.settings import clients, get_embedding_model, get_index_name, get_openrag_config
 from session_manager import AnonymousUser
 from utils.document_processing import (
+    HybridChunkingError,
     chunk_docling_hybrid,
     extract_relevant,
     process_text_file,
@@ -550,11 +551,21 @@ class TaskProcessor:
             slim_doc["parser"] = DOCLING_PARSER_LABEL
 
             if requested_chunking_strategy == "hybrid":
-                slim_doc["chunks"] = chunk_docling_hybrid(
-                    full_doc,
-                    max_tokens=config.knowledge.hybrid_max_tokens,
-                    merge_peers=config.knowledge.hybrid_merge_peers,
-                )
+                try:
+                    slim_doc["chunks"] = chunk_docling_hybrid(
+                        full_doc,
+                        max_tokens=config.knowledge.hybrid_max_tokens,
+                        merge_peers=config.knowledge.hybrid_merge_peers,
+                    )
+                except HybridChunkingError as exc:
+                    # The caller records this message on the failed file task.
+                    # Include both strategies there as well as on successful
+                    # task results: hybrid must never be mistaken for a silent
+                    # character-chunking fallback.
+                    raise HybridChunkingError(
+                        "Hybrid chunking failed; requested_chunking_strategy=hybrid "
+                        f"effective_chunking_strategy=none: {exc}"
+                    ) from exc
                 effective_chunking_strategy = "hybrid"
 
         # Override filename with original_filename if provided
