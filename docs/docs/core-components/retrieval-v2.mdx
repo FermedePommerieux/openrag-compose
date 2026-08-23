@@ -42,6 +42,12 @@ chunks have this field with doc values. Older chunks without it remain
 searchable and sort last within equal-score ties until re-indexed; they retain
 best-effort compatibility rather than a claim of complete reproducibility.
 
+`chunk_id: keyword` with doc values is a hard RRF precondition. OpenRAG reads
+the live mapping before an RRF request. A missing field, a `text` mapping, or
+disabled doc values produces an explicit `RRF unavailable` error with a
+reindexing instruction. This does not reject legacy documents that merely lack
+a `chunk_id` value: `missing: _last` keeps those documents searchable.
+
 ## Identity, authentication, and access control
 
 The agent forwards the exact end-user JWT as a Bearer token to `/search`.
@@ -56,13 +62,15 @@ may have null or absent provenance fields, but remain readable.
 
 ## Persisted Langflow flows
 
-At startup OpenRAG recognizes only the locked historical OpenRAG agent graph
-and migrates its legacy `search_documents` tool to
-`OpenRAGBackendRetrievalComponent`. It first writes a local backup. The
-migration is idempotent. A custom, unlocked, or unrecognized graph is never
-overwritten: startup reports an explicit failure and an operator must use the
-flow update procedure. Roll back by restoring the generated backup flow JSON
-through Langflow, then restart after resolving the migration condition.
+At startup OpenRAG recognizes only the exact locked historical OpenRAG agent
+graph from lifecycle baseline `156f3664`, identified by its expected ID and a
+versioned canonical graph fingerprint. It writes a local backup, then uses
+Langflow 0.11.2's supported `PATCH` API to unlock the system flow temporarily,
+replaces it with the bundled `OpenRAGBackendRetrievalComponent` graph, verifies
+the persisted wiring, and locks it again. The migration is idempotent. A
+custom, unlocked, altered, or ambiguously migrated graph is never overwritten:
+startup reports an explicit manual-migration diagnostic. Roll back by restoring
+the generated backup through Langflow and re-locking the flow.
 
 ## Hybrid chunking and replacements
 
@@ -77,6 +85,13 @@ success does it promote the new generation and delete the old one. A failed
 generation is cleaned up without deleting the previous document. Deduplication
 also includes the requested chunking strategy and relevant parameters, so a
 character document is not considered unchanged when hybrid is requested.
+
+The replacement scope always includes both the logical `document_id` and the
+owner/shared identity. Equal file bytes may be uploaded by different users;
+reindexing one owner never reads, promotes, deletes, rolls back, or cleans up
+the other owner's chunks. After a partial delete, restoration checks the global
+bulk response and every item. An incomplete restore is a fatal error with the
+affected chunk IDs preserved for recovery.
 
 Deep retrieval, Exhaustive retrieval, query expansion, and a new reranker are
 not implemented in this baseline.

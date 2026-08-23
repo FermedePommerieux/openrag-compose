@@ -85,7 +85,7 @@ For example, if your knowledge base contains documents about cybersecurity, poss
 
 ## Inspect tool calls and knowledge
 
-During the chat, you'll see information about the agent's process. For more detail, you can inspect individual tool calls. This is helpful for troubleshooting because it shows you how the agent used particular tools. For example, click <Icon name="Gear" aria-hidden="true"/> **Function Call: search_documents (tool_call)** to view the log of tool calls made by the agent to the **OpenSearch** component.
+During the chat, you'll see information about the agent's process. For more detail, you can inspect individual tool calls. This is helpful for troubleshooting because it shows how the agent used particular tools. For example, click <Icon name="Gear" aria-hidden="true"/> **Function Call: search_documents (tool_call)** to view the call from the thin **OpenRAG Retrieval v2** tool to the backend-owned retrieval service. The Langflow flow does not run OpenSearch retrieval itself.
 
 If documents in your knowledge base seem to be missing or interpreted incorrectly, see [Troubleshoot document ingestion or similarity search issues](/support/troubleshoot#document-ingestion-or-similarity-search-issues).
 
