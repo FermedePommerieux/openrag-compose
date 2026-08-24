@@ -109,7 +109,9 @@ export const isEmbeddingProviderInUseError = (
 
 export interface UpdateSettingsResponse {
   message: string;
-  settings: Settings;
+  // The backend acknowledgement does not include a settings object. Callers
+  // must use the invalidated GET /settings query for effective values.
+  settings?: Settings;
 }
 
 async function updateSettings(
@@ -143,9 +145,12 @@ export const useUpdateSettingsMutation = (
   return useMutation({
     mutationFn: updateSettings,
     onSuccess: (...args) => {
+      // POST /settings only acknowledges the mutation. Always reload the
+      // resolved server configuration instead of trusting component state.
       queryClient.invalidateQueries({
         queryKey: ["settings"],
       });
+      void queryClient.refetchQueries({ queryKey: ["settings"] });
       refetchModels(); // Refetch models for the settings page
       options?.onSuccess?.(...args);
     },

@@ -18,6 +18,8 @@ const TABS = [
   // Knowledge ingest settings write workspace config (admin-only).
   // Preview controls on this tab stay gated by isIngestPreviewEnabled.
   { value: "ingestion", label: "Ingestion", perm: "config:write" },
+  // Retrieval policy writes workspace config (admin-only).
+  { value: "retrieval", label: "Retrieval", perm: "config:write" },
   // Agent settings write workspace config (admin-only).
   { value: "agent", label: "Agent", perm: "config:write" },
   // Local-source archiving settings write workspace config (admin-only).

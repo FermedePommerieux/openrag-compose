@@ -10,6 +10,7 @@ export type SettingsTab =
   | "Connectors"
   | "Providers"
   | "Ingestion"
+  | "Retrieval"
   | "Agent"
   | "Connectors Permission";
 
