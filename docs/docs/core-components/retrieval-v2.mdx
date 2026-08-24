@@ -72,8 +72,11 @@ the persisted wiring, and locks it again. The migration is idempotent. A
 protected system flow that is missing, altered, partially migrated, or not
 verified as locked Retrieval v2 fails closed before the backend becomes Ready.
 An explicitly configured custom flow ID is preserved without automatic
-migration, Retrieval v2 guarantees, or prompt synchronization. Roll back by
-restoring the generated backup through Langflow and re-locking the flow.
+migration, settings reapplication, Retrieval v2 guarantees, or prompt
+synchronization. Startup may still create missing non-chat system flows, but
+excludes the custom chat flow from creation/recovery and does not run the
+global flow synchronization that could mutate it. Roll back by restoring the
+generated backup through Langflow and re-locking the flow.
 
 ## Hybrid chunking and replacements
 

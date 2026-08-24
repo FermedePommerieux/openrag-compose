@@ -1,6 +1,7 @@
 """Exercise the real FastAPI lifespan around the Retrieval v2 flow lock."""
 
 import asyncio
+import copy
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -69,6 +70,7 @@ def isolated_lifespan(monkeypatch):
 @pytest.mark.parametrize("status", ["migrated", "already_migrated"])
 async def test_lifespan_starts_after_verified_system_flow(isolated_lifespan, status):
     flows_service = MagicMock(
+        is_explicit_custom_retrieval_flow=MagicMock(return_value=False),
         ensure_flows_exist=AsyncMock(return_value=set()),
         migrate_persisted_retrieval_flow=AsyncMock(return_value={"status": status}),
     )
@@ -81,6 +83,10 @@ async def test_lifespan_starts_after_verified_system_flow(isolated_lifespan, sta
         assert isolated_lifespan.startup_tasks.await_count == 1
 
     flows_service.ensure_flows_exist.assert_awaited_once()
+    flows_service.ensure_flows_exist.assert_awaited_once_with(
+        reapply_settings=True,
+        ensure_retrieval_flow=True,
+    )
     flows_service.migrate_persisted_retrieval_flow.assert_awaited_once()
 
 
@@ -89,14 +95,16 @@ async def test_lifespan_allows_explicitly_configured_custom_flow_without_prompt_
     isolated_lifespan,
 ):
     flows_service = MagicMock(
+        is_explicit_custom_retrieval_flow=MagicMock(return_value=True),
         ensure_flows_exist=AsyncMock(return_value=set()),
-        migrate_persisted_retrieval_flow=AsyncMock(
+        validate_explicit_custom_retrieval_flow=AsyncMock(
             return_value={
                 "status": "custom_preserved",
                 "reason": "custom_flow_id",
                 "flow_id": "operator-custom-flow",
             }
         ),
+        migrate_persisted_retrieval_flow=AsyncMock(),
     )
     flows_service.get_chat_flow_system_prompt = AsyncMock()
     flows_service.update_chat_flow_system_prompt = AsyncMock()
@@ -106,6 +114,90 @@ async def test_lifespan_allows_explicitly_configured_custom_flow_without_prompt_
         await asyncio.sleep(0)
         assert isolated_lifespan.startup_tasks.await_count == 1
 
+    flows_service.ensure_flows_exist.assert_awaited_once_with(
+        reapply_settings=False,
+        ensure_retrieval_flow=False,
+    )
+    flows_service.migrate_persisted_retrieval_flow.assert_not_awaited()
+    flows_service.get_chat_flow_system_prompt.assert_not_awaited()
+    flows_service.update_chat_flow_system_prompt.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_lifespan_preserves_custom_flow_when_another_system_flow_is_recreated(
+    isolated_lifespan, monkeypatch
+):
+    """A custom chat flow must not enter global startup settings reapply.
+
+    The missing nudge flow makes ``ensure_flows_exist`` do real creation work.
+    Before this regression guard, that creation could invoke
+    ``reapply_all_settings`` and rewrite the configured custom chat flow.
+    """
+    import api.settings
+    import services.flows_service as flows_module
+    from services.flows_service import FlowsService
+
+    custom_flow_id = "operator-custom-flow"
+    custom_flow = {
+        "id": custom_flow_id,
+        "name": "Operator-owned retrieval flow",
+        "locked": False,
+        "data": {
+            "nodes": [{"id": "custom-node", "data": {"custom_wiring": True}}],
+            "edges": [],
+            "operator_version": "custom-v17",
+        },
+    }
+    custom_before = copy.deepcopy(custom_flow)
+    missing_flow_id = flows_module.NUDGES_FLOW_ID
+    existing_flow_ids = {
+        flows_module.LANGFLOW_INGEST_FLOW_ID,
+        flows_module.LANGFLOW_URL_INGEST_FLOW_ID,
+    }
+    created_flow_ids: set[str] = set()
+    calls: list[tuple[str, str]] = []
+
+    monkeypatch.setattr(flows_module, "LANGFLOW_CHAT_FLOW_ID", custom_flow_id)
+
+    async def langflow_request(method, url, json=None, **_kwargs):
+        flow_id = url.rsplit("/", 1)[-1]
+        calls.append((method, flow_id))
+        if method == "GET" and flow_id == custom_flow_id:
+            response = MagicMock(status_code=200)
+            response.json.return_value = custom_flow
+            return response
+        if method == "GET" and flow_id == missing_flow_id and flow_id not in created_flow_ids:
+            return MagicMock(status_code=404)
+        if method == "GET" and flow_id in existing_flow_ids | created_flow_ids:
+            response = MagicMock(status_code=200)
+            response.json.return_value = {"id": flow_id, "locked": True, "data": {"nodes": []}}
+            return response
+        if method == "PUT" and flow_id == missing_flow_id:
+            created_flow_ids.add(flow_id)
+            return MagicMock(status_code=201)
+        raise AssertionError(f"unexpected Langflow request: {method} {url}")
+
+    flows_service = FlowsService()
+    flows_service.migrate_persisted_retrieval_flow = AsyncMock()
+    flows_service.get_chat_flow_system_prompt = AsyncMock()
+    flows_service.update_chat_flow_system_prompt = AsyncMock()
+    reapply = AsyncMock()
+    monkeypatch.setattr(flows_module.clients, "langflow_request", langflow_request)
+    monkeypatch.setattr(api.settings, "reapply_all_settings", reapply)
+    app = _lifespan_app(_services(flows_service))
+
+    async with app.router.lifespan_context(app):
+        await asyncio.sleep(0)
+        assert isolated_lifespan.startup_tasks.await_count == 1
+
+    assert missing_flow_id in created_flow_ids
+    assert ("PUT", missing_flow_id) in calls
+    assert custom_flow == custom_before
+    assert [(method, flow_id) for method, flow_id in calls if flow_id == custom_flow_id] == [
+        ("GET", custom_flow_id)
+    ]
+    reapply.assert_not_awaited()
+    flows_service.migrate_persisted_retrieval_flow.assert_not_awaited()
     flows_service.get_chat_flow_system_prompt.assert_not_awaited()
     flows_service.update_chat_flow_system_prompt.assert_not_awaited()
 
@@ -136,6 +228,7 @@ async def test_lifespan_refuses_ready_for_every_unvalidated_system_flow(
     isolated_lifespan, status, reason
 ):
     flows_service = MagicMock(
+        is_explicit_custom_retrieval_flow=MagicMock(return_value=False),
         ensure_flows_exist=AsyncMock(return_value=set()),
         migrate_persisted_retrieval_flow=AsyncMock(
             return_value={
@@ -163,6 +256,7 @@ async def test_lifespan_refuses_ready_for_every_unvalidated_system_flow(
 @pytest.mark.asyncio
 async def test_lifespan_refuses_ready_when_ensuring_flows_raises(isolated_lifespan):
     flows_service = MagicMock(
+        is_explicit_custom_retrieval_flow=MagicMock(return_value=False),
         ensure_flows_exist=AsyncMock(side_effect=RuntimeError("Langflow unavailable")),
         migrate_persisted_retrieval_flow=AsyncMock(),
     )

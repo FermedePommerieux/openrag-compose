@@ -924,7 +924,22 @@ class FlowsService:
             }
         return None
 
-    async def ensure_flows_exist(self) -> set[str]:
+    @staticmethod
+    def is_explicit_custom_retrieval_flow() -> bool:
+        """Return whether the configured chat flow opts out of system ownership.
+
+        This is intentionally configuration-only: startup needs this boundary
+        before it performs any create or settings-reapplication work that could
+        otherwise mutate the configured chat flow.
+        """
+        return bool(LANGFLOW_CHAT_FLOW_ID and LANGFLOW_CHAT_FLOW_ID != _LEGACY_SYSTEM_FLOW_ID)
+
+    async def ensure_flows_exist(
+        self,
+        *,
+        reapply_settings: bool = True,
+        ensure_retrieval_flow: bool = True,
+    ) -> set[str]:
         """
         Ensure all configured flows exist in Langflow.
 
@@ -934,13 +949,20 @@ class FlowsService:
         has made in the Langflow UI.
 
         Returns the set of flow type names that were actually created.
+
+        ``reapply_settings`` and ``ensure_retrieval_flow`` are disabled only
+        when startup is serving an explicitly configured custom retrieval
+        flow. Creation of the other system flows remains safe and create-only,
+        while neither an implicit creation nor the global reapply operation may
+        touch the configured custom chat flow.
         """
         flow_configs = [
             ("nudges", NUDGES_FLOW_ID),
-            ("retrieval", LANGFLOW_CHAT_FLOW_ID),
             ("ingest", LANGFLOW_INGEST_FLOW_ID),
             ("url_ingest", LANGFLOW_URL_INGEST_FLOW_ID),
         ]
+        if ensure_retrieval_flow:
+            flow_configs.insert(1, ("retrieval", LANGFLOW_CHAT_FLOW_ID))
         created_flow_types: set[str] = set()
 
         async def ensure_single_flow_exists(flow_type, flow_id):
@@ -993,7 +1015,7 @@ class FlowsService:
         results = await asyncio.gather(*tasks)
         created_flow_types = {r for r in results if r is not None}
 
-        if created_flow_types:
+        if created_flow_types and reapply_settings:
             try:
                 config = get_openrag_config()
                 if config.edited:
@@ -1008,6 +1030,46 @@ class FlowsService:
                 logger.error(f"Failed to reapply settings for newly created flows: {e}")
 
         return created_flow_types
+
+    async def validate_explicit_custom_retrieval_flow(self) -> dict[str, Any]:
+        """Read-only validation for an explicitly configured custom chat flow."""
+        flow_id = LANGFLOW_CHAT_FLOW_ID
+        if not self.is_explicit_custom_retrieval_flow():
+            raise RuntimeError("Configured retrieval flow is not an explicit custom flow")
+
+        try:
+            response = await clients.langflow_request("GET", f"/api/v1/flows/{flow_id}")
+        except Exception as exc:
+            logger.error("Custom retrieval flow readiness check failed", flow_id=flow_id, error=str(exc))
+            return {
+                "status": "system_migration_failed",
+                "reason": "custom_flow_fetch_failed",
+                "error": str(exc),
+                "flow_id": flow_id,
+            }
+        if response.status_code == 404:
+            return {
+                "status": "system_migration_failed",
+                "reason": "custom_flow_missing",
+                "flow_id": flow_id,
+            }
+        if response.status_code != 200:
+            return {
+                "status": "system_migration_failed",
+                "reason": "custom_flow_fetch_failed",
+                "error": f"HTTP {response.status_code}",
+                "flow_id": flow_id,
+            }
+
+        logger.warning(
+            "Configured retrieval flow is custom and will not be modified automatically",
+            flow_id=flow_id,
+        )
+        return {
+            "status": "custom_preserved",
+            "reason": "custom_flow_id",
+            "flow_id": flow_id,
+        }
 
     @staticmethod
     def _node_component_type(node: dict[str, Any]) -> str:

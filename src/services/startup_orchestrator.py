@@ -48,8 +48,19 @@ async def ensure_system_retrieval_flow_ready(services) -> dict[str, object]:
     """
     flows_service = services["flows_service"]
     try:
-        await flows_service.ensure_flows_exist()
-        migration = await flows_service.migrate_persisted_retrieval_flow()
+        # Determine ownership before flow creation can trigger the global
+        # settings reapply.  That reapply updates the configured chat flow, so
+        # it must be disabled for an explicitly configured custom flow.
+        custom_flow_configured = flows_service.is_explicit_custom_retrieval_flow()
+        await flows_service.ensure_flows_exist(
+            reapply_settings=not custom_flow_configured,
+            ensure_retrieval_flow=not custom_flow_configured,
+        )
+        migration = (
+            await flows_service.validate_explicit_custom_retrieval_flow()
+            if custom_flow_configured
+            else await flows_service.migrate_persisted_retrieval_flow()
+        )
     except Exception as exc:
         logger.error(
             "Refusing ASGI startup: failed to prepare system retrieval flow",

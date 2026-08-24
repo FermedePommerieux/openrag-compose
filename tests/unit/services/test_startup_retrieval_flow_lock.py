@@ -14,6 +14,7 @@ async def test_critical_flow_preparation_fails_closed_before_prompt_sync(monkeyp
     monkeypatch.setattr(orchestrator, "FETCH_OPENRAG_DOCS_AT_STARTUP", False)
 
     flows_service = MagicMock()
+    flows_service.is_explicit_custom_retrieval_flow = MagicMock(return_value=False)
     flows_service.ensure_flows_exist = AsyncMock(return_value=set())
     flows_service.migrate_persisted_retrieval_flow = AsyncMock(
         return_value={"status": "lock_restore_failed", "flow_id": "system-flow"}
@@ -52,3 +53,40 @@ async def test_critical_flow_preparation_fails_closed_before_prompt_sync(monkeyp
     flows_service.migrate_persisted_retrieval_flow.assert_awaited_once()
     flows_service.get_chat_flow_system_prompt.assert_not_awaited()
     flows_service.update_chat_flow_system_prompt.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_verified_system_flow_reapplies_settings_and_can_sync_prompt(monkeypatch):
+    """The custom-flow guard must not suppress healthy system-flow synchronization."""
+    import services.startup_orchestrator as orchestrator
+    from config.config_manager import DEFAULT_SYSTEM_PROMPT
+
+    flows_service = MagicMock()
+    flows_service.is_explicit_custom_retrieval_flow = MagicMock(return_value=False)
+    flows_service.ensure_flows_exist = AsyncMock(return_value={"ingest"})
+    flows_service.migrate_persisted_retrieval_flow = AsyncMock(
+        return_value={"status": "already_migrated", "flow_id": "system-flow"}
+    )
+    flows_service.get_chat_flow_system_prompt = AsyncMock(return_value="")
+    flows_service.update_chat_flow_system_prompt = AsyncMock()
+
+    monkeypatch.setattr(
+        orchestrator,
+        "get_openrag_config",
+        lambda: SimpleNamespace(agent=SimpleNamespace(system_prompt=DEFAULT_SYSTEM_PROMPT)),
+    )
+
+    result = await orchestrator.ensure_system_retrieval_flow_ready(
+        {"flows_service": flows_service}
+    )
+
+    assert result["status"] == "already_migrated"
+    flows_service.ensure_flows_exist.assert_awaited_once_with(
+        reapply_settings=True,
+        ensure_retrieval_flow=True,
+    )
+    flows_service.get_chat_flow_system_prompt.assert_awaited_once()
+    flows_service.update_chat_flow_system_prompt.assert_awaited_once_with(
+        DEFAULT_SYSTEM_PROMPT,
+        expected_prompt="",
+    )

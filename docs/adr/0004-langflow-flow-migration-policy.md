@@ -33,8 +33,11 @@ work, so every such result fails the ASGI lifespan and cannot become Ready.
 An operator may explicitly configure a retrieval flow ID other than the
 protected system-flow ID. That flow is reported as `custom_preserved`: it is
 not overwritten or claimed to use Retrieval v2, and prompt synchronization is
-not applied. An altered graph under the protected system-flow ID is ambiguous,
-therefore it fails closed rather than being treated as a custom flow.
+not applied. Startup classifies this configuration before flow creation: it
+excludes the custom chat flow from both create/recovery and global settings
+reapply, while it may still create missing non-chat system flows. An altered
+graph under the protected system-flow ID is ambiguous, therefore it fails
+closed rather than being treated as a custom flow.
 
 ## Reasons
 

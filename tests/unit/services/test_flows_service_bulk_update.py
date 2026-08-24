@@ -244,6 +244,43 @@ async def test_ensure_flows_exist_does_not_auto_update_on_startup():
     assert reset_mock.call_count == 0
 
 
+@pytest.mark.asyncio
+async def test_ensure_flows_exist_reapplies_system_settings_after_system_flow_creation(monkeypatch):
+    """The custom-flow safeguard must not alter default system-flow recovery."""
+    import api.settings
+    import services.flows_service as flows_module
+
+    service = FlowsService()
+    missing_flow_id = flows_module.NUDGES_FLOW_ID
+    created_flow_ids: set[str] = set()
+
+    async def langflow_request(method, url, json=None, **_kwargs):
+        flow_id = url.rsplit("/", 1)[-1]
+        if method == "GET" and flow_id == missing_flow_id and flow_id not in created_flow_ids:
+            return MagicMock(status_code=404)
+        if method == "GET":
+            return MagicMock(status_code=200)
+        if method == "PUT" and flow_id == missing_flow_id:
+            created_flow_ids.add(flow_id)
+            return MagicMock(status_code=201)
+        raise AssertionError(f"unexpected Langflow request: {method} {url}")
+
+    reapply = AsyncMock()
+    monkeypatch.setattr(flows_module.clients, "langflow_request", langflow_request)
+    monkeypatch.setattr(
+        flows_module,
+        "get_openrag_config",
+        lambda: MagicMock(edited=True),
+    )
+    monkeypatch.setattr(api.settings, "reapply_all_settings", reapply)
+
+    created = await service.ensure_flows_exist()
+
+    assert created == {"nudges"}
+    assert created_flow_ids == {missing_flow_id}
+    reapply.assert_awaited_once()
+
+
 def _lifecycle_retrieval_flow() -> dict:
     """Load the exact production lifecycle baseline, not an approximate graph."""
     raw = subprocess.check_output(
