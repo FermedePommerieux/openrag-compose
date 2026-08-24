@@ -158,9 +158,9 @@ export function RetrievalSettingsSection() {
     setValidationError(null);
     updateSettings.mutate({
       retrieval_strategy: strategy,
-      retrieval_mode: mode,
       ...(strategy === "rrf"
         ? {
+            retrieval_mode: mode,
             retrieval_lexical_candidates: lexicalCandidates,
             retrieval_vector_candidates: vectorCandidates,
             retrieval_rrf_k: rrfK,
@@ -202,24 +202,34 @@ export function RetrievalSettingsSection() {
                   : "Legacy weighted retrieval"}
               </div>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="retrieval-mode">Search mode</Label>
-              <Select
-                value={mode}
-                onValueChange={(value) => setMode(value as RetrievalMode)}
-              >
-                <SelectTrigger id="retrieval-mode">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="hybrid">
-                    Hybrid (lexical + semantic)
-                  </SelectItem>
-                  <SelectItem value="lexical">Lexical only</SelectItem>
-                  <SelectItem value="vector">Vector only</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+            {strategy === "rrf" ? (
+              <div className="space-y-2">
+                <Label htmlFor="retrieval-mode">Search mode</Label>
+                <Select
+                  value={mode}
+                  onValueChange={(value) => setMode(value as RetrievalMode)}
+                >
+                  <SelectTrigger id="retrieval-mode">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="hybrid">
+                      Hybrid (lexical + semantic)
+                    </SelectItem>
+                    <SelectItem value="lexical">Lexical only</SelectItem>
+                    <SelectItem value="vector">Vector only</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <Label>Search mode</Label>
+                <p className="rounded-md border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+                  Available with Standard (RRF). Legacy weighted retrieval keeps
+                  its existing compatibility behavior.
+                </p>
+              </div>
+            )}
           </div>
         </section>
 
@@ -312,8 +322,9 @@ export function RetrievalSettingsSection() {
             </SelectContent>
           </Select>
           <p className="text-sm text-muted-foreground">
-            Reranker configuration remains API/env only pending endpoint
-            hardening. Retrieval debug is also not exposed in this interface.
+            Reranker configuration is managed through the backend API and
+            persisted configuration; it is not exposed in this interface.
+            Retrieval debug is also not exposed here.
           </p>
         </section>
 
