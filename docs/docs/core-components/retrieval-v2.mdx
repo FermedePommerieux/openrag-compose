@@ -36,6 +36,27 @@ without `retrieval_strategy` resolves to `rrf`; an explicit persisted
 `weighted` value is preserved. Operators may set `OPENRAG_RETRIEVAL_STRATEGY`
 to `rrf` or `weighted` for a non-edited configuration.
 
+## Settings UI
+
+Administrators with `config:write` can change retrieval policy in
+**Settings > Retrieval**. These settings query the existing index differently
+and apply immediately; they do not normally require reindexing.
+
+* **Standard (RRF)** is the recommended strategy. Existing `weighted`
+  configurations appear as **Legacy weighted retrieval** under Advanced /
+  Compatibility and are never converted merely by opening the page.
+* **Search mode** is **Hybrid (lexical + semantic)**, **Lexical only**, or
+  **Vector only**. This meaning of Hybrid is unrelated to Docling's Hybrid
+  chunking option in **Settings > Ingestion**.
+* **Lexical candidates** and **Vector candidates** control how many candidates
+  each lane gathers before RRF fusion. **RRF k** is the fusion constant, not a
+  final top-k. **Max chunks per document** preserves result diversity.
+
+The settings page intentionally does not expose `retrieval_reranker_url`.
+The optional reranker endpoint remains API/env-only until URL validation is
+hardened against unsafe network destinations. `retrieval_debug` also remains
+out of the public UI while its response and logging contract is kept internal.
+
 Equal-score candidates are secondarily sorted by the persisted keyword
 `chunk_id`, rather than OpenSearch metadata `_id`, which is not sortable. New
 chunks have this field with doc values. Older chunks without it remain

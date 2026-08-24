@@ -85,7 +85,19 @@ This is because the agent cannot access the model to generate a query embedding 
 
 ## Set the chunking strategy
 
-You can edit the following settings on the OpenRAG <Icon name="Settings2" aria-hidden="true"/> **Settings** page in the **Knowledge Ingest** section:
+In **Settings > Ingestion**, choose one chunking strategy for new documents:
+
+* **Character** uses fixed-size chunks. **Chunk size** and **Chunk overlap**
+  are active only for this strategy.
+* **Hybrid** uses Docling document structure to create semantically coherent
+  chunks. Its active settings are **Hybrid max tokens** and **Merge peers**.
+  Hybrid is explicit and fail-fast: if Docling's HybridChunker is unavailable,
+  ingestion fails rather than silently falling back to Character.
+
+Hybrid chunking is not the same as **Hybrid retrieval**, which means searching
+both lexical and semantic/vector lanes in **Settings > Retrieval**.
+
+You can edit the following Character settings on the OpenRAG <Icon name="Settings2" aria-hidden="true"/> **Settings** page in the **Knowledge Ingest** section:
 
 * **Chunk size**: Set the average number of characters for each text chunk when breaking down a file.
 
@@ -115,6 +127,11 @@ You can edit the following settings on the OpenRAG <Icon name="Settings2" aria-h
    This is suitable for general use.
    For faster processing, decrease the overlap to approximately 10 percent.
    For more complex documents where you need to preserve context across chunks, increase it to approximately 40 percent.
+
+All ingestion settings that affect the document representation — embedding
+provider/model, chunking, Docling extraction, OCR, tables, and picture
+descriptions/VLM — apply only to future ingestion. OpenRAG does not
+automatically rebuild or remove existing indexed documents after a change.
 
 ## Configure table parsing
 
