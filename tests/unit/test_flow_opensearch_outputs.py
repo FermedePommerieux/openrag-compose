@@ -1,87 +1,56 @@
+"""Contract guards for the bundled OpenSearch multimodal flow component.
+
+The agent flow uses the separate Retrieval v2 thin tool. These assertions
+cover only the flows that embed the OpenSearch multimodal component directly.
+"""
+
+import ast
 import json
 from pathlib import Path
 
+ROOT = Path(__file__).resolve().parents[2]
+CANONICAL_COMPONENT = ROOT / "custom_components/openrag/opensearch_multimodal.py"
+FLOW_PATHS = (
+    ROOT / "flows/ingestion_flow.json",
+    ROOT / "flows/openrag_nudges.json",
+    ROOT / "flows/openrag_url_mcp.json",
+)
+OPENSEARCH_COMPONENT_TYPE = "ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra"
 
-def _load_flow(flow_path: str) -> dict:
-    return json.loads(Path(flow_path).read_text(encoding="utf-8"))
+
+def _load_flow(flow_path: Path) -> dict:
+    return json.loads(flow_path.read_text(encoding="utf-8"))
 
 
 def _opensearch_nodes(flow: dict) -> list[dict]:
+    """Find the component by its stable Langflow type, never by generated id."""
     return [
         node
         for node in flow["data"]["nodes"]
-        if "OpenSearchVectorStoreComponent" in node.get("data", {}).get("type", "")
+        if node.get("data", {}).get("type") == OPENSEARCH_COMPONENT_TYPE
     ]
 
 
-def test_opensearch_component_returns_table_search_results():
-    code = Path("flows/components/opensearch_multimodal.py").read_text(encoding="utf-8")
-
-    assert "from lfx.schema.dataframe import Table" in code
-    assert "def search_documents(self) -> Table:" in code
-    assert "return Table(data=raw_list)" in code
-    assert 'name="dataframe"' not in code
-    assert "def as_dataframe" not in code
+def _canonical_code() -> str:
+    return CANONICAL_COMPONENT.read_text(encoding="utf-8")
 
 
-def test_embedded_opensearch_nodes_expose_table_search_results():
-    for flow_path in (
-        "flows/ingestion_flow.json",
-        "flows/openrag_nudges.json",
-        "flows/openrag_url_mcp.json",
-    ):
-        flow = _load_flow(flow_path)
-        for node in _opensearch_nodes(flow):
-            outputs = node["data"]["node"]["outputs"]
-            if any(output.get("name") == "component_as_tool" for output in outputs):
-                continue
+def test_canonical_opensearch_component_returns_list_data_and_fences_text():
+    """Search results are ``list[Data]`` before Langflow serializes them as JSON."""
+    code = _canonical_code()
+    module = ast.parse(code)
+    search_documents = next(
+        node
+        for node in ast.walk(module)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == "search_documents"
+    )
 
-            search_output = next(
-                output for output in outputs if output.get("name") == "search_results"
-            )
-            assert search_output["method"] == "search_documents"
-            assert search_output["types"] == ["Table"]
-            assert all(output.get("name") != "dataframe" for output in outputs)
+    assert ast.unparse(search_documents.returns) == "list[Data]"
+    assert "raw_list = [Data(text=hit[\"page_content\"], **hit[\"metadata\"]) for hit in raw]" in code
+    assert "return raw_list" in code
 
-
-def test_nudges_flow_uses_opensearch_search_results_table():
-    flow = _load_flow("flows/openrag_nudges.json")
-    opensearch_node_ids = {node["id"] for node in _opensearch_nodes(flow)}
-    parser_node_ids = {
-        node["id"]
-        for node in flow["data"]["nodes"]
-        if node.get("data", {}).get("type") == "ParserComponent"
-    }
-
-    opensearch_to_parser_edges = [
-        edge
-        for edge in flow["data"]["edges"]
-        if edge.get("source") in opensearch_node_ids and edge.get("target") in parser_node_ids
-    ]
-
-    assert len(opensearch_to_parser_edges) == 1
-    source_handle = opensearch_to_parser_edges[0]["data"]["sourceHandle"]
-    assert source_handle["name"] == "search_results"
-    assert source_handle["output_types"] == ["Table"]
-
-
-def test_parser_components_are_not_forked_for_list_data():
-    for flow_path in ("flows/openrag_nudges.json", "flows/openrag_url_mcp.json"):
-        flow = _load_flow(flow_path)
-        parser_node = next(
-            node
-            for node in flow["data"]["nodes"]
-            if node.get("data", {}).get("type") == "ParserComponent"
-        )
-        code = parser_node["data"]["node"]["template"]["code"]["value"]
-
-        assert "return DataFrame(data=[item.data for item in input_data]), None" not in code
-
-
-def test_opensearch_component_fences_retrieved_text_as_untrusted():
-    """VULN-13906: retrieved chunk text must be fenced so the LLM treats it as data, not instructions."""
-    code = Path("flows/components/opensearch_multimodal.py").read_text(encoding="utf-8")
-
+    # VULN-13906: retrieved chunks remain explicit untrusted data before they
+    # are returned to an LLM-facing flow.
     assert 'UNTRUSTED_CHUNK_FENCE_START = "<<<UNTRUSTED_DOC_CHUNK>>>"' in code
     assert 'UNTRUSTED_CHUNK_FENCE_END = "<<<END_UNTRUSTED_DOC_CHUNK>>>"' in code
     assert "def fence_untrusted_text(text: str) -> str:" in code
@@ -89,21 +58,27 @@ def test_opensearch_component_fences_retrieved_text_as_untrusted():
     assert 'source["text"] = fence_untrusted_text(source["text"])' in code
 
 
-def test_embedded_opensearch_nodes_fence_untrusted_text():
-    """The fencing fix must be synced into every flow JSON embedding this component."""
-    py_code = Path("flows/components/opensearch_multimodal.py").read_text(encoding="utf-8")
+def test_direct_opensearch_flows_embed_canonical_json_component():
+    """Every direct consumer embeds the exact canonical component and JSON output."""
+    canonical_code = _canonical_code()
 
-    for flow_path in (
-        "flows/ingestion_flow.json",
-        "flows/openrag_agent.json",
-        "flows/openrag_nudges.json",
-        "flows/openrag_url_mcp.json",
-    ):
-        flow = _load_flow(flow_path)
-        for node in _opensearch_nodes(flow):
-            embedded_code = node["data"]["node"]["template"]["code"]["value"]
-            assert embedded_code == py_code, (
-                f"{flow_path} node {node.get('id')} embedded code is out of sync with "
-                "flows/components/opensearch_multimodal.py — re-run "
-                "scripts/update_flow_components.py"
-            )
+    for flow_path in FLOW_PATHS:
+        nodes = _opensearch_nodes(_load_flow(flow_path))
+        assert len(nodes) == 1, f"{flow_path.name} must contain one direct OpenSearch component"
+
+        node = nodes[0]
+        assert node["data"]["node"]["template"]["code"]["value"] == canonical_code
+
+        outputs = node["data"]["node"]["outputs"]
+        search_output = next(output for output in outputs if output.get("name") == "search_results")
+        assert search_output["method"] == "search_documents"
+        assert search_output["types"] == ["JSON"]
+        assert search_output["selected"] == "JSON"
+        assert all(output.get("name") != "dataframe" for output in outputs)
+
+
+def test_agent_flow_is_not_subject_to_direct_opensearch_component_contract():
+    """The agent uses Retrieval v2's thin tool, covered by its dedicated test."""
+    agent_flow = _load_flow(ROOT / "flows/openrag_agent.json")
+
+    assert not _opensearch_nodes(agent_flow)
