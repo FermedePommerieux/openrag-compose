@@ -23,7 +23,9 @@ For Langflow 0.11.2, OpenRAG uses the supported flow API sequence:
 
 The second execution recognises the verified version marker and changes
 nothing. Any custom, unlocked, altered, or ambiguously migrated graph remains
-intact and receives an explicit manual-migration diagnostic.
+intact and receives an explicit manual-migration diagnostic. If a system flow
+has entered the maintenance window and its locked state cannot be restored and
+verified, startup fails closed with a structured `lock_restore_failed` result.
 
 ## Reasons
 
@@ -33,8 +35,9 @@ legacy embeddings or tool edges from surviving a partial node splice.
 
 ## Consequences
 
-An explicit migration error requires operator review. Rollback restores the
-saved flow JSON through Langflow and re-locks it.
+An explicit migration error requires operator review. A failed lock restoration
+blocks startup rather than leaving a system flow silently unlocked. Rollback
+restores the saved flow JSON through Langflow and re-locks it.
 
 ## Rejected alternatives
 

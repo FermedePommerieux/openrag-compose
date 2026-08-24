@@ -57,8 +57,9 @@ user's workspace, owner and DLS principals and creates only a user-scoped
 OpenSearch client. No service or administrator credential is used for search.
 
 Results preserve `document_id`, `chunk_id`, `connector_file_id`, `source_url`,
-`filename`, `page`, `chunk_index`, and `chunking_strategy`. Legacy documents
-may have null or absent provenance fields, but remain readable.
+`filename`, `page`, `chunk_index`, and `chunking_strategy` across `/search`,
+chat responses, and public v1 streaming SSE citations. Legacy documents may
+have null or absent provenance fields, but remain readable.
 
 ## Persisted Langflow flows
 
@@ -70,7 +71,8 @@ replaces it with the bundled `OpenRAGBackendRetrievalComponent` graph, verifies
 the persisted wiring, and locks it again. The migration is idempotent. A
 custom, unlocked, altered, or ambiguously migrated graph is never overwritten:
 startup reports an explicit manual-migration diagnostic. Roll back by restoring
-the generated backup through Langflow and re-locking the flow.
+the generated backup through Langflow and re-locking the flow. If a system flow
+cannot be confirmed locked after its maintenance window, startup fails closed.
 
 ## Hybrid chunking and replacements
 

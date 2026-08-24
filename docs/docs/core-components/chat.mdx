@@ -36,7 +36,7 @@ When you use the OpenRAG <Icon name="MessageSquare" aria-hidden="true"/> **Chat*
 
 * [**Agent** component](https://docs.langflow.org/components-agents): This component orchestrates the entire flow by processing chat messages, searching the knowledge base, and organizing the retrieved information into a cohesive response.
 The agent's general behavior is defined by the prompt in the **Agent Instructions** field and the model connected to the **Language Model** port.
-One or more specialized tools can be attached to the **Tools** port to extend the agent's capabilities. In this case, there are two tools: **MCP Tools** and **OpenSearch**.
+One or more specialized tools can be attached to the **Tools** port to extend the agent's capabilities. In this case, there are two tools: **MCP Tools** and the thin **OpenRAG Retrieval v2** tool. The retrieval path is Chat → Langflow Agent → OpenRAG Retrieval v2 → backend SearchService/RetrievalService → OpenSearch.
 
    The **Agent** component is the star of this flow because it powers decision making, tool calling, and an LLM-driven conversational experience.
 
