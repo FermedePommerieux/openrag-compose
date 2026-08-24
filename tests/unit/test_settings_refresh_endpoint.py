@@ -1,10 +1,16 @@
+from unittest.mock import MagicMock
+
 import pytest
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 
-import api.settings as settings_api
-from fastapi import HTTPException
+import api.settings.endpoints as settings_api
 from session_manager import User
+
+
+def _route_permission_dependency(app: FastAPI):
+    route = next(route for route in app.routes if getattr(route, "path", None) == "/openrag-docs/refresh")
+    return next(dependency.call for dependency in route.dependant.dependencies if dependency.call.__name__ == "_dep")
 
 
 @pytest.mark.asyncio
@@ -102,8 +108,10 @@ def test_refresh_endpoint_requires_auth_in_auth_mode(monkeypatch):
     # Satisfy service dependencies for route construction/execution.
     app.dependency_overrides[settings_api.get_document_service] = lambda: object()
     app.dependency_overrides[settings_api.get_task_service] = lambda: object()
+    app.dependency_overrides[settings_api.get_models_service] = lambda: object()
     app.dependency_overrides[settings_api.get_langflow_file_service] = lambda: object()
     app.dependency_overrides[settings_api.get_session_manager] = lambda: object()
+    app.dependency_overrides[settings_api.get_rbac_service] = lambda: MagicMock()
 
     with TestClient(app) as client:
         resp = client.post("/openrag-docs/refresh")
@@ -136,9 +144,11 @@ def test_refresh_endpoint_returns_expected_http_response_shape(monkeypatch):
     # Route-level dependency overrides for successful request execution.
     app.dependency_overrides[settings_api.get_document_service] = lambda: object()
     app.dependency_overrides[settings_api.get_task_service] = lambda: object()
+    app.dependency_overrides[settings_api.get_models_service] = lambda: object()
     app.dependency_overrides[settings_api.get_langflow_file_service] = lambda: object()
     app.dependency_overrides[settings_api.get_session_manager] = lambda: object()
-    app.dependency_overrides[settings_api.get_current_user] = lambda: User(
+    app.dependency_overrides[settings_api.get_rbac_service] = lambda: MagicMock()
+    app.dependency_overrides[_route_permission_dependency(app)] = lambda: User(
         user_id="u4",
         email="u4@example.com",
         name="User Four",
