@@ -291,6 +291,11 @@ def _lifecycle_retrieval_flow() -> dict:
     return json.loads(raw)
 
 
+def _unversioned_retrieval_v2_flow() -> dict:
+    """Load the GitOps-bootstrap state that precedes the runtime marker."""
+    return json.loads((ROOT / "flows" / "openrag_agent.json").read_text())
+
+
 def _flow_response(status_code: int, payload: dict | None = None) -> MagicMock:
     response = MagicMock(status_code=status_code)
     response.json.return_value = payload
@@ -392,6 +397,26 @@ async def test_migrate_known_lifecycle_retrieval_flow_is_backed_up_and_idempoten
         {"locked": False},
         {"locked": True},
     ]
+
+
+@pytest.mark.asyncio
+async def test_migrate_unversioned_retrieval_v2_flow_synchronized_by_gitops():
+    """The exact pinned flow must receive its marker rather than fail closed."""
+    service = FlowsService()
+    transport = _RetrievalMigrationTransport()
+    transport.flow = _unversioned_retrieval_v2_flow()
+
+    with (
+        patch("services.flows_service.clients.langflow_request", side_effect=transport.__call__),
+        patch.object(service, "_backup_flow", new_callable=AsyncMock, return_value="/tmp/flow.json") as backup,
+    ):
+        result = await service.migrate_persisted_retrieval_flow()
+
+    assert result["status"] == "migrated"
+    assert result["backup_path"] == "/tmp/flow.json"
+    assert transport.flow["locked"] is True
+    assert transport.flow["data"]["openrag_retrieval_version"] == 3
+    assert backup.await_count == 1
 
 
 @pytest.mark.asyncio

@@ -1135,6 +1135,27 @@ class FlowsService:
             and self._graph_fingerprint(flow_data) == self._graph_fingerprint(expected)
         )
 
+    def _is_known_unversioned_retrieval_v2_flow(self, flow_data: dict[str, Any]) -> bool:
+        """Recognize the exact bundled Retrieval v2 graph before its version marker.
+
+        The GitOps flow bootstrap may synchronize the bundled graph before the
+        backend starts.  Its source JSON deliberately does not persist the
+        runtime migration marker, so this is a safe, recoverable intermediate
+        state rather than an operator customization.
+        """
+        if (
+            not isinstance(flow_data, dict)
+            or flow_data.get("id") != _LEGACY_SYSTEM_FLOW_ID
+            or not flow_data.get("locked")
+        ):
+            return False
+        template = self._load_retrieval_v2_template()
+        return (
+            flow_data.get("name") == template.get("name")
+            and flow_data.get("description") == template.get("description")
+            and self._graph_fingerprint(flow_data) == self._graph_fingerprint(template)
+        )
+
     def _migrate_known_legacy_retrieval_flow(self, flow_data: dict[str, Any]) -> dict[str, Any] | None:
         """Replace only the known legacy retrieval tool in a locked default flow.
 
@@ -1149,13 +1170,15 @@ class FlowsService:
         # The fingerprint checks every node, edge and configured value from the
         # lifecycle baseline.  Do not weaken this to "locked + legacy tool":
         # administrators legitimately lock customised flows too.
-        if not self._is_known_legacy_retrieval_flow(flow_data):
+        known_legacy = self._is_known_legacy_retrieval_flow(flow_data)
+        known_unversioned_v2 = self._is_known_unversioned_retrieval_v2_flow(flow_data)
+        if not known_legacy and not known_unversioned_v2:
             return None
 
         legacy_nodes = [
             node for node in nodes if _LEGACY_RETRIEVAL_COMPONENT in self._node_component_type(node)
         ]
-        if len(legacy_nodes) != 1:
+        if known_legacy and len(legacy_nodes) != 1:
             return None
 
         template = self._load_retrieval_v2_template()
