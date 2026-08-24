@@ -172,11 +172,14 @@ async def startup_tasks(services) -> None:
 
     # Ensure all configured flows exist in Langflow (create-only, never overwrites existing).
     # If a flow does not exist, it is created and active configuration settings are reapplied.
+    lock_restore_failure = None
     try:
         flows_service = services["flows_service"]
         await flows_service.ensure_flows_exist()
         migration = await flows_service.migrate_persisted_retrieval_flow()
-        if migration.get("status") == "failed":
+        if migration.get("status") == "lock_restore_failed":
+            lock_restore_failure = migration
+        elif migration.get("status") == "failed":
             logger.error("Retrieval flow migration did not complete", migration=migration)
 
         # Check if we should upgrade the system prompt (only if it's a legacy or default prompt, preserving user customizations)
@@ -212,6 +215,12 @@ async def startup_tasks(services) -> None:
             "Failed to ensure Langflow flows exist at startup — "
             "flows may be missing until the next restart",
             error=str(e),
+        )
+
+    if lock_restore_failure is not None:
+        raise RuntimeError(
+            "Refusing startup because the system retrieval flow could not be re-locked: "
+            f"{lock_restore_failure}"
         )
 
     # Older Langflow databases may have plain-string globals stored as Credential

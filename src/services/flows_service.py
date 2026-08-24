@@ -1144,6 +1144,48 @@ class FlowsService:
         if not isinstance(payload, dict) or payload.get("locked") is not locked:
             raise RuntimeError("Langflow lock update did not return the requested state")
 
+    async def _get_flow_lock_state(self, flow_id: str) -> dict[str, Any]:
+        """Return the lock state after a transition, without assuming success."""
+        try:
+            response = await clients.langflow_request("GET", f"/api/v1/flows/{flow_id}")
+        except Exception as exc:
+            return {"known_state": "unknown", "locked": None, "error": str(exc)}
+        if response.status_code == 404:
+            return {"known_state": "missing", "locked": None}
+        if response.status_code != 200:
+            return {
+                "known_state": "unknown",
+                "locked": None,
+                "error": f"HTTP {response.status_code}",
+            }
+        try:
+            payload = response.json()
+        except Exception as exc:
+            return {"known_state": "unknown", "locked": None, "error": str(exc)}
+        if not isinstance(payload, dict):
+            return {"known_state": "unknown", "locked": None, "error": "invalid flow payload"}
+        locked = payload.get("locked")
+        if locked is True:
+            return {"known_state": "locked", "locked": True}
+        if locked is False:
+            return {"known_state": "unlocked", "locked": False}
+        return {"known_state": "unknown", "locked": None, "error": "missing lock state"}
+
+    async def _restore_system_flow_lock(self, flow_id: str) -> tuple[str | None, dict[str, Any]]:
+        """Re-lock and verify a system flow after any uncertain transition."""
+        lock_error = None
+        try:
+            await self._patch_flow_lock(flow_id, locked=True)
+        except Exception as exc:
+            lock_error = str(exc)
+
+        state = await self._get_flow_lock_state(flow_id)
+        if state["locked"] is True:
+            return None, state
+        if lock_error is None:
+            lock_error = state.get("error", "flow was not confirmed locked")
+        return lock_error, state
+
     async def migrate_persisted_retrieval_flow(self) -> dict[str, Any]:
         """Safely upgrade the known lifecycle agent flow to Retrieval v2.
 
@@ -1189,10 +1231,12 @@ class FlowsService:
                 logger.error(message, flow_id=flow_id)
                 return {"status": "failed", "reason": "backup_failed", "error": message}
 
-            unlocked = False
+            lock_transition_attempted = False
+            maintenance_window_open = False
             try:
+                lock_transition_attempted = True
                 await self._patch_flow_lock(flow_id, locked=False)
-                unlocked = True
+                maintenance_window_open = True
                 update = await clients.langflow_request(
                     "PUT", f"/api/v1/flows/{flow_id}", json=migrated
                 )
@@ -1204,28 +1248,47 @@ class FlowsService:
                     raise RuntimeError("Langflow persisted flow verification failed after retrieval migration")
 
                 await self._patch_flow_lock(flow_id, locked=True)
-                unlocked = False
                 final_verify = await clients.langflow_request("GET", f"/api/v1/flows/{flow_id}")
                 if final_verify.status_code != 200 or not (
                     final_verify.json().get("locked")
                     and self._is_known_migrated_retrieval_flow(final_verify.json())
                 ):
                     raise RuntimeError("Langflow flow was not verified locked after retrieval migration")
+                maintenance_window_open = False
             except Exception as exc:
-                if unlocked:
-                    try:
-                        await self._patch_flow_lock(flow_id, locked=True)
-                    except Exception as lock_error:
-                        logger.error(
-                            "Retrieval flow migration could not restore the system lock",
-                            flow_id=flow_id,
-                            error=str(lock_error),
-                        )
+                flow_state = {"known_state": "locked", "locked": True}
+                lock_error = None
+                if lock_transition_attempted:
+                    flow_state = await self._get_flow_lock_state(flow_id)
+                    if flow_state["locked"] is not True:
+                        lock_error, flow_state = await self._restore_system_flow_lock(flow_id)
+                if lock_error is not None or flow_state["locked"] is not True:
+                    logger.error(
+                        "Retrieval flow migration could not restore the system lock",
+                        flow_id=flow_id,
+                        error=str(lock_error),
+                        flow_state=flow_state,
+                    )
+                    return {
+                        "status": "lock_restore_failed",
+                        "reason": "lock_restore_failed",
+                        "error": str(exc),
+                        "lock_error": lock_error or "flow was not confirmed locked",
+                        "flow_state": flow_state,
+                        "flow_id": flow_id,
+                        "version": _RETRIEVAL_FLOW_MIGRATION_VERSION,
+                        "backup_path": backup_path,
+                    }
                 logger.error("Retrieval flow migration update failed", flow_id=flow_id, error=str(exc))
                 return {
                     "status": "failed",
-                    "reason": "update_or_verification_failed",
+                    "reason": (
+                        "unlock_failed"
+                        if not maintenance_window_open
+                        else "update_or_verification_failed"
+                    ),
                     "error": str(exc),
+                    "flow_state": flow_state,
                     "backup_path": backup_path,
                 }
 
