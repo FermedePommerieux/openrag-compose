@@ -28,6 +28,9 @@ def backend_write_client(monkeypatch):
 
     client = AsyncMock()
     client.delete = AsyncMock(return_value={"result": "deleted"})
+    # Post-Langflow verification deliberately uses the trusted writer client,
+    # rather than the user-scoped search client used by the fixture below.
+    client.search = AsyncMock(return_value={"hits": {"hits": [{"_id": "indexed"}]}})
     monkeypatch.setattr(cfg.clients, "opensearch", client)
     return client
 
@@ -445,6 +448,10 @@ async def test_langflow_connector_processor_overwrites_when_replace_true(
     processor = _build_langflow_processor(replace_duplicates=True)
     document = _make_document()
     _wire_langflow_processor(processor, document, filename_exists=True, connector_id_exists=True)
+    # The replacement first checks the content hash in the caller's owner scope,
+    # then verifies the new connector id through the trusted writer.  The query
+    # shape is covered elsewhere; this test covers filename replacement behavior.
+    processor.check_document_exists = AsyncMock(side_effect=[False, True])
 
     file_task = _make_file_task()
     upload_task = _make_upload_task()
@@ -456,6 +463,9 @@ async def test_langflow_connector_processor_overwrites_when_replace_true(
     # write client) before re-uploading to Langflow.
     backend_write_client.delete.assert_awaited()
     processor.connector_service.langflow_service.upload_and_ingest_file.assert_awaited_once()
+    first_check = processor.check_document_exists.await_args_list[0]
+    assert first_check.kwargs["owner_user_id"] == "user-1"
+    assert first_check.kwargs["shared"] is False
 
 
 @pytest.mark.asyncio
@@ -514,6 +524,7 @@ async def test_langflow_connector_processor_hash_unchanged_path_preserved(monkey
     processor = _build_langflow_processor(replace_duplicates=False)
     document = _make_document()
     _wire_langflow_processor(processor, document, filename_exists=False, hash_exists=True)
+    processor.check_document_exists = AsyncMock(return_value=True)
 
     file_task = _make_file_task()
     upload_task = _make_upload_task()
@@ -523,6 +534,9 @@ async def test_langflow_connector_processor_hash_unchanged_path_preserved(monkey
     assert file_task.status == TaskStatus.COMPLETED
     assert (file_task.result or {}).get("status") == "unchanged"
     processor.connector_service.langflow_service.upload_and_ingest_file.assert_not_called()
+    first_check = processor.check_document_exists.await_args
+    assert first_check.kwargs["owner_user_id"] == "user-1"
+    assert first_check.kwargs["shared"] is False
 
 
 # ---------------------------------------------------------------------------
