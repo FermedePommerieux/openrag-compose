@@ -2,6 +2,7 @@ from types import SimpleNamespace
 
 import pytest
 from fastapi import HTTPException
+from pydantic import ValidationError
 
 import api.settings as settings_api
 import api.settings.endpoints as settings_endpoints
@@ -98,3 +99,68 @@ async def test_update_settings_accepts_index_name_matching_security_role_pattern
     # ...but the original config object (the live cache before this call
     # completes) must never be mutated in place.
     assert config.knowledge.index_name == "documents"
+
+
+@pytest.mark.asyncio
+async def test_update_settings_persists_hybrid_and_rrf_configuration(monkeypatch):
+    """The Settings UI payload maps directly to the backend-owned config."""
+    config = _make_config()
+    saved_configs = []
+    monkeypatch.setattr(settings_endpoints, "get_openrag_config", lambda: config, raising=True)
+    monkeypatch.setattr(
+        settings_endpoints.config_manager,
+        "save_config_file",
+        lambda updated_config: saved_configs.append(updated_config) or True,
+        raising=True,
+    )
+
+    async def _noop(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(settings_endpoints.clients, "refresh_patched_client", _noop, raising=True)
+    monkeypatch.setattr(settings_endpoints.TelemetryClient, "send_event", _noop, raising=True)
+
+    await settings_api.update_settings(
+        settings_api.SettingsUpdateBody(
+            chunking_strategy="hybrid",
+            hybrid_max_tokens=768,
+            hybrid_merge_peers=False,
+            retrieval_strategy="rrf",
+            retrieval_mode="hybrid",
+            retrieval_lexical_candidates=75,
+            retrieval_vector_candidates=80,
+            retrieval_rrf_k=42,
+            retrieval_max_chunks_per_document=4,
+        ),
+        session_manager=object(),
+        user=None,
+    )
+
+    saved = saved_configs[0].knowledge
+    assert saved.chunking_strategy == "hybrid"
+    assert saved.hybrid_max_tokens == 768
+    assert saved.hybrid_merge_peers is False
+    assert saved.retrieval_strategy == "rrf"
+    assert saved.retrieval_mode == "hybrid"
+    assert saved.retrieval_lexical_candidates == 75
+    assert saved.retrieval_vector_candidates == 80
+    assert saved.retrieval_rrf_k == 42
+    assert saved.retrieval_max_chunks_per_document == 4
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("retrieval_lexical_candidates", 0),
+        ("retrieval_lexical_candidates", 501),
+        ("retrieval_vector_candidates", 0),
+        ("retrieval_vector_candidates", 501),
+        ("retrieval_rrf_k", 0),
+        ("retrieval_rrf_k", 1001),
+        ("retrieval_max_chunks_per_document", 0),
+        ("retrieval_max_chunks_per_document", 101),
+    ],
+)
+def test_retrieval_settings_reject_backend_out_of_range_values(field, value):
+    with pytest.raises(ValidationError):
+        settings_api.SettingsUpdateBody(**{field: value})
