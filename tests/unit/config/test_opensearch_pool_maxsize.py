@@ -38,6 +38,7 @@ def test_settings_reads_canonical_pool_maxsize_env_var():
 
 
 def test_settings_default_pool_maxsize_fallback():
+    """The production default keeps enough connections for concurrent ingestion/search."""
     env = _python_env(
         {
             "PYTHONPATH": str(SRC),
@@ -56,7 +57,7 @@ def test_settings_default_pool_maxsize_fallback():
         env=env,
         cwd=str(ROOT),
     )
-    assert result.stdout.splitlines()[-1].strip() == "8"
+    assert result.stdout.splitlines()[-1].strip() == "10"
 
 
 def test_opensearch_client_uses_configured_pool_maxsize():
