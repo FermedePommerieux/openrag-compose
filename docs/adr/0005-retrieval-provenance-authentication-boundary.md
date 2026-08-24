@@ -9,7 +9,10 @@ authentication alone does not survive that internal HTTP hop.
 
 The identity resolver accepts the established OSS cookie or the original
 end-user Bearer JWT. Search preserves chunk and source provenance and always
-uses a user-scoped OpenSearch client with refreshed DLS principals.
+uses a user-scoped OpenSearch client with refreshed DLS principals. The API,
+chat SSE source events, and both SDKs preserve optional `document_id`,
+`chunk_id`, `connector_file_id`, `chunk_index`, `chunking_strategy`, and
+`source_url` fields without requiring them for legacy documents.
 
 ## Reasons
 
