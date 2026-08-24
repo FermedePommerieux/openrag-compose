@@ -12,8 +12,8 @@ from session_manager import User
 SOURCE_URL = "https://files.example.com/report.pdf"
 
 
-def test_chat_source_extraction_preserves_source_url():
-    """Preserve source URLs while extracting chat citations."""
+def test_chat_source_extraction_preserves_complete_provenance():
+    """Streaming chat keeps all Retrieval v2 provenance fields."""
     sources = _extract_sources(
         {
             "results": [
@@ -24,6 +24,11 @@ def test_chat_source_extraction_preserves_source_url():
                     "page": 3,
                     "mimetype": "application/pdf",
                     "source_url": SOURCE_URL,
+                    "document_id": "document-1",
+                    "chunk_id": "chunk-7",
+                    "connector_file_id": "drive-file-1",
+                    "chunk_index": 7,
+                    "chunking_strategy": "hybrid",
                 }
             ]
         }
@@ -37,6 +42,58 @@ def test_chat_source_extraction_preserves_source_url():
             "page": 3,
             "mimetype": "application/pdf",
             "source_url": SOURCE_URL,
+            "document_id": "document-1",
+            "chunk_id": "chunk-7",
+            "connector_file_id": "drive-file-1",
+            "chunk_index": 7,
+            "chunking_strategy": "hybrid",
+        }
+    ]
+
+
+def test_chat_source_extraction_keeps_legacy_provenance_optional():
+    """Legacy results retain their available fields without fabricated IDs."""
+    sources = _extract_sources(
+        {"results": [{"text": "Legacy evidence", "filename": "legacy.txt", "document_id": "old"}]}
+    )
+
+    assert sources == [
+        {
+            "filename": "legacy.txt",
+            "text": "Legacy evidence",
+            "score": 0,
+            "page": None,
+            "mimetype": None,
+            "source_url": None,
+            "document_id": "old",
+        }
+    ]
+
+
+def test_chat_source_extraction_preserves_source_url_without_other_provenance():
+    sources = _extract_sources({"results": [{"text": "Evidence", "source_url": SOURCE_URL}]})
+
+    assert sources == [
+        {
+            "filename": "",
+            "text": "Evidence",
+            "score": 0,
+            "page": None,
+            "mimetype": None,
+            "source_url": SOURCE_URL,
+        }
+    ]
+
+
+def test_chat_source_extraction_accepts_results_with_absent_optional_fields():
+    assert _extract_sources({"results": [{"text": "Evidence"}]}) == [
+        {
+            "filename": "",
+            "text": "Evidence",
+            "score": 0,
+            "page": None,
+            "mimetype": None,
+            "source_url": None,
         }
     ]
 
