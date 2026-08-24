@@ -358,7 +358,7 @@ async def test_migrate_known_lifecycle_retrieval_flow_is_backed_up_and_idempoten
 
 
 @pytest.mark.asyncio
-async def test_migrate_retrieval_flow_refuses_locked_custom_graph():
+async def test_migrate_retrieval_flow_fails_closed_for_an_altered_system_graph():
     service = FlowsService()
     custom_flow = _lifecycle_retrieval_flow()
     custom_flow["data"]["nodes"][0]["data"]["node"]["description"] = "operator customization"
@@ -371,13 +371,13 @@ async def test_migrate_retrieval_flow_refuses_locked_custom_graph():
     ):
         result = await service.migrate_persisted_retrieval_flow()
 
-    assert result["status"] == "failed"
-    assert result["reason"] == "unrecognized_or_custom_flow"
+    assert result["status"] == "system_migration_failed"
+    assert result["reason"] == "system_flow_unverified"
     backup.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_migrate_retrieval_flow_refuses_unlocked_or_unknown_graph():
+async def test_migrate_retrieval_flow_fails_closed_for_an_unlocked_system_graph():
     service = FlowsService()
     custom_flow = _lifecycle_retrieval_flow()
     custom_flow["locked"] = False
@@ -390,9 +390,55 @@ async def test_migrate_retrieval_flow_refuses_unlocked_or_unknown_graph():
     ):
         result = await service.migrate_persisted_retrieval_flow()
 
-    assert result["status"] == "failed"
-    assert result["reason"] == "unrecognized_or_custom_flow"
+    assert result["status"] == "system_migration_failed"
+    assert result["reason"] == "system_flow_unverified"
     backup.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_migrate_retrieval_flow_preserves_an_explicitly_configured_custom_flow(monkeypatch):
+    import services.flows_service as flows_module
+
+    monkeypatch.setattr(flows_module, "LANGFLOW_CHAT_FLOW_ID", "operator-custom-flow")
+    service = FlowsService()
+    response = MagicMock(status_code=200)
+    response.json.return_value = {
+        "id": "operator-custom-flow",
+        "name": "Operator retrieval flow",
+        "locked": False,
+        "data": {"nodes": []},
+    }
+
+    with (
+        patch("services.flows_service.clients.langflow_request", return_value=response),
+        patch.object(service, "_backup_flow", new_callable=AsyncMock) as backup,
+    ):
+        result = await service.migrate_persisted_retrieval_flow()
+
+    assert result == {
+        "status": "custom_preserved",
+        "reason": "custom_flow_id",
+        "flow_id": "operator-custom-flow",
+    }
+    backup.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("http_status", "reason"),
+    [(404, "flow_missing"), (500, "fetch_failed")],
+)
+async def test_migrate_retrieval_flow_classifies_unavailable_system_flow_as_failure(
+    http_status, reason
+):
+    service = FlowsService()
+    response = MagicMock(status_code=http_status)
+
+    with patch("services.flows_service.clients.langflow_request", return_value=response):
+        result = await service.migrate_persisted_retrieval_flow()
+
+    assert result["status"] == "system_migration_failed"
+    assert result["reason"] == reason
 
 
 @pytest.mark.asyncio
@@ -406,7 +452,7 @@ async def test_migrate_retrieval_flow_stops_before_unlock_when_backup_fails():
     ):
         result = await service.migrate_persisted_retrieval_flow()
 
-    assert result["status"] == "failed"
+    assert result["status"] == "system_migration_failed"
     assert result["reason"] == "backup_failed"
     assert transport.flow["locked"] is True
     assert transport.unlocked is False
@@ -423,7 +469,7 @@ async def test_migrate_retrieval_flow_reports_unlock_failure_with_locked_state()
     ):
         result = await service.migrate_persisted_retrieval_flow()
 
-    assert result["status"] == "failed"
+    assert result["status"] == "system_migration_failed"
     assert result["reason"] == "unlock_failed"
     assert result["flow_state"] == {"known_state": "locked", "locked": True}
     assert transport.flow["locked"] is True
@@ -441,7 +487,7 @@ async def test_migrate_retrieval_flow_restores_lock_after_safe_transition_failur
     ):
         result = await service.migrate_persisted_retrieval_flow()
 
-    assert result["status"] == "failed"
+    assert result["status"] == "system_migration_failed"
     assert result["reason"] == "update_or_verification_failed"
     assert result["flow_state"] == {"known_state": "locked", "locked": True}
     assert transport.flow["locked"] is True
@@ -459,7 +505,7 @@ async def test_migrate_retrieval_flow_fails_closed_when_lock_cannot_be_restored(
     ):
         result = await service.migrate_persisted_retrieval_flow()
 
-    assert result["status"] == "lock_restore_failed"
+    assert result["status"] == "system_migration_failed"
     assert result["reason"] == "lock_restore_failed"
     assert result["error"]
     assert result["lock_error"]

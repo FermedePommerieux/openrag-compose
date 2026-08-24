@@ -22,15 +22,19 @@ For Langflow 0.11.2, OpenRAG uses the supported flow API sequence:
 6. `GET` again to verify the final locked state.
 
 The second execution recognises the verified version marker and changes
-nothing. Any custom, unlocked, altered, or ambiguously migrated graph remains
-intact and receives an explicit manual-migration diagnostic. If a system flow
-has entered the maintenance window and its locked state cannot be restored and
-verified, startup fails closed with a structured `lock_restore_failed` result.
-`run_startup` awaits this critical migration boundary before it schedules any
-background startup work, so the ASGI lifespan fails and the instance cannot
-become ready. Prompt synchronization is downstream of a verified migration;
-it is skipped for every migration failure to avoid modifying a flow that needs
-operator review.
+nothing. The protected system flow is acceptable only when it is either
+`migrated` or `already_migrated`, with the exact Retrieval v2 graph, wiring,
+version marker, and final `locked: true` state verified. Any missing flow,
+fetch/backup/unlock/update/verification failure, unknown lock state, or graph
+that does not match the expected system graph is `system_migration_failed`.
+`run_startup` awaits this critical boundary before it schedules background
+work, so every such result fails the ASGI lifespan and cannot become Ready.
+
+An operator may explicitly configure a retrieval flow ID other than the
+protected system-flow ID. That flow is reported as `custom_preserved`: it is
+not overwritten or claimed to use Retrieval v2, and prompt synchronization is
+not applied. An altered graph under the protected system-flow ID is ambiguous,
+therefore it fails closed rather than being treated as a custom flow.
 
 ## Reasons
 
@@ -40,11 +44,11 @@ legacy embeddings or tool edges from surviving a partial node splice.
 
 ## Consequences
 
-An explicit migration error requires operator review. A backup failure or a
-failed update whose lock was restored leaves the application available but
-does not modify the flow further. A failed lock restoration blocks ASGI
-startup rather than leaving a system flow silently unlocked. Rollback restores
-the saved flow JSON through Langflow and re-locks it.
+An explicit system migration error requires operator review and blocks ASGI
+startup, even when a prior lock was restored. This avoids serving an old,
+partial, or unverified retrieval graph. Rollback restores the saved flow JSON
+through Langflow and re-locks it. A `custom_preserved` flow remains the
+operator's responsibility and does not receive automatic Retrieval v2 updates.
 
 ## Rejected alternatives
 

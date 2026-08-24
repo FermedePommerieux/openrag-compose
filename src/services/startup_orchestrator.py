@@ -41,11 +41,10 @@ async def _update_mcp_server_urls(langflow_mcp_service) -> None:
 async def ensure_system_retrieval_flow_ready(services) -> dict[str, object]:
     """Complete the system-flow migration before the ASGI application is ready.
 
-    A failed migration is diagnosable without blocking startup when the flow was
-    never unlocked or its lock was restored and verified.  The sole integrity
-    failure is an unverified system-flow lock: in that case this function
-    raises so ``run_startup`` aborts the ASGI lifespan before background work
-    or traffic can start.
+    Only a verified Retrieval v2 system graph or an explicitly configured
+    custom flow is safe to serve.  Every other migration result is propagated
+    so ``run_startup`` aborts the ASGI lifespan before background work or
+    traffic can start.
     """
     flows_service = services["flows_service"]
     try:
@@ -53,39 +52,38 @@ async def ensure_system_retrieval_flow_ready(services) -> dict[str, object]:
         migration = await flows_service.migrate_persisted_retrieval_flow()
     except Exception as exc:
         logger.error(
-            "Failed to prepare Langflow flows before startup",
+            "Refusing ASGI startup: failed to prepare system retrieval flow",
             error=str(exc),
         )
-        return {"status": "failed", "reason": "flow_preparation_failed"}
+        raise RuntimeError("Refusing ASGI startup: system retrieval flow_preparation_failed") from exc
 
     status = migration.get("status")
     reason = migration.get("reason")
-    if status == "lock_restore_failed":
+    if status == "custom_preserved":
+        logger.warning(
+            "Starting with an explicitly configured custom retrieval flow; "
+            "Retrieval v2 migration and prompt sync are not applied",
+            flow_id=migration.get("flow_id"),
+            reason=reason,
+        )
+        return migration
+
+    if status not in {"migrated", "already_migrated"}:
         logger.error(
-            "Refusing ASGI startup: system retrieval flow lock was not restored",
+            "Refusing ASGI startup: system retrieval flow is not validated",
             flow_id=migration.get("flow_id"),
             reason=reason,
             lock_state=migration.get("flow_state", {}).get("known_state"),
         )
         raise RuntimeError(
-            "Refusing ASGI startup: system retrieval flow lock_restore_failed "
-            f"for flow_id={migration.get('flow_id', 'unknown')}"
+            "Refusing ASGI startup: system retrieval flow is not validated "
+            f"(status={status or 'unknown'}, reason={reason or 'unknown'}, "
+            f"flow_id={migration.get('flow_id', 'unknown')})"
         )
 
-    if status == "failed":
-        # A custom graph, a failed backup, or an update that was safely
-        # re-locked must stay untouched.  Do not perform a prompt update on a
-        # flow that needs operator review.
-        logger.error(
-            "Retrieval flow migration did not complete; skipping prompt sync",
-            reason=reason,
-            flow_id=migration.get("flow_id"),
-        )
-        return migration
-
-    # Prompt synchronization is deliberately downstream of a successful or
-    # already-migrated system graph.  In particular, it cannot run after a
-    # lock_restore_failed result because that case raised above.
+    # Prompt synchronization is deliberately downstream of the two validated
+    # Retrieval v2 states accepted above.  It cannot run after a failed,
+    # skipped, unrecognized, or custom flow result.
     from config.config_manager import DEFAULT_SYSTEM_PROMPT
     from config.legacy_prompts import LEGACY_SYSTEM_PROMPTS
 

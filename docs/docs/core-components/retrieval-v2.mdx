@@ -69,10 +69,11 @@ versioned canonical graph fingerprint. It writes a local backup, then uses
 Langflow 0.11.2's supported `PATCH` API to unlock the system flow temporarily,
 replaces it with the bundled `OpenRAGBackendRetrievalComponent` graph, verifies
 the persisted wiring, and locks it again. The migration is idempotent. A
-custom, unlocked, altered, or ambiguously migrated graph is never overwritten:
-startup reports an explicit manual-migration diagnostic. Roll back by restoring
-the generated backup through Langflow and re-locking the flow. If a system flow
-cannot be confirmed locked after its maintenance window, startup fails closed.
+protected system flow that is missing, altered, partially migrated, or not
+verified as locked Retrieval v2 fails closed before the backend becomes Ready.
+An explicitly configured custom flow ID is preserved without automatic
+migration, Retrieval v2 guarantees, or prompt synchronization. Roll back by
+restoring the generated backup through Langflow and re-locking the flow.
 
 ## Hybrid chunking and replacements
 

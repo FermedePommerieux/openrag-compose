@@ -1,7 +1,6 @@
 """Exercise the real FastAPI lifespan around the Retrieval v2 flow lock."""
 
 import asyncio
-from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -86,24 +85,17 @@ async def test_lifespan_starts_after_verified_system_flow(isolated_lifespan, sta
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "reason",
-    ["unrecognized_or_custom_flow", "backup_failed", "update_or_verification_failed"],
-)
-async def test_lifespan_allows_safe_migration_failure_without_prompt_sync(
-    isolated_lifespan, monkeypatch, reason
+async def test_lifespan_allows_explicitly_configured_custom_flow_without_prompt_sync(
+    isolated_lifespan,
 ):
-    import services.startup_orchestrator as orchestrator
-
-    monkeypatch.setattr(
-        orchestrator,
-        "get_openrag_config",
-        lambda: SimpleNamespace(agent=SimpleNamespace(system_prompt="custom")),
-    )
     flows_service = MagicMock(
         ensure_flows_exist=AsyncMock(return_value=set()),
         migrate_persisted_retrieval_flow=AsyncMock(
-            return_value={"status": "failed", "reason": reason}
+            return_value={
+                "status": "custom_preserved",
+                "reason": "custom_flow_id",
+                "flow_id": "operator-custom-flow",
+            }
         ),
     )
     flows_service.get_chat_flow_system_prompt = AsyncMock()
@@ -119,18 +111,38 @@ async def test_lifespan_allows_safe_migration_failure_without_prompt_sync(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("lock_state", ["unlocked", "unknown"])
-async def test_lifespan_refuses_ready_when_system_lock_cannot_be_verified(
-    isolated_lifespan, lock_state
+@pytest.mark.parametrize(
+    ("status", "reason"),
+    [
+        ("system_migration_failed", "fetch_failed"),
+        ("system_migration_failed", "backup_failed"),
+        ("system_migration_failed", "unlock_failed"),
+        ("system_migration_failed", "update_failed"),
+        ("system_migration_failed", "verification_failed"),
+        ("system_migration_failed", "update_or_verification_failed"),
+        ("system_migration_failed", "lock_restore_failed"),
+        ("system_migration_failed", "locked_false"),
+        ("system_migration_failed", "lock_state_unknown"),
+        ("system_migration_failed", "expected_graph_missing"),
+        ("system_migration_failed", "thin_retrieval_tool_missing"),
+        ("system_migration_failed", "wiring_invalid"),
+        ("system_migration_failed", "migration_version_invalid"),
+        ("system_migration_failed", "flow_missing"),
+        ("system_migration_failed", "flow_id_not_configured"),
+        ("skipped", "ambiguous_skip"),
+    ],
+)
+async def test_lifespan_refuses_ready_for_every_unvalidated_system_flow(
+    isolated_lifespan, status, reason
 ):
     flows_service = MagicMock(
         ensure_flows_exist=AsyncMock(return_value=set()),
         migrate_persisted_retrieval_flow=AsyncMock(
             return_value={
-                "status": "lock_restore_failed",
-                "reason": "lock_restore_failed",
+                "status": status,
+                "reason": reason,
                 "flow_id": "system-flow",
-                "flow_state": {"known_state": lock_state, "locked": False},
+                "flow_state": {"known_state": "unknown", "locked": None},
             }
         ),
     )
@@ -138,11 +150,31 @@ async def test_lifespan_refuses_ready_when_system_lock_cannot_be_verified(
     flows_service.update_chat_flow_system_prompt = AsyncMock()
     app = _lifespan_app(_services(flows_service))
 
-    with pytest.raises(RuntimeError, match="lock_restore_failed"):
+    with pytest.raises(RuntimeError, match="system retrieval flow is not validated"):
         async with app.router.lifespan_context(app):
-            pytest.fail("An unlocked system flow must never reach ASGI ready")
+            pytest.fail("An unvalidated system flow must never reach ASGI ready")
 
     assert not app.state.background_tasks
     isolated_lifespan.startup_tasks.assert_not_awaited()
+    flows_service.get_chat_flow_system_prompt.assert_not_awaited()
+    flows_service.update_chat_flow_system_prompt.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_lifespan_refuses_ready_when_ensuring_flows_raises(isolated_lifespan):
+    flows_service = MagicMock(
+        ensure_flows_exist=AsyncMock(side_effect=RuntimeError("Langflow unavailable")),
+        migrate_persisted_retrieval_flow=AsyncMock(),
+    )
+    flows_service.get_chat_flow_system_prompt = AsyncMock()
+    flows_service.update_chat_flow_system_prompt = AsyncMock()
+    app = _lifespan_app(_services(flows_service))
+
+    with pytest.raises(RuntimeError, match="flow_preparation_failed"):
+        async with app.router.lifespan_context(app):
+            pytest.fail("A failed critical preparation must never reach ASGI ready")
+
+    assert not app.state.background_tasks
+    flows_service.migrate_persisted_retrieval_flow.assert_not_awaited()
     flows_service.get_chat_flow_system_prompt.assert_not_awaited()
     flows_service.update_chat_flow_system_prompt.assert_not_awaited()

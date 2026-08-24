@@ -1189,12 +1189,17 @@ class FlowsService:
     async def migrate_persisted_retrieval_flow(self) -> dict[str, Any]:
         """Safely upgrade the known lifecycle agent flow to Retrieval v2.
 
-        A backup is mandatory and a non-recognized graph is never changed. The
-        result is structured for startup logs and operational audit trails.
+        A backup is mandatory and a non-recognized graph is never changed. A
+        configured flow ID other than the protected system-flow ID is an
+        explicit custom-flow opt-out. Every failure for the protected ID is a
+        system migration failure; startup must not treat it as a harmless skip.
         """
         flow_id = LANGFLOW_CHAT_FLOW_ID
         if not flow_id:
-            return {"status": "skipped", "reason": "flow_id_not_configured"}
+            return {
+                "status": "system_migration_failed",
+                "reason": "flow_id_not_configured",
+            }
 
         flow_lock = await self._get_flow_lock(flow_id)
         async with flow_lock:
@@ -1202,34 +1207,69 @@ class FlowsService:
                 response = await clients.langflow_request("GET", f"/api/v1/flows/{flow_id}")
             except Exception as exc:
                 logger.error("Retrieval flow migration check failed", error=str(exc))
-                return {"status": "failed", "reason": "fetch_failed", "error": str(exc)}
+                return {
+                    "status": "system_migration_failed",
+                    "reason": "fetch_failed",
+                    "error": str(exc),
+                    "flow_id": flow_id,
+                }
             if response.status_code == 404:
-                return {"status": "skipped", "reason": "flow_missing"}
+                return {
+                    "status": "system_migration_failed",
+                    "reason": "flow_missing",
+                    "flow_id": flow_id,
+                }
             if response.status_code != 200:
                 return {
-                    "status": "failed",
+                    "status": "system_migration_failed",
                     "reason": "fetch_failed",
                     "error": f"HTTP {response.status_code}",
+                    "flow_id": flow_id,
                 }
 
             current = response.json()
+            if flow_id != _LEGACY_SYSTEM_FLOW_ID:
+                logger.warning(
+                    "Configured retrieval flow is custom and will not be migrated automatically",
+                    flow_id=flow_id,
+                )
+                return {
+                    "status": "custom_preserved",
+                    "reason": "custom_flow_id",
+                    "flow_id": flow_id,
+                }
+
             if self._is_known_migrated_retrieval_flow(current) and current.get("locked"):
-                return {"status": "already_migrated", "version": _RETRIEVAL_FLOW_MIGRATION_VERSION}
+                return {
+                    "status": "already_migrated",
+                    "version": _RETRIEVAL_FLOW_MIGRATION_VERSION,
+                    "flow_id": flow_id,
+                }
 
             migrated = self._migrate_known_legacy_retrieval_flow(current)
             if migrated is None:
                 message = (
-                    "Persisted retrieval flow is not the known locked lifecycle graph; "
-                    "migration was not applied. Use the flow update/rollback procedure."
+                    "System retrieval flow is not the exact known locked lifecycle graph; "
+                    "it was not migrated and cannot be served. Use the flow update/rollback procedure."
                 )
-                logger.error("Retrieval flow migration requires manual review", flow_id=flow_id)
-                return {"status": "failed", "reason": "unrecognized_or_custom_flow", "error": message}
+                logger.error("System retrieval flow migration requires manual review", flow_id=flow_id)
+                return {
+                    "status": "system_migration_failed",
+                    "reason": "system_flow_unverified",
+                    "error": message,
+                    "flow_id": flow_id,
+                }
 
             backup_path = await self._backup_flow(flow_id, "retrieval", current)
             if backup_path is None:
                 message = "Retrieval flow migration aborted because backup creation failed"
                 logger.error(message, flow_id=flow_id)
-                return {"status": "failed", "reason": "backup_failed", "error": message}
+                return {
+                    "status": "system_migration_failed",
+                    "reason": "backup_failed",
+                    "error": message,
+                    "flow_id": flow_id,
+                }
 
             lock_transition_attempted = False
             maintenance_window_open = False
@@ -1270,7 +1310,7 @@ class FlowsService:
                         flow_state=flow_state,
                     )
                     return {
-                        "status": "lock_restore_failed",
+                        "status": "system_migration_failed",
                         "reason": "lock_restore_failed",
                         "error": str(exc),
                         "lock_error": lock_error or "flow was not confirmed locked",
@@ -1281,7 +1321,7 @@ class FlowsService:
                     }
                 logger.error("Retrieval flow migration update failed", flow_id=flow_id, error=str(exc))
                 return {
-                    "status": "failed",
+                    "status": "system_migration_failed",
                     "reason": (
                         "unlock_failed"
                         if not maintenance_window_open
@@ -1290,6 +1330,7 @@ class FlowsService:
                     "error": str(exc),
                     "flow_state": flow_state,
                     "backup_path": backup_path,
+                    "flow_id": flow_id,
                 }
 
             logger.info(
@@ -1302,6 +1343,7 @@ class FlowsService:
                 "status": "migrated",
                 "version": _RETRIEVAL_FLOW_MIGRATION_VERSION,
                 "backup_path": backup_path,
+                "flow_id": flow_id,
             }
 
     async def change_langflow_model_value(
