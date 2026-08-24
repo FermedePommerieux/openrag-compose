@@ -1,4 +1,4 @@
-"""Startup must not continue with an unverified unlocked system flow."""
+"""Critical system-flow preparation must reject an unverified unlock."""
 
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -7,7 +7,7 @@ import pytest
 
 
 @pytest.mark.asyncio
-async def test_startup_fails_closed_when_retrieval_flow_lock_cannot_be_restored(monkeypatch):
+async def test_critical_flow_preparation_fails_closed_before_prompt_sync(monkeypatch):
     import services.startup_orchestrator as orchestrator
 
     monkeypatch.setattr("config.settings.IBM_AUTH_ENABLED", True, raising=False)
@@ -18,6 +18,8 @@ async def test_startup_fails_closed_when_retrieval_flow_lock_cannot_be_restored(
     flows_service.migrate_persisted_retrieval_flow = AsyncMock(
         return_value={"status": "lock_restore_failed", "flow_id": "system-flow"}
     )
+    flows_service.get_chat_flow_system_prompt = AsyncMock()
+    flows_service.update_chat_flow_system_prompt = AsyncMock()
     services = {
         "workspace_config_service": MagicMock(),
         "models_service": MagicMock(update_model_registry=AsyncMock()),
@@ -43,8 +45,10 @@ async def test_startup_fails_closed_when_retrieval_flow_lock_cannot_be_restored(
             return_value=SimpleNamespace(agent=SimpleNamespace(system_prompt="custom")),
         ),
     ):
-        with pytest.raises(RuntimeError, match="could not be re-locked"):
-            await orchestrator.startup_tasks(services)
+        with pytest.raises(RuntimeError, match="lock_restore_failed"):
+            await orchestrator.ensure_system_retrieval_flow_ready(services)
 
     flows_service.ensure_flows_exist.assert_awaited_once()
     flows_service.migrate_persisted_retrieval_flow.assert_awaited_once()
+    flows_service.get_chat_flow_system_prompt.assert_not_awaited()
+    flows_service.update_chat_flow_system_prompt.assert_not_awaited()

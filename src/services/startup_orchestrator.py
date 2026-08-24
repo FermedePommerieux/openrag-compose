@@ -38,6 +38,84 @@ async def _update_mcp_server_urls(langflow_mcp_service) -> None:
         logger.warning(f"Failed to update MCP server URLs after settings change: {str(mcp_error)}")
 
 
+async def ensure_system_retrieval_flow_ready(services) -> dict[str, object]:
+    """Complete the system-flow migration before the ASGI application is ready.
+
+    A failed migration is diagnosable without blocking startup when the flow was
+    never unlocked or its lock was restored and verified.  The sole integrity
+    failure is an unverified system-flow lock: in that case this function
+    raises so ``run_startup`` aborts the ASGI lifespan before background work
+    or traffic can start.
+    """
+    flows_service = services["flows_service"]
+    try:
+        await flows_service.ensure_flows_exist()
+        migration = await flows_service.migrate_persisted_retrieval_flow()
+    except Exception as exc:
+        logger.error(
+            "Failed to prepare Langflow flows before startup",
+            error=str(exc),
+        )
+        return {"status": "failed", "reason": "flow_preparation_failed"}
+
+    status = migration.get("status")
+    reason = migration.get("reason")
+    if status == "lock_restore_failed":
+        logger.error(
+            "Refusing ASGI startup: system retrieval flow lock was not restored",
+            flow_id=migration.get("flow_id"),
+            reason=reason,
+            lock_state=migration.get("flow_state", {}).get("known_state"),
+        )
+        raise RuntimeError(
+            "Refusing ASGI startup: system retrieval flow lock_restore_failed "
+            f"for flow_id={migration.get('flow_id', 'unknown')}"
+        )
+
+    if status == "failed":
+        # A custom graph, a failed backup, or an update that was safely
+        # re-locked must stay untouched.  Do not perform a prompt update on a
+        # flow that needs operator review.
+        logger.error(
+            "Retrieval flow migration did not complete; skipping prompt sync",
+            reason=reason,
+            flow_id=migration.get("flow_id"),
+        )
+        return migration
+
+    # Prompt synchronization is deliberately downstream of a successful or
+    # already-migrated system graph.  In particular, it cannot run after a
+    # lock_restore_failed result because that case raised above.
+    from config.config_manager import DEFAULT_SYSTEM_PROMPT
+    from config.legacy_prompts import LEGACY_SYSTEM_PROMPTS
+
+    config_prompt = get_openrag_config().agent.system_prompt
+    if config_prompt in LEGACY_SYSTEM_PROMPTS or config_prompt == DEFAULT_SYSTEM_PROMPT:
+        try:
+            current_prompt = await flows_service.get_chat_flow_system_prompt()
+        except Exception as exc:
+            logger.warning(
+                "Could not read current chat flow system prompt; skipping system prompt sync",
+                error=str(exc),
+            )
+        else:
+            # Only update if the Langflow prompt is a known default/legacy AND it differs from our config prompt.
+            if (
+                not current_prompt
+                or current_prompt in LEGACY_SYSTEM_PROMPTS
+                or current_prompt == DEFAULT_SYSTEM_PROMPT
+            ):
+                if current_prompt != config_prompt:
+                    await flows_service.update_chat_flow_system_prompt(
+                        config_prompt, expected_prompt=current_prompt
+                    )
+                    logger.info("Ensured system prompt is synced to Langflow")
+            else:
+                logger.info("Preserved custom system prompt in Langflow")
+
+    return migration
+
+
 async def startup_tasks(services) -> None:
     """Startup tasks"""
     from config.settings import IBM_AUTH_ENABLED
@@ -169,59 +247,6 @@ async def startup_tasks(services) -> None:
 
     # Update MCP server URLs (patch localhost and convert to streamable HTTP)
     await _update_mcp_server_urls(services["langflow_mcp_service"])
-
-    # Ensure all configured flows exist in Langflow (create-only, never overwrites existing).
-    # If a flow does not exist, it is created and active configuration settings are reapplied.
-    lock_restore_failure = None
-    try:
-        flows_service = services["flows_service"]
-        await flows_service.ensure_flows_exist()
-        migration = await flows_service.migrate_persisted_retrieval_flow()
-        if migration.get("status") == "lock_restore_failed":
-            lock_restore_failure = migration
-        elif migration.get("status") == "failed":
-            logger.error("Retrieval flow migration did not complete", migration=migration)
-
-        # Check if we should upgrade the system prompt (only if it's a legacy or default prompt, preserving user customizations)
-        from config.config_manager import DEFAULT_SYSTEM_PROMPT
-        from config.legacy_prompts import LEGACY_SYSTEM_PROMPTS
-
-        config_prompt = get_openrag_config().agent.system_prompt
-        # If the config prompt is a user customization, we don't need to auto-upgrade anything
-        if config_prompt in LEGACY_SYSTEM_PROMPTS or config_prompt == DEFAULT_SYSTEM_PROMPT:
-            try:
-                current_prompt = await flows_service.get_chat_flow_system_prompt()
-            except Exception as e:
-                logger.warning(
-                    "Could not read current chat flow system prompt; skipping system prompt sync",
-                    error=str(e),
-                )
-            else:
-                # Only update if the Langflow prompt is a known default/legacy AND it differs from our config prompt
-                if (
-                    not current_prompt
-                    or current_prompt in LEGACY_SYSTEM_PROMPTS
-                    or current_prompt == DEFAULT_SYSTEM_PROMPT
-                ):
-                    if current_prompt != config_prompt:
-                        await flows_service.update_chat_flow_system_prompt(
-                            config_prompt, expected_prompt=current_prompt
-                        )
-                        logger.info("Ensured system prompt is synced to Langflow")
-                else:
-                    logger.info("Preserved custom system prompt in Langflow")
-    except Exception as e:
-        logger.error(
-            "Failed to ensure Langflow flows exist at startup — "
-            "flows may be missing until the next restart",
-            error=str(e),
-        )
-
-    if lock_restore_failure is not None:
-        raise RuntimeError(
-            "Refusing startup because the system retrieval flow could not be re-locked: "
-            f"{lock_restore_failure}"
-        )
 
     # Older Langflow databases may have plain-string globals stored as Credential
     # variables because environment-seeded globals used Credential by default.
