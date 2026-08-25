@@ -17,6 +17,8 @@ const TABS = [
   { value: "providers", label: "Providers", perm: "providers:write" },
   // Agent + ingest settings write workspace config (admin-only).
   { value: "langflow", label: "Langflow", perm: "config:write" },
+  // Local-source archiving settings write workspace config (admin-only).
+  { value: "archiving", label: "Archiving", perm: "config:write" },
   { value: "api-keys", label: "API Keys", apiKeysTab: true },
   {
     value: "connector-access",

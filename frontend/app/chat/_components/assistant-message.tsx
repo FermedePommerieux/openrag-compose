@@ -17,9 +17,15 @@ const MarkdownRenderer = dynamic(
 
 // Import the shared filename derivation helper
 import { deriveDisplayFilename } from "@/components/markdown-citations";
+import { SourcePreviewDialog } from "@/components/source-preview-dialog";
 import { Popover } from "@/components/ui/popover";
 import { Separator } from "@/components/ui/separator";
 import { trackButton } from "@/lib/analytics";
+import {
+  getDownloadSourceUrl,
+  getSourcePreviewKind,
+  type SourcePreviewKind,
+} from "@/lib/source-url";
 import { cn } from "@/lib/utils";
 import type {
   FunctionCall,
@@ -32,6 +38,14 @@ import MessageActions from "./message-actions";
 import { TokenUsage } from "./token-usage";
 
 const EMPTY_FUNCTION_CALLS: FunctionCall[] = [];
+
+interface ChatSourcePreview {
+  filename: string;
+  kind: SourcePreviewKind;
+  mimetype?: string;
+  referencePage?: number;
+  sourceUrl: string;
+}
 
 const hasNestedResults = (
   value: unknown,
@@ -93,6 +107,9 @@ export function AssistantMessage({
   unstyledMessageContent = false,
 }: AssistantMessageProps) {
   const [activeChunkIndex, setActiveChunkIndex] = useState<number | null>(null);
+  const [sourcePreview, setSourcePreview] = useState<ChatSourcePreview | null>(
+    null,
+  );
   const citationCardRefs = useRef<Map<number, HTMLElement> | null>(null);
   if (citationCardRefs.current === null) {
     citationCardRefs.current = new Map();
@@ -167,7 +184,26 @@ export function AssistantMessage({
   const activeCitedSource = citedSources.find(
     (s) => s.index === activeChunkIndex,
   );
-
+  const activeFilename = activeCitedSource
+    ? deriveDisplayFilename(
+        activeCitedSource.item.data?.file_path,
+        activeCitedSource.item.filename,
+        "Document",
+      )
+    : undefined;
+  const activeSourceUrl = getDownloadSourceUrl(
+    activeCitedSource?.item.source_url ?? undefined,
+  );
+  const activeMimetypeValue =
+    activeCitedSource?.item.mimetype ??
+    activeCitedSource?.item.data?.mimetype ??
+    activeCitedSource?.item.metadata?.mimetype ??
+    activeCitedSource?.item.data?.metadata?.mimetype;
+  const activeMimetype =
+    typeof activeMimetypeValue === "string" ? activeMimetypeValue : undefined;
+  const activePreviewKind = activeFilename
+    ? getSourcePreviewKind(activeFilename, activeMimetype)
+    : undefined;
   return (
     <motion.div
       initial={animate ? { opacity: 0, y: -20 } : { opacity: 1, y: 0 }}
@@ -311,11 +347,7 @@ export function AssistantMessage({
           <ChunkPopup
             onClose={closeChunkPopover}
             chunkNumber={activeCitedSource.index}
-            filename={deriveDisplayFilename(
-              activeCitedSource.item.data?.file_path,
-              activeCitedSource.item.filename,
-              "Document",
-            )}
+            filename={activeFilename ?? "Document"}
             score={
               activeCitedSource.item.score !== undefined
                 ? activeCitedSource.item.score
@@ -327,9 +359,57 @@ export function AssistantMessage({
               ""
             }
             item={activeCitedSource.item}
+            onPreviewDocument={
+              activeFilename && activeSourceUrl && activePreviewKind
+                ? () => {
+                    const rawPage =
+                      activeCitedSource.item.page ??
+                      activeCitedSource.item.data?.page ??
+                      activeCitedSource.item.metadata?.page ??
+                      activeCitedSource.item.data?.metadata?.page;
+                    const parsedPage = Number(rawPage);
+                    const isPdfSource =
+                      activeMimetype?.split(";", 1)[0].trim().toLowerCase() ===
+                        "application/pdf" ||
+                      activeFilename.toLowerCase().endsWith(".pdf");
+                    closeChunkPopover();
+                    setTimeout(
+                      () =>
+                        setSourcePreview({
+                          filename: activeFilename,
+                          kind: activePreviewKind,
+                          mimetype: activeMimetype,
+                          referencePage:
+                            isPdfSource &&
+                            Number.isFinite(parsedPage) &&
+                            parsedPage > 0
+                              ? Math.floor(parsedPage)
+                              : undefined,
+                          sourceUrl: activeSourceUrl,
+                        }),
+                      0,
+                    );
+                  }
+                : undefined
+            }
+            showViewDocument={interactiveCitations}
           />
         )}
       </Popover>
+
+      {sourcePreview && (
+        <SourcePreviewDialog
+          filename={sourcePreview.filename}
+          kind={sourcePreview.kind}
+          mimetype={sourcePreview.mimetype}
+          open
+          onOpenChange={(open) => {
+            if (!open) setSourcePreview(null);
+          }}
+          referencePage={sourcePreview.referencePage}
+          sourceUrl={sourcePreview.sourceUrl}
+        />
+      )}
     </motion.div>
   );
 }

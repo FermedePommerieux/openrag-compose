@@ -21,6 +21,7 @@ export interface UpdateSettingsRequest {
   disable_ingest_with_langflow?: boolean;
   embedding_model?: string;
   embedding_provider?: string;
+  archive_sources_enabled?: boolean;
 
   // Provider-specific settings (for dialogs)
   model_provider?: string; // Deprecated, kept for backward compatibility

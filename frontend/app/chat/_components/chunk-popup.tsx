@@ -1,11 +1,12 @@
 "use client";
 
-import { ExternalLink, X } from "lucide-react";
+import { Download, Eye, X } from "lucide-react";
 import { useRef } from "react";
 import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
 import type { ToolCallResult } from "@/app/chat/_types/types";
 import { PopoverContent } from "@/components/ui/popover";
 import { DEFAULT_KNOWLEDGE_SETTINGS } from "@/lib/constants";
+import { getDownloadSourceUrl, getSourcePreviewKind } from "@/lib/source-url";
 
 interface ChunkPopupProps {
   onClose: () => void;
@@ -14,6 +15,8 @@ interface ChunkPopupProps {
   score: number | string;
   sourceText: string;
   item: ToolCallResult;
+  onPreviewDocument?: () => void;
+  showViewDocument?: boolean;
 }
 
 const getMetadataValue = (
@@ -23,6 +26,7 @@ const getMetadataValue = (
     | "parser"
     | "chunk_size"
     | "chunk_overlap"
+    | "mimetype"
     | "page"
     | "score",
 ): unknown =>
@@ -103,11 +107,22 @@ export function ChunkPopup({
   score,
   sourceText,
   item,
+  onPreviewDocument,
+  showViewDocument = true,
 }: ChunkPopupProps) {
   const { data: settings } = useGetSettingsQuery();
   const closeButtonRef = useRef<HTMLButtonElement>(null);
 
-  const hasUrl = !!item.source_url;
+  const sourceUrl = getDownloadSourceUrl(item.source_url ?? undefined);
+  const mimetype = getMetadataValue(item, "mimetype");
+  const previewKind = getSourcePreviewKind(
+    filename,
+    typeof mimetype === "string" ? mimetype : undefined,
+  );
+  const canPreview = Boolean(
+    showViewDocument && previewKind && sourceUrl && onPreviewDocument,
+  );
+  const hasUrl = showViewDocument && Boolean(sourceUrl);
   const parser = formatParser(item, filename);
   const scoreLabel = formatScore(item, score);
   const pageLabel = formatPage(item);
@@ -192,21 +207,27 @@ export function ChunkPopup({
               Source text
             </span>
             <div className="flex items-center gap-3">
-              {hasUrl && (
+              {canPreview && (
                 <button
                   type="button"
-                  onClick={() =>
-                    window.open(
-                      item.source_url!,
-                      "_blank",
-                      "noopener,noreferrer",
-                    )
-                  }
+                  onClick={onPreviewDocument}
                   className="text-accent-purple-foreground hover:text-primary-hover text-[10px] font-bold flex items-center gap-1 hover:underline transition-all cursor-pointer"
                 >
-                  <ExternalLink className="w-3 h-3" />
-                  View document
+                  <Eye className="w-3 h-3" />
+                  Preview document
                 </button>
+              )}
+              {hasUrl && sourceUrl && (
+                <a
+                  href={sourceUrl}
+                  download={filename}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-accent-purple-foreground hover:text-primary-hover text-[10px] font-bold flex items-center gap-1 hover:underline transition-all cursor-pointer"
+                >
+                  <Download className="w-3 h-3" />
+                  Download document
+                </a>
               )}
             </div>
           </div>
