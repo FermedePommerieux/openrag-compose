@@ -28,6 +28,9 @@ def backend_write_client(monkeypatch):
 
     client = AsyncMock()
     client.delete = AsyncMock(return_value={"result": "deleted"})
+    # Post-Langflow verification deliberately uses the trusted writer client,
+    # rather than the user-scoped search client used by the fixture below.
+    client.search = AsyncMock(return_value={"hits": {"hits": [{"_id": "indexed"}]}})
     monkeypatch.setattr(cfg.clients, "opensearch", client)
     return client
 
@@ -220,9 +223,9 @@ async def test_connector_processor_deletes_chunks_when_source_returns_404(
     search_call = opensearch_client.search.await_args
     query = search_call.kwargs["body"]["query"]
     shoulds = query["bool"]["filter"][0]["bool"]["should"]
-    fields = {next(iter(c["term"])): next(iter(c["term"].values())) for c in shoulds}
-    assert fields["connector_file_id"] == "file-id-1"
-    assert fields["document_id"] == "file-id-1"
+    fields = {next(iter(c["terms"])): next(iter(c["terms"].values())) for c in shoulds}
+    assert fields["connector_file_id"] == ["file-id-1"]
+    assert fields["document_id"] == ["file-id-1"]
 
 
 @pytest.mark.asyncio
@@ -395,6 +398,29 @@ async def test_langflow_connector_processor_uses_cleaned_filename(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_hybrid_connector_ingestion_bypasses_langflow(monkeypatch):
+    """Hybrid is backend-owned even when Langflow ingestion is normally enabled."""
+    monkeypatch.setattr("config.settings.DISABLE_INGEST_WITH_LANGFLOW", False)
+    processor = _build_langflow_processor(replace_duplicates=False)
+    document = _make_document()
+    _wire_langflow_processor(processor, document, filename_exists=False)
+
+    knowledge = MagicMock(
+        disable_ingest_with_langflow=False,
+        chunking_strategy="hybrid",
+        ocr=False,
+        picture_descriptions=False,
+    )
+    monkeypatch.setattr("models.processors.get_openrag_config", lambda: MagicMock(knowledge=knowledge))
+    processor.process_document_standard = AsyncMock(return_value={"status": "indexed", "id": "hash-1"})
+
+    await processor.process_item(_make_upload_task(), "file-id-1", _make_file_task())
+
+    processor.process_document_standard.assert_awaited_once()
+    processor.connector_service.langflow_service.upload_and_ingest_file.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_langflow_connector_processor_overwrites_when_replace_true(
     monkeypatch, backend_write_client
 ):
@@ -402,6 +428,10 @@ async def test_langflow_connector_processor_overwrites_when_replace_true(
     processor = _build_langflow_processor(replace_duplicates=True)
     document = _make_document()
     _wire_langflow_processor(processor, document, filename_exists=True, connector_id_exists=True)
+    # The replacement first checks the content hash in the caller's owner scope,
+    # then verifies the new connector id through the trusted writer.  The query
+    # shape is covered elsewhere; this test covers filename replacement behavior.
+    processor.check_document_exists = AsyncMock(side_effect=[False, True])
 
     file_task = _make_file_task()
     upload_task = _make_upload_task()
@@ -413,6 +443,9 @@ async def test_langflow_connector_processor_overwrites_when_replace_true(
     # write client) before re-uploading to Langflow.
     backend_write_client.delete.assert_awaited()
     processor.connector_service.langflow_service.upload_and_ingest_file.assert_awaited_once()
+    first_check = processor.check_document_exists.await_args_list[0]
+    assert first_check.kwargs["owner_user_id"] == "user-1"
+    assert first_check.kwargs["shared"] is False
 
 
 @pytest.mark.asyncio
@@ -471,6 +504,7 @@ async def test_langflow_connector_processor_hash_unchanged_path_preserved(monkey
     processor = _build_langflow_processor(replace_duplicates=False)
     document = _make_document()
     _wire_langflow_processor(processor, document, filename_exists=False, hash_exists=True)
+    processor.check_document_exists = AsyncMock(return_value=True)
 
     file_task = _make_file_task()
     upload_task = _make_upload_task()
@@ -480,6 +514,9 @@ async def test_langflow_connector_processor_hash_unchanged_path_preserved(monkey
     assert file_task.status == TaskStatus.COMPLETED
     assert (file_task.result or {}).get("status") == "unchanged"
     processor.connector_service.langflow_service.upload_and_ingest_file.assert_not_called()
+    first_check = processor.check_document_exists.await_args
+    assert first_check.kwargs["owner_user_id"] == "user-1"
+    assert first_check.kwargs["shared"] is False
 
 
 # ---------------------------------------------------------------------------
@@ -581,7 +618,7 @@ async def test_rename_cleanup_matches_both_id_fields(monkeypatch, backend_write_
         )
 
     shoulds = captured["query"]["bool"]["filter"][0]["bool"]["should"]
-    fields = {next(iter(c["term"])) for c in shoulds}
+    fields = {next(iter(c["terms"])) for c in shoulds}
     assert fields == {"document_id", "connector_file_id", "connector_file_id.keyword"}
     excluded = captured["query"]["bool"]["must_not"][0]["terms"]["filename"]
     assert set(get_filename_aliases("Renamed.pdf")).issubset(set(excluded))

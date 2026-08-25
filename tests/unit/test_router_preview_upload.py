@@ -242,3 +242,49 @@ def test_manual_upload_uses_global_archiving_setting_when_form_field_is_absent(
 
     assert _resolve_archive_source(None) is True
     assert _resolve_archive_source("false") is False
+
+
+@pytest.mark.asyncio
+async def test_hybrid_upload_uses_backend_pipeline_even_when_langflow_is_enabled():
+    """HybridChunker lives in the backend pipeline, so the router must reach it."""
+    mock_file = MagicMock(spec=UploadFile)
+    mock_file.filename = "hybrid.pdf"
+    mock_file.content_type = "application/pdf"
+    mock_file.read = AsyncMock(return_value=b"%PDF-hybrid")
+    mock_temp_file = MagicMock()
+    mock_temp_file.name = "/tmp/hybrid.pdf"
+    task_service = MagicMock()
+    task_service.create_upload_task = AsyncMock(return_value="hybrid-task")
+    task_service.create_langflow_upload_task = AsyncMock(return_value="langflow-task")
+    user = User(user_id="user-1", email="u@example.com", name="User", jwt_token="Bearer tok")
+
+    with (
+        patch("api.router.get_openrag_config") as mock_cfg,
+        patch("api.router.tempfile.NamedTemporaryFile", return_value=mock_temp_file),
+        patch("api.router.open", create=True),
+        patch("utils.file_utils.safe_unlink"),
+        patch("api.router.is_ingest_preview_enabled", return_value=False),
+        patch("config.settings.is_no_auth_mode", return_value=True),
+        patch("api.documents._ensure_index_exists", new=AsyncMock()),
+    ):
+        mock_cfg.return_value.knowledge.disable_ingest_with_langflow = False
+        mock_cfg.return_value.knowledge.chunking_strategy = "hybrid"
+        response = await upload_ingest_router(
+            file=[mock_file],
+            session_id=None,
+            settings_json=None,
+            tweaks_json=None,
+            replace_duplicates="true",
+            create_filter="false",
+            preview="false",
+            archive_source="false",
+            langflow_file_service=MagicMock(),
+            session_manager=MagicMock(),
+            task_service=task_service,
+            document_service=MagicMock(),
+            user=user,
+        )
+
+    assert response.status_code == 202
+    task_service.create_upload_task.assert_awaited_once()
+    task_service.create_langflow_upload_task.assert_not_called()

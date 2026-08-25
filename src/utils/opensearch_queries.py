@@ -75,10 +75,11 @@ def build_anonymous_filename_query(filename: str) -> dict:
 
 
 def build_owned_document_query(document_id: str, owner: str) -> dict:
-    """Target one owner's logical document.
+    """Target one owner's logical document generation.
 
-    A document id is commonly a content hash, so it is not an authorization
-    boundary. Administrative write clients must always include ownership.
+    ``document_id`` is generally a content hash, so two users can legitimately
+    share it.  Administrative writes bypass DLS and therefore must include the
+    ownership scope explicitly instead of trusting the caller's visibility.
     """
     return {
         "bool": {

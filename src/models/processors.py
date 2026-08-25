@@ -1,12 +1,17 @@
 import asyncio
+import hashlib
+import json
 import mimetypes
 import os
 import time
+import uuid
 from typing import TYPE_CHECKING, Any, Literal
 
 from config.settings import clients, get_embedding_model, get_index_name, get_openrag_config
 from session_manager import AnonymousUser
 from utils.document_processing import (
+    HybridChunkingError,
+    chunk_docling_hybrid,
     extract_relevant,
     process_text_file,
     resplit_chunks_character_windows,
@@ -29,6 +34,7 @@ logger = get_logger(__name__)
 
 DOCLING_PARSER_LABEL = "Docling Serve 1.20.0"
 TEXT_PARSER_LABEL = "Text Parser"
+DUPLICATE_FILENAME_WARNING = "A file with this name already exists."
 
 if TYPE_CHECKING:
     from connectors.base import DocumentACL
@@ -288,19 +294,306 @@ class TaskProcessor:
                     retry_delay *= 2  # Exponential backoff
         return False
 
+    @staticmethod
+    def _chunking_config_fingerprint(
+        *,
+        strategy: str,
+        chunk_size: int | None,
+        chunk_overlap: int | None,
+        hybrid_max_tokens: int,
+        hybrid_merge_peers: bool,
+    ) -> str:
+        """Hash the chunking inputs that determine a document generation."""
+        payload = {
+            "strategy": strategy,
+            "chunk_size": chunk_size if strategy == "character" else None,
+            "chunk_overlap": chunk_overlap if strategy == "character" else None,
+            "hybrid_max_tokens": hybrid_max_tokens if strategy == "hybrid" else None,
+            "hybrid_merge_peers": hybrid_merge_peers if strategy == "hybrid" else None,
+        }
+        canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+        return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+    async def check_document_matches_chunking(
+        self,
+        file_hash: str,
+        opensearch_client,
+        *,
+        fingerprint: str,
+        owner_user_id: str | None = None,
+        shared: bool = False,
+    ) -> bool:
+        """Return true only for a generation indexed with the same settings.
+
+        Legacy chunks without a fingerprint deliberately re-index once.  This
+        makes a request to switch character to hybrid observable instead of
+        silently treating a same-content document as unchanged.
+        """
+        from utils.opensearch_queries import (
+            build_anonymous_document_query,
+            build_owned_document_query,
+        )
+
+        # Identical bytes produce identical hashes.  Never let a user A's
+        # generation make user B's same-content upload appear already indexed.
+        # DLS is not enough here because later promotion uses an admin client.
+        scope_query = (
+            build_anonymous_document_query(file_hash)
+            if shared or owner_user_id is None
+            else build_owned_document_query(file_hash, owner_user_id)
+        )
+        try:
+            response = await opensearch_client.search(
+                index=get_index_name(),
+                body={
+                    "size": 1,
+                    "_source": ["chunking_config_fingerprint"],
+                    "query": scope_query,
+                },
+            )
+        except Exception as exc:
+            logger.warning("Chunking generation check failed; re-indexing safely", error=str(exc))
+            return False
+        hits = response.get("hits", {}).get("hits", [])
+        if not hits:
+            return False
+        source = hits[0].get("_source", {})
+        return source.get("chunking_config_fingerprint") == fingerprint
+
+    async def _promote_document_generation(
+        self,
+        *,
+        opensearch_client,
+        new_storage_ids: set[str],
+        file_hash: str,
+        filename: str,
+        owner_user_id: str | None,
+        shared: bool,
+        replace_existing_filename: bool,
+        connector_file_id: str | None,
+        connector_type: str,
+    ) -> None:
+        """Delete prior scoped chunks only after a complete new generation exists."""
+        from connectors.chunk_cleanup import build_connector_file_chunks_query
+        from utils.opensearch_delete import collect_visible_document_hits, delete_document_ids
+        from utils.opensearch_queries import (
+            build_anonymous_document_query,
+            build_anonymous_filename_query,
+            build_owned_document_query,
+            build_owned_filename_query,
+            build_replace_filename_query,
+        )
+
+        write_client = clients.opensearch
+        if write_client is None:
+            raise RuntimeError("Backend OpenSearch write client is unavailable")
+
+        # A content hash is a logical document identity, not an ownership
+        # boundary.  The trusted writer can see every tenant's chunks, so every
+        # destructive query begins with this owner/shared scope before optional
+        # filename or connector identities are added.
+        document_query = (
+            build_anonymous_document_query(file_hash)
+            if shared or owner_user_id is None
+            else build_owned_document_query(file_hash, owner_user_id)
+        )
+        queries: list[dict[str, Any]] = [document_query]
+        if replace_existing_filename:
+            for candidate in get_filename_aliases(filename):
+                if shared:
+                    queries.append(build_replace_filename_query(candidate, owner_user_id))
+                elif owner_user_id:
+                    queries.append(build_owned_filename_query(candidate, owner_user_id))
+                else:
+                    queries.append(build_anonymous_filename_query(candidate))
+        if connector_file_id:
+            queries.append(
+                build_connector_file_chunks_query(
+                    [connector_file_id],
+                    connector_type=connector_type,
+                    owner_user_id=owner_user_id,
+                    shared=shared,
+                )
+            )
+
+        old_hits: dict[str, dict[str, Any]] = {}
+        for query in queries:
+            for hit in await collect_visible_document_hits(
+                    opensearch_client,
+                    index=get_index_name(),
+                    query=query,
+                    source=True,
+                ):
+                old_hits[hit["_id"]] = hit
+        stale_ids = set(old_hits) - new_storage_ids
+        if stale_ids:
+            try:
+                await delete_document_ids(
+                    write_client,
+                    index=get_index_name(),
+                    document_ids=sorted(stale_ids),
+                    refresh=True,
+                )
+            except Exception as delete_error:
+                # Individual DLS-safe deletes can fail after a subset succeeds.
+                # Restore the snapshot before surfacing the failure so a failed
+                # promotion never leaves the previous generation partially lost.
+                try:
+                    await self._restore_document_snapshot(
+                        write_client=write_client,
+                        index_name=get_index_name(),
+                        snapshot=old_hits,
+                        document_ids=stale_ids,
+                    )
+                except Exception as restore_error:
+                    # This is intentionally fatal.  A partial bulk success is
+                    # not a rollback, and operators need the affected primary
+                    # ids to recover without guessing which generation survived.
+                    logger.error(
+                        "Hybrid promotion rollback failed after partial delete",
+                        error=str(restore_error),
+                        delete_error=str(delete_error),
+                        affected_chunk_ids=sorted(stale_ids),
+                    )
+                    raise RuntimeError(
+                        "Hybrid promotion delete failed and rollback could not be verified; "
+                        f"affected_chunk_ids={sorted(stale_ids)}"
+                    ) from restore_error
+                raise
+
+    @staticmethod
+    async def _restore_document_snapshot(
+        *,
+        write_client,
+        index_name: str,
+        snapshot: dict[str, dict[str, Any]],
+        document_ids: set[str],
+    ) -> None:
+        """Restore and verify every old chunk after a failed promotion.
+
+        OpenSearch bulk responses may be HTTP-successful while individual
+        actions fail.  The previous generation remains the rollback contract,
+        so treating ``errors=true`` or a missing item as success would hide a
+        data-loss incident.
+        """
+        restore_body: list[dict[str, Any]] = []
+        expected_ids: set[str] = set()
+        for document_id in sorted(document_ids):
+            source = snapshot.get(document_id, {}).get("_source")
+            if not isinstance(source, dict):
+                raise RuntimeError(f"Rollback snapshot is missing source for {document_id}")
+            expected_ids.add(document_id)
+            restore_body.extend([{"index": {"_index": index_name, "_id": document_id}}, source])
+        if not restore_body:
+            return
+
+        response = await write_client.bulk(body=restore_body, refresh=True)
+        if not isinstance(response, dict):
+            raise RuntimeError("Rollback bulk response was not an object")
+        failures: list[dict[str, Any]] = []
+        restored_ids: set[str] = set()
+        for item in response.get("items", []):
+            action = item.get("index") if isinstance(item, dict) else None
+            if not isinstance(action, dict):
+                failures.append({"item": item})
+                continue
+            item_id = action.get("_id")
+            if action.get("error") or int(action.get("status", 500)) not in {200, 201}:
+                failures.append({"id": item_id, "status": action.get("status"), "error": action.get("error")})
+                continue
+            if item_id:
+                restored_ids.add(str(item_id))
+        missing_ids = expected_ids - restored_ids
+        if response.get("errors") or failures or missing_ids:
+            raise RuntimeError(
+                "Rollback bulk restore was incomplete: "
+                f"failures={failures}, missing_chunk_ids={sorted(missing_ids)}"
+            )
+
+    async def resolve_duplicate_filename(
+        self,
+        filename: str,
+        opensearch_client,
+        *,
+        replace: bool,
+        owner_user_id: str | None,
+        shared: bool = False,
+    ) -> Literal["proceed", "skip", "replaced", "replace_pending"]:
+        """Single duplicate-filename policy shared by every processor.
+
+        Checks whether a document with this filename (or one of its aliases)
+        is already indexed and applies the caller's replace decision:
+
+          * ``"proceed"``  — no duplicate; continue ingestion.
+          * ``"skip"``     — duplicate and ``replace`` is False; the caller
+                             should finish via ``mark_duplicate_skipped``.
+          * ``"replaced"`` — duplicate and ``replace`` is True; the existing
+                             chunks were deleted and the index refreshed, so
+                             ingestion can continue.
+          * ``"replace_pending"`` — Hybrid ingestion retains the existing
+                             generation until the backend promotes a validated
+                             replacement.
+        """
+        if not await self.check_filename_exists(filename, opensearch_client):
+            return "proceed"
+        if not replace:
+            return "skip"
+
+        if get_openrag_config().knowledge.chunking_strategy == "hybrid":
+            logger.info("Deferring duplicate deletion until hybrid generation promotion", filename=filename)
+            return "replace_pending"
+
+        logger.info(f"Replacing existing document: {filename}")
+        deleted = await self.delete_document_by_filename(
+            filename,
+            opensearch_client,
+            owner_user_id=owner_user_id,
+            shared=shared,
+        )
+        if deleted == 0:
+            logger.warning(
+                "Replacement requested but deletion removed no chunks",
+                filename=filename,
+            )
+            return "skip"
+        # Refresh so the delete is visible before re-ingest. refresh is
+        # index-wide (indices:admin/refresh) and cannot be DLS-scoped, so it
+        # must run under the admin/service client, not the user client.
+        try:
+            await clients.opensearch.indices.refresh(index=get_index_name())
+        except Exception as refresh_error:
+            logger.warning(
+                "Failed to refresh index after delete",
+                error=str(refresh_error),
+            )
+        return "replaced"
+
+    def mark_duplicate_skipped(self, upload_task: UploadTask, file_task: FileTask) -> None:
+        """Uniform terminal state for a duplicate that was not replaced:
+        SKIPPED, counted toward successful files, with a warning the task view
+        surfaces. A declined replacement is a chosen outcome, not an error."""
+        file_task.status = TaskStatus.SKIPPED
+        file_task.error = None
+        file_task.result = {
+            "status": "skipped",
+            "reason": "duplicate_filename",
+            "warning": DUPLICATE_FILENAME_WARNING,
+        }
+        file_task.updated_at = time.time()
+        upload_task.successful_files += 1
+
     async def delete_document_by_filename(
         self,
         filename: str,
         opensearch_client,
         owner_user_id: str | None = None,
         shared: bool = False,
-    ) -> None:
-        """
-        Delete all chunks of a document with the given filename from OpenSearch.
-        """
+    ) -> int:
+        """Delete all chunks for a filename and return the deleted count."""
         from config.settings import clients, get_index_name
         from utils.opensearch_delete import collect_visible_document_ids, delete_document_ids
         from utils.opensearch_queries import (
+            build_anonymous_filename_query,
             build_owned_filename_query,
             build_replace_filename_query,
         )
@@ -310,13 +603,20 @@ class TaskProcessor:
             if write_client is None:
                 raise RuntimeError("Backend OpenSearch write client is unavailable")
 
-            deleted_count = 0
             if not owner_user_id:
-                logger.warning(
-                    "Skipped delete_by_filename because owner_user_id is missing",
-                    filename=filename,
-                )
-                return
+                if shared:
+
+                    def build_query(fname, _owner):
+                        return build_anonymous_filename_query(fname)
+
+                else:
+                    logger.warning(
+                        "Skipped delete_by_filename because owner_user_id is missing",
+                        filename=filename,
+                    )
+                    return 0
+            else:
+                build_query = build_replace_filename_query if shared else build_owned_filename_query
 
             candidate_filenames = get_filename_aliases(filename)
             if not candidate_filenames:
@@ -324,14 +624,9 @@ class TaskProcessor:
                     "Skipped delete_by_filename because filename input is empty",
                     filename=filename,
                 )
-                return
+                return 0
 
-            # When shared=True the document being replaced may have previously
-            # been ingested without an owner field (also shared), so the normal
-            # owner-scoped query would miss those chunks.  Use a broader query
-            # that covers both owned and ownerless chunks for this filename.
-            build_query = build_replace_filename_query if shared else build_owned_filename_query
-
+            deleted_count = 0
             for candidate in candidate_filenames:
                 document_ids = await collect_visible_document_ids(
                     opensearch_client,
@@ -346,6 +641,7 @@ class TaskProcessor:
             logger.info(
                 "Deleted existing document chunks", filename=filename, deleted_count=deleted_count
             )
+            return deleted_count
 
         except Exception as e:
             logger.error("Failed to delete existing document", filename=filename, error=str(e))
@@ -358,64 +654,25 @@ class TaskProcessor:
         owner_user_id: str,
         keep_filenames: list[str] | None = None,
         shared: bool = False,
+        connector_type: str | None = None,
     ) -> int:
         """Delete indexed chunks for a connector file by its STABLE id.
 
-        Matches both ``connector_file_id`` (standard path, where ``document_id``
-        holds the content hash) and ``document_id`` (Langflow path, where it
-        holds the connector id). When ``keep_filenames`` is given, chunks whose
-        filename is one of those names are preserved — used to drop only the
-        stale OLD-name chunks left behind by a rename, since a connector file
-        keeps the same id across renames. Best-effort: logs and returns 0 on
-        failure so a cleanup miss never fails the task.
+        Deletion semantics live in ``connectors.chunk_cleanup``. This wrapper
+        stays best-effort so a cleanup miss never fails the surrounding task.
         """
-        from utils.opensearch_delete import collect_visible_document_ids, delete_document_ids
+        from connectors.chunk_cleanup import delete_connector_file_chunks
 
         if not file_id:
             return 0
         try:
-            write_client = clients.opensearch
-            if write_client is None:
-                raise RuntimeError("Backend OpenSearch write client is unavailable")
-
-            owner_filter = (
-                {"bool": {"must_not": {"exists": {"field": "owner"}}}}
-                if shared
-                else {"term": {"owner": owner_user_id}}
-            )
-            query: dict[str, Any] = {
-                "bool": {
-                    "filter": [
-                        {
-                            "bool": {
-                                "should": [
-                                    {"term": {"document_id": file_id}},
-                                    {"term": {"connector_file_id": file_id}},
-                                    # Some deployments' indices predate this field's
-                                    # addition to the explicit mapping, so it was
-                                    # dynamically mapped as analyzed text with a
-                                    # `.keyword` multi-field instead of `keyword`.
-                                    {"term": {"connector_file_id.keyword": file_id}},
-                                ],
-                                "minimum_should_match": 1,
-                            }
-                        },
-                        owner_filter,
-                    ]
-                }
-            }
-            if keep_filenames:
-                query["bool"]["must_not"] = [{"terms": {"filename": keep_filenames}}]
-
-            chunk_ids = await collect_visible_document_ids(
+            return await delete_connector_file_chunks(
+                [file_id],
                 opensearch_client,
-                index=get_index_name(),
-                query=query,
-            )
-            return await delete_document_ids(
-                write_client,
-                index=get_index_name(),
-                document_ids=chunk_ids,
+                connector_type=connector_type,
+                owner_user_id=owner_user_id,
+                shared=shared,
+                keep_filenames=keep_filenames,
             )
         except Exception as e:
             logger.error(
@@ -446,6 +703,9 @@ class TaskProcessor:
         picture_descriptions: bool | None = None,
         shared: bool = False,
         source_url: str | None = None,
+        replace_existing_filename: bool = False,
+        replace_connector_file_id: bool = False,
+        force_reprocess: bool = False,
     ):
         """
         Standard processing pipeline for non-Langflow processors:
@@ -471,19 +731,52 @@ class TaskProcessor:
         embedding_model = embedding_model or configured_embedding_model or get_embedding_model()
 
         if chunk_size is None:
-            chunk_size = config.knowledge.chunk_size
+            chunk_size = getattr(config.knowledge, "chunk_size", 1000)
         if chunk_overlap is None:
-            chunk_overlap = config.knowledge.chunk_overlap
+            chunk_overlap = getattr(config.knowledge, "chunk_overlap", 200)
+        try:
+            chunk_size = int(chunk_size)
+        except (TypeError, ValueError):
+            chunk_size = 1000
+        try:
+            chunk_overlap = int(chunk_overlap)
+        except (TypeError, ValueError):
+            chunk_overlap = 200
+        configured_strategy = getattr(config.knowledge, "chunking_strategy", "character")
+        requested_chunking_strategy = (
+            configured_strategy if configured_strategy in {"character", "hybrid"} else "character"
+        )
+        configured_hybrid_max_tokens = getattr(config.knowledge, "hybrid_max_tokens", 512)
+        try:
+            hybrid_max_tokens = max(1, int(configured_hybrid_max_tokens))
+        except (TypeError, ValueError):
+            hybrid_max_tokens = 512
+        configured_merge_peers = getattr(config.knowledge, "hybrid_merge_peers", True)
+        hybrid_merge_peers = (
+            configured_merge_peers if isinstance(configured_merge_peers, bool) else True
+        )
+        effective_chunking_strategy = "character"
+        chunking_fingerprint = self._chunking_config_fingerprint(
+            strategy=requested_chunking_strategy,
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap,
+            hybrid_max_tokens=hybrid_max_tokens,
+            hybrid_merge_peers=hybrid_merge_peers,
+        )
 
         # Get user's OpenSearch client with JWT for OIDC auth
         opensearch_client = self.document_service.session_manager.get_user_opensearch_client(
             owner_user_id, jwt_token
         )
 
-        # Check if already exists
-        if await self.check_document_exists(
+        # Same bytes are unchanged only when the chunking generation also
+        # matches. A character-indexed document must be eligible for an
+        # explicit hybrid request, and legacy chunks without a fingerprint are
+        # re-indexed once rather than silently preserved.
+        if not force_reprocess and await self.check_document_matches_chunking(
             file_hash,
             opensearch_client,
+            fingerprint=chunking_fingerprint,
             owner_user_id=owner_user_id,
             shared=shared,
         ):
@@ -499,6 +792,11 @@ class TaskProcessor:
         file_ext = os.path.splitext(file_path)[1].lower()
 
         if file_ext in (".txt", ".md"):
+            if requested_chunking_strategy == "hybrid":
+                raise ValueError(
+                    "Hybrid chunking was requested but is unavailable for plain-text documents; "
+                    "requested_chunking_strategy=hybrid effective_chunking_strategy=none"
+                )
             # Simple text file processing without docling
             logger.info(
                 "Processing as plain text file (bypassing docling)",
@@ -518,11 +816,29 @@ class TaskProcessor:
             slim_doc = extract_relevant(full_doc)
             slim_doc["parser"] = DOCLING_PARSER_LABEL
 
+            if requested_chunking_strategy == "hybrid":
+                try:
+                    slim_doc["chunks"] = chunk_docling_hybrid(
+                        full_doc,
+                        max_tokens=hybrid_max_tokens,
+                        merge_peers=hybrid_merge_peers,
+                    )
+                except HybridChunkingError as exc:
+                    # The caller records this message on the failed file task.
+                    # Include both strategies there as well as on successful
+                    # task results: hybrid must never be mistaken for a silent
+                    # character-chunking fallback.
+                    raise HybridChunkingError(
+                        "Hybrid chunking failed; requested_chunking_strategy=hybrid "
+                        f"effective_chunking_strategy=none: {exc}"
+                    ) from exc
+                effective_chunking_strategy = "hybrid"
+
         # Override filename with original_filename if provided
         if original_filename:
             slim_doc["filename"] = original_filename
 
-        if chunk_size is not None:
+        if effective_chunking_strategy != "hybrid" and chunk_size is not None:
             try:
                 cs = int(chunk_size)
             except (TypeError, ValueError):
@@ -593,48 +909,6 @@ class TaskProcessor:
         if document_index_writer is None:
             document_index_writer = DocumentIndexWriter()
 
-        # Clear stale chunks from a prior indexing of this document. Chunks are
-        # stored under ids {file_hash}_{i}; if the new chunk count is lower
-        # than the prior one, trailing chunks would otherwise survive the
-        # writer's idempotent upsert.
-        # DLS-safe: enumerate visible chunk ids with the scoped user client,
-        # then delete concrete ids with the trusted backend client.
-        try:
-            from utils.opensearch_delete import (
-                collect_visible_document_ids,
-                delete_document_ids,
-            )
-            from utils.opensearch_queries import (
-                build_anonymous_document_query,
-                build_owned_document_query,
-            )
-
-            write_client = clients.opensearch
-            if write_client is None:
-                raise RuntimeError("Backend OpenSearch write client is unavailable")
-
-            stale_chunk_ids = await collect_visible_document_ids(
-                opensearch_client,
-                index=get_index_name(),
-                query=(
-                    build_anonymous_document_query(file_hash)
-                    if shared or owner_user_id is None
-                    else build_owned_document_query(file_hash, owner_user_id)
-                ),
-            )
-            await delete_document_ids(
-                write_client,
-                index=get_index_name(),
-                document_ids=stale_chunk_ids,
-                refresh=True,
-            )
-        except Exception as e:
-            logger.warning(
-                "Failed to clear stale chunks before re-index; proceeding",
-                file_hash=file_hash,
-                error=str(e),
-            )
-
         # Owner is always the authenticated uploading/syncing user unless shared=True,
         # in which case owner fields are omitted so DLS makes the doc visible to all users.
         owner, owner_name, owner_email = resolve_shared_owner_fields(
@@ -668,6 +942,11 @@ class TaskProcessor:
             allowed_principals=allowed_principals,
             allowed_principal_labels=allowed_principal_labels,
             is_sample_data=is_sample_data,
+            chunking_strategy=effective_chunking_strategy,
+            chunking_config_fingerprint=chunking_fingerprint,
+            # Store the new generation under distinct physical ids.  The old
+            # generation remains searchable until every new chunk validates.
+            ingest_run_id=uuid.uuid4().hex,
         )
         parser_name = slim_doc.get("parser")
         if not parser_name:
@@ -676,7 +955,10 @@ class TaskProcessor:
             else:
                 parser_name = DOCLING_PARSER_LABEL
 
-        chunk_metadata = {"parser": parser_name}
+        chunk_metadata = {
+            "parser": parser_name,
+            "chunking_strategy": effective_chunking_strategy,
+        }
         if chunk_size is not None:
             chunk_metadata["chunk_size"] = chunk_size
         if chunk_overlap is not None:
@@ -690,12 +972,58 @@ class TaskProcessor:
                 text=chunk["text"],
                 vector=vect,
                 page=chunk["page"],
+                chunk_index=i,
                 metadata=chunk_metadata,
             )
             for i, (chunk, vect) in enumerate(zip(slim_doc["chunks"], embeddings, strict=True))
         ]
-        await document_index_writer.index_chunks(index_context, index_chunks, final=True)
-        return {"status": "indexed", "id": file_hash}
+        new_storage_ids = {
+            DocumentIndexWriter.storage_chunk_id(index_context, chunk.chunk_id)
+            for chunk in index_chunks
+        }
+        try:
+            await document_index_writer.index_chunks(index_context, index_chunks, final=True)
+            await self._promote_document_generation(
+                opensearch_client=opensearch_client,
+                new_storage_ids=new_storage_ids,
+                file_hash=file_hash,
+                filename=filename,
+                owner_user_id=owner_user_id,
+                shared=shared,
+                replace_existing_filename=replace_existing_filename,
+                connector_file_id=connector_file_id if replace_connector_file_id else None,
+                connector_type=connector_type,
+            )
+        except Exception:
+            # Promotion is all-or-nothing from the user's perspective: never
+            # remove an old generation until this new run is complete, and
+            # clean only the temporary run if validation or promotion fails.
+            cleanup_writer = (
+                document_index_writer
+                if hasattr(document_index_writer, "delete_ingest_run")
+                else DocumentIndexWriter()
+            )
+            try:
+                await cleanup_writer.delete_ingest_run(
+                    index_context.ingest_run_id,
+                    index_name=get_index_name(),
+                    document_id=file_hash,
+                    owner=owner,
+                    shared=shared,
+                )
+            except Exception as cleanup_error:
+                logger.error(
+                    "Failed to clean temporary document generation after promotion failure",
+                    ingest_run_id=index_context.ingest_run_id,
+                    error=str(cleanup_error),
+                )
+            raise
+        return {
+            "status": "indexed",
+            "id": file_hash,
+            "requested_chunking_strategy": requested_chunking_strategy,
+            "effective_chunking_strategy": effective_chunking_strategy,
+        }
 
     async def process_item(self, upload_task: UploadTask, item: Any, file_task: FileTask) -> None:
         """
@@ -782,34 +1110,17 @@ class DocumentFileProcessor(TaskProcessor):
             # Path ingestion identifies known content by its hash inside
             # process_document_standard. A matching filename alone must not
             # discard a different document from the shared ingestion folder.
+            duplicate_action = "proceed"
             if not self.delete_source_after_success:
-                filename_exists = await self.check_filename_exists(
-                    original_filename, opensearch_client
+                duplicate_action = await self.resolve_duplicate_filename(
+                    original_filename,
+                    opensearch_client,
+                    replace=self.replace_duplicates,
+                    owner_user_id=self.owner_user_id,
                 )
-
-                if filename_exists and not self.replace_duplicates:
-                    file_task.status = TaskStatus.FAILED
-                    file_task.error = f"File with name '{original_filename}' already exists"
-                    file_task.updated_at = time.time()
-                    upload_task.failed_files += 1
+                if duplicate_action == "skip":
+                    self.mark_duplicate_skipped(upload_task, file_task)
                     return
-                if filename_exists and self.replace_duplicates:
-                    logger.info(f"Replacing existing document: {original_filename}")
-                    await self.delete_document_by_filename(
-                        original_filename,
-                        opensearch_client,
-                        owner_user_id=self.owner_user_id,
-                    )
-                    # Refresh is index-wide and must use the service client.
-                    from config.settings import get_index_name
-
-                    try:
-                        await clients.opensearch.indices.refresh(index=get_index_name())
-                    except Exception as refresh_error:
-                        logger.warning(
-                            "Failed to refresh index after delete",
-                            error=str(refresh_error),
-                        )
 
             # Compute hash
             file_hash = hash_id(item)
@@ -882,6 +1193,7 @@ class DocumentFileProcessor(TaskProcessor):
                 is_sample_data=self.is_sample_data,
                 acl=acl,
                 source_url=source_url,
+                replace_existing_filename=duplicate_action == "replace_pending",
                 **standard_kwargs,
             )
 
@@ -1157,6 +1469,20 @@ class ConnectorFileProcessor(TaskProcessor):
                 self.user_id, self.jwt_token
             )
 
+            duplicate_action = await self.resolve_duplicate_filename(
+                file_task.filename,
+                opensearch_client,
+                replace=self.replace_duplicates,
+                owner_user_id=self.user_id,
+                shared=self.shared,
+            )
+            if duplicate_action == "skip":
+                await self._reconcile_shared_owner(file_task.filename)
+                self.mark_duplicate_skipped(upload_task, file_task)
+                return
+
+            knowledge_config = get_openrag_config().knowledge
+
             # Rename cleanup: a connector file keeps a stable id across renames,
             # but chunks are keyed by filename/content-hash, so a renamed file
             # leaves its OLD-name chunks orphaned. Drop chunks for this id whose
@@ -1166,35 +1492,37 @@ class ConnectorFileProcessor(TaskProcessor):
             # Match against file_task.filename — the cleaned name the file is
             # actually indexed under — so duplicate/rename detection lines up
             # with how chunks are keyed.
-            renamed = (
-                await self._delete_connector_chunks(
-                    document.id,
-                    opensearch_client,
-                    self.user_id,
-                    keep_filenames=get_filename_aliases(file_task.filename),
-                    shared=self.shared,
-                )
-                > 0
-            )
+            if knowledge_config.chunking_strategy == "hybrid":
+                # Hybrid replacement is transactional: detect a rename without
+                # deleting its old chunks. The backend promotes the validated
+                # new generation and only then removes these stale ids.
+                from connectors.chunk_cleanup import build_connector_file_chunks_query
+                from utils.opensearch_delete import collect_visible_document_ids
 
-            if await self.check_filename_exists(file_task.filename, opensearch_client):
-                if not self.replace_duplicates:
-                    await self._reconcile_shared_owner(file_task.filename)
-                    file_task.status = TaskStatus.SKIPPED
-                    file_task.error = None
-                    file_task.result = {
-                        "status": "skipped",
-                        "reason": "duplicate_filename",
-                        "warning": "A file with this name already exists.",
-                    }
-                    file_task.updated_at = time.time()
-                    upload_task.successful_files += 1
-                    return
-                await self.delete_document_by_filename(
-                    file_task.filename,
-                    opensearch_client,
-                    owner_user_id=self.user_id,
-                    shared=self.shared,
+                renamed = bool(
+                    await collect_visible_document_ids(
+                        opensearch_client,
+                        index=get_index_name(),
+                        query=build_connector_file_chunks_query(
+                            [document.id],
+                            connector_type=connector_type,
+                            owner_user_id=self.user_id,
+                            shared=self.shared,
+                            keep_filenames=get_filename_aliases(file_task.filename),
+                        ),
+                    )
+                )
+            else:
+                renamed = (
+                    await self._delete_connector_chunks(
+                        document.id,
+                        opensearch_client,
+                        self.user_id,
+                        keep_filenames=get_filename_aliases(file_task.filename),
+                        shared=self.shared,
+                        connector_type=connector_type,
+                    )
+                    > 0
                 )
 
             # Create temporary file from document content
@@ -1209,11 +1537,15 @@ class ConnectorFileProcessor(TaskProcessor):
                 # Compute hash
                 file_hash = hash_id(tmp_path)
 
-                if not renamed and await self.check_document_exists(
-                    file_hash,
-                    opensearch_client,
-                    owner_user_id=self.user_id,
-                    shared=self.shared,
+                if (
+                    knowledge_config.chunking_strategy != "hybrid"
+                    and not renamed
+                    and await self.check_document_exists(
+                        file_hash,
+                        opensearch_client,
+                        owner_user_id=self.user_id,
+                        shared=self.shared,
+                    )
                 ):
                     await self._reconcile_shared_owner(file_task.filename)
                     file_task.status = TaskStatus.COMPLETED
@@ -1225,7 +1557,12 @@ class ConnectorFileProcessor(TaskProcessor):
                 from config.settings import DISABLE_INGEST_WITH_LANGFLOW
 
                 if (
-                    not DISABLE_INGEST_WITH_LANGFLOW
+                    not knowledge_config.disable_ingest_with_langflow
+                    and not DISABLE_INGEST_WITH_LANGFLOW
+                    # HybridChunker is implemented by the backend-owned
+                    # standard processor.  Do not silently send connectors
+                    # through Langflow's independent chunking path.
+                    and knowledge_config.chunking_strategy != "hybrid"
                     and self.connector_service.langflow_service is not None
                 ):
                     # Delete existing chunks for this document before Langflow re-ingestion
@@ -1416,6 +1753,9 @@ class ConnectorFileProcessor(TaskProcessor):
                         acl=document.acl,
                         connector_file_id=document.id,
                         shared=self.shared,
+                        replace_existing_filename=duplicate_action == "replace_pending",
+                        replace_connector_file_id=renamed,
+                        force_reprocess=renamed,
                         **standard_kwargs,
                     )
 
@@ -1470,6 +1810,7 @@ class S3FileProcessor(TaskProcessor):
         owner_email: str = None,
         models_service=None,
         docling_service=None,
+        replace_duplicates: bool = False,
     ):
         import boto3
 
@@ -1484,6 +1825,7 @@ class S3FileProcessor(TaskProcessor):
         self.jwt_token = jwt_token
         self.owner_name = owner_name
         self.owner_email = owner_email
+        self.replace_duplicates = replace_duplicates
 
     async def process_item(self, upload_task: UploadTask, item: str, file_task: FileTask) -> None:
         """Download an S3 object and process it using DocumentService"""
@@ -1495,6 +1837,21 @@ class S3FileProcessor(TaskProcessor):
         file_task.updated_at = time.time()
 
         try:
+            # The S3 key is also the indexed filename, so duplicate policy can
+            # be resolved before downloading the object.
+            opensearch_client = self.document_service.session_manager.get_user_opensearch_client(
+                self.owner_user_id, self.jwt_token
+            )
+            duplicate_action = await self.resolve_duplicate_filename(
+                item,
+                opensearch_client,
+                replace=self.replace_duplicates,
+                owner_user_id=self.owner_user_id,
+            )
+            if duplicate_action == "skip":
+                self.mark_duplicate_skipped(upload_task, file_task)
+                return
+
             suffix = os.path.splitext(item)[1]
             with auto_cleanup_tempfile(suffix=suffix) as tmp_path:
                 # Download object to temporary file
@@ -1522,6 +1879,7 @@ class S3FileProcessor(TaskProcessor):
                     owner_email=self.owner_email,
                     file_size=file_size,
                     connector_type="s3",
+                    replace_existing_filename=duplicate_action == "replace_pending",
                 )
 
                 result["path"] = f"s3://{self.bucket}/{item}"
@@ -1559,7 +1917,6 @@ class LangflowFileProcessor(TaskProcessor):
         replace_duplicates: bool = False,
         connector_type: str = "local",
         docling_polling_service=None,
-        preview_mode: bool = False,
         source_urls: dict[str, str] | None = None,
         archive_sources: bool = False,
     ):
@@ -1576,7 +1933,6 @@ class LangflowFileProcessor(TaskProcessor):
         self.replace_duplicates = replace_duplicates
         self.connector_type = connector_type
         self.docling_polling_service = docling_polling_service
-        self.preview_mode = preview_mode
         self.source_urls = source_urls or {}
         self.archive_sources = archive_sources
 
@@ -1598,33 +1954,15 @@ class LangflowFileProcessor(TaskProcessor):
                 self.owner_user_id, self.jwt_token
             )
 
-            filename_exists = await self.check_filename_exists(original_filename, opensearch_client)
-
-            if filename_exists and not self.replace_duplicates:
-                # Duplicate exists and user hasn't confirmed replacement
-                file_task.status = TaskStatus.FAILED
-                file_task.error = f"File with name '{original_filename}' already exists"
-                file_task.updated_at = time.time()
-                upload_task.failed_files += 1
+            duplicate_action = await self.resolve_duplicate_filename(
+                original_filename,
+                opensearch_client,
+                replace=self.replace_duplicates,
+                owner_user_id=self.owner_user_id,
+            )
+            if duplicate_action == "skip":
+                self.mark_duplicate_skipped(upload_task, file_task)
                 return
-            elif filename_exists and self.replace_duplicates:
-                # Delete existing document before uploading new one
-                logger.info(f"Replacing existing document: {original_filename}")
-                await self.delete_document_by_filename(
-                    original_filename,
-                    opensearch_client,
-                    owner_user_id=self.owner_user_id,
-                )
-                # Refresh index to make deletion visible before processing.
-                # refresh is index-wide (indices:admin/refresh) and cannot be DLS-scoped,
-                # so it must run under the admin/service client, not the user client.
-                try:
-                    await clients.opensearch.indices.refresh(index=get_index_name())
-                except Exception as refresh_error:
-                    logger.warning(
-                        "Failed to refresh index after delete",
-                        error=str(refresh_error),
-                    )
 
             # Read file content for processing
             with open(item, "rb") as f:

@@ -517,6 +517,7 @@ class TestGetTaskStatusRegression:
             "phase",
             "docling_status",
             "docling_task_id",
+            "connector_type",
         }
         assert set(file_entry.keys()) == expected_keys
 

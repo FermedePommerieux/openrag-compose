@@ -325,7 +325,6 @@ class TaskService:
             replace_duplicates=replace_duplicates,
             connector_type=connector_type,
             docling_polling_service=self.docling_polling_service,
-            preview_mode=preview_mode,
             source_urls=source_urls,
             archive_sources=archive_sources,
         )
