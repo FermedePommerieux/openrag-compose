@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi import HTTPException
@@ -16,6 +17,28 @@ CALLBACK_GLOBAL_VARS = {
     "OPENRAG_INGEST_RUN_ID",
     "OPENRAG_INGEST_BATCH_SIZE",
 }
+
+_OPENSEARCH_INGEST_COMPONENT = (
+    "ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra"
+)
+_LEGACY_OPENSEARCH_INGEST_COMPONENT = "OpenSearchVectorStoreComponentMultimodalMultiEmbedding"
+
+
+def _ingest_opensearch_component(flow: dict) -> dict:
+    """Find the callback writer by stable component identity, never node ID."""
+    matches = [
+        node
+        for node in flow["data"]["nodes"]
+        if node.get("data", {}).get("type")
+        in {_OPENSEARCH_INGEST_COMPONENT, _LEGACY_OPENSEARCH_INGEST_COMPONENT}
+        and node.get("data", {}).get("node", {}).get("namespaced_id")
+        in {None, "", _OPENSEARCH_INGEST_COMPONENT}
+        and node.get("data", {}).get("node", {}).get("display_name")
+        == "OpenSearch (Multi-Model Multi-Embedding)"
+        and "VectorStore" in node.get("data", {}).get("node", {}).get("base_classes", [])
+    ]
+    assert len(matches) == 1
+    return matches[0]
 
 
 @pytest.mark.asyncio
@@ -126,6 +149,56 @@ def test_ingest_token_round_trips_connector_file_id():
 
 
 @pytest.mark.asyncio
+async def test_failed_callback_cleanup_uses_signed_context_before_revocation():
+    token_service = LangflowIngestTokenService(secret="test-secret" * 4, ttl_seconds=60)
+    context = DocumentIndexContext(
+        document_id="same-content",
+        filename="source.pdf",
+        mimetype="application/pdf",
+        embedding_model="text-embedding-3-small",
+        owner="user-a",
+        index_name="documents",
+        ingest_run_id="run-a",
+    )
+    token = token_service.create_token(context)
+    token_service.revoke_token = MagicMock(wraps=token_service.revoke_token)
+    writer = SimpleNamespace(delete_ingest_run=AsyncMock())
+    service = LangflowFileService(
+        ingest_token_service=token_service,
+        document_index_writer=writer,
+    )
+
+    await service._cleanup_failed_callback_ingest(ingest_token=token, ingest_run_id="run-a")
+
+    writer.delete_ingest_run.assert_awaited_once_with(
+        "run-a",
+        index_name="documents",
+        document_id="same-content",
+        owner="user-a",
+        shared=False,
+    )
+    token_service.revoke_token.assert_called_once_with(token)
+
+
+@pytest.mark.asyncio
+async def test_failed_callback_cleanup_refuses_unscoped_delete_when_token_is_invalid():
+    token_service = LangflowIngestTokenService(secret="test-secret" * 4, ttl_seconds=60)
+    token_service.revoke_token = MagicMock(wraps=token_service.revoke_token)
+    writer = SimpleNamespace(delete_ingest_run=AsyncMock())
+    service = LangflowFileService(
+        ingest_token_service=token_service,
+        document_index_writer=writer,
+    )
+
+    await service._cleanup_failed_callback_ingest(
+        ingest_token="not-a-valid-token", ingest_run_id="run-a"
+    )
+
+    writer.delete_ingest_run.assert_not_awaited()
+    token_service.revoke_token.assert_called_once_with("not-a-valid-token")
+
+
+@pytest.mark.asyncio
 async def test_langflow_ingest_callback_rewrites_langflow_chunk_ids():
     token_service = LangflowIngestTokenService(secret="test-secret" * 4, ttl_seconds=60)
     context = DocumentIndexContext(
@@ -222,7 +295,10 @@ async def test_langflow_file_service_sends_backend_callback_global_vars(monkeypa
 
     assert result == {"status": "ok"}
     payload = captured["json"]
-    assert LangflowFileService.INGEST_OPENSEARCH_COMPONENT_ID not in payload["tweaks"]
+    assert all(
+        not key.startswith("OpenSearchVectorStoreComponentMultimodalMultiEmbedding-")
+        for key in payload["tweaks"]
+    )
     headers = captured["headers"]
     assert headers["X-Langflow-Global-Var-OPENRAG_INGEST_URL"].endswith("/internal/ingest/chunks")
     assert headers["X-Langflow-Global-Var-OPENRAG_INGEST_TOKEN"]
@@ -294,22 +370,34 @@ async def test_langflow_file_service_marks_openrag_docs_callback_as_sample_data(
     assert decoded_context.is_sample_data is True
 
 
-@pytest.mark.parametrize(
-    ("flow_path", "component_id"),
-    [
-        ("flows/ingestion_flow.json", LangflowFileService.INGEST_OPENSEARCH_COMPONENT_ID),
-        ("flows/openrag_url_mcp.json", LangflowFileService.URL_INGEST_OPENSEARCH_COMPONENT_ID),
-    ],
-)
-def test_ingest_flows_resolve_callback_config_from_global_vars(flow_path, component_id):
-    flow = json.loads(Path(flow_path).read_text(encoding="utf-8"))
-    node = next(
-        node
-        for node in flow["data"]["nodes"]
-        if node.get("id") == component_id
-        and node.get("data", {}).get("node", {}).get("display_name")
-        == "OpenSearch (Multi-Model Multi-Embedding)"
+@pytest.mark.asyncio
+async def test_default_documents_use_callback_sample_classification_without_node_tweak():
+    from services.default_docs_service import _ingest_default_documents_langflow
+
+    captured = {}
+
+    class TaskService:
+        async def create_langflow_upload_task(self, **kwargs):
+            captured.update(kwargs)
+            return "task-1"
+
+    result = await _ingest_default_documents_langflow(
+        langflow_file_service=SimpleNamespace(),
+        session_manager=None,
+        task_service=TaskService(),
+        file_paths=["/tmp/example.md"],
+        connector_type="openrag_docs",
     )
+
+    assert result == "task-1"
+    assert captured["connector_type"] == "openrag_docs"
+    assert captured["tweaks"] is None
+
+
+@pytest.mark.parametrize("flow_path", ["flows/ingestion_flow.json", "flows/openrag_url_mcp.json"])
+def test_ingest_flows_resolve_callback_config_from_global_vars(flow_path):
+    flow = json.loads(Path(flow_path).read_text(encoding="utf-8"))
+    node = _ingest_opensearch_component(flow)
     template = node["data"]["node"]["template"]
 
     assert template["openrag_ingest_url"]["value"] == "OPENRAG_INGEST_URL"
@@ -341,17 +429,10 @@ def test_ingest_flows_resolve_callback_config_from_global_vars(flow_path, compon
     assert "value.lower() in" not in template["code"]["value"]
 
 
-@pytest.mark.parametrize(
-    ("flow_path", "component_id"),
-    [
-        ("flows/ingestion_flow.json", LangflowFileService.INGEST_OPENSEARCH_COMPONENT_ID),
-        ("flows/openrag_url_mcp.json", LangflowFileService.URL_INGEST_OPENSEARCH_COMPONENT_ID),
-    ],
-)
-def test_ingest_flows_wire_callback_global_vars_into_opensearch(flow_path, component_id):
+@pytest.mark.parametrize("flow_path", ["flows/ingestion_flow.json", "flows/openrag_url_mcp.json"])
+def test_ingest_flows_wire_callback_global_vars_into_opensearch(flow_path):
     flow = json.loads(Path(flow_path).read_text(encoding="utf-8"))
-    nodes = {node.get("id"): node for node in flow["data"]["nodes"]}
-    component = nodes[component_id]
+    component = _ingest_opensearch_component(flow)
     template = component["data"]["node"]["template"]
     expected = {
         "openrag_ingest_url": "OPENRAG_INGEST_URL",
