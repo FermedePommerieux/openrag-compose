@@ -15,6 +15,11 @@ class Source(BaseModel):
     page: int | None = None
     mimetype: str | None = None
     source_url: str | None = None
+    document_id: str | None = None
+    chunk_id: str | None = None
+    chunk_index: int | None = None
+    chunking_strategy: str | None = None
+    connector_file_id: str | None = None
 
 
 class ChatResponse(BaseModel):
@@ -62,6 +67,11 @@ class SearchResult(BaseModel):
     page: int | None = None
     mimetype: str | None = None
     source_url: str | None = None
+    document_id: str | None = None
+    chunk_id: str | None = None
+    chunk_index: int | None = None
+    chunking_strategy: str | None = None
+    connector_file_id: str | None = None
 
 
 class SearchResponse(BaseModel):

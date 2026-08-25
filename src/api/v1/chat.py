@@ -46,16 +46,26 @@ def _extract_sources(item: dict) -> list[dict]:
     sources = []
     for result in item.get("results", []):
         if isinstance(result, dict) and "text" in result:
-            sources.append(
-                {
-                    "filename": result.get("filename", ""),
-                    "text": result.get("text", ""),
-                    "score": result.get("score", 0),
-                    "page": result.get("page"),
-                    "mimetype": result.get("mimetype"),
-                    "source_url": result.get("source_url"),
-                }
-            )
+            source = {
+                "filename": result.get("filename", ""),
+                "text": result.get("text", ""),
+                "score": result.get("score", 0),
+                "page": result.get("page"),
+                "mimetype": result.get("mimetype"),
+                "source_url": result.get("source_url"),
+            }
+            # Keep Retrieval v2 provenance intact for API-key clients while
+            # leaving fields optional for legacy indexed documents.
+            for field in (
+                "document_id",
+                "chunk_id",
+                "connector_file_id",
+                "chunk_index",
+                "chunking_strategy",
+            ):
+                if field in result:
+                    source[field] = result[field]
+            sources.append(source)
     return sources
 
 

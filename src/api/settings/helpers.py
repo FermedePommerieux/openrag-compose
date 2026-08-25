@@ -47,7 +47,7 @@ def _first_configured_embedding_provider(config, excluding: str) -> str:
 
 
 def _default_llm_model(provider: str) -> str:
-    """Return the default LLM model for a provider."""
+    """Return a stable default, deferring dynamic providers to their live catalog."""
     from config.model_constants import (
         ANTHROPIC_DEFAULT_LANGUAGE_MODEL,
         OPENAI_DEFAULT_LANGUAGE_MODEL,
@@ -56,19 +56,19 @@ def _default_llm_model(provider: str) -> str:
     return {
         "openai": OPENAI_DEFAULT_LANGUAGE_MODEL,
         "anthropic": ANTHROPIC_DEFAULT_LANGUAGE_MODEL,
-        "watsonx": "ibm/granite-3-8b-instruct",
-        "ollama": "llama3",
+        "watsonx": "",
+        "ollama": "",
     }.get(provider, "")
 
 
 def _default_embedding_model(provider: str) -> str:
-    """Return the default embedding model for a provider."""
+    """Return only the v0.6.0 static OpenAI default; other catalogs are dynamic."""
     from config.embedding_constants import OPENAI_DEFAULT_EMBEDDING_MODEL
 
     return {
         "openai": OPENAI_DEFAULT_EMBEDDING_MODEL,
-        "watsonx": "ibm/granite-embedding-278m-multilingual",
-        "ollama": "nomic-embed-text",
+        "watsonx": "",
+        "ollama": "",
     }.get(provider, "")
 
 

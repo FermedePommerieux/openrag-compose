@@ -1,6 +1,7 @@
 from typing import Any
 
 from services.conversation_persistence_service import conversation_persistence
+from utils.langflow_utils import parse_knowledge_chunks, strip_untrusted_fence_recursive
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -189,6 +190,11 @@ async def async_response_stream(
                     chunk_data = chunk.__dict__
                 else:
                     chunk_data = str(chunk)
+
+                # Retrieved chunks are fenced before reaching the model. Strip
+                # those transport-only markers before exposing or logging
+                # streamed tool payloads.
+                strip_untrusted_fence_recursive(chunk_data)
 
                 # Log detailed chunk structure for investigation (especially for Granite 3.3 8b)
                 if isinstance(chunk_data, dict):
@@ -637,28 +643,7 @@ async def async_langflow_chat(
     # regardless of `type` string (Langflow may use different type names).
     if hasattr(response_obj, "output") and response_obj.output:
         for output_item in response_obj.output:
-            for result in getattr(output_item, "results", None) or []:
-                rd = (
-                    result.model_dump()
-                    if hasattr(result, "model_dump")
-                    else (result if isinstance(result, dict) else {})
-                )
-                if "text" in rd:
-                    sources.append(
-                        {
-                            "filename": rd.get("filename", ""),
-                            "text": rd.get("text", ""),
-                            "score": rd.get("score", 0),
-                            "page": rd.get("page"),
-                            "mimetype": rd.get("mimetype"),
-                            "chunk_id": rd.get("chunk_id") or rd.get("id") or "",
-                            "id": rd.get("id") or rd.get("chunk_id") or "",
-                            "embedding_model": rd.get("embedding_model"),
-                            "parser": rd.get("parser"),
-                            "chunk_size": rd.get("chunk_size"),
-                            "chunk_overlap": rd.get("chunk_overlap"),
-                        }
-                    )
+            sources.extend(parse_knowledge_chunks(getattr(output_item, "results", None)))
 
     # Layer 2: Top-level dict inspection (mirrors streaming middleware in async_response_stream).
     # Langflow may embed retrieval results directly in the response dict rather than
@@ -674,26 +659,8 @@ async def async_langflow_chat(
             or resp_dict.get("outputs")
             or resp_dict.get("retrieved_documents")
             or resp_dict.get("retrieval_results")
-            or []
         )
-        if isinstance(implicit_results, list):
-            for result in implicit_results:
-                if isinstance(result, dict) and "text" in result:
-                    sources.append(
-                        {
-                            "filename": result.get("filename", ""),
-                            "text": result.get("text", ""),
-                            "score": result.get("score", 0),
-                            "page": result.get("page"),
-                            "mimetype": result.get("mimetype"),
-                            "chunk_id": result.get("chunk_id") or result.get("id") or "",
-                            "id": result.get("id") or result.get("chunk_id") or "",
-                            "embedding_model": result.get("embedding_model"),
-                            "parser": result.get("parser"),
-                            "chunk_size": result.get("chunk_size"),
-                            "chunk_overlap": result.get("chunk_overlap"),
-                        }
-                    )
+        sources.extend(parse_knowledge_chunks(implicit_results))
 
     # Layer 3: Citation-text fallback.
     # Parse "(Source: filename)" patterns emitted by the LLM when it cites documents.

@@ -99,6 +99,7 @@ class ChatService:
 
         from config.settings import (
             LANGFLOW_INGEST_CALLBACK_BATCH_SIZE,
+            OPENRAG_BACKEND_INTERNAL_URL,
             get_index_name,
             get_ingest_callback_url,
         )
@@ -139,6 +140,9 @@ class ChatService:
             LANGFLOW_INGEST_CALLBACK_BATCH_SIZE
         )
         extra_headers["X-Langflow-Global-Var-CONNECTOR_TYPE"] = "url"
+        extra_headers["X-Langflow-Global-Var-OPENRAG_RETRIEVAL_URL"] = (
+            f"{OPENRAG_BACKEND_INTERNAL_URL.rstrip('/')}/search"
+        )
 
         # Add provider credentials to headers
         await add_provider_credentials_to_headers(
@@ -155,46 +159,19 @@ class ChatService:
         limit = get_search_limit()
         score_threshold = get_score_threshold()
 
-        # Build the complete filter expression like the search service does
-        filter_expression: dict[str, Any] = {}
-        if filters:
-            filter_clauses = []
-            # Map frontend filter names to backend field names
-            field_mapping = {
-                "data_sources": "filename",
-                "document_types": "mimetype",
-                "owners": "owner",
-                "connector_types": "connector_type",
-            }
-
-            for filter_key, values in filters.items():
-                if values is not None and isinstance(values, list) and len(values) > 0:
-                    # Map frontend key to backend field name
-                    field_name = field_mapping.get(filter_key, filter_key)
-
-                    if len(values) == 1:
-                        # Single value filter
-                        filter_clauses.append({"term": {field_name: values[0]}})
-                    else:
-                        # Multiple values filter
-                        filter_clauses.append({"terms": {field_name: values}})
-
-            if filter_clauses:
-                filter_expression["filter"] = filter_clauses
-
-        # Add limit and score threshold to the filter expression (only if different from defaults)
-        if limit and limit != 10:  # 10 is the default limit
-            filter_expression["limit"] = limit
-
-        if score_threshold and score_threshold != 0:  # 0 is the default threshold
-            filter_expression["score_threshold"] = score_threshold
-
-        # Pass the complete filter expression as a single header to Langflow (only if we have something to send)
+        # Pass the UI filter contract unchanged to the thin Langflow tool.  The
+        # backend remains the sole owner of OpenSearch filters and retrieval.
+        filter_expression: dict[str, Any] = {
+            "filters": filters or {},
+            "limit": limit or 10,
+            "scoreThreshold": score_threshold or 0,
+        }
         logger.info(
-            "Sending OpenRAG query filter to Langflow",
-            filter_expression=filter_expression,
+            "Sending backend-owned retrieval context to Langflow",
+            has_filters=bool(filters),
+            limit=filter_expression["limit"],
         )
-        extra_headers["X-LANGFLOW-GLOBAL-VAR-OPENRAG-QUERY-FILTER"] = json.dumps(filter_expression)
+        extra_headers["X-Langflow-Global-Var-OPENRAG_QUERY_FILTER"] = json.dumps(filter_expression)
         logger.info(
             "[CHAT] Langflow chat request", stream=stream, filters_applied=bool(filter_expression)
         )

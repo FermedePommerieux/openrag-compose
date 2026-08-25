@@ -9,6 +9,7 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
+from auth_context import set_score_threshold, set_search_filters, set_search_limit  # noqa: E402
 from services.chat_service import ChatService  # noqa: E402
 from services.document_index_writer import DocumentIndexContext  # noqa: E402
 
@@ -27,10 +28,8 @@ async def test_langflow_chat_passes_owner_metadata(monkeypatch):
     )
 
     # Mock async_langflow_chat to prevent actual network/langflow calls
-    monkeypatch.setattr(
-        "agent.async_langflow_chat",
-        AsyncMock(return_value=("some response", "response-id", [])),
-    )
+    mock_langflow_chat = AsyncMock(return_value=("some response", "response-id", []))
+    monkeypatch.setattr("agent.async_langflow_chat", mock_langflow_chat)
 
     # Capture the context passed to LangflowIngestTokenService.create_token
     captured_context = []
@@ -46,8 +45,12 @@ async def test_langflow_chat_passes_owner_metadata(monkeypatch):
 
     # Instantiate ChatService and invoke langflow_chat with specific owner metadata
     chat_svc = ChatService()
+    set_search_filters({"data_sources": ["archive.pdf"]})
+    set_search_limit(4)
+    set_score_threshold(0.25)
     await chat_svc.langflow_chat(
         prompt="hello",
+        jwt_token="user-jwt",
         owner="user-123",
         owner_name="Test User",
         owner_email="test@example.com",
@@ -60,6 +63,13 @@ async def test_langflow_chat_passes_owner_metadata(monkeypatch):
     assert context.owner == "user-123"
     assert context.owner_name == "Test User"
     assert context.owner_email == "test@example.com"
+
+    headers = mock_langflow_chat.call_args.kwargs["extra_headers"]
+    assert headers["X-LANGFLOW-GLOBAL-VAR-JWT"] == "user-jwt"
+    assert headers["X-Langflow-Global-Var-OPENRAG_RETRIEVAL_URL"].endswith("/search")
+    assert headers["X-Langflow-Global-Var-OPENRAG_QUERY_FILTER"] == (
+        '{"filters": {"data_sources": ["archive.pdf"]}, "limit": 4, "scoreThreshold": 0.25}'
+    )
 
 
 @pytest.mark.asyncio

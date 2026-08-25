@@ -15,6 +15,9 @@ export interface UpdateSettingsRequest {
   // Knowledge settings
   chunk_size?: number;
   chunk_overlap?: number;
+  chunking_strategy?: "character" | "hybrid";
+  hybrid_max_tokens?: number;
+  hybrid_merge_peers?: boolean;
   table_structure?: boolean;
   ocr?: boolean;
   picture_descriptions?: boolean;
@@ -22,6 +25,15 @@ export interface UpdateSettingsRequest {
   embedding_model?: string;
   embedding_provider?: string;
   archive_sources_enabled?: boolean;
+  retrieval_strategy?: "weighted" | "rrf";
+  retrieval_mode?: "hybrid" | "lexical" | "vector";
+  retrieval_lexical_candidates?: number;
+  retrieval_vector_candidates?: number;
+  retrieval_rrf_k?: number;
+  retrieval_max_chunks_per_document?: number;
+  retrieval_reranker_url?: string;
+  retrieval_reranker_timeout?: number;
+  retrieval_debug?: boolean;
 
   // Provider-specific settings (for dialogs)
   model_provider?: string; // Deprecated, kept for backward compatibility

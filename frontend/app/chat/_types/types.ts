@@ -49,6 +49,10 @@ export interface ToolCallResult {
     chunk_size?: number | string;
     chunk_overlap?: number | string;
     mimetype?: string;
+    document_id?: string;
+    connector_file_id?: string;
+    chunk_index?: number | string;
+    chunking_strategy?: string;
     metadata?: {
       embedding_model?: string;
       parser?: string;
@@ -56,6 +60,10 @@ export interface ToolCallResult {
       score?: number | string;
       chunk_size?: number | string;
       chunk_overlap?: number | string;
+      document_id?: string;
+      connector_file_id?: string;
+      chunk_index?: number | string;
+      chunking_strategy?: string;
       [key: string]: unknown;
     };
     [key: string]: unknown;
@@ -73,6 +81,10 @@ export interface ToolCallResult {
   chunk_size?: number | string;
   chunk_overlap?: number | string;
   mimetype?: string;
+  document_id?: string;
+  connector_file_id?: string;
+  chunk_index?: number | string;
+  chunking_strategy?: string;
   metadata?: {
     embedding_model?: string;
     parser?: string;
@@ -80,6 +92,10 @@ export interface ToolCallResult {
     score?: number | string;
     chunk_size?: number | string;
     chunk_overlap?: number | string;
+    document_id?: string;
+    connector_file_id?: string;
+    chunk_index?: number | string;
+    chunking_strategy?: string;
     [key: string]: unknown;
   };
   [key: string]: unknown;
