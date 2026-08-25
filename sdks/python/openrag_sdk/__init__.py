@@ -39,6 +39,7 @@ from .exceptions import (
 from .knowledge_filters import KnowledgeFiltersClient
 from .models import (
     AgentSettings,
+    ArchivingSettings,
     ChatResponse,
     ContentEvent,
     Conversation,
@@ -99,6 +100,7 @@ __all__ = [
     "ConversationListResponse",
     "Message",
     "SettingsResponse",
+    "ArchivingSettings",
     "SettingsUpdateOptions",
     "SettingsUpdateResponse",
     "AgentSettings",
