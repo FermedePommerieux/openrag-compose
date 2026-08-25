@@ -45,7 +45,9 @@ async def test_update_chat_flow_system_prompt_updates_agent_node(monkeypatch):
     get_response.json.return_value = _load_flow("flows/openrag_agent.json")
     patch_response = MagicMock(status_code=200)
 
-    request = AsyncMock(side_effect=[get_response, patch_response])
+    request = AsyncMock(
+        side_effect=[get_response, patch_response, patch_response, patch_response]
+    )
     monkeypatch.setattr("services.flows_service.LANGFLOW_CHAT_FLOW_ID", "test-flow-id")
     monkeypatch.setattr("services.flows_service.clients.langflow_request", request)
 
@@ -53,7 +55,7 @@ async def test_update_chat_flow_system_prompt_updates_agent_node(monkeypatch):
         "updated system prompt for testing purposes"
     )
 
-    sent_flow = request.call_args_list[1].kwargs["json"]
+    sent_flow = request.call_args_list[2].kwargs["json"]
     agent_node = _find_node_by_display_name(sent_flow, "Agent")
     assert agent_node is not None, "Agent node missing from PATCHed flow data"
     assert (

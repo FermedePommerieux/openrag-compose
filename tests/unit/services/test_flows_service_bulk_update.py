@@ -1,5 +1,8 @@
 """Tests for flows_service bulk_update_flows with Langflow backup creation."""
 
+import copy
+import json
+import subprocess
 import sys
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -239,6 +242,338 @@ async def test_ensure_flows_exist_does_not_auto_update_on_startup():
     assert created == set()
     assert backup_mock.call_count == 0
     assert reset_mock.call_count == 0
+
+
+@pytest.mark.asyncio
+async def test_ensure_flows_exist_reapplies_system_settings_after_system_flow_creation(monkeypatch):
+    """The custom-flow safeguard must not alter default system-flow recovery."""
+    import api.settings
+    import services.flows_service as flows_module
+
+    service = FlowsService()
+    missing_flow_id = flows_module.NUDGES_FLOW_ID
+    created_flow_ids: set[str] = set()
+
+    async def langflow_request(method, url, json=None, **_kwargs):
+        flow_id = url.rsplit("/", 1)[-1]
+        if method == "GET" and flow_id == missing_flow_id and flow_id not in created_flow_ids:
+            return MagicMock(status_code=404)
+        if method == "GET":
+            return MagicMock(status_code=200)
+        if method == "PUT" and flow_id == missing_flow_id:
+            created_flow_ids.add(flow_id)
+            return MagicMock(status_code=201)
+        raise AssertionError(f"unexpected Langflow request: {method} {url}")
+
+    reapply = AsyncMock()
+    monkeypatch.setattr(flows_module.clients, "langflow_request", langflow_request)
+    monkeypatch.setattr(
+        flows_module,
+        "get_openrag_config",
+        lambda: MagicMock(edited=True),
+    )
+    monkeypatch.setattr(api.settings, "reapply_all_settings", reapply)
+
+    created = await service.ensure_flows_exist()
+
+    assert created == {"nudges"}
+    assert created_flow_ids == {missing_flow_id}
+    reapply.assert_awaited_once()
+
+
+def _lifecycle_retrieval_flow() -> dict:
+    """Load the exact production lifecycle baseline, not an approximate graph."""
+    raw = subprocess.check_output(
+        ["git", "show", "156f3664fd2b8d4f4ad20248321a313a7034fc9b:flows/openrag_agent.json"],
+        cwd=ROOT,
+        text=True,
+    )
+    return json.loads(raw)
+
+
+def _unversioned_retrieval_v2_flow() -> dict:
+    """Load the GitOps-bootstrap state that precedes the runtime marker."""
+    return json.loads((ROOT / "flows" / "openrag_agent.json").read_text())
+
+
+def _flow_response(status_code: int, payload: dict | None = None) -> MagicMock:
+    response = MagicMock(status_code=status_code)
+    response.json.return_value = payload
+    return response
+
+
+class _RetrievalMigrationTransport:
+    """Small stateful Langflow double for lock-transition fault injection."""
+
+    def __init__(self, failure: str | None = None):
+        self.failure = failure
+        self.flow = _lifecycle_retrieval_flow()
+        self.unlocked = False
+        self.put_completed = False
+        self.relock_attempted = False
+        self.relock_verified = False
+
+    async def __call__(self, method, url, json=None, **kwargs):
+        if method == "GET":
+            if self.failure == "disappear" and self.unlocked:
+                return _flow_response(404)
+            if self.failure == "verify_put" and self.put_completed:
+                invalid_flow = copy.deepcopy(self.flow)
+                invalid_flow["data"]["nodes"][0]["data"]["node"]["description"] = "invalid"
+                return _flow_response(200, invalid_flow)
+            if (
+                self.failure == "verify_relock"
+                and self.relock_attempted
+                and not self.relock_verified
+            ):
+                self.relock_verified = True
+                self.flow["locked"] = False
+            return _flow_response(200, self.flow)
+        if method == "PATCH":
+            if json == {"locked": False}:
+                if self.failure == "unlock":
+                    return _flow_response(500)
+                self.flow["locked"] = False
+                self.unlocked = True
+                return _flow_response(200, self.flow)
+            if json == {"locked": True}:
+                self.relock_attempted = True
+                if self.failure == "relock" or (self.failure == "disappear" and self.unlocked):
+                    return _flow_response(500)
+                self.flow["locked"] = True
+                return _flow_response(200, self.flow)
+        if method == "PUT":
+            if self.failure == "put":
+                return _flow_response(500)
+            self.flow = json
+            self.put_completed = True
+            return _flow_response(200, self.flow)
+        raise AssertionError(f"unexpected request {method} {url}")
+
+
+@pytest.mark.asyncio
+async def test_migrate_known_lifecycle_retrieval_flow_is_backed_up_and_idempotent():
+    service = FlowsService()
+    old_flow = _lifecycle_retrieval_flow()
+    migrated_flow: dict | None = None
+    calls: list[tuple[str, dict | None]] = []
+
+    async def mock_langflow_request(method, url, json=None, **kwargs):
+        nonlocal migrated_flow
+        calls.append((method, json))
+        if method == "GET":
+            response = MagicMock(status_code=200)
+            response.json.return_value = migrated_flow or old_flow
+            return response
+        if method == "PATCH":
+            target = migrated_flow or old_flow
+            target["locked"] = json["locked"]
+            response = MagicMock(status_code=200)
+            response.json.return_value = target
+            return response
+        if method == "PUT":
+            migrated_flow = json
+            return MagicMock(status_code=200)
+        raise AssertionError(f"unexpected request {method} {url}")
+
+    with (
+        patch("services.flows_service.clients.langflow_request", side_effect=mock_langflow_request),
+        patch.object(service, "_backup_flow", new_callable=AsyncMock, return_value="/tmp/flow.json") as backup,
+    ):
+        first = await service.migrate_persisted_retrieval_flow()
+        second = await service.migrate_persisted_retrieval_flow()
+
+    assert first["status"] == "migrated"
+    assert first["backup_path"] == "/tmp/flow.json"
+    assert second["status"] == "already_migrated"
+    assert backup.await_count == 1
+    component_types = [
+        node.get("data", {}).get("node", {}).get("namespaced_id")
+        for node in migrated_flow["data"]["nodes"]
+    ]
+    assert "ext:openrag:OpenRAGBackendRetrievalComponent@extra" in component_types
+    assert "ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra" not in component_types
+    assert [payload for method, payload in calls if method == "PATCH"] == [
+        {"locked": False},
+        {"locked": True},
+    ]
+
+
+@pytest.mark.asyncio
+async def test_migrate_unversioned_retrieval_v2_flow_synchronized_by_gitops():
+    """The exact pinned flow must receive its marker rather than fail closed."""
+    service = FlowsService()
+    transport = _RetrievalMigrationTransport()
+    transport.flow = _unversioned_retrieval_v2_flow()
+
+    with (
+        patch("services.flows_service.clients.langflow_request", side_effect=transport.__call__),
+        patch.object(service, "_backup_flow", new_callable=AsyncMock, return_value="/tmp/flow.json") as backup,
+    ):
+        result = await service.migrate_persisted_retrieval_flow()
+
+    assert result["status"] == "migrated"
+    assert result["backup_path"] == "/tmp/flow.json"
+    assert transport.flow["locked"] is True
+    assert transport.flow["data"]["openrag_retrieval_version"] == 3
+    assert backup.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_migrate_retrieval_flow_fails_closed_for_an_altered_system_graph():
+    service = FlowsService()
+    custom_flow = _lifecycle_retrieval_flow()
+    custom_flow["data"]["nodes"][0]["data"]["node"]["description"] = "operator customization"
+    response = MagicMock(status_code=200)
+    response.json.return_value = custom_flow
+
+    with (
+        patch("services.flows_service.clients.langflow_request", return_value=response),
+        patch.object(service, "_backup_flow", new_callable=AsyncMock) as backup,
+    ):
+        result = await service.migrate_persisted_retrieval_flow()
+
+    assert result["status"] == "system_migration_failed"
+    assert result["reason"] == "system_flow_unverified"
+    backup.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_migrate_retrieval_flow_fails_closed_for_an_unlocked_system_graph():
+    service = FlowsService()
+    custom_flow = _lifecycle_retrieval_flow()
+    custom_flow["locked"] = False
+    response = MagicMock(status_code=200)
+    response.json.return_value = custom_flow
+
+    with (
+        patch("services.flows_service.clients.langflow_request", return_value=response),
+        patch.object(service, "_backup_flow", new_callable=AsyncMock) as backup,
+    ):
+        result = await service.migrate_persisted_retrieval_flow()
+
+    assert result["status"] == "system_migration_failed"
+    assert result["reason"] == "system_flow_unverified"
+    backup.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_migrate_retrieval_flow_preserves_an_explicitly_configured_custom_flow(monkeypatch):
+    import services.flows_service as flows_module
+
+    monkeypatch.setattr(flows_module, "LANGFLOW_CHAT_FLOW_ID", "operator-custom-flow")
+    service = FlowsService()
+    response = MagicMock(status_code=200)
+    response.json.return_value = {
+        "id": "operator-custom-flow",
+        "name": "Operator retrieval flow",
+        "locked": False,
+        "data": {"nodes": []},
+    }
+
+    with (
+        patch("services.flows_service.clients.langflow_request", return_value=response),
+        patch.object(service, "_backup_flow", new_callable=AsyncMock) as backup,
+    ):
+        result = await service.migrate_persisted_retrieval_flow()
+
+    assert result == {
+        "status": "custom_preserved",
+        "reason": "custom_flow_id",
+        "flow_id": "operator-custom-flow",
+    }
+    backup.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("http_status", "reason"),
+    [(404, "flow_missing"), (500, "fetch_failed")],
+)
+async def test_migrate_retrieval_flow_classifies_unavailable_system_flow_as_failure(
+    http_status, reason
+):
+    service = FlowsService()
+    response = MagicMock(status_code=http_status)
+
+    with patch("services.flows_service.clients.langflow_request", return_value=response):
+        result = await service.migrate_persisted_retrieval_flow()
+
+    assert result["status"] == "system_migration_failed"
+    assert result["reason"] == reason
+
+
+@pytest.mark.asyncio
+async def test_migrate_retrieval_flow_stops_before_unlock_when_backup_fails():
+    service = FlowsService()
+    transport = _RetrievalMigrationTransport()
+
+    with (
+        patch("services.flows_service.clients.langflow_request", side_effect=transport.__call__),
+        patch.object(service, "_backup_flow", new_callable=AsyncMock, return_value=None),
+    ):
+        result = await service.migrate_persisted_retrieval_flow()
+
+    assert result["status"] == "system_migration_failed"
+    assert result["reason"] == "backup_failed"
+    assert transport.flow["locked"] is True
+    assert transport.unlocked is False
+
+
+@pytest.mark.asyncio
+async def test_migrate_retrieval_flow_reports_unlock_failure_with_locked_state():
+    service = FlowsService()
+    transport = _RetrievalMigrationTransport("unlock")
+
+    with (
+        patch("services.flows_service.clients.langflow_request", side_effect=transport.__call__),
+        patch.object(service, "_backup_flow", new_callable=AsyncMock, return_value="/tmp/flow.json"),
+    ):
+        result = await service.migrate_persisted_retrieval_flow()
+
+    assert result["status"] == "system_migration_failed"
+    assert result["reason"] == "unlock_failed"
+    assert result["flow_state"] == {"known_state": "locked", "locked": True}
+    assert transport.flow["locked"] is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure", ["put", "verify_put", "verify_relock"])
+async def test_migrate_retrieval_flow_restores_lock_after_safe_transition_failures(failure):
+    service = FlowsService()
+    transport = _RetrievalMigrationTransport(failure)
+
+    with (
+        patch("services.flows_service.clients.langflow_request", side_effect=transport.__call__),
+        patch.object(service, "_backup_flow", new_callable=AsyncMock, return_value="/tmp/flow.json"),
+    ):
+        result = await service.migrate_persisted_retrieval_flow()
+
+    assert result["status"] == "system_migration_failed"
+    assert result["reason"] == "update_or_verification_failed"
+    assert result["flow_state"] == {"known_state": "locked", "locked": True}
+    assert transport.flow["locked"] is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure", ["relock", "disappear"])
+async def test_migrate_retrieval_flow_fails_closed_when_lock_cannot_be_restored(failure):
+    service = FlowsService()
+    transport = _RetrievalMigrationTransport(failure)
+
+    with (
+        patch("services.flows_service.clients.langflow_request", side_effect=transport.__call__),
+        patch.object(service, "_backup_flow", new_callable=AsyncMock, return_value="/tmp/flow.json"),
+    ):
+        result = await service.migrate_persisted_retrieval_flow()
+
+    assert result["status"] == "system_migration_failed"
+    assert result["reason"] == "lock_restore_failed"
+    assert result["error"]
+    assert result["lock_error"]
+    assert result["flow_id"]
+    assert result["version"] == 3
+    assert result["flow_state"]["known_state"] in {"unlocked", "missing"}
 
 
 @pytest.mark.asyncio

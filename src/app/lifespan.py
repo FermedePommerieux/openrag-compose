@@ -28,7 +28,7 @@ from config.settings import (
     get_opensearch_password,
     get_opensearch_username,
 )
-from services.startup_orchestrator import startup_tasks
+from services.startup_orchestrator import ensure_system_retrieval_flow_ready, startup_tasks
 from utils.logging_config import get_logger, log_bootstrap_env
 from utils.telemetry import Category, MessageId, TelemetryClient
 
@@ -345,7 +345,13 @@ async def run_startup(app: FastAPI):
     else:
         logger.info("OpenSearch startup security/replica tasks disabled - skipping")
 
-    # Start index initialization in background to avoid blocking OIDC endpoints
+    # The system Retrieval flow is a critical integrity boundary.  Its native
+    # lock must be restored and verified before this ASGI application is ready;
+    # do not turn its failure into an unobserved background-task exception.
+    await ensure_system_retrieval_flow_ready(services)
+
+    # The remaining startup work may run in the background so OIDC endpoints
+    # are not delayed by best-effort initialization and refreshes.
     t1 = asyncio.create_task(startup_tasks(services))
     app.state.background_tasks.add(t1)
     t1.add_done_callback(app.state.background_tasks.discard)
