@@ -15,11 +15,13 @@ import { ConnectorsTab } from "../_components/connectors-tab";
 import { IngestSettingsSection } from "../_components/ingest-settings-section";
 import { LangflowUpdatesBanner } from "../_components/langflow-updates-banner";
 import ModelProviders from "../_components/model-providers";
+import { RetrievalSettingsSection } from "../_components/retrieval-settings-section";
 
 const VALID_TABS = [
   "connectors",
   "providers",
   "langflow",
+  "retrieval",
   "archiving",
   "api-keys",
   "connector-access",
@@ -105,7 +107,7 @@ export default async function SettingsTabPage({
     redirect("/settings/connectors");
   }
   if (
-    (tab === "langflow" || tab === "archiving") &&
+    (tab === "langflow" || tab === "retrieval" || tab === "archiving") &&
     !canShowRbacGatedSettingsTab("config:write", tabAccess)
   ) {
     redirect("/settings/connectors");
@@ -151,6 +153,7 @@ export default async function SettingsTabPage({
           <IngestSettingsSection />
         </div>
       )}
+      {tab === "retrieval" && <RetrievalSettingsSection />}
       {tab === "archiving" && <ArchivingSettingsSection />}
       {tab === "api-keys" && <ApiKeysSection />}
       {tab === "connector-access" && <ConnectorAccessSection />}
