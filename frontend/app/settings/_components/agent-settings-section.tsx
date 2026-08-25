@@ -325,8 +325,8 @@ export function AgentSettingsSection() {
           </RequirePermission>
         </div>
         <CardDescription>
-          This Agent retrieves from your knowledge and generates chat responses.
-          Edit in Langflow for full control.
+          This Agent orchestrates backend-owned retrieval and generates chat
+          responses. Edit in Langflow for orchestration changes only.
         </CardDescription>
       </CardHeader>
       <CardContent>

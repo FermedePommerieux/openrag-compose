@@ -1,63 +1,63 @@
-from agent import _extract_retrieval_sources
+from types import SimpleNamespace
+
+import pytest
+
+import agent
 
 
-def test_extract_retrieval_sources_from_langflow_tool_use_content_block():
-    response = {
-        "outputs": [
-            {
-                "results": {
-                    "message": {
-                        "data": {
-                            "content_blocks": [
-                                {
-                                    "contents": [
-                                        {
-                                            "type": "tool_use",
-                                            "name": "search_documents",
-                                            "output": [
-                                                {
-                                                    "text": "purple elephants dancing",
-                                                    "filename": "sdk_test_doc.md",
-                                                    "mimetype": "text/markdown",
-                                                    "page": 0,
-                                                }
-                                            ],
-                                        }
-                                    ]
-                                }
-                            ]
-                        }
+@pytest.mark.asyncio
+async def test_async_langflow_chat_extracts_sources_from_structured_tool_results(monkeypatch):
+    response = SimpleNamespace(
+        output=[
+            SimpleNamespace(
+                results=[
+                    {
+                        "text": "purple elephants dancing",
+                        "filename": "sdk_test_doc.md",
+                        "mimetype": "text/markdown",
+                        "page": 0,
                     }
-                }
-            }
+                ]
+            )
         ]
-    }
+    )
 
-    assert _extract_retrieval_sources(response) == [
-        {
-            "filename": "sdk_test_doc.md",
-            "text": "purple elephants dancing",
-            "score": 0,
-            "page": 0,
-            "mimetype": "text/markdown",
-        }
-    ]
+    async def fake_async_response(*_args, **_kwargs):
+        return "answer", "response-id", response
+
+    monkeypatch.setattr(agent, "async_response", fake_async_response)
+
+    response_text, response_id, sources = await agent.async_langflow_chat(
+        object(),
+        "flow-id",
+        "prompt",
+        "user-id",
+        store_conversation=False,
+    )
+
+    assert (response_text, response_id) == ("answer", "response-id")
+    assert sources[0]["filename"] == "sdk_test_doc.md"
+    assert sources[0]["text"] == "purple elephants dancing"
+    assert sources[0]["mimetype"] == "text/markdown"
+    assert sources[0]["page"] == 0
+    assert sources[0]["score"] == 0
 
 
-def test_extract_retrieval_sources_ignores_assistant_message_text():
-    response = {
-        "outputs": [
-            {
-                "results": {
-                    "message": {
-                        "data": {
-                            "text": "The document says the animals are purple.",
-                            "content_blocks": [],
-                        }
-                    }
-                }
-            }
-        ]
-    }
+@pytest.mark.asyncio
+async def test_async_langflow_chat_ignores_assistant_message_text_without_tool_results(monkeypatch):
+    response = SimpleNamespace(output=[])
 
-    assert _extract_retrieval_sources(response) == []
+    async def fake_async_response(*_args, **_kwargs):
+        return "The document says the animals are purple.", "response-id", response
+
+    monkeypatch.setattr(agent, "async_response", fake_async_response)
+
+    _, _, sources = await agent.async_langflow_chat(
+        object(),
+        "flow-id",
+        "prompt",
+        "user-id",
+        store_conversation=False,
+    )
+
+    assert sources == []

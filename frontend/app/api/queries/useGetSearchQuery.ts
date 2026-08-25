@@ -20,12 +20,16 @@ export interface SearchPayload {
 }
 
 export interface ChunkResult {
+  document_id?: string;
   filename: string;
   mimetype: string;
   page: number;
+  chunk_index?: number;
+  chunking_strategy?: string;
   text: string;
   score: number;
   source_url?: string;
+  connector_file_id?: string;
   owner?: string;
   owner_name?: string;
   owner_email?: string;

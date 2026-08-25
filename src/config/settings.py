@@ -735,10 +735,16 @@ INDEX_BODY = {
     },
     "mappings": {
         "properties": {
+            # Persisted sortable identity for deterministic Retrieval v2 tie
+            # breaks. OpenSearch metadata _id is intentionally not sortable.
+            "chunk_id": {"type": "keyword"},
             "document_id": {"type": "keyword"},
             "filename": {"type": "keyword"},
             "mimetype": {"type": "keyword"},
             "page": {"type": "integer"},
+            "chunk_index": {"type": "integer"},
+            "chunking_strategy": {"type": "keyword"},
+            "chunking_config_fingerprint": {"type": "keyword"},
             "text": {"type": "text"},
             # Legacy field - kept for backward compatibility
             # New documents will use chunk_embedding_{model_name} fields

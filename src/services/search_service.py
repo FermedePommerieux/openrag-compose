@@ -2,16 +2,22 @@ import asyncio
 import copy
 import os
 import re
-from collections import Counter
 from typing import Any
 
 from agentd.tool_decorator import tool
 
 from auth_context import get_auth_context
-from config.embedding_constants import OPENAI_DEFAULT_EMBEDDING_MODEL
+from config.embedding_constants import get_declared_default_embedding_model
 from config.settings import clients, get_embedding_model, get_index_name, get_openrag_config
+from services.retrieval_service import (
+    HttpReranker,
+    RetrievalSettings,
+    limit_chunks_per_document,
+    reciprocal_rank_fusion,
+)
 from utils.container_utils import transform_localhost_url
 from utils.logging_config import get_logger
+from utils.rrf_mapping import RRFMappingError, require_sortable_chunk_id_mapping
 
 logger = get_logger(__name__)
 
@@ -22,6 +28,17 @@ EMBED_RETRY_MAX_DELAY = 8.0
 
 # Variable used to store the active instance for the tool wrapper
 _global_search_service = None
+
+
+def _build_file_facet_aggregations() -> dict[str, Any]:
+    """Build the file-level facets shared by weighted and RRF search lanes."""
+    return {
+        "data_sources": {"terms": {"field": "filename", "size": 20}},
+        "document_types": {"terms": {"field": "mimetype", "size": 10}},
+        "owners": {"terms": {"field": "owner", "size": 10}},
+        "connector_types": {"terms": {"field": "connector_type", "size": 10}},
+        "embedding_models": {"terms": {"field": "embedding_model", "size": 10}},
+    }
 
 
 def _is_exact_token_query(query: str) -> bool:
@@ -35,6 +52,106 @@ def _is_exact_token_query(query: str) -> bool:
         return True
 
     return bool(re.search(r"[a-zA-Z]", query) and re.search(r"\d", query))
+
+
+def _normalize_file_facet_aggregations(aggregations: dict[str, Any]) -> dict[str, Any]:
+    """Normalize file facets without requiring the broader post-tag facet refactor."""
+    normalized = dict(aggregations)
+    for facet_name in (
+        "data_sources",
+        "document_types",
+        "owners",
+        "connector_types",
+        "embedding_models",
+    ):
+        facet = aggregations.get(facet_name)
+        if not isinstance(facet, dict):
+            normalized[facet_name] = {"buckets": []}
+            continue
+
+        raw_buckets = facet.get("buckets", [])
+        buckets = raw_buckets if isinstance(raw_buckets, list) else []
+        normalized[facet_name] = {
+            **facet,
+            "buckets": [bucket for bucket in buckets if isinstance(bucket, dict)],
+        }
+    return normalized
+
+
+def _apply_exact_match_file_filter(
+    query: str,
+    chunks: list[dict[str, Any]],
+    aggregations: dict[str, Any],
+    *,
+    is_wildcard_match_all: bool,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Narrow token-like exact matches while preserving ordinary RRF results."""
+    normalized_query = query.strip().lower()
+    if (
+        not normalized_query
+        or is_wildcard_match_all
+        or len(normalized_query) < 4
+        or not _is_exact_token_query(normalized_query)
+    ):
+        return chunks, aggregations
+
+    exact_files = {
+        filename
+        for chunk in chunks
+        for filename in [chunk.get("filename")]
+        if isinstance(filename, str)
+        and (
+            normalized_query in filename.lower()
+            or (
+                isinstance(chunk.get("text"), str)
+                and normalized_query in chunk.get("text", "").lower()
+            )
+        )
+    }
+    # A token-like query with no verbatim hit must retain the ranked results;
+    # fuzzy retrieval may still contain the correct evidence.
+    if not exact_files:
+        return chunks, aggregations
+
+    chunks = [chunk for chunk in chunks if chunk.get("filename") in exact_files]
+
+    def _build_terms_agg(field: str, label_field: str | None = None) -> dict[str, Any]:
+        files_by_value: dict[str, set[str]] = {}
+        labels_by_value: dict[str, str] = {}
+        for chunk in chunks:
+            value = chunk.get(field)
+            filename = chunk.get("filename")
+            if not isinstance(value, str) or not value:
+                continue
+            if not isinstance(filename, str) or not filename:
+                continue
+            files_by_value.setdefault(value, set()).add(filename)
+            if label_field:
+                label = chunk.get(label_field)
+                if isinstance(label, str) and label:
+                    labels_by_value.setdefault(value, label)
+
+        return {
+            "doc_count_error_upper_bound": 0,
+            "sum_other_doc_count": 0,
+            "buckets": [
+                {
+                    "key": key,
+                    "doc_count": len(filenames),
+                    **({"label": labels_by_value.get(key, key)} if label_field else {}),
+                }
+                for key, filenames in sorted(files_by_value.items())
+            ],
+        }
+
+    return chunks, {
+        **aggregations,
+        "data_sources": _build_terms_agg("filename"),
+        "document_types": _build_terms_agg("mimetype"),
+        "owners": _build_terms_agg("owner", label_field="owner_name"),
+        "connector_types": _build_terms_agg("connector_type"),
+        "embedding_models": _build_terms_agg("embedding_model"),
+    }
 
 
 def register_search_service(service: "SearchService") -> None:
@@ -103,7 +220,16 @@ class SearchService:
         # Strategy: Use provided model, or default to the configured embedding
         # model. This assumes documents are embedded with that model by default.
         # Future enhancement: Could auto-detect available models in corpus.
-        embedding_model = embedding_model or get_embedding_model() or OPENAI_DEFAULT_EMBEDDING_MODEL
+        openrag_config = get_openrag_config()
+        retrieval_settings = RetrievalSettings.from_knowledge(openrag_config.knowledge)
+        use_retrieval_v2 = retrieval_settings.strategy == "rrf"
+        embedding_model = (
+            embedding_model
+            or get_embedding_model()
+            or get_declared_default_embedding_model(
+                openrag_config.knowledge.embedding_provider
+            )
+        )
         embedding_field_name = get_embedding_field_name(embedding_model)
 
         logger.info(
@@ -111,6 +237,8 @@ class SearchService:
             embedding_model=embedding_model,
             embedding_field=embedding_field_name,
             query_preview=query[:50] if query else None,
+            retrieval_strategy=retrieval_settings.strategy,
+            retrieval_mode=retrieval_settings.mode,
         )
 
         # Get authentication context from the current async context
@@ -134,6 +262,19 @@ class SearchService:
         failed_models: list = []
 
         opensearch_client = self.session_manager.get_user_opensearch_client(user_id, jwt_token)
+
+        if use_retrieval_v2:
+            # RRF is deterministic only when OpenSearch can apply its persisted
+            # secondary ``chunk_id`` sort.  Validate the real mapping before
+            # computing embeddings or sending either ranking lane.  Legacy
+            # documents without a value remain valid via ``missing: _last``;
+            # an incompatible *mapping* is a hard operational error.
+            mapping_client = getattr(clients, "opensearch", None) or opensearch_client
+            try:
+                await require_sortable_chunk_id_mapping(mapping_client, get_index_name())
+            except RRFMappingError as exc:
+                logger.error("RRF blocked by incompatible chunk_id mapping", error=str(exc))
+                return {"results": [], "error": str(exc), "retrieval_strategy": "rrf"}
 
         if not is_wildcard_match_all:
             # Build filter clauses first so we can use them in model detection
@@ -419,59 +560,139 @@ class SearchService:
                 }
             }
 
+        source_fields = [
+            "chunk_id",
+            "document_id",
+            "filename",
+            "mimetype",
+            "page",
+            "chunk_index",
+            "chunking_strategy",
+            "text",
+            "source_url",
+            "connector_file_id",
+            "owner",
+            "owner_name",
+            "owner_email",
+            "file_size",
+            "connector_type",
+            "embedding_model",
+            "embedding_dimensions",
+            "parser",
+            "chunk_size",
+            "chunk_overlap",
+            "allowed_users",
+            "allowed_groups",
+            "allowed_principal_labels",
+        ]
         search_body: dict[str, Any] = {
             "query": query_block,
-            "aggs": {
-                "data_sources": {"terms": {"field": "filename", "size": 20}},
-                "document_types": {"terms": {"field": "mimetype", "size": 10}},
-                "owners": {"terms": {"field": "owner", "size": 10}},
-                "connector_types": {"terms": {"field": "connector_type", "size": 10}},
-                "embedding_models": {"terms": {"field": "embedding_model", "size": 10}},
-            },
-            "_source": [
-                "filename",
-                "mimetype",
-                "page",
-                "text",
-                "source_url",
-                "owner",
-                "owner_name",
-                "owner_email",
-                "file_size",
-                "connector_type",
-                "embedding_model",  # Include embedding model in results
-                "embedding_dimensions",
-                "parser",
-                "chunk_size",
-                "chunk_overlap",
-                "allowed_users",
-                "allowed_groups",
-                "allowed_principal_labels",
-            ],
+            "aggs": _build_file_facet_aggregations(),
+            "_source": source_fields,
             "size": limit,
+            # OpenSearch does not guarantee the order of equal-score hits.
+            # Keep a persistent chunk identity as the secondary sort so RRF
+            # receives stable ranked lanes across equivalent executions.
+            "sort": [
+                {"_score": {"order": "desc"}},
+                # ``_id`` cannot be sorted by OpenSearch.  New backend-indexed
+                # chunks persist this keyword/doc_values field; legacy chunks
+                # sort last and retain best-effort rank compatibility.
+                {"chunk_id": {"order": "asc", "missing": "_last"}},
+            ],
         }
 
         # Add score threshold only for hybrid (not meaningful for match_all)
         if not is_wildcard_match_all and score_threshold > 0:
             search_body["min_score"] = score_threshold
 
-        # Prepare fallback search body without num_candidates for clusters that don't support it.
-        # Only relevant when we actually dispatched KNN queries.
-        fallback_search_body: dict[str, Any] | None = None
-        if not is_wildcard_match_all and query_embeddings:
-            try:
-                fallback_search_body = copy.deepcopy(search_body)
-                knn_query_blocks = fallback_search_body["query"]["bool"]["should"][0]["dis_max"][
-                    "queries"
-                ]
-                for query_candidate in knn_query_blocks:
-                    knn_section = query_candidate.get("knn")
-                    if isinstance(knn_section, dict):
-                        for params in knn_section.values():
-                            if isinstance(params, dict):
-                                params.pop("num_candidates", None)
-            except (KeyError, IndexError, AttributeError, TypeError):
-                fallback_search_body = None
+        # In RRF mode lexical and vector candidates are intentionally fetched
+        # by separate OpenSearch requests.  Their score scales are unrelated;
+        # only their ranks are fused below.  Weighted remains available as an
+        # explicit compatibility strategy, while RRF is the Standard default.
+        retrieval_bodies: list[tuple[str, dict[str, Any]]] = []
+        if use_retrieval_v2 and not is_wildcard_match_all:
+            lexical_body: dict[str, Any] = {
+                "query": {
+                    "bool": {
+                        "should": [
+                            {
+                                "multi_match": {
+                                    "query": query,
+                                    "fields": ["text^2", "filename^1.5"],
+                                    "type": "best_fields",
+                                    "operator": "or",
+                                    "fuzziness": "AUTO:4,7",
+                                }
+                            },
+                            {
+                                "match_phrase_prefix": {
+                                    "text": {"query": query, "max_expansions": 50}
+                                }
+                            },
+                        ],
+                        "minimum_should_match": 1,
+                        "filter": filter_clauses,
+                    }
+                },
+                "aggs": _build_file_facet_aggregations(),
+                "_source": source_fields,
+                "size": retrieval_settings.lexical_candidates,
+                "sort": [
+                    {"_score": {"order": "desc"}},
+                    {"chunk_id": {"order": "asc", "missing": "_last"}},
+                ],
+            }
+            vector_body: dict[str, Any] = {
+                "query": {
+                    "bool": {
+                        "should": [
+                            {"dis_max": {"tie_breaker": 0.0, "queries": knn_queries}}
+                        ],
+                        "minimum_should_match": 1,
+                        "filter": all_filters,
+                    }
+                },
+                "aggs": _build_file_facet_aggregations(),
+                "_source": source_fields,
+                "size": retrieval_settings.vector_candidates,
+                "sort": [
+                    {"_score": {"order": "desc"}},
+                    {"chunk_id": {"order": "asc", "missing": "_last"}},
+                ],
+            }
+            if score_threshold > 0:
+                lexical_body["min_score"] = score_threshold
+                vector_body["min_score"] = score_threshold
+            if retrieval_settings.mode in {"hybrid", "lexical"}:
+                retrieval_bodies.append(("lexical", lexical_body))
+            if retrieval_settings.mode in {"hybrid", "vector"} and knn_queries:
+                retrieval_bodies.append(("vector", vector_body))
+            # Vector-only cannot run if every embedding provider is unavailable.
+            if not retrieval_bodies:
+                retrieval_bodies.append(("lexical", lexical_body))
+
+        def without_num_candidates(body: dict[str, Any]) -> dict[str, Any] | None:
+            """Return a compatibility retry body for older OpenSearch nodes."""
+            if not query_embeddings:
+                return None
+            fallback = copy.deepcopy(body)
+            removed = False
+
+            def walk(value: Any) -> None:
+                nonlocal removed
+                if isinstance(value, dict):
+                    if "num_candidates" in value:
+                        value.pop("num_candidates")
+                        removed = True
+                    for child in value.values():
+                        walk(child)
+                elif isinstance(value, list):
+                    for child in value:
+                        walk(child)
+
+            walk(fallback)
+            return fallback if removed else None
 
         # Authentication required - ACL filter is applied at the application layer above
         logger.debug(
@@ -496,76 +717,107 @@ class SearchService:
 
         search_params = {"terminate_after": 0}
 
-        try:
-            index_name = get_index_name()
-            logger.info(f"Sending query to index '{index_name}'..")
-            results = await opensearch_client.search(
-                index=index_name, body=search_body, params=search_params
-            )
-        except RequestError as e:
-            error_message = str(e)
-            if is_disk_space_error(e):
-                logger.error(
-                    "OpenSearch query blocked by disk space constraint",
-                    error=error_message,
+        async def execute_search(body: dict[str, Any], label: str) -> dict[str, Any]:
+            fallback_body = without_num_candidates(body)
+            try:
+                index_name = get_index_name()
+                logger.info("Sending query to index", retrieval_lane=label, index_name=index_name)
+                return await opensearch_client.search(
+                    index=index_name, body=body, params=search_params
                 )
-                raise OpenSearchDiskSpaceError(DISK_SPACE_ERROR_MESSAGE) from e
-            if (
-                fallback_search_body is not None
-                and "unknown field [num_candidates]" in error_message.lower()
-            ):
-                logger.warning(
-                    "OpenSearch cluster does not support num_candidates; retrying without it"
-                )
-                try:
-                    results = await opensearch_client.search(
-                        index=get_index_name(),
-                        body=fallback_search_body,
-                        params=search_params,
+            except RequestError as error:
+                error_message = str(error)
+                if is_disk_space_error(error):
+                    logger.error("OpenSearch query blocked by disk space constraint", error=error_message)
+                    raise OpenSearchDiskSpaceError(DISK_SPACE_ERROR_MESSAGE) from error
+                if (
+                    fallback_body is not None
+                    and "unknown field [num_candidates]" in error_message.lower()
+                ):
+                    logger.warning(
+                        "OpenSearch cluster does not support num_candidates; retrying without it",
+                        retrieval_lane=label,
                     )
-                except RequestError as retry_error:
-                    if is_disk_space_error(retry_error):
-                        logger.error(
-                            "OpenSearch retry blocked by disk space constraint",
-                            error=str(retry_error),
+                    try:
+                        return await opensearch_client.search(
+                            index=get_index_name(), body=fallback_body, params=search_params
                         )
-                        raise OpenSearchDiskSpaceError(DISK_SPACE_ERROR_MESSAGE) from retry_error
-                    logger.error(
-                        "OpenSearch retry without num_candidates failed",
-                        error=str(retry_error),
-                        search_body=fallback_search_body,
-                    )
-                    raise
-            else:
+                    except RequestError as retry_error:
+                        if is_disk_space_error(retry_error):
+                            logger.error(
+                                "OpenSearch retry blocked by disk space constraint",
+                                error=str(retry_error),
+                            )
+                            raise OpenSearchDiskSpaceError(DISK_SPACE_ERROR_MESSAGE) from retry_error
+                        logger.error(
+                            "OpenSearch retry without num_candidates failed",
+                            error=str(retry_error),
+                            retrieval_lane=label,
+                        )
+                        raise
                 logger.error(
-                    "OpenSearch query failed", error=error_message, search_body=search_body
+                    "OpenSearch query failed",
+                    error=error_message,
+                    retrieval_lane=label,
                 )
                 raise
-        except OpenSearchDiskSpaceError:
-            raise
-        except Exception as e:
-            if is_disk_space_error(e):
-                logger.error(
-                    "OpenSearch query blocked by disk space constraint",
-                    error=str(e),
-                )
-                raise OpenSearchDiskSpaceError(DISK_SPACE_ERROR_MESSAGE) from e
-            logger.error("OpenSearch query failed", error=str(e), search_body=search_body)
-            # Re-raise the exception so the API returns the error to frontend
-            raise
+            except OpenSearchDiskSpaceError:
+                raise
+            except Exception as error:
+                if is_disk_space_error(error):
+                    logger.error("OpenSearch query blocked by disk space constraint", error=str(error))
+                    raise OpenSearchDiskSpaceError(DISK_SPACE_ERROR_MESSAGE) from error
+                logger.error("OpenSearch query failed", error=str(error), retrieval_lane=label)
+                raise
+
+        retrieval_results: dict[str, dict[str, Any]] = {}
+        if retrieval_bodies:
+            lanes = [name for name, _body in retrieval_bodies]
+            lane_results = await asyncio.gather(
+                *[execute_search(body, name) for name, body in retrieval_bodies]
+            )
+            retrieval_results = dict(zip(lanes, lane_results, strict=True))
+            results = retrieval_results.get("lexical") or lane_results[0]
+        else:
+            results = await execute_search(search_body, "weighted")
+
+        raw_hits = results.get("hits", {}).get("hits", [])
+        if retrieval_results:
+            ranked_lists = [
+                lane_result.get("hits", {}).get("hits", [])
+                for lane_result in retrieval_results.values()
+            ]
+            raw_hits = reciprocal_rank_fusion(ranked_lists, k=retrieval_settings.rrf_k)
+            raw_hits = limit_chunks_per_document(
+                raw_hits,
+                max_chunks_per_document=retrieval_settings.max_chunks_per_document,
+            )
+            raw_hits = await HttpReranker(
+                retrieval_settings.reranker_url,
+                retrieval_settings.reranker_timeout,
+            ).rerank(query, raw_hits)
+            raw_hits = raw_hits[:limit]
 
         # Transform results (keep for backward compatibility)
         chunks = []
-        for hit in results["hits"]["hits"]:
+        for hit in raw_hits:
             source = hit.get("_source", {})
             chunks.append(
                 {
+                    "document_id": source.get("document_id"),
                     "filename": source.get("filename"),
                     "mimetype": source.get("mimetype"),
                     "page": source.get("page"),
+                    "chunk_index": source.get("chunk_index"),
+                    "chunking_strategy": source.get("chunking_strategy"),
                     "text": source.get("text"),
-                    "score": hit.get("_score"),
+                    "score": (
+                        hit.get("_retrieval_rerank_score")
+                        or hit.get("_retrieval_fusion_score")
+                        or hit.get("_score")
+                    ),
                     "source_url": source.get("source_url"),
+                    "connector_file_id": source.get("connector_file_id"),
                     "owner": source.get("owner"),
                     "owner_name": source.get("owner_name"),
                     "owner_email": source.get("owner_email"),
@@ -576,7 +828,9 @@ class SearchService:
                     "parser": source.get("parser"),
                     "chunk_size": source.get("chunk_size"),
                     "chunk_overlap": source.get("chunk_overlap"),
-                    "chunk_id": hit.get("_id"),
+                    # Legacy chunks predate the source ``chunk_id`` mapping;
+                    # keep their existing primary id visible to callers.
+                    "chunk_id": source.get("chunk_id") or hit.get("_id"),
                     "id": hit.get("_id"),
                     # ACL fields (may be missing for some documents)
                     "allowed_users": source.get("allowed_users", []),
@@ -585,60 +839,14 @@ class SearchService:
                 }
             )
 
-        # If query text appears verbatim in one subset of files, prefer those files
-        # to avoid broad semantic spillover for unique lookups.
-        normalized_query = query.strip().lower()
-        aggregations = results.get("aggregations", {})
-        if normalized_query and not is_wildcard_match_all and len(normalized_query) >= 4:
-            exact_files = {
-                filename
-                for chunk in chunks
-                for filename in [chunk.get("filename")]
-                if isinstance(filename, str)
-                and (
-                    normalized_query in filename.lower()
-                    or (
-                        isinstance(chunk.get("text"), str)
-                        and normalized_query in chunk.get("text", "").lower()
-                    )
-                )
-            }
-
-            # Determine if we should apply exact-token filtering
-            should_filter_exact = bool(exact_files) or _is_exact_token_query(query)
-
-            if should_filter_exact:
-                if exact_files:
-                    # Filter to only chunks from files with exact matches
-                    chunks = [chunk for chunk in chunks if chunk.get("filename") in exact_files]
-                else:
-                    # No exact matches found for a token-like query - return empty results
-                    chunks = []
-
-                def _build_terms_agg(field: str) -> dict[str, Any]:
-                    counts = Counter(
-                        value
-                        for chunk in chunks
-                        for value in [chunk.get(field)]
-                        if isinstance(value, str) and value
-                    )
-                    return {
-                        "doc_count_error_upper_bound": 0,
-                        "sum_other_doc_count": 0,
-                        "buckets": [
-                            {"key": key, "doc_count": count} for key, count in counts.most_common()
-                        ],
-                    }
-
-                # Keep aggregations consistent with the post-filtered result set.
-                aggregations = {
-                    **aggregations,
-                    "data_sources": _build_terms_agg("filename"),
-                    "document_types": _build_terms_agg("mimetype"),
-                    "owners": _build_terms_agg("owner"),
-                    "connector_types": _build_terms_agg("connector_type"),
-                    "embedding_models": _build_terms_agg("embedding_model"),
-                }
+        # Preserve ordinary hybrid/RRF results. Exact narrowing is only for
+        # identifier-like queries with an actual verbatim match.
+        chunks, aggregations = _apply_exact_match_file_filter(
+            query,
+            chunks,
+            _normalize_file_facet_aggregations(results.get("aggregations", {})),
+            is_wildcard_match_all=is_wildcard_match_all,
+        )
 
         # Return both transformed results and aggregations. Surface degraded
         # semantic-search signals so the UI can show a non-fatal warning
@@ -663,6 +871,18 @@ class SearchService:
                     ),
                 }
             ]
+        if retrieval_results and retrieval_settings.debug:
+            response["retrieval_debug"] = {
+                "strategy": "rrf",
+                "mode": retrieval_settings.mode,
+                "lanes": {
+                    lane: len(lane_result.get("hits", {}).get("hits", []))
+                    for lane, lane_result in retrieval_results.items()
+                },
+                "rrf_k": retrieval_settings.rrf_k,
+                "max_chunks_per_document": retrieval_settings.max_chunks_per_document,
+                "reranker_enabled": bool(retrieval_settings.reranker_url),
+            }
         return response
 
     async def search(

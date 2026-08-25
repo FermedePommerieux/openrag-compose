@@ -85,11 +85,16 @@ async def search_endpoint(
         results = [
             {
                 "filename": item.get("filename"),
+                "document_id": item.get("document_id"),
+                "chunk_id": item.get("chunk_id"),
+                "chunk_index": item.get("chunk_index"),
+                "chunking_strategy": item.get("chunking_strategy"),
                 "text": item.get("text"),
                 "score": item.get("score"),
                 "page": item.get("page"),
                 "mimetype": item.get("mimetype"),
                 "source_url": item.get("source_url"),
+                "connector_file_id": item.get("connector_file_id"),
             }
             for item in result.get("results", [])
         ]

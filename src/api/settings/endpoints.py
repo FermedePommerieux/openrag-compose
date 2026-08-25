@@ -249,11 +249,23 @@ async def get_settings(
                 embedding_provider=knowledge_config.embedding_provider,
                 chunk_size=knowledge_config.chunk_size,
                 chunk_overlap=knowledge_config.chunk_overlap,
+                chunking_strategy=knowledge_config.chunking_strategy,
+                hybrid_max_tokens=knowledge_config.hybrid_max_tokens,
+                hybrid_merge_peers=knowledge_config.hybrid_merge_peers,
                 table_structure=knowledge_config.table_structure,
                 ocr=knowledge_config.ocr,
                 picture_descriptions=knowledge_config.picture_descriptions,
                 index_name=knowledge_config.index_name,
                 disable_ingest_with_langflow=knowledge_config.disable_ingest_with_langflow,
+                retrieval_strategy=knowledge_config.retrieval_strategy,
+                retrieval_mode=knowledge_config.retrieval_mode,
+                retrieval_lexical_candidates=knowledge_config.retrieval_lexical_candidates,
+                retrieval_vector_candidates=knowledge_config.retrieval_vector_candidates,
+                retrieval_rrf_k=knowledge_config.retrieval_rrf_k,
+                retrieval_max_chunks_per_document=knowledge_config.retrieval_max_chunks_per_document,
+                retrieval_reranker_url=knowledge_config.retrieval_reranker_url,
+                retrieval_reranker_timeout=knowledge_config.retrieval_reranker_timeout,
+                retrieval_debug=knowledge_config.retrieval_debug,
             ),
             archiving=archiving_config,
             agent=AgentConfig(
@@ -599,6 +611,29 @@ async def update_settings(
             except Exception as e:
                 logger.error(f"Failed to update ingest flow chunk overlap: {str(e)}")
                 # Don't fail the entire settings update if flow update fails
+
+        # Retrieval v2 settings deliberately stay backend-owned.  The Langflow
+        # flow continues to use its exported component configuration, while
+        # API and SDK search use these persisted settings directly.
+        retrieval_update_fields = [
+            "chunking_strategy",
+            "hybrid_max_tokens",
+            "hybrid_merge_peers",
+            "retrieval_strategy",
+            "retrieval_mode",
+            "retrieval_lexical_candidates",
+            "retrieval_vector_candidates",
+            "retrieval_rrf_k",
+            "retrieval_max_chunks_per_document",
+            "retrieval_reranker_url",
+            "retrieval_reranker_timeout",
+            "retrieval_debug",
+        ]
+        for field_name in retrieval_update_fields:
+            value = getattr(body, field_name)
+            if value is not None:
+                setattr(working_config.knowledge, field_name, value)
+                config_updated = True
         if body.index_name is not None:
             old_index_name = working_config.knowledge.index_name
             new_index_name = body.index_name.strip()
