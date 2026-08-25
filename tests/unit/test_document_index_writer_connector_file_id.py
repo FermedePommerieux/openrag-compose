@@ -72,3 +72,34 @@ def test_no_connector_file_id_anywhere_omits_field():
     )
 
     assert "connector_file_id" not in doc
+
+
+def test_chunk_position_and_strategy_are_indexed_for_retrieval_context():
+    writer = DocumentIndexWriter()
+    context = _context(chunking_strategy="hybrid")
+    chunk = DocumentIndexChunk(
+        chunk_id="c1",
+        text="hello",
+        vector=[0.1, 0.2],
+        chunk_index=4,
+    )
+
+    doc = writer._build_chunk_document(
+        context=context,
+        chunk=chunk,
+        embedding_field="embedding",
+        indexed_time="2026-01-01T00:00:00Z",
+    )
+
+    assert doc["chunk_index"] == 4
+    assert doc["chunking_strategy"] == "hybrid"
+    assert doc["chunk_id"].endswith("_c1")
+
+
+def test_logical_chunk_identity_stays_stable_while_generation_storage_id_changes():
+    writer = DocumentIndexWriter()
+    first = _context()
+    replacement = _context(ingest_run_id="new-generation")
+
+    assert writer._logical_chunk_id(first, "c1") == writer._logical_chunk_id(replacement, "c1")
+    assert writer.storage_chunk_id(first, "c1") != writer.storage_chunk_id(replacement, "c1")

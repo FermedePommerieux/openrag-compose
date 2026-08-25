@@ -273,6 +273,7 @@ async def upload_bucket(
         jwt_token=jwt_token,
         owner_name=owner_name,
         owner_email=owner_email,
+        replace_duplicates=body.replace_duplicates,
     )
 
     task_id = await task_service.create_custom_task(task_user_id, keys, processor)
