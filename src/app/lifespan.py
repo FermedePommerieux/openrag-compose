@@ -201,10 +201,9 @@ async def run_startup(app: FastAPI):
             run_mode=get_run_mode(),
         )
 
-    # Open the SQL engine on uvicorn's live loop (NOT the one used by
-    # asyncio.run(create_app()) which closed already). All RBAC code
-    # uses RBACService's lazy factory that reads db.engine.SessionLocal
-    # at call time, so it will pick up the binding we set here.
+    # Open the SQL engine during the ASGI lifespan. All RBAC code uses
+    # RBACService's lazy factory that reads db.engine.SessionLocal at call
+    # time, so it will pick up the binding we set here.
     try:
         from db.engine import init_engine
 

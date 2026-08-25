@@ -72,11 +72,8 @@ if __name__ == "__main__":
     # avoids two pitfalls:
     #   1. Alembic's env.py uses asyncio.run() which collides with a
     #      live event loop.
-    #   2. Anything done inside `asyncio.run(create_app())` binds to a
-    #      loop that is closed before uvicorn starts — including DB
-    #      engines. Putting the schema migration here keeps the runtime
-    #      `init_engine()` deferred to the lifespan startup, on the
-    #      live uvicorn loop.
+    #   2. The schema must exist before the runtime `init_engine()` runs
+    #      during the ASGI lifespan.
     try:
         from db.migrations_runtime import run_alembic_upgrade
 
@@ -85,25 +82,34 @@ if __name__ == "__main__":
         logger.error("Alembic upgrade failed at startup", error=str(_e))
         raise
 
-    app = asyncio.run(create_app())
+    async def _serve() -> None:
+        # Build the application and run Uvicorn on the same event loop. Services
+        # create long-lived httpx/OpenSearch clients during create_app(); closing
+        # that loop before Uvicorn starts leaves those clients bound to a dead
+        # transport and makes the first startup requests fail with
+        # "Event loop is closed".
+        app = await create_app()
 
-    # Optionally spin up the standalone ingestion-callback proxy router in this
-    # same process (own daemon thread + port) so Langflow calls back to it
-    # instead of the full backend internal API surface.
-    from config.settings import OPENRAG_BACKEND_ROUTER_ENABLE, OPENRAG_BACKEND_ROUTER_PORT
+        # Optionally spin up the standalone ingestion-callback proxy router in
+        # this same process (own daemon thread + port) so Langflow calls back to
+        # it instead of the full backend internal API surface.
+        from config.settings import OPENRAG_BACKEND_ROUTER_ENABLE, OPENRAG_BACKEND_ROUTER_PORT
 
-    if OPENRAG_BACKEND_ROUTER_ENABLE:
-        from app.router_app import start_backend_router
+        if OPENRAG_BACKEND_ROUTER_ENABLE:
+            from app.router_app import start_backend_router
 
-        start_backend_router()
-        logger.info("Backend ingestion router enabled", port=OPENRAG_BACKEND_ROUTER_PORT)
+            start_backend_router()
+            logger.info("Backend ingestion router enabled", port=OPENRAG_BACKEND_ROUTER_PORT)
 
-    uvicorn.run(
-        app,
-        workers=1,
-        host="0.0.0.0",
-        port=OPENRAG_BACKEND_PORT,
-        reload=False,
-        access_log=ACCESS_LOG_ENABLED,
-        log_config=None,
-    )
+        config = uvicorn.Config(
+            app,
+            workers=1,
+            host="0.0.0.0",
+            port=OPENRAG_BACKEND_PORT,
+            reload=False,
+            access_log=ACCESS_LOG_ENABLED,
+            log_config=None,
+        )
+        await uvicorn.Server(config).serve()
+
+    asyncio.run(_serve())
