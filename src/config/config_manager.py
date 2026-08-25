@@ -181,6 +181,13 @@ class KnowledgeConfig:
 
 
 @dataclass
+class ArchivingConfig:
+    """Persistent source-file archiving configuration."""
+
+    enabled: bool = False
+
+
+@dataclass
 class AgentConfig:
     """Agent configuration."""
 
@@ -212,6 +219,7 @@ class OpenRAGConfig:
     knowledge: KnowledgeConfig
     agent: AgentConfig
     onboarding: OnboardingState
+    archiving: ArchivingConfig = field(default_factory=ArchivingConfig)
     edited: bool = False  # Track if manually edited
 
     @classmethod
@@ -238,6 +246,7 @@ class OpenRAGConfig:
             knowledge=KnowledgeConfig(**data.get("knowledge", {})),
             agent=AgentConfig(**data.get("agent", {})),
             onboarding=OnboardingState(**data.get("onboarding", {})),
+            archiving=ArchivingConfig(**data.get("archiving", {})),
             edited=data.get("edited", False),
         )
 
@@ -302,6 +311,7 @@ class ConfigManager:
             "knowledge": {},
             "agent": {},
             "onboarding": {},
+            "archiving": {},
         }
 
         needs_encryption_upgrade = False
@@ -331,7 +341,7 @@ class ConfigManager:
                                 if get_master_secret() is not None:
                                     needs_encryption_upgrade = True
                             config_data["providers"][provider].update(provider_data)
-                for section in ["knowledge", "agent", "onboarding"]:
+                for section in ["knowledge", "agent", "onboarding", "archiving"]:
                     if section in file_config:
                         config_data[section].update(file_config[section])
 
@@ -363,6 +373,15 @@ class ConfigManager:
         self, config_data: dict[str, Any], temp_config: Optional["OpenRAGConfig"] = None
     ) -> None:
         """Load environment variable overrides, respecting edited flag."""
+
+        # This variable is deliberately a *default*, not a permanent override.
+        # Apply it when upgrading an existing edited config that predates the
+        # archiving section, but preserve any choice already saved by the UI.
+        from config.settings import get_archive_sources_default
+
+        archive_sources_default = get_archive_sources_default()
+        if "enabled" not in config_data["archiving"] and archive_sources_default is not None:
+            config_data["archiving"]["enabled"] = archive_sources_default
 
         # Skip all environment overrides if config has been manually edited
         if temp_config and temp_config.edited:

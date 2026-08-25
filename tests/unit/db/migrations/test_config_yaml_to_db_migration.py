@@ -68,33 +68,50 @@ async def test_migration_writes_all_sections_from_existing_yaml(
         "knowledge": {"embedding_model": "text-embedding-3-small", "chunk_size": 1024},
         "agent": {"llm_model": "gpt-4o", "system_prompt": "be helpful"},
         "onboarding": {"current_step": "complete"},
+        "archiving": {"enabled": True},
         "edited": True,
     }
     tmp_yaml.write_text(yaml.safe_dump(yaml_payload))
 
     written = await migrate_config_yaml_to_db(session)
     await session.commit()
-    assert written == 5  # providers, knowledge, agent, onboarding, meta
+    assert written == 6  # providers, knowledge, agent, onboarding, archiving, meta
 
     repo = WorkspaceConfigRepo(session)
     assert (await repo.get_section("agent"))["llm_model"] == "gpt-4o"
     assert (await repo.get_section("knowledge"))["embedding_model"] == "text-embedding-3-small"
     assert (await repo.get_section("onboarding"))["current_step"] == "complete"
+    assert (await repo.get_section("archiving"))["enabled"] is True
     assert (await repo.get_section("meta")) == {"edited": True}
 
 
 @pytest.mark.asyncio
-async def test_migration_fresh_install_writes_empty_sections(tmp_yaml, session):
-    """No yaml file present — migration still runs, writes empty/default
-    sections, edited=False."""
+async def test_migration_fresh_install_writes_default_sections(tmp_yaml, session):
+    """No yaml file present — migration writes effective defaults."""
     # Don't create yaml file; ConfigManager.load_config returns defaults
     written = await migrate_config_yaml_to_db(session)
     await session.commit()
-    assert written == 5
+    assert written == 6
 
     repo = WorkspaceConfigRepo(session)
+    assert await repo.get_section("archiving") == {"enabled": False}
     meta = await repo.get_section("meta")
     assert meta == {"edited": False}
+
+
+@pytest.mark.asyncio
+async def test_migration_preserves_archiving_deployment_default(
+    monkeypatch, tmp_yaml, session
+):
+    """Persist the effective deployment default for an older YAML config."""
+    monkeypatch.setenv("OPENRAG_ARCHIVE_SOURCES_DEFAULT", "true")
+    tmp_yaml.write_text("edited: true\nknowledge: {}\n")
+
+    written = await migrate_config_yaml_to_db(session)
+    await session.commit()
+
+    assert written == 6
+    assert await WorkspaceConfigRepo(session).get_section("archiving") == {"enabled": True}
 
 
 @pytest.mark.asyncio

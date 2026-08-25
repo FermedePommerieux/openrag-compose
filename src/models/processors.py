@@ -80,6 +80,8 @@ class TaskProcessor:
         *,
         wait_for_visibility: bool = False,
         field: str = "document_id",
+        owner_user_id: str | None = None,
+        shared: bool | None = None,
     ) -> bool:
         """
         Check if a document with the given hash already exists in OpenSearch.
@@ -112,16 +114,42 @@ class TaskProcessor:
         # explicitly `keyword` since index creation and never has this issue.
         query: dict[str, Any]
         if field == "connector_file_id":
-            query = {
+            field_query = {
                 "bool": {
                     "should": [
                         {"term": {field: file_hash}},
                         {"term": {f"{field}.keyword": file_hash}},
-                    ]
+                    ],
+                    "minimum_should_match": 1,
                 }
             }
         else:
-            query = {"term": {field: file_hash}}
+            field_query = {"term": {field: file_hash}}
+
+        # Calls that provide ``shared`` deliberately opt into an ownership
+        # boundary.  Preserve the historic unscoped behavior for legacy
+        # read-only callers that do not provide a scope at all.
+        if shared is None:
+            query = field_query
+        else:
+            from utils.opensearch_queries import (
+                build_anonymous_document_query,
+                build_owned_document_query,
+            )
+
+            if field == "document_id":
+                query = (
+                    build_anonymous_document_query(file_hash)
+                    if shared or owner_user_id is None
+                    else build_owned_document_query(file_hash, owner_user_id)
+                )
+            else:
+                owner_filter = (
+                    {"bool": {"must_not": {"exists": {"field": "owner"}}}}
+                    if shared or owner_user_id is None
+                    else {"term": {"owner": owner_user_id}}
+                )
+                query = {"bool": {"filter": [field_query, owner_filter]}}
 
         for attempt in range(max_retries):
             try:
@@ -417,6 +445,7 @@ class TaskProcessor:
         ocr: bool | None = None,
         picture_descriptions: bool | None = None,
         shared: bool = False,
+        source_url: str | None = None,
     ):
         """
         Standard processing pipeline for non-Langflow processors:
@@ -452,7 +481,12 @@ class TaskProcessor:
         )
 
         # Check if already exists
-        if await self.check_document_exists(file_hash, opensearch_client):
+        if await self.check_document_exists(
+            file_hash,
+            opensearch_client,
+            owner_user_id=owner_user_id,
+            shared=shared,
+        ):
             return {"status": "unchanged", "id": file_hash}
 
         logger.info(
@@ -570,6 +604,10 @@ class TaskProcessor:
                 collect_visible_document_ids,
                 delete_document_ids,
             )
+            from utils.opensearch_queries import (
+                build_anonymous_document_query,
+                build_owned_document_query,
+            )
 
             write_client = clients.opensearch
             if write_client is None:
@@ -578,7 +616,11 @@ class TaskProcessor:
             stale_chunk_ids = await collect_visible_document_ids(
                 opensearch_client,
                 index=get_index_name(),
-                query={"term": {"document_id": file_hash}},
+                query=(
+                    build_anonymous_document_query(file_hash)
+                    if shared or owner_user_id is None
+                    else build_owned_document_query(file_hash, owner_user_id)
+                ),
             )
             await delete_document_ids(
                 write_client,
@@ -620,6 +662,7 @@ class TaskProcessor:
             owner_email=owner_email,
             file_size=file_size,
             connector_type=connector_type,
+            source_url=source_url,
             allowed_users=allowed_users,
             allowed_groups=allowed_groups,
             allowed_principals=allowed_principals,
@@ -690,6 +733,9 @@ class DocumentFileProcessor(TaskProcessor):
         replace_duplicates: bool = False,
         session_manager=None,
         settings: dict | None = None,
+        source_urls: dict[str, str] | None = None,
+        archive_sources: bool = False,
+        delete_source_after_success: bool = False,
     ):
         super().__init__(
             document_service,
@@ -708,6 +754,9 @@ class DocumentFileProcessor(TaskProcessor):
             document_service.session_manager if document_service else None
         )
         self.settings = settings
+        self.source_urls = source_urls or {}
+        self.archive_sources = archive_sources
+        self.delete_source_after_success = delete_source_after_success
         if self.session_manager is None:
             raise ValueError("session_manager is required for DocumentFileProcessor")
 
@@ -716,6 +765,8 @@ class DocumentFileProcessor(TaskProcessor):
         file_task.status = TaskStatus.RUNNING
         file_task.updated_at = time.time()
 
+        staged_source = None
+        archive_committed = False
         try:
             # Use the ORIGINAL filename stored in file_task (not the transformed temp path)
             # This ensures we check/store the original filename with spaces, etc.
@@ -728,35 +779,37 @@ class DocumentFileProcessor(TaskProcessor):
                 self.owner_user_id, self.jwt_token
             )
 
-            filename_exists = await self.check_filename_exists(original_filename, opensearch_client)
-
-            if filename_exists and not self.replace_duplicates:
-                # Duplicate exists and user hasn't confirmed replacement
-                file_task.status = TaskStatus.FAILED
-                file_task.error = f"File with name '{original_filename}' already exists"
-                file_task.updated_at = time.time()
-                upload_task.failed_files += 1
-                return
-            elif filename_exists and self.replace_duplicates:
-                # Delete existing document before uploading new one
-                logger.info(f"Replacing existing document: {original_filename}")
-                await self.delete_document_by_filename(
-                    original_filename,
-                    opensearch_client,
-                    owner_user_id=self.owner_user_id,
+            # Path ingestion identifies known content by its hash inside
+            # process_document_standard. A matching filename alone must not
+            # discard a different document from the shared ingestion folder.
+            if not self.delete_source_after_success:
+                filename_exists = await self.check_filename_exists(
+                    original_filename, opensearch_client
                 )
-                # Refresh index to make deletion visible before processing.
-                # refresh is index-wide (indices:admin/refresh) and cannot be DLS-scoped,
-                # so it must run under the admin/service client, not the user client.
-                from config.settings import get_index_name
 
-                try:
-                    await clients.opensearch.indices.refresh(index=get_index_name())
-                except Exception as refresh_error:
-                    logger.warning(
-                        "Failed to refresh index after delete",
-                        error=str(refresh_error),
+                if filename_exists and not self.replace_duplicates:
+                    file_task.status = TaskStatus.FAILED
+                    file_task.error = f"File with name '{original_filename}' already exists"
+                    file_task.updated_at = time.time()
+                    upload_task.failed_files += 1
+                    return
+                if filename_exists and self.replace_duplicates:
+                    logger.info(f"Replacing existing document: {original_filename}")
+                    await self.delete_document_by_filename(
+                        original_filename,
+                        opensearch_client,
+                        owner_user_id=self.owner_user_id,
                     )
+                    # Refresh is index-wide and must use the service client.
+                    from config.settings import get_index_name
+
+                    try:
+                        await clients.opensearch.indices.refresh(index=get_index_name())
+                    except Exception as refresh_error:
+                        logger.warning(
+                            "Failed to refresh index after delete",
+                            error=str(refresh_error),
+                        )
 
             # Compute hash
             file_hash = hash_id(item)
@@ -765,9 +818,18 @@ class DocumentFileProcessor(TaskProcessor):
             # the file_task for preview-mode index proof lookups.
             file_task.document_id = file_hash
 
+            source_url = self.source_urls.get(str(item))
+            processing_path = item
+            if self.archive_sources:
+                from services.local_source_service import local_source_url, stage_local_source
+
+                staged_source = await stage_local_source(item, file_hash, original_filename)
+                processing_path = str(staged_source.archived_path)
+                source_url = source_url or local_source_url(staged_source.source_id)
+
             # Get file size
             try:
-                file_size = os.path.getsize(item)
+                file_size = os.path.getsize(processing_path)
             except Exception:
                 file_size = 0
 
@@ -808,7 +870,7 @@ class DocumentFileProcessor(TaskProcessor):
 
             # Use consolidated standard processing
             result = await self.process_document_standard(
-                file_path=item,
+                file_path=processing_path,
                 file_hash=file_hash,
                 owner_user_id=self.owner_user_id,
                 original_filename=original_filename,
@@ -819,6 +881,7 @@ class DocumentFileProcessor(TaskProcessor):
                 connector_type=self.connector_type,
                 is_sample_data=self.is_sample_data,
                 acl=acl,
+                source_url=source_url,
                 **standard_kwargs,
             )
 
@@ -828,6 +891,41 @@ class DocumentFileProcessor(TaskProcessor):
                 file_task.updated_at = time.time()
                 upload_task.failed_files += 1
             else:
+                result_status = result.get("status")
+                # ``unchanged`` means the content hash was already present and
+                # no chunk was rewritten with this new source URL. Path ingest
+                # consumes that redundant input; other callers retain it.
+                if result_status == "indexed":
+                    if staged_source is not None:
+                        staged_source.commit()
+                        archive_committed = True
+                    elif self.delete_source_after_success:
+                        from services.local_source_service import delete_ingested_source
+
+                        deleted = delete_ingested_source(item)
+                        if not deleted and os.path.exists(item):
+                            logger.warning(
+                                "Failed to remove successfully ingested local source",
+                                file_path=item,
+                            )
+                elif result_status == "unchanged" and self.delete_source_after_success:
+                    if staged_source is not None:
+                        if await staged_source.discard():
+                            staged_source = None
+                        else:
+                            logger.warning(
+                                "Failed to discard unchanged staged source",
+                                file_path=item,
+                            )
+                    else:
+                        from services.local_source_service import delete_ingested_source
+
+                        deleted = delete_ingested_source(item)
+                        if not deleted and os.path.exists(item):
+                            logger.warning(
+                                "Failed to remove unchanged local source",
+                                file_path=item,
+                            )
                 file_task.status = TaskStatus.COMPLETED
                 file_task.result = result
                 file_task.updated_at = time.time()
@@ -839,6 +937,9 @@ class DocumentFileProcessor(TaskProcessor):
             file_task.updated_at = time.time()
             upload_task.failed_files += 1
             raise
+        finally:
+            if staged_source is not None and not archive_committed:
+                await staged_source.rollback()
 
 
 class ConnectorFileProcessor(TaskProcessor):
@@ -1108,7 +1209,12 @@ class ConnectorFileProcessor(TaskProcessor):
                 # Compute hash
                 file_hash = hash_id(tmp_path)
 
-                if not renamed and await self.check_document_exists(file_hash, opensearch_client):
+                if not renamed and await self.check_document_exists(
+                    file_hash,
+                    opensearch_client,
+                    owner_user_id=self.user_id,
+                    shared=self.shared,
+                ):
                     await self._reconcile_shared_owner(file_task.filename)
                     file_task.status = TaskStatus.COMPLETED
                     file_task.result = {"status": "unchanged", "id": file_hash}
@@ -1138,6 +1244,13 @@ class ConnectorFileProcessor(TaskProcessor):
                             index=get_index_name(),
                             query={
                                 "bool": {
+                                    "filter": [
+                                        (
+                                            {"bool": {"must_not": {"exists": {"field": "owner"}}}}
+                                            if self.shared
+                                            else {"term": {"owner": self.user_id}}
+                                        )
+                                    ],
                                     "should": [
                                         {"term": {"document_id": document.id}},
                                         {"term": {"connector_file_id": document.id}},
@@ -1145,7 +1258,8 @@ class ConnectorFileProcessor(TaskProcessor):
                                         # predate the explicit keyword mapping for
                                         # this field.
                                         {"term": {"connector_file_id.keyword": document.id}},
-                                    ]
+                                    ],
+                                    "minimum_should_match": 1,
                                 }
                             },
                         )
@@ -1247,6 +1361,8 @@ class ConnectorFileProcessor(TaskProcessor):
                         on_error="assume_exists",
                         wait_for_visibility=True,
                         field="connector_file_id",
+                        owner_user_id=self.user_id,
+                        shared=self.shared,
                     ):
                         result = {
                             "status": "error",
@@ -1443,6 +1559,9 @@ class LangflowFileProcessor(TaskProcessor):
         replace_duplicates: bool = False,
         connector_type: str = "local",
         docling_polling_service=None,
+        preview_mode: bool = False,
+        source_urls: dict[str, str] | None = None,
+        archive_sources: bool = False,
     ):
         super().__init__()
         self.langflow_file_service = langflow_file_service
@@ -1457,6 +1576,9 @@ class LangflowFileProcessor(TaskProcessor):
         self.replace_duplicates = replace_duplicates
         self.connector_type = connector_type
         self.docling_polling_service = docling_polling_service
+        self.preview_mode = preview_mode
+        self.source_urls = source_urls or {}
+        self.archive_sources = archive_sources
 
     async def process_item(self, upload_task: UploadTask, item: str, file_task: FileTask) -> None:
         """Process a file path using LangflowFileService upload_and_ingest_file"""
@@ -1464,6 +1586,8 @@ class LangflowFileProcessor(TaskProcessor):
         file_task.status = TaskStatus.RUNNING
         file_task.updated_at = time.time()
 
+        staged_source = None
+        archive_committed = False
         try:
             # Use the ORIGINAL filename stored in file_task (not the transformed temp path)
             # This ensures we check/store the original filename with spaces, etc.
@@ -1531,6 +1655,13 @@ class LangflowFileProcessor(TaskProcessor):
             file_hash = hash_id(item)
             file_task.document_id = file_hash
 
+            source_url = self.source_urls.get(str(item))
+            if self.archive_sources:
+                from services.local_source_service import local_source_url, stage_local_source
+
+                staged_source = await stage_local_source(item, file_hash, original_filename)
+                source_url = source_url or local_source_url(staged_source.source_id)
+
             # Build settings with fresh OCR/pictureDescriptions from live
             # config so retries pick up configuration changes.
             config = get_openrag_config()
@@ -1555,6 +1686,7 @@ class LangflowFileProcessor(TaskProcessor):
                 docling_polling_service=self.docling_polling_service,
                 file_task=file_task,
                 document_id=file_hash,
+                source_url=source_url,
                 original_filename=original_filename,
                 original_mimetype=original_mimetype,
             )
@@ -1584,6 +1716,9 @@ class LangflowFileProcessor(TaskProcessor):
                 upload_task.failed_files += 1
             else:
                 # Update task with success
+                if staged_source is not None:
+                    staged_source.commit()
+                    archive_committed = True
                 file_task.status = TaskStatus.COMPLETED
                 file_task.result = result
                 file_task.updated_at = time.time()
@@ -1596,3 +1731,6 @@ class LangflowFileProcessor(TaskProcessor):
             file_task.updated_at = time.time()
             upload_task.failed_files += 1
             raise
+        finally:
+            if staged_source is not None and not archive_committed:
+                await staged_source.rollback()
