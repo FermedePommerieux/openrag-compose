@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 import pytest
 
-from services.docling_service import DoclingServeError, DoclingService
+from services.docling_service import DoclingServeError, DoclingService, get_docling_preset_configs
 
 
 def _make_response(status_code: int, json_data: dict = None) -> MagicMock:
@@ -158,6 +158,31 @@ async def test_upload_success(docling_service, mock_httpx_client):
     _, kwargs = mock_httpx_client.post.call_args
     data = kwargs.get("data", {})
     assert data["do_ocr"] == "false"
+    assert "ocr_preset" not in data
+    assert "ocr_engine" not in data
+    assert "ocr_custom_config" not in data
+
+
+@pytest.mark.asyncio
+async def test_upload_ocr_enabled_sends_rapidocr_preset(docling_service, mock_httpx_client):
+    """OCR jobs request the administrator-owned RapidOCR preset."""
+    mock_httpx_client.post.return_value = _make_response(200, {"task_id": "rapidocr-task"})
+    mock_config = MagicMock()
+    mock_config.knowledge.table_structure = True
+    mock_config.knowledge.ocr = True
+    mock_config.knowledge.picture_descriptions = False
+
+    with patch("services.docling_service.get_openrag_config", return_value=mock_config):
+        task_id = await docling_service.upload_to_docling_direct_async("test.pdf", b"data")
+
+    assert task_id == "rapidocr-task"
+    _, kwargs = mock_httpx_client.post.call_args
+    data = kwargs["data"]
+    assert data["do_ocr"] == "true"
+    assert data["ocr_preset"] == "rapidocr"
+    assert "ocr_engine" not in data
+    assert "ocr_custom_config" not in data
+    assert "ocr_lang" not in data
 
 
 @pytest.mark.asyncio
@@ -185,26 +210,32 @@ def test_build_docling_options_toggles(docling_service):
 
     assert options["do_table_structure"] is True
     assert options["do_ocr"] is True
+    assert options["ocr_preset"] == "rapidocr"
+    assert "ocr_engine" not in options
+    assert "ocr_custom_config" not in options
     assert options["do_picture_description"] is False
     assert options["to_formats"] == "json"
 
 
-def test_preset_configs_macos():
-    """Uses ocrmac engine on macOS."""
-    from services.docling_service import get_docling_preset_configs
+def test_preset_configs_ocr_uses_rapidocr_independently_of_host_platform():
+    """OCR selection is part of the job, not the OpenRAG host platform."""
+    preset = get_docling_preset_configs(ocr=True)
 
-    with patch("services.docling_service.platform.system", return_value="Darwin"):
-        preset = get_docling_preset_configs(ocr=True)
-        assert preset["ocr_engine"] == "ocrmac"
+    assert preset["do_ocr"] is True
+    assert preset["ocr_preset"] == "rapidocr"
+    assert "ocr_engine" not in preset
+    assert "ocr_custom_config" not in preset
+    assert "ocr_lang" not in preset
 
 
-def test_preset_configs_linux():
-    """Uses easyocr engine on non-macOS."""
-    from services.docling_service import get_docling_preset_configs
+def test_preset_configs_ocr_disabled_omits_ocr_preset():
+    """Disabling OCR preserves the toggle and does not force an OCR engine."""
+    preset = get_docling_preset_configs(ocr=False)
 
-    with patch("services.docling_service.platform.system", return_value="Linux"):
-        preset = get_docling_preset_configs(ocr=True)
-        assert preset["ocr_engine"] == "easyocr"
+    assert preset["do_ocr"] is False
+    assert "ocr_preset" not in preset
+    assert "ocr_custom_config" not in preset
+    assert "ocr_engine" not in preset
 
 
 def test_init_default_url():
