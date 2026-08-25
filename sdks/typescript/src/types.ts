@@ -9,6 +9,7 @@ export interface Source {
   score: number;
   page?: number | null;
   mimetype?: string | null;
+  source_url?: string | null;
 }
 
 export interface ChatResponse {
@@ -43,6 +44,7 @@ export interface SearchResult {
   score: number;
   page?: number | null;
   mimetype?: string | null;
+  source_url?: string | null;
 }
 
 export interface SearchResponse {
@@ -124,9 +126,15 @@ export interface KnowledgeSettings {
   chunk_overlap?: number | null;
 }
 
+export interface ArchivingSettings {
+  available: boolean;
+  enabled: boolean;
+}
+
 export interface SettingsResponse {
   agent: AgentSettings;
   knowledge: KnowledgeSettings;
+  archiving: ArchivingSettings;
 }
 
 /** Options for updating settings. */
@@ -151,6 +159,8 @@ export interface SettingsUpdateOptions {
   ocr?: boolean;
   /** Enable picture descriptions. */
   picture_descriptions?: boolean;
+  /** Keep original local source files after successful ingestion. */
+  archive_sources_enabled?: boolean;
 }
 
 /** Response from settings update. */

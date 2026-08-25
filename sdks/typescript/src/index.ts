@@ -75,6 +75,7 @@ export {
   SettingsUpdateOptions,
   SettingsUpdateResponse,
   AgentSettings,
+  ArchivingSettings,
   KnowledgeSettings,
   // Knowledge filter types
   KnowledgeFilter,
