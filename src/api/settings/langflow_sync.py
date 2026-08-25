@@ -28,39 +28,113 @@ logger = get_logger(__name__)
 # garbage-collected mid-flight when the originating request returns.
 _background_tasks: set[asyncio.Task] = set()
 
+# Variables consumed by non-secret Langflow component fields must be Generic.
+# Langflow 1.11 rejects Credential variables in fields such as Docling's URL
+# and the OpenSearch index name.
+LANGFLOW_GENERIC_GLOBAL_VARIABLES = frozenset(
+    {
+        "DOCLING_SERVE_URL",
+        "DOCLING_TASK_ID",
+        "FILESIZE",
+        "MIMETYPE",
+        "OLLAMA_BASE_URL",
+        "OPENRAG-QUERY-FILTER",
+        "OPENSEARCH_INDEX_NAME",
+        "OPENSEARCH_URL",
+        "SELECTED_EMBEDDING_MODEL",
+        "WATSONX_PROJECT_ID",
+        "WATSONX_URL",
+    }
+)
+
+
+def _langflow_global_variable_type(name: str) -> str:
+    return "Generic" if name in LANGFLOW_GENERIC_GLOBAL_VARIABLES else "Credential"
+
+
+async def _upsert_langflow_global_variable(name: str, value: str, modify: bool = True):
+    await clients._create_langflow_global_variable(
+        name,
+        value,
+        modify=modify,
+        variable_type=_langflow_global_variable_type(name),
+    )
+
+
+def _string_value(value) -> str:
+    return "" if value is None else str(value)
+
+
+def _required_generic_global_values(config) -> dict[str, str]:
+    from config import settings
+
+    knowledge = getattr(config, "knowledge", None)
+    providers = getattr(config, "providers", None)
+    watsonx = getattr(providers, "watsonx", None)
+    ollama = getattr(providers, "ollama", None)
+
+    return {
+        "DOCLING_SERVE_URL": settings.get_langflow_docling_url(),
+        "DOCLING_TASK_ID": "None",
+        "FILESIZE": "0",
+        "MIMETYPE": "None",
+        "OLLAMA_BASE_URL": _string_value(getattr(ollama, "endpoint", None)),
+        "OPENRAG-QUERY-FILTER": "{}",
+        "OPENSEARCH_INDEX_NAME": _string_value(getattr(knowledge, "index_name", None))
+        or "documents",
+        "OPENSEARCH_URL": settings.get_langflow_opensearch_url(),
+        "SELECTED_EMBEDDING_MODEL": _string_value(getattr(knowledge, "embedding_model", None)),
+        "WATSONX_PROJECT_ID": _string_value(getattr(watsonx, "project_id", None)),
+        "WATSONX_URL": _string_value(getattr(watsonx, "endpoint", None)),
+    }
+
+
+async def ensure_required_langflow_global_variables(config=None):
+    """Ensure environment-seeded plain values use Langflow's Generic type."""
+    config = config or get_openrag_config()
+    for name, value in sorted(_required_generic_global_values(config).items()):
+        try:
+            await _upsert_langflow_global_variable(name, value)
+        except Exception as exc:
+            logger.warning(
+                "Failed to ensure Generic type for Langflow global variable",
+                variable_name=name,
+                error=str(exc),
+            )
+
 
 async def _update_langflow_global_variables(config, flows_service=None):
     """Update Langflow global variables for all configured providers"""
     try:
         # WatsonX global variables
         if config.providers.watsonx.api_key:
-            await clients._create_langflow_global_variable(
+            await _upsert_langflow_global_variable(
                 "WATSONX_APIKEY", config.providers.watsonx.api_key, modify=True
             )
             logger.info("Set WATSONX_APIKEY global variable in Langflow")
 
         if config.providers.watsonx.project_id:
-            await clients._create_langflow_global_variable(
+            await _upsert_langflow_global_variable(
                 "WATSONX_PROJECT_ID", config.providers.watsonx.project_id, modify=True
             )
             logger.info("Set WATSONX_PROJECT_ID global variable in Langflow")
 
         if config.providers.watsonx.endpoint:
-            await clients._create_langflow_global_variable(
+            await _upsert_langflow_global_variable(
                 "WATSONX_URL", config.providers.watsonx.endpoint, modify=True
             )
             logger.info("Set WATSONX_URL global variable in Langflow")
 
         # OpenAI global variables
         if config.providers.openai.api_key:
-            await clients._create_langflow_global_variable(
+            await _upsert_langflow_global_variable(
                 "OPENAI_API_KEY", config.providers.openai.api_key, modify=True
             )
             logger.info("Set OPENAI_API_KEY global variable in Langflow")
 
         # Anthropic global variables
         if config.providers.anthropic.api_key:
-            await clients._create_langflow_global_variable(
+            await _upsert_langflow_global_variable(
                 "ANTHROPIC_API_KEY", config.providers.anthropic.api_key, modify=True
             )
             logger.info("Set ANTHROPIC_API_KEY global variable in Langflow")
@@ -73,11 +147,11 @@ async def _update_langflow_global_variables(config, flows_service=None):
             endpoint = await flows_service.resolve_ollama_url(
                 config.providers.ollama.endpoint, force_refresh=True
             )
-            await clients._create_langflow_global_variable("OLLAMA_BASE_URL", endpoint, modify=True)
+            await _upsert_langflow_global_variable("OLLAMA_BASE_URL", endpoint, modify=True)
             logger.info("Set OLLAMA_BASE_URL global variable in Langflow")
 
         if config.knowledge.embedding_model:
-            await clients._create_langflow_global_variable(
+            await _upsert_langflow_global_variable(
                 "SELECTED_EMBEDDING_MODEL", config.knowledge.embedding_model, modify=True
             )
             logger.info(
