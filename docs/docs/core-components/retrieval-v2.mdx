@@ -1,0 +1,103 @@
+---
+title: Retrieval v2
+---
+
+# Retrieval v2
+
+Retrieval v2 is the Standard retrieval path for chat, the API, and both SDKs.
+The backend is the single source of truth for retrieval policy:
+
+```text
+Chat → Langflow agent → OpenRAG Retrieval v2 tool → backend /search
+     → lexical/vector lanes → RRF → OpenSearch (user-scoped DLS)
+```
+
+The Langflow tool is intentionally thin. It forwards the end-user context and
+does not implement BM25, KNN, RRF, ACL filtering, reranking, or provenance.
+
+## Strategy and configuration
+
+New installations use RRF by default:
+
+```yaml
+knowledge:
+  retrieval_strategy: rrf
+  retrieval_mode: hybrid
+  retrieval_lexical_candidates: 50
+  retrieval_vector_candidates: 50
+  retrieval_rrf_k: 60
+  retrieval_max_chunks_per_document: 3
+```
+
+RRF ranks lexical and vector candidates independently and fuses ranks, avoiding
+comparison of BM25 and vector scores. `weighted` is retained as an explicit
+compatibility setting, but is not the Standard baseline. On upgrade, a config
+without `retrieval_strategy` resolves to `rrf`; an explicit persisted
+`weighted` value is preserved. Operators may set `OPENRAG_RETRIEVAL_STRATEGY`
+to `rrf` or `weighted` for a non-edited configuration.
+
+Equal-score candidates are secondarily sorted by the persisted keyword
+`chunk_id`, rather than OpenSearch metadata `_id`, which is not sortable. New
+chunks have this field with doc values. Older chunks without it remain
+searchable and sort last within equal-score ties until re-indexed; they retain
+best-effort compatibility rather than a claim of complete reproducibility.
+
+`chunk_id: keyword` with doc values is a hard RRF precondition. OpenRAG reads
+the live mapping before an RRF request. A missing field, a `text` mapping, or
+disabled doc values produces an explicit `RRF unavailable` error with a
+reindexing instruction. This does not reject legacy documents that merely lack
+a `chunk_id` value: `missing: _last` keeps those documents searchable.
+
+## Identity, authentication, and access control
+
+The agent forwards the exact end-user JWT as a Bearer token to `/search`.
+In OSS mode the same identity resolver accepts either the existing browser
+`auth_token` cookie or that Bearer token. The backend then refreshes the
+user's workspace, owner and DLS principals and creates only a user-scoped
+OpenSearch client. No service or administrator credential is used for search.
+
+Results preserve `document_id`, `chunk_id`, `connector_file_id`, `source_url`,
+`filename`, `page`, `chunk_index`, and `chunking_strategy` across `/search`,
+chat responses, and public v1 streaming SSE citations. Legacy documents may
+have null or absent provenance fields, but remain readable.
+
+## Persisted Langflow flows
+
+At startup OpenRAG recognizes only the exact locked historical OpenRAG agent
+graph from lifecycle baseline `156f3664`, identified by its expected ID and a
+versioned canonical graph fingerprint. It writes a local backup, then uses
+Langflow 0.11.2's supported `PATCH` API to unlock the system flow temporarily,
+replaces it with the bundled `OpenRAGBackendRetrievalComponent` graph, verifies
+the persisted wiring, and locks it again. The migration is idempotent. A
+protected system flow that is missing, altered, partially migrated, or not
+verified as locked Retrieval v2 fails closed before the backend becomes Ready.
+An explicitly configured custom flow ID is preserved without automatic
+migration, settings reapplication, Retrieval v2 guarantees, or prompt
+synchronization. Startup may still create missing non-chat system flows, but
+excludes the custom chat flow from creation/recovery and does not run the
+global flow synchronization that could mutate it. Roll back by restoring the
+generated backup through Langflow and re-locking the flow.
+
+## Hybrid chunking and replacements
+
+`chunking_strategy: hybrid` uses Docling's `HybridChunker` in the backend.
+Hybrid is fail-fast: unavailable dependencies, unsupported plain text, or a
+chunking error fail the ingestion task; it never silently falls back to
+character chunks.
+
+Replacements are two-phase. OpenRAG first parses, chunks, embeds, and indexes
+a temporary generation while the old chunks remain available. Only after full
+success does it promote the new generation and delete the old one. A failed
+generation is cleaned up without deleting the previous document. Deduplication
+also includes the requested chunking strategy and relevant parameters, so a
+character document is not considered unchanged when hybrid is requested.
+
+The replacement scope always includes both the logical `document_id` and the
+owner/shared identity. Equal file bytes may be uploaded by different users;
+reindexing one owner never reads, promotes, deletes, rolls back, or cleans up
+the other owner's chunks. After a partial delete, restoration checks the global
+bulk response and every item. An incomplete restore is a fatal error with the
+affected chunk IDs preserved for recovery.
+
+Deep retrieval, Exhaustive retrieval, query expansion, and a new reranker are
+not implemented in this baseline.
