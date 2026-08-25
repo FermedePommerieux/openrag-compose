@@ -10,6 +10,7 @@ export type SettingsTab =
   | "Connectors"
   | "Providers"
   | "Langflow"
+  | "Retrieval"
   | "Connectors Permission";
 
 export class Settings {

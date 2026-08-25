@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowUpRight, Loader2, Minus, Plus } from "lucide-react";
+import { ArrowUpRight, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
@@ -42,6 +42,11 @@ export function IngestSettingsSection() {
 
   const [chunkSize, setChunkSize] = useState<number>(1024);
   const [chunkOverlap, setChunkOverlap] = useState<number>(50);
+  const [chunkingStrategy, setChunkingStrategy] = useState<
+    "character" | "hybrid"
+  >("character");
+  const [hybridMaxTokens, setHybridMaxTokens] = useState<number>(512);
+  const [hybridMergePeers, setHybridMergePeers] = useState<boolean>(true);
   const [chunkValidationError, setChunkValidationError] = useState<
     string | null
   >(null);
@@ -177,40 +182,33 @@ export function IngestSettingsSection() {
   ]);
 
   useEffect(() => {
-    if (settings.knowledge?.chunk_size !== undefined)
-      setChunkSize(settings.knowledge.chunk_size);
-  }, [settings.knowledge?.chunk_size]);
-
-  useEffect(() => {
-    if (settings.knowledge?.chunk_overlap !== undefined)
-      setChunkOverlap(settings.knowledge.chunk_overlap);
-  }, [settings.knowledge?.chunk_overlap]);
-
-  useEffect(() => {
-    if (settings.knowledge?.table_structure !== undefined)
-      setTableStructure(settings.knowledge.table_structure);
-  }, [settings.knowledge?.table_structure]);
-
-  useEffect(() => {
-    if (settings.knowledge?.ocr !== undefined) setOcr(settings.knowledge.ocr);
-  }, [settings.knowledge?.ocr]);
-
-  useEffect(() => {
-    if (settings.knowledge?.picture_descriptions !== undefined)
-      setPictureDescriptions(settings.knowledge.picture_descriptions);
-  }, [settings.knowledge?.picture_descriptions]);
-
-  useEffect(() => {
-    if (settings.knowledge?.disable_ingest_with_langflow !== undefined)
-      setDisableIngestWithLangflow(
-        settings.knowledge.disable_ingest_with_langflow,
-      );
-  }, [settings.knowledge?.disable_ingest_with_langflow]);
+    const k = settings.knowledge;
+    if (!k) return;
+    if (k.chunk_size !== undefined) setChunkSize(k.chunk_size);
+    if (k.chunk_overlap !== undefined) setChunkOverlap(k.chunk_overlap);
+    if (k.chunking_strategy !== undefined)
+      setChunkingStrategy(k.chunking_strategy);
+    if (k.hybrid_max_tokens !== undefined)
+      setHybridMaxTokens(k.hybrid_max_tokens);
+    if (k.hybrid_merge_peers !== undefined)
+      setHybridMergePeers(k.hybrid_merge_peers);
+    if (k.table_structure !== undefined) setTableStructure(k.table_structure);
+    if (k.ocr !== undefined) setOcr(k.ocr);
+    if (k.picture_descriptions !== undefined)
+      setPictureDescriptions(k.picture_descriptions);
+    if (k.disable_ingest_with_langflow !== undefined)
+      setDisableIngestWithLangflow(k.disable_ingest_with_langflow);
+  }, [settings.knowledge]);
 
   const k = settings.knowledge;
   const knowledgeIngestDirty =
-    chunkSize !== (k?.chunk_size ?? chunkSize) ||
-    chunkOverlap !== (k?.chunk_overlap ?? chunkOverlap) ||
+    chunkingStrategy !== (k?.chunking_strategy ?? "character") ||
+    (chunkingStrategy === "character" &&
+      (chunkSize !== (k?.chunk_size ?? chunkSize) ||
+        chunkOverlap !== (k?.chunk_overlap ?? chunkOverlap))) ||
+    (chunkingStrategy === "hybrid" &&
+      (hybridMaxTokens !== (k?.hybrid_max_tokens ?? hybridMaxTokens) ||
+        hybridMergePeers !== (k?.hybrid_merge_peers ?? hybridMergePeers))) ||
     tableStructure !== (k?.table_structure ?? tableStructure) ||
     ocr !== (k?.ocr ?? ocr) ||
     pictureDescriptions !== (k?.picture_descriptions ?? pictureDescriptions) ||
@@ -228,35 +226,51 @@ export function IngestSettingsSection() {
   };
 
   const handleKnowledgeIngestSave = () => {
+    const chunkingPayload =
+      chunkingStrategy === "character"
+        ? {
+            chunking_strategy: chunkingStrategy,
+            chunk_size: chunkSize,
+            chunk_overlap: chunkOverlap,
+          }
+        : {
+            chunking_strategy: chunkingStrategy,
+            hybrid_max_tokens: hybridMaxTokens,
+            hybrid_merge_peers: hybridMergePeers,
+          };
     trackButton({
       CTA: "Save Ingest Settings",
       elementId: "save-ingest-settings-button",
       namespace: "settings",
       payload: {
-        chunk_size: chunkSize,
-        chunk_overlap: chunkOverlap,
+        ...chunkingPayload,
         table_structure: tableStructure,
         ocr,
         picture_descriptions: pictureDescriptions,
         disable_ingest_with_langflow: disableIngestWithLangflow,
       },
     });
-    if (chunkSize < 1) {
+    if (chunkingStrategy === "character" && chunkSize < 1) {
       const msg = "Chunk size must be at least 1";
       setChunkValidationError(msg);
       toast.error("Could not save ingest settings", { description: msg });
       return;
     }
-    if (chunkOverlap >= chunkSize) {
+    if (chunkingStrategy === "character" && chunkOverlap >= chunkSize) {
       const msg = "Chunk overlap must be less than chunk size";
+      setChunkValidationError(msg);
+      toast.error("Could not save ingest settings", { description: msg });
+      return;
+    }
+    if (chunkingStrategy === "hybrid" && hybridMaxTokens < 1) {
+      const msg = "Hybrid max tokens must be at least 1";
       setChunkValidationError(msg);
       toast.error("Could not save ingest settings", { description: msg });
       return;
     }
     updateSettingsMutation.mutate(
       {
-        chunk_size: chunkSize,
-        chunk_overlap: chunkOverlap,
+        ...chunkingPayload,
         table_structure: tableStructure,
         ocr,
         picture_descriptions: pictureDescriptions,
@@ -309,6 +323,9 @@ export function IngestSettingsSection() {
       .then(() => {
         setChunkSize(DEFAULT_KNOWLEDGE_SETTINGS.chunk_size);
         setChunkOverlap(DEFAULT_KNOWLEDGE_SETTINGS.chunk_overlap);
+        setChunkingStrategy(DEFAULT_KNOWLEDGE_SETTINGS.chunking_strategy);
+        setHybridMaxTokens(DEFAULT_KNOWLEDGE_SETTINGS.hybrid_max_tokens);
+        setHybridMergePeers(DEFAULT_KNOWLEDGE_SETTINGS.hybrid_merge_peers);
         setTableStructure(DEFAULT_KNOWLEDGE_SETTINGS.table_structure);
         setOcr(DEFAULT_KNOWLEDGE_SETTINGS.ocr);
         setPictureDescriptions(DEFAULT_KNOWLEDGE_SETTINGS.picture_descriptions);
@@ -412,102 +429,144 @@ export function IngestSettingsSection() {
               />
             </LabelWrapper>
           </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <LabelWrapper id="chunk-size" label="Chunk size">
-                <div className="relative [&:has(input:hover):not(:has(input:focus))_button]:border-muted-foreground [&:has(input:focus)_button]:border-foreground">
-                  <Input
-                    id="chunk-size"
-                    type="number"
-                    min="1"
-                    value={chunkSize}
-                    onChange={(e) => handleChunkSizeChange(e.target.value)}
-                    className={`w-full pr-20 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none${chunkValidationError ? " border-destructive" : ""}`}
-                  />
-                  <div className="absolute inset-y-0 right-0 flex items-center">
-                    <span className="text-sm text-placeholder-foreground mr-4 pointer-events-none">
-                      characters
-                    </span>
-                    <div className="flex flex-col">
-                      <Button
-                        aria-label="Increase value"
-                        className="h-5 rounded-l-none rounded-br-none border-input border-b-[0.5px] focus-visible:relative transition-colors"
-                        variant="outline"
-                        size="iconSm"
-                        onClick={() =>
-                          handleChunkSizeChange((chunkSize + 1).toString())
-                        }
-                      >
-                        <Plus className="text-muted-foreground" size={8} />
-                      </Button>
-                      <Button
-                        aria-label="Decrease value"
-                        className="h-5 rounded-l-none rounded-tr-none border-input border-t-[0.5px] focus-visible:relative transition-colors"
-                        variant="outline"
-                        size="iconSm"
-                        onClick={() =>
-                          handleChunkSizeChange((chunkSize - 1).toString())
-                        }
-                      >
-                        <Minus className="text-muted-foreground" size={8} />
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              </LabelWrapper>
+          <section className="space-y-4" aria-labelledby="chunking-settings">
+            <div>
+              <h3 id="chunking-settings" className="font-medium">
+                Chunking
+              </h3>
+              <p className="text-sm text-muted-foreground">
+                Choose how new documents are divided before they are indexed.
+              </p>
             </div>
-            <div className="space-y-2">
-              <LabelWrapper id="chunk-overlap" label="Chunk overlap">
-                <div className="relative [&:has(input:hover):not(:has(input:focus))_button]:border-muted-foreground [&:has(input:focus)_button]:border-foreground">
-                  <Input
-                    id="chunk-overlap"
-                    type="number"
-                    min="0"
-                    value={chunkOverlap}
-                    onChange={(e) => handleChunkOverlapChange(e.target.value)}
-                    className={`w-full pr-20 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none${chunkValidationError ? " border-destructive" : ""}`}
-                  />
-                  <div className="absolute inset-y-0 right-0 flex items-center">
-                    <span className="text-sm text-placeholder-foreground mr-4 pointer-events-none">
-                      characters
-                    </span>
-                    <div className="flex flex-col">
-                      <Button
-                        aria-label="Increase value"
-                        className="h-5 rounded-l-none rounded-br-none border-input border-b-[0.5px] focus-visible:relative transition-colors"
-                        variant="outline"
-                        size="iconSm"
-                        onClick={() =>
-                          handleChunkOverlapChange(
-                            (chunkOverlap + 1).toString(),
-                          )
-                        }
-                      >
-                        <Plus className="text-muted-foreground" size={8} />
-                      </Button>
-                      <Button
-                        aria-label="Decrease value"
-                        className="h-5 rounded-l-none rounded-tr-none border-input border-t-[0.5px] focus-visible:relative transition-colors"
-                        variant="outline"
-                        size="iconSm"
-                        onClick={() =>
-                          handleChunkOverlapChange(
-                            (chunkOverlap - 1).toString(),
-                          )
-                        }
-                      >
-                        <Minus className="text-muted-foreground" size={8} />
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              </LabelWrapper>
-              {chunkValidationError && (
-                <p className="text-sm text-destructive mt-1" role="alert">
-                  {chunkValidationError}
+            <div
+              className="grid grid-cols-2 gap-3"
+              role="radiogroup"
+              aria-label="Chunking strategy"
+            >
+              <Button
+                type="button"
+                variant={
+                  chunkingStrategy === "character" ? "default" : "outline"
+                }
+                onClick={() => setChunkingStrategy("character")}
+                aria-pressed={chunkingStrategy === "character"}
+              >
+                Character
+              </Button>
+              <Button
+                type="button"
+                variant={chunkingStrategy === "hybrid" ? "default" : "outline"}
+                onClick={() => setChunkingStrategy("hybrid")}
+                aria-pressed={chunkingStrategy === "hybrid"}
+              >
+                Hybrid
+              </Button>
+            </div>
+            {chunkingStrategy === "character" ? (
+              <>
+                <p className="text-sm text-muted-foreground">
+                  Fixed-size chunking. Changing these values affects newly
+                  indexed documents and normally requires reindexing existing
+                  documents for a homogeneous corpus.
                 </p>
-              )}
-            </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <LabelWrapper id="chunk-size" label="Chunk size">
+                    <Input
+                      id="chunk-size"
+                      type="number"
+                      min="1"
+                      value={chunkSize}
+                      onChange={(event) =>
+                        handleChunkSizeChange(event.target.value)
+                      }
+                      className={
+                        chunkValidationError ? "border-destructive" : ""
+                      }
+                    />
+                  </LabelWrapper>
+                  <LabelWrapper id="chunk-overlap" label="Chunk overlap">
+                    <Input
+                      id="chunk-overlap"
+                      type="number"
+                      min="0"
+                      value={chunkOverlap}
+                      onChange={(event) =>
+                        handleChunkOverlapChange(event.target.value)
+                      }
+                      className={
+                        chunkValidationError ? "border-destructive" : ""
+                      }
+                    />
+                  </LabelWrapper>
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="text-sm text-muted-foreground">
+                  Hybrid chunking uses Docling document structure to create
+                  semantically coherent chunks. Explicit Hybrid mode fails if
+                  HybridChunker is unavailable; OpenRAG does not silently fall
+                  back to Character.
+                </p>
+                <div className="grid grid-cols-2 gap-4">
+                  <LabelWrapper
+                    id="hybrid-max-tokens"
+                    label="Hybrid max tokens"
+                  >
+                    <Input
+                      id="hybrid-max-tokens"
+                      type="number"
+                      min="1"
+                      value={hybridMaxTokens}
+                      onChange={(event) => {
+                        setHybridMaxTokens(
+                          Math.max(
+                            0,
+                            Number.parseInt(event.target.value, 10) || 0,
+                          ),
+                        );
+                        setChunkValidationError(null);
+                      }}
+                      className={
+                        chunkValidationError ? "border-destructive" : ""
+                      }
+                    />
+                  </LabelWrapper>
+                  <div className="flex items-center justify-between rounded-md border px-3 py-2">
+                    <div>
+                      <Label
+                        htmlFor="hybrid-merge-peers"
+                        className="cursor-pointer"
+                      >
+                        Merge peers
+                      </Label>
+                      <p className="text-sm text-muted-foreground">
+                        Merge adjacent compatible chunks.
+                      </p>
+                    </div>
+                    <Switch
+                      id="hybrid-merge-peers"
+                      checked={hybridMergePeers}
+                      onCheckedChange={setHybridMergePeers}
+                    />
+                  </div>
+                </div>
+              </>
+            )}
+            {chunkValidationError ? (
+              <p className="text-sm text-destructive" role="alert">
+                {chunkValidationError}
+              </p>
+            ) : null}
+          </section>
+          <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-muted-foreground">
+            <strong className="text-foreground">
+              Index-affecting settings.
+            </strong>{" "}
+            Embedding, chunking, Docling extraction, OCR, tables, and picture
+            descriptions change the indexed representation. Changes apply to
+            future ingestion; existing indexed documents are not automatically
+            rebuilt.
           </div>
           <div>
             <div className="flex items-center justify-between py-3 border-b border-border">
