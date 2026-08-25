@@ -1,6 +1,5 @@
 import asyncio
 import json
-import platform
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -24,7 +23,7 @@ logger = get_logger(__name__)
 
 class DoclingConfig(BaseModel):
     do_ocr: bool
-    ocr_engine: str
+    ocr_preset: str | None = None
     do_table_structure: bool
     do_picture_classification: bool
     do_picture_description: bool
@@ -60,16 +59,18 @@ class DoclingStatusSnapshot:
 def get_docling_preset_configs(
     table_structure=False, ocr=False, picture_descriptions=False
 ) -> dict[str, Any]:
-    """Get docling preset configurations based on toggle settings"""
-    is_macos = platform.system() == "Darwin"
-
+    """Get Docling conversion settings from the OpenRAG feature toggles."""
     config = {
         "do_ocr": ocr,
-        "ocr_engine": "ocrmac" if is_macos else "easyocr",
         "do_table_structure": table_structure,
         "do_picture_classification": picture_descriptions,
         "do_picture_description": picture_descriptions,
     }
+
+    if ocr:
+        # The administrator-owned preset carries the functional OCR settings,
+        # so the job has the same semantics on every eligible RQ worker.
+        config["ocr_preset"] = "rapidocr"
 
     return config
 
@@ -316,7 +317,7 @@ class DoclingService:
 
         # Docling serve async multipart endpoint /v1/convert/file/async
         # Options are passed as form data; dict-valued options (e.g.
-        # picture_description_local, vlm_pipeline_model_api) go as JSON strings.
+        # picture_description_local and vlm_pipeline_model_api go as JSON strings.
         data = {
             k: json.dumps(v)
             if isinstance(v, dict)
