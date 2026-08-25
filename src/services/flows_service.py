@@ -1,4 +1,6 @@
 import asyncio
+import copy
+import hashlib
 import json
 import os
 from datetime import UTC, datetime
@@ -23,6 +25,20 @@ from utils.telemetry import Category, MessageId, TelemetryClient
 
 logger = get_logger(__name__)
 
+_UNSET = object()
+
+# This migration is intentionally narrow.  A flow is only eligible when it
+# still contains this exact, locked OpenRAG default component from the
+# lifecycle baseline; arbitrary user edits must require an explicit update.
+_LEGACY_RETRIEVAL_COMPONENT = "ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra"
+_BACKEND_RETRIEVAL_COMPONENT = "ext:openrag:OpenRAGBackendRetrievalComponent@extra"
+_RETRIEVAL_FLOW_MIGRATION_VERSION = 3
+_LEGACY_SYSTEM_FLOW_ID = "1098eea1-6649-4e1d-aed1-b77249fb8dd0"
+# SHA-256 of ``flows/openrag_agent.json`` at lifecycle baseline 156f3664,
+# calculated over canonical ``data`` JSON.  Flow IDs and a lock alone are not
+# sufficient proof that startup owns a graph: a customised system flow must be
+# left untouched and migrated deliberately by its operator.
+_LEGACY_RETRIEVAL_GRAPH_SHA256 = "1b1395db6d9d3890209dfe79820b558ae6e024e436b7985a873751b5ff7c67f0"
 
 class FlowsService:
     def __init__(self) -> None:
@@ -896,7 +912,22 @@ class FlowsService:
             }
         return None
 
-    async def ensure_flows_exist(self) -> set[str]:
+    @staticmethod
+    def is_explicit_custom_retrieval_flow() -> bool:
+        """Return whether the configured chat flow opts out of system ownership.
+
+        This is intentionally configuration-only: startup needs this boundary
+        before it performs any create or settings-reapplication work that could
+        otherwise mutate the configured chat flow.
+        """
+        return bool(LANGFLOW_CHAT_FLOW_ID and LANGFLOW_CHAT_FLOW_ID != _LEGACY_SYSTEM_FLOW_ID)
+
+    async def ensure_flows_exist(
+        self,
+        *,
+        reapply_settings: bool = True,
+        ensure_retrieval_flow: bool = True,
+    ) -> set[str]:
         """
         Ensure all configured flows exist in Langflow.
 
@@ -906,13 +937,20 @@ class FlowsService:
         has made in the Langflow UI.
 
         Returns the set of flow type names that were actually created.
+
+        ``reapply_settings`` and ``ensure_retrieval_flow`` are disabled only
+        when startup is serving an explicitly configured custom retrieval
+        flow. Creation of the other system flows remains safe and create-only,
+        while neither an implicit creation nor the global reapply operation may
+        touch the configured custom chat flow.
         """
         flow_configs = [
             ("nudges", NUDGES_FLOW_ID),
-            ("retrieval", LANGFLOW_CHAT_FLOW_ID),
             ("ingest", LANGFLOW_INGEST_FLOW_ID),
             ("url_ingest", LANGFLOW_URL_INGEST_FLOW_ID),
         ]
+        if ensure_retrieval_flow:
+            flow_configs.insert(1, ("retrieval", LANGFLOW_CHAT_FLOW_ID))
         created_flow_types: set[str] = set()
 
         async def ensure_single_flow_exists(flow_type, flow_id):
@@ -965,7 +1003,7 @@ class FlowsService:
         results = await asyncio.gather(*tasks)
         created_flow_types = {r for r in results if r is not None}
 
-        if created_flow_types:
+        if created_flow_types and reapply_settings:
             try:
                 config = get_openrag_config()
                 if config.edited:
@@ -980,6 +1018,406 @@ class FlowsService:
                 logger.error(f"Failed to reapply settings for newly created flows: {e}")
 
         return created_flow_types
+
+    async def validate_explicit_custom_retrieval_flow(self) -> dict[str, Any]:
+        """Read-only validation for an explicitly configured custom chat flow."""
+        flow_id = LANGFLOW_CHAT_FLOW_ID
+        if not self.is_explicit_custom_retrieval_flow():
+            raise RuntimeError("Configured retrieval flow is not an explicit custom flow")
+
+        try:
+            response = await clients.langflow_request("GET", f"/api/v1/flows/{flow_id}")
+        except Exception as exc:
+            logger.error("Custom retrieval flow readiness check failed", flow_id=flow_id, error=str(exc))
+            return {
+                "status": "system_migration_failed",
+                "reason": "custom_flow_fetch_failed",
+                "error": str(exc),
+                "flow_id": flow_id,
+            }
+        if response.status_code == 404:
+            return {
+                "status": "system_migration_failed",
+                "reason": "custom_flow_missing",
+                "flow_id": flow_id,
+            }
+        if response.status_code != 200:
+            return {
+                "status": "system_migration_failed",
+                "reason": "custom_flow_fetch_failed",
+                "error": f"HTTP {response.status_code}",
+                "flow_id": flow_id,
+            }
+
+        logger.warning(
+            "Configured retrieval flow is custom and will not be modified automatically",
+            flow_id=flow_id,
+        )
+        return {
+            "status": "custom_preserved",
+            "reason": "custom_flow_id",
+            "flow_id": flow_id,
+        }
+
+    @staticmethod
+    def _node_component_type(node: dict[str, Any]) -> str:
+        data = node.get("data", {}) if isinstance(node, dict) else {}
+        component = data.get("node", {}) if isinstance(data, dict) else {}
+        return str(
+            component.get("namespaced_id")
+            or data.get("type")
+            or component.get("name")
+            or ""
+        )
+
+    def _load_retrieval_v2_template(self) -> dict[str, Any]:
+        flow_path = self._find_flow_file_by_id(LANGFLOW_CHAT_FLOW_ID)
+        if not flow_path:
+            raise RuntimeError("Bundled retrieval flow template was not found")
+        with open(flow_path) as file:
+            return json.load(file)
+
+    @staticmethod
+    def _graph_fingerprint(flow_data: dict[str, Any]) -> str | None:
+        """Return the versioned canonical fingerprint of a persisted graph."""
+        graph = flow_data.get("data") if isinstance(flow_data, dict) else None
+        if not isinstance(graph, dict):
+            return None
+        canonical = json.dumps(graph, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+    def _is_known_legacy_retrieval_flow(self, flow_data: dict[str, Any]) -> bool:
+        """Recognise exactly the immutable 156f3664 system agent graph.
+
+        This is intentionally more restrictive than checking for a legacy node.
+        The migration has administrative authority over the persisted flow, so
+        a graph changed by an operator must fail closed rather than be silently
+        rewritten at application startup.
+        """
+        if not isinstance(flow_data, dict):
+            return False
+        if flow_data.get("id") != _LEGACY_SYSTEM_FLOW_ID or not flow_data.get("locked"):
+            return False
+        if flow_data.get("name") != "OpenRAG OpenSearch Agent Flow":
+            return False
+        if flow_data.get("description") != "OpenRAG OpenSearch Agent":
+            return False
+        return self._graph_fingerprint(flow_data) == _LEGACY_RETRIEVAL_GRAPH_SHA256
+
+    def _is_known_migrated_retrieval_flow(self, flow_data: dict[str, Any]) -> bool:
+        """Verify the exact bundled Retrieval v2 graph, not just one new node."""
+        if not isinstance(flow_data, dict) or flow_data.get("id") != _LEGACY_SYSTEM_FLOW_ID:
+            return False
+        graph = flow_data.get("data")
+        if not isinstance(graph, dict):
+            return False
+        if graph.get("openrag_retrieval_version") != _RETRIEVAL_FLOW_MIGRATION_VERSION:
+            return False
+        template = self._load_retrieval_v2_template()
+        expected = copy.deepcopy(template)
+        expected_graph = expected.get("data", {})
+        expected_graph["openrag_retrieval_version"] = _RETRIEVAL_FLOW_MIGRATION_VERSION
+        return (
+            flow_data.get("name") == expected.get("name")
+            and flow_data.get("description") == expected.get("description")
+            and self._graph_fingerprint(flow_data) == self._graph_fingerprint(expected)
+        )
+
+    def _is_known_unversioned_retrieval_v2_flow(self, flow_data: dict[str, Any]) -> bool:
+        """Recognize the exact bundled Retrieval v2 graph before its version marker.
+
+        The GitOps flow bootstrap may synchronize the bundled graph before the
+        backend starts.  Its source JSON deliberately does not persist the
+        runtime migration marker, so this is a safe, recoverable intermediate
+        state rather than an operator customization.
+        """
+        if (
+            not isinstance(flow_data, dict)
+            or flow_data.get("id") != _LEGACY_SYSTEM_FLOW_ID
+            or not flow_data.get("locked")
+        ):
+            return False
+        template = self._load_retrieval_v2_template()
+        return (
+            flow_data.get("name") == template.get("name")
+            and flow_data.get("description") == template.get("description")
+            and self._graph_fingerprint(flow_data) == self._graph_fingerprint(template)
+        )
+
+    def _migrate_known_legacy_retrieval_flow(self, flow_data: dict[str, Any]) -> dict[str, Any] | None:
+        """Replace only the known legacy retrieval tool in a locked default flow.
+
+        Returning ``None`` means the caller must leave the persisted flow
+        untouched.  This is the safety boundary that prevents a startup from
+        overwriting an administrator's Langflow changes.
+        """
+        graph = flow_data.get("data", {}) if isinstance(flow_data, dict) else {}
+        nodes = graph.get("nodes", []) if isinstance(graph, dict) else []
+        if not isinstance(nodes, list):
+            return None
+        # The fingerprint checks every node, edge and configured value from the
+        # lifecycle baseline.  Do not weaken this to "locked + legacy tool":
+        # administrators legitimately lock customised flows too.
+        known_legacy = self._is_known_legacy_retrieval_flow(flow_data)
+        known_unversioned_v2 = self._is_known_unversioned_retrieval_v2_flow(flow_data)
+        if not known_legacy and not known_unversioned_v2:
+            return None
+
+        legacy_nodes = [
+            node for node in nodes if _LEGACY_RETRIEVAL_COMPONENT in self._node_component_type(node)
+        ]
+        if known_legacy and len(legacy_nodes) != 1:
+            return None
+
+        template = self._load_retrieval_v2_template()
+        template_graph = template.get("data", {})
+        template_nodes = template_graph.get("nodes", [])
+        new_node = next(
+            (
+                node
+                for node in template_nodes
+                if _BACKEND_RETRIEVAL_COMPONENT in self._node_component_type(node)
+            ),
+            None,
+        )
+        if not isinstance(new_node, dict):
+            raise RuntimeError("Bundled Retrieval v2 node is missing from the flow template")
+        new_node_id = new_node.get("id")
+        new_edge = next(
+            (edge for edge in template_graph.get("edges", []) if edge.get("source") == new_node_id),
+            None,
+        )
+        if not isinstance(new_edge, dict):
+            raise RuntimeError("Bundled Retrieval v2 tool edge is missing from the flow template")
+
+        # The source graph matched the complete historical fingerprint, so the
+        # bundled flow is the authoritative replacement.  Reusing the complete
+        # ``data`` graph (rather than splicing one node) verifies all tool
+        # wiring and avoids retaining stale legacy inputs such as embeddings.
+        migrated = copy.deepcopy(flow_data)
+        migrated_graph = copy.deepcopy(template_graph)
+        migrated["data"] = migrated_graph
+        # Stored with the graph so repeated startups can identify the installed
+        # known version without relying on timestamps or an in-memory cache.
+        migrated_graph["openrag_retrieval_version"] = _RETRIEVAL_FLOW_MIGRATION_VERSION
+        # Langflow rejects PUT updates to a locked flow.  The caller uses its
+        # native PATCH API to open this narrow maintenance window and restores
+        # the system-flow lock in a finally block after verification.
+        migrated["locked"] = False
+        return migrated
+
+    async def _patch_flow_lock(self, flow_id: str, *, locked: bool) -> None:
+        """Use Langflow's supported PATCH primitive for the lock transition."""
+        response = await clients.langflow_request(
+            "PATCH", f"/api/v1/flows/{flow_id}", json={"locked": locked}
+        )
+        if response.status_code != 200:
+            raise RuntimeError(f"Langflow lock update failed: HTTP {response.status_code}")
+        payload = response.json()
+        if not isinstance(payload, dict) or payload.get("locked") is not locked:
+            raise RuntimeError("Langflow lock update did not return the requested state")
+
+    async def _get_flow_lock_state(self, flow_id: str) -> dict[str, Any]:
+        """Return the lock state after a transition, without assuming success."""
+        try:
+            response = await clients.langflow_request("GET", f"/api/v1/flows/{flow_id}")
+        except Exception as exc:
+            return {"known_state": "unknown", "locked": None, "error": str(exc)}
+        if response.status_code == 404:
+            return {"known_state": "missing", "locked": None}
+        if response.status_code != 200:
+            return {
+                "known_state": "unknown",
+                "locked": None,
+                "error": f"HTTP {response.status_code}",
+            }
+        try:
+            payload = response.json()
+        except Exception as exc:
+            return {"known_state": "unknown", "locked": None, "error": str(exc)}
+        if not isinstance(payload, dict):
+            return {"known_state": "unknown", "locked": None, "error": "invalid flow payload"}
+        locked = payload.get("locked")
+        if locked is True:
+            return {"known_state": "locked", "locked": True}
+        if locked is False:
+            return {"known_state": "unlocked", "locked": False}
+        return {"known_state": "unknown", "locked": None, "error": "missing lock state"}
+
+    async def _restore_system_flow_lock(self, flow_id: str) -> tuple[str | None, dict[str, Any]]:
+        """Re-lock and verify a system flow after any uncertain transition."""
+        lock_error = None
+        try:
+            await self._patch_flow_lock(flow_id, locked=True)
+        except Exception as exc:
+            lock_error = str(exc)
+
+        state = await self._get_flow_lock_state(flow_id)
+        if state["locked"] is True:
+            return None, state
+        if lock_error is None:
+            lock_error = state.get("error", "flow was not confirmed locked")
+        return lock_error, state
+
+    async def migrate_persisted_retrieval_flow(self) -> dict[str, Any]:
+        """Safely upgrade the known lifecycle agent flow to Retrieval v2.
+
+        A backup is mandatory and a non-recognized graph is never changed. A
+        configured flow ID other than the protected system-flow ID is an
+        explicit custom-flow opt-out. Every failure for the protected ID is a
+        system migration failure; startup must not treat it as a harmless skip.
+        """
+        flow_id = LANGFLOW_CHAT_FLOW_ID
+        if not flow_id:
+            return {
+                "status": "system_migration_failed",
+                "reason": "flow_id_not_configured",
+            }
+
+        flow_lock = await self._get_flow_lock(flow_id)
+        async with flow_lock:
+            try:
+                response = await clients.langflow_request("GET", f"/api/v1/flows/{flow_id}")
+            except Exception as exc:
+                logger.error("Retrieval flow migration check failed", error=str(exc))
+                return {
+                    "status": "system_migration_failed",
+                    "reason": "fetch_failed",
+                    "error": str(exc),
+                    "flow_id": flow_id,
+                }
+            if response.status_code == 404:
+                return {
+                    "status": "system_migration_failed",
+                    "reason": "flow_missing",
+                    "flow_id": flow_id,
+                }
+            if response.status_code != 200:
+                return {
+                    "status": "system_migration_failed",
+                    "reason": "fetch_failed",
+                    "error": f"HTTP {response.status_code}",
+                    "flow_id": flow_id,
+                }
+
+            current = response.json()
+            if flow_id != _LEGACY_SYSTEM_FLOW_ID:
+                logger.warning(
+                    "Configured retrieval flow is custom and will not be migrated automatically",
+                    flow_id=flow_id,
+                )
+                return {
+                    "status": "custom_preserved",
+                    "reason": "custom_flow_id",
+                    "flow_id": flow_id,
+                }
+
+            if self._is_known_migrated_retrieval_flow(current) and current.get("locked"):
+                return {
+                    "status": "already_migrated",
+                    "version": _RETRIEVAL_FLOW_MIGRATION_VERSION,
+                    "flow_id": flow_id,
+                }
+
+            migrated = self._migrate_known_legacy_retrieval_flow(current)
+            if migrated is None:
+                message = (
+                    "System retrieval flow is not the exact known locked lifecycle graph; "
+                    "it was not migrated and cannot be served. Use the flow update/rollback procedure."
+                )
+                logger.error("System retrieval flow migration requires manual review", flow_id=flow_id)
+                return {
+                    "status": "system_migration_failed",
+                    "reason": "system_flow_unverified",
+                    "error": message,
+                    "flow_id": flow_id,
+                }
+
+            backup_path = await self._backup_flow(flow_id, "retrieval", current)
+            if backup_path is None:
+                message = "Retrieval flow migration aborted because backup creation failed"
+                logger.error(message, flow_id=flow_id)
+                return {
+                    "status": "system_migration_failed",
+                    "reason": "backup_failed",
+                    "error": message,
+                    "flow_id": flow_id,
+                }
+
+            lock_transition_attempted = False
+            maintenance_window_open = False
+            try:
+                lock_transition_attempted = True
+                await self._patch_flow_lock(flow_id, locked=False)
+                maintenance_window_open = True
+                update = await clients.langflow_request(
+                    "PUT", f"/api/v1/flows/{flow_id}", json=migrated
+                )
+                if update.status_code not in (200, 201):
+                    raise RuntimeError(f"Langflow flow update failed: HTTP {update.status_code}")
+
+                verify = await clients.langflow_request("GET", f"/api/v1/flows/{flow_id}")
+                if verify.status_code != 200 or not self._is_known_migrated_retrieval_flow(verify.json()):
+                    raise RuntimeError("Langflow persisted flow verification failed after retrieval migration")
+
+                await self._patch_flow_lock(flow_id, locked=True)
+                final_verify = await clients.langflow_request("GET", f"/api/v1/flows/{flow_id}")
+                if final_verify.status_code != 200 or not (
+                    final_verify.json().get("locked")
+                    and self._is_known_migrated_retrieval_flow(final_verify.json())
+                ):
+                    raise RuntimeError("Langflow flow was not verified locked after retrieval migration")
+                maintenance_window_open = False
+            except Exception as exc:
+                flow_state = {"known_state": "locked", "locked": True}
+                lock_error = None
+                if lock_transition_attempted:
+                    flow_state = await self._get_flow_lock_state(flow_id)
+                    if flow_state["locked"] is not True:
+                        lock_error, flow_state = await self._restore_system_flow_lock(flow_id)
+                if lock_error is not None or flow_state["locked"] is not True:
+                    logger.error(
+                        "Retrieval flow migration could not restore the system lock",
+                        flow_id=flow_id,
+                        error=str(lock_error),
+                        flow_state=flow_state,
+                    )
+                    return {
+                        "status": "system_migration_failed",
+                        "reason": "lock_restore_failed",
+                        "error": str(exc),
+                        "lock_error": lock_error or "flow was not confirmed locked",
+                        "flow_state": flow_state,
+                        "flow_id": flow_id,
+                        "version": _RETRIEVAL_FLOW_MIGRATION_VERSION,
+                        "backup_path": backup_path,
+                    }
+                logger.error("Retrieval flow migration update failed", flow_id=flow_id, error=str(exc))
+                return {
+                    "status": "system_migration_failed",
+                    "reason": (
+                        "unlock_failed"
+                        if not maintenance_window_open
+                        else "update_or_verification_failed"
+                    ),
+                    "error": str(exc),
+                    "flow_state": flow_state,
+                    "backup_path": backup_path,
+                    "flow_id": flow_id,
+                }
+
+            logger.info(
+                "Migrated known persisted retrieval flow to Retrieval v2",
+                flow_id=flow_id,
+                version=_RETRIEVAL_FLOW_MIGRATION_VERSION,
+                backup_path=backup_path,
+            )
+            return {
+                "status": "migrated",
+                "version": _RETRIEVAL_FLOW_MIGRATION_VERSION,
+                "backup_path": backup_path,
+                "flow_id": flow_id,
+            }
 
     async def change_langflow_model_value(
         self,

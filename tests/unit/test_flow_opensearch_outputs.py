@@ -1,3 +1,5 @@
+"""Contracts for the v0.6.0 OpenSearch components embedded in legacy flows."""
+
 import json
 from pathlib import Path
 
@@ -76,3 +78,14 @@ def test_parser_components_are_not_forked_for_list_data():
         code = parser_node["data"]["node"]["template"]["code"]["value"]
 
         assert "return DataFrame(data=[item.data for item in input_data]), None" not in code
+
+
+def test_agent_flow_uses_backend_retrieval_instead_of_legacy_opensearch():
+    agent_flow = _load_flow("flows/openrag_agent.json")
+
+    assert not _opensearch_nodes(agent_flow)
+    assert any(
+        node.get("data", {}).get("type")
+        == "ext:openrag:OpenRAGBackendRetrievalComponent@extra"
+        for node in agent_flow["data"]["nodes"]
+    )

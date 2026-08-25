@@ -27,13 +27,23 @@ def _services_stub():
     return {"models_service": models}
 
 
+def _startup_config():
+    """A configured-but-not-onboarded workspace that needs no index creation."""
+    return MagicMock(
+        edited=False,
+        knowledge=MagicMock(
+            embedding_model=None,
+            disable_ingest_with_langflow=False,
+        ),
+    )
+
+
 @pytest.mark.asyncio
 async def test_setup_runs_when_flag_false(monkeypatch):
     """Default (flag false): setup_opensearch_security is called."""
     import services.startup_orchestrator as orchestrator
 
     monkeypatch.setattr(orchestrator, "OPENRAG_SKIP_OS_SECURITY_SETUP", False)
-    monkeypatch.setattr(orchestrator, "DISABLE_INGEST_WITH_LANGFLOW", False)
     # IBM_AUTH_ENABLED is imported lazily inside startup_tasks().
     monkeypatch.setattr("config.settings.IBM_AUTH_ENABLED", False, raising=False)
 
@@ -55,9 +65,7 @@ async def test_setup_runs_when_flag_false(monkeypatch):
         with patch.object(
             orchestrator,
             "get_openrag_config",
-            MagicMock(
-                return_value=MagicMock(edited=False, knowledge=MagicMock(embedding_model=None))
-            ),
+            MagicMock(return_value=_startup_config()),
         ):
             services = _services_stub()
             services["task_service"] = MagicMock()
@@ -79,7 +87,6 @@ async def test_setup_skipped_when_flag_true(monkeypatch):
     import services.startup_orchestrator as orchestrator
 
     monkeypatch.setattr(orchestrator, "OPENRAG_SKIP_OS_SECURITY_SETUP", True)
-    monkeypatch.setattr(orchestrator, "DISABLE_INGEST_WITH_LANGFLOW", False)
     monkeypatch.setattr("config.settings.IBM_AUTH_ENABLED", False, raising=False)
 
     setup_mock = AsyncMock()
@@ -104,9 +111,7 @@ async def test_setup_skipped_when_flag_true(monkeypatch):
         with patch.object(
             orchestrator,
             "get_openrag_config",
-            MagicMock(
-                return_value=MagicMock(edited=False, knowledge=MagicMock(embedding_model=None))
-            ),
+            MagicMock(return_value=_startup_config()),
         ):
             services = _services_stub()
             services["task_service"] = MagicMock()
