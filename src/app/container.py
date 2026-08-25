@@ -172,15 +172,10 @@ async def initialize_services():
     api_key_service = APIKeyService(session_manager)
 
     # ===== RBAC service =====
-    # We do NOT open the SQL engine here. `create_app()` runs inside an
-    # `asyncio.run(...)` whose loop is closed BEFORE uvicorn starts its
-    # own loop — any AsyncEngine bound to this loop would be dead by
-    # then. Instead, RBACService takes a *lazy* session-factory getter
-    # that resolves `db.engine.SessionLocal` at call time — that
-    # attribute is filled in by the lifespan startup event running on
-    # uvicorn's loop. Alembic upgrade is run synchronously from __main__
-    # before `asyncio.run(create_app())` so the schema is in place by
-    # the time the lifespan opens the engine.
+    # We do NOT open the SQL engine here. RBACService takes a lazy
+    # session-factory getter so the lifespan can run Alembic's companion
+    # runtime migration before any request opens a session. Alembic upgrade
+    # itself runs synchronously from __main__ before the ASGI loop starts.
     from db import engine as _db_engine_mod
     from services.rbac_service import RBACService
     from services.workspace_config_service import WorkspaceConfigService
