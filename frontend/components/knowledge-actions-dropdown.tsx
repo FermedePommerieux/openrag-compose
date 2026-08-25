@@ -1,6 +1,12 @@
 "use client";
 
-import { AlertCircle, EllipsisVertical, RefreshCw } from "lucide-react";
+import {
+  AlertCircle,
+  Download,
+  EllipsisVertical,
+  Eye,
+  RefreshCw,
+} from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -27,6 +33,7 @@ import { useTask } from "@/contexts/task-context";
 import { usePermissions } from "@/hooks/use-permissions";
 import { trackButton } from "@/lib/analytics";
 import { formatFilesToDelete } from "@/lib/format-files-to-delete";
+import { getDownloadSourceUrl, getSourcePreviewKind } from "@/lib/source-url";
 import { DeleteConfirmationDialog } from "./delete-confirmation-dialog";
 import { RequirePermission } from "./require-permission";
 import { SyncConfirmDialog } from "./sync-confirm-dialog";
@@ -34,6 +41,9 @@ import { Button } from "./ui/button";
 
 interface KnowledgeActionsDropdownProps {
   filename: string;
+  mimetype?: string;
+  onPreviewSource: () => void;
+  sourceUrl?: string;
   connectorType?: string;
 }
 
@@ -46,6 +56,9 @@ const CLOUD_CONNECTOR_TYPES = new Set([
 
 export const KnowledgeActionsDropdown = ({
   filename,
+  mimetype,
+  onPreviewSource,
+  sourceUrl,
   connectorType,
 }: KnowledgeActionsDropdownProps) => {
   const { refreshTasks } = useTask();
@@ -59,6 +72,8 @@ export const KnowledgeActionsDropdown = ({
   );
   const { data: connectors = [] } = useGetConnectorsQuery();
   const router = useRouter();
+  const downloadSourceUrl = getDownloadSourceUrl(sourceUrl);
+  const previewKind = getSourcePreviewKind(filename, mimetype);
 
   // Check if this file is from a cloud connector (can be synced)
   const isCloudFile = connectorType && CLOUD_CONNECTOR_TYPES.has(connectorType);
@@ -131,7 +146,11 @@ export const KnowledgeActionsDropdown = ({
     <>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="ghost" className="hover:bg-transparent">
+          <Button
+            variant="ghost"
+            className="hover:bg-transparent"
+            aria-label={`Actions for ${filename}`}
+          >
             <EllipsisVertical className="h-4 w-4" />
           </Button>
         </DropdownMenuTrigger>
@@ -151,6 +170,38 @@ export const KnowledgeActionsDropdown = ({
           >
             View chunks
           </DropdownMenuItem>
+          {downloadSourceUrl && previewKind && (
+            <DropdownMenuItem
+              className="text-primary focus:text-primary cursor-pointer"
+              onSelect={() => {
+                setTimeout(onPreviewSource, 0);
+              }}
+            >
+              <Eye className="h-4 w-4 mr-2" />
+              Preview source
+            </DropdownMenuItem>
+          )}
+          {downloadSourceUrl && (
+            <DropdownMenuItem asChild>
+              <a
+                href={downloadSourceUrl}
+                download={filename}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-primary focus:text-primary cursor-pointer"
+                onClick={() =>
+                  trackButton({
+                    CTA: "Download Source",
+                    elementId: "download-source-button",
+                    namespace: "knowledge",
+                  })
+                }
+              >
+                <Download className="h-4 w-4 mr-2" />
+                Download source
+              </a>
+            </DropdownMenuItem>
+          )}
           {isCloudFile && (
             <TooltipProvider>
               <Tooltip delayDuration={0}>

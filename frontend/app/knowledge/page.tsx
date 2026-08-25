@@ -34,6 +34,7 @@ import { KnowledgeActionsDropdown } from "@/components/knowledge-actions-dropdow
 import { KnowledgeBatchActionsBar } from "@/components/knowledge-batch-actions-bar";
 import { KnowledgeSearchBar } from "@/components/knowledge-search-bar";
 import { KnowledgeSearchInput } from "@/components/knowledge-search-input";
+import { SourcePreviewDialog } from "@/components/source-preview-dialog";
 import { StatusBadge } from "@/components/ui/status-badge";
 import {
   Tooltip,
@@ -47,6 +48,11 @@ import {
   buildKnowledgeTableRows,
   getKnowledgeFileIdentity,
 } from "@/lib/knowledge-table-state";
+import {
+  getDownloadSourceUrl,
+  getSourcePreviewKind,
+  isArchivedSourceUrl,
+} from "@/lib/source-url";
 import { parseTimestampMs } from "@/lib/time-utils";
 import { cn } from "@/lib/utils";
 import {
@@ -145,6 +151,7 @@ function SearchPage() {
     setSelectedSources,
   } = useKnowledgeFilter();
   const [selectedRows, setSelectedRows] = useState<File[]>([]);
+  const [previewFile, setPreviewFile] = useState<File | null>(null);
 
   // Keep the filter context aware of checked rows so "Create New Filter"
   // can pre-populate its sources from the current selection.
@@ -499,6 +506,9 @@ function SearchPage() {
   );
 
   useEffect(() => {
+    // The serialized row state intentionally retriggers selection pruning
+    // without coupling the effect to the frequently replaced rows array.
+    void gridRowsSelectionKey;
     const api = getGridApi();
     if (!api) {
       return;
@@ -605,6 +615,19 @@ function SearchPage() {
       ...(isCloudBrand ? { flex: 1, minWidth: 110 } : {}),
       cellClass: isCloudBrand ? "text-muted-foreground" : undefined,
       sortable: true,
+    },
+    {
+      colId: "archived",
+      headerName: "Archived",
+      ...(isCloudBrand ? { flex: 0.9, minWidth: 110 } : { width: 110 }),
+      sortable: false,
+      valueGetter: (params: ValueGetterParams<File>) =>
+        isArchivedSourceUrl(params.data?.source_url),
+      cellRenderer: ({ value }: CustomCellRendererProps<File>) => (
+        <span className="text-sm text-muted-foreground">
+          {value ? "Yes" : "No"}
+        </span>
+      ),
     },
     {
       field: "owner",
@@ -756,6 +779,9 @@ function SearchPage() {
         return (
           <KnowledgeActionsDropdown
             filename={data?.filename || ""}
+            mimetype={data?.mimetype}
+            onPreviewSource={() => setPreviewFile(data ?? null)}
+            sourceUrl={data?.source_url}
             connectorType={data?.connector_type}
           />
         );
@@ -882,6 +908,11 @@ function SearchPage() {
   // allows the user to select the page size from a predefined list of page sizes
   const paginationPageSizeSelector = [10, 25, 50, 100];
 
+  const previewSourceUrl = getDownloadSourceUrl(previewFile?.source_url);
+  const previewKind = previewFile
+    ? getSourcePreviewKind(previewFile.filename, previewFile.mimetype)
+    : undefined;
+
   return (
     <>
       <div className="flex flex-col h-full">
@@ -1000,7 +1031,7 @@ function SearchPage() {
         )}
         {!isWildcardQuery && searchWarnings.length > 0 && (
           <div className="mb-4 flex flex-col gap-2">
-            {searchWarnings.map((warning, idx) => {
+            {searchWarnings.map((warning) => {
               const isEmbeddingWarning =
                 warning.code === "embedding_unavailable";
               const semanticDown =
@@ -1017,7 +1048,7 @@ function SearchPage() {
                   : "";
               return (
                 <Banner
-                  key={`${warning.code}-${idx}`}
+                  key={`${warning.code}:${warning.message ?? ""}:${warning.models?.join(",") ?? ""}`}
                   inset
                   className="bg-amber-500/10 text-amber-100 border border-amber-500/30"
                 >
@@ -1135,6 +1166,19 @@ function SearchPage() {
         orphansAvailableByType={syncPreview?.orphans_available_by_type}
         syncedCountByType={syncPreview?.synced_count_by_type}
       />
+
+      {previewFile && previewSourceUrl && previewKind && (
+        <SourcePreviewDialog
+          filename={previewFile.filename}
+          kind={previewKind}
+          mimetype={previewFile.mimetype}
+          open
+          onOpenChange={(open) => {
+            if (!open) setPreviewFile(null);
+          }}
+          sourceUrl={previewSourceUrl}
+        />
+      )}
     </>
   );
 }

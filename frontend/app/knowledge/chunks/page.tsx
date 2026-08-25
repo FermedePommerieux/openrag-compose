@@ -1,6 +1,15 @@
 "use client";
 
-import { ArrowLeft, Check, Copy, Loader2, Search, X } from "lucide-react";
+import {
+  ArrowLeft,
+  Check,
+  Copy,
+  Download,
+  Eye,
+  Loader2,
+  Search,
+  X,
+} from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 // import { Label } from "@/components/ui/label";
@@ -9,6 +18,7 @@ import { KnowledgeSearchInput } from "@/components/knowledge-search-input";
 // import { Label } from "@/components/ui/label";
 // import { Checkbox } from "@/components/ui/checkbox";
 import { ProtectedRoute } from "@/components/protected-route";
+import { SourcePreviewDialog } from "@/components/source-preview-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -19,6 +29,7 @@ import {
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
 import { trackButton } from "@/lib/analytics";
 import { formatFileSize, getFileTypeLabel } from "@/lib/file-format";
+import { getDownloadSourceUrl, getSourcePreviewKind } from "@/lib/source-url";
 import {
   type ChunkResult,
   EMPTY_SEARCH_RESULT,
@@ -32,6 +43,7 @@ function ChunksPageContent() {
   const searchParams = useSearchParams();
   const { parsedFilterData, queryOverride } = useKnowledgeFilter();
   const filename = searchParams.get("filename");
+  const [previewOpen, setPreviewOpen] = useState(false);
   const [chunks, setChunks] = useState<ChunkResult[]>([]);
   // const [chunksFilteredByQuery, setChunksFilteredByQuery] = useState<
   //   ChunkResult[]
@@ -70,6 +82,10 @@ function ChunksPageContent() {
   }, []);
 
   const fileData = searchFiles.find((file: File) => file.filename === filename);
+  const downloadSourceUrl = getDownloadSourceUrl(fileData?.source_url);
+  const previewKind = filename
+    ? getSourcePreviewKind(filename, fileData?.mimetype)
+    : undefined;
 
   // Extract chunks for the specific file
   useEffect(() => {
@@ -110,7 +126,6 @@ function ChunksPageContent() {
   //   },
   //   [setSelectedChunks]
   // );
-
   if (!filename) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -188,7 +203,7 @@ function ChunksPageContent() {
             <div className="space-y-4 pb-6">
               {chunks.map((chunk, index) => (
                 <div
-                  key={chunk.filename + index}
+                  key={`${chunk.filename}:${chunk.page}:${chunk.index ?? chunk.text.slice(0, 64)}`}
                   className="bg-muted rounded-lg p-4 border border-border/50"
                 >
                   <div className="flex items-center justify-between mb-2">
@@ -319,6 +334,41 @@ function ChunksPageContent() {
               </dd>
             </div> */}
               </dl>
+              {downloadSourceUrl && (
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {previewKind && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setPreviewOpen(true)}
+                    >
+                      <Eye className="h-4 w-4 mr-2" />
+                      Preview
+                    </Button>
+                  )}
+                  <Button asChild variant="outline" size="sm">
+                    <a
+                      href={downloadSourceUrl}
+                      download={filename}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      <Download className="h-4 w-4 mr-2" />
+                      Download original
+                    </a>
+                  </Button>
+                </div>
+              )}
+              {downloadSourceUrl && previewKind && (
+                <SourcePreviewDialog
+                  filename={filename}
+                  kind={previewKind}
+                  mimetype={fileData?.mimetype}
+                  open={previewOpen}
+                  onOpenChange={setPreviewOpen}
+                  sourceUrl={downloadSourceUrl}
+                />
+              )}
             </div>
             {(() => {
               const hasOwner = Boolean(fileData?.owner);

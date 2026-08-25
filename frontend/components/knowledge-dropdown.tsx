@@ -12,7 +12,10 @@ import {
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import type { File as SearchFile } from "@/app/api/queries/useGetSearchQuery";
+import type {
+  File as SearchFile,
+  SearchResult,
+} from "@/app/api/queries/useGetSearchQuery";
 import { useGetTasksQuery } from "@/app/api/queries/useGetTasksQuery";
 import { DuplicateHandlingDialog } from "@/components/duplicate-handling-dialog";
 import { Button } from "@/components/ui/button";
@@ -31,6 +34,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useAuth } from "@/contexts/auth-context";
 import { useIsCloudBrand } from "@/contexts/brand-context";
 import { useTask } from "@/contexts/task-context";
 import { usePermissions } from "@/hooks/use-permissions";
@@ -91,6 +95,7 @@ const FolderIconWithColor = ({ className }: { className?: string }) => (
 );
 
 export function KnowledgeDropdown() {
+  const { isNoAuthMode } = useAuth();
   const { supportedExtensions, supportedExtensionSet } =
     useSupportedFileTypes();
   const { can } = usePermissions();
@@ -164,6 +169,11 @@ export function KnowledgeDropdown() {
             uploadOptionsData.upload_batch_size > 0
           ) {
             setUploadBatchSize(uploadOptionsData.upload_batch_size);
+          }
+          if (typeof uploadOptionsData.documents_path === "string") {
+            setFolderPath(
+              (current) => current || uploadOptionsData.documents_path,
+            );
           }
         }
 
@@ -414,25 +424,23 @@ export function KnowledgeDropdown() {
 
     if (pendingFile) {
       // Remove the old file from all search query caches before overwriting
-      queryClient.setQueriesData({ queryKey: ["search"] }, (oldData: any) => {
-        if (!oldData) return oldData;
-        // Handle SearchResult structure { files: [], warnings: [] }
-        if (oldData.files && Array.isArray(oldData.files)) {
-          return {
-            ...oldData,
-            files: oldData.files.filter(
-              (file: SearchFile) => file.filename !== pendingFile.name,
-            ),
-          };
-        }
-        // Fallback for legacy array format
-        if (Array.isArray(oldData)) {
-          return oldData.filter(
-            (file: SearchFile) => file.filename !== pendingFile.name,
-          );
-        }
-        return oldData;
-      });
+      queryClient.setQueriesData<SearchResult | SearchFile[]>(
+        { queryKey: ["search"] },
+        (oldData) => {
+          if (!oldData) return oldData;
+          // Handle SearchResult structure { files: [], warnings: [] }
+          if (!Array.isArray(oldData)) {
+            return {
+              ...oldData,
+              files: oldData.files.filter(
+                (file) => file.filename !== pendingFile.name,
+              ),
+            };
+          }
+          // Fallback for legacy array format
+          return oldData.filter((file) => file.filename !== pendingFile.name);
+        },
+      );
 
       await uploadFile(pendingFile, true);
 
@@ -601,7 +609,9 @@ export function KnowledgeDropdown() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ path: folderPath }),
+        body: JSON.stringify({
+          path: folderPath,
+        }),
       });
 
       const result = await response.json();
@@ -614,11 +624,9 @@ export function KnowledgeDropdown() {
         }
 
         addTask(taskId, { source: "path" });
-        setFolderPath("");
         // Refetch tasks to show the new task
         refetchTasks();
       } else if (response.ok) {
-        setFolderPath("");
         // Refetch tasks even for direct uploads in case tasks were created
         refetchTasks();
       } else {
@@ -706,6 +714,15 @@ export function KnowledgeDropdown() {
       icon: FolderIconWithColor,
       onClick: () => folderInputRef.current?.click(),
     },
+    ...(isNoAuthMode && !isCloudBrand
+      ? [
+          {
+            label: "Ingestion folder",
+            icon: FolderIconWithColor,
+            onClick: () => setShowFolderDialog(true),
+          },
+        ]
+      : []),
     ...bucketConnectorItems,
     ...cloudConnectorItems,
   ];
@@ -806,9 +823,9 @@ export function KnowledgeDropdown() {
           )}
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-56">
-          {menuItems.map((item, index) => (
+          {menuItems.map((item) => (
             <DropdownMenuItem
-              key={`${item.label}-${index}`}
+              key={item.label}
               onClick={item.onClick}
               disabled={"disabled" in item ? item.disabled : false}
             >
@@ -837,21 +854,22 @@ export function KnowledgeDropdown() {
         className="hidden"
       />
 
-      {/* Process Folder Dialog */}
+      {/* Shared ingestion folder dialog */}
       <Dialog open={showFolderDialog} onOpenChange={setShowFolderDialog}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <FolderOpen className="h-5 w-5" />
-              Process Folder
+              Ingestion folder
             </DialogTitle>
             <DialogDescription>
-              Process all documents in a folder path
+              Ingest an existing file or directory inside the configured shared
+              documents folder.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="folder-path">Folder Path</Label>
+              <Label htmlFor="folder-path">Server path</Label>
               <Input
                 id="folder-path"
                 type="text"
@@ -871,7 +889,7 @@ export function KnowledgeDropdown() {
                 onClick={handleFolderUpload}
                 disabled={!folderPath.trim() || folderLoading}
               >
-                {folderLoading ? "Processing..." : "Process Folder"}
+                {folderLoading ? "Starting..." : "Start ingestion"}
               </Button>
             </div>
           </div>
