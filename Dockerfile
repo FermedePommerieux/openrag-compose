@@ -9,7 +9,7 @@ RUN opensearch-plugin remove opensearch-neural-search || true && \
 
 # Prepare jvector plugin artifacts
 RUN mkdir -p /tmp/opensearch-jvector-plugin && \
-    curl -L -s https://github.com/opensearch-project/opensearch-jvector/releases/download/3.6.0.0/artifacts.tar.gz \
+    curl -L -s https://github.com/opensearch-project/opensearch-jvector/releases/download/3.6.0.1-1/artifacts.tar.gz \
       | tar zxvf - -C /tmp/opensearch-jvector-plugin
 
 # Prepare neural-search plugin
@@ -18,7 +18,7 @@ RUN mkdir -p /tmp/opensearch-neural-search && \
       > /tmp/opensearch-neural-search/plugin.zip
 
 # Install additional plugins
-RUN opensearch-plugin install --batch file:///tmp/opensearch-jvector-plugin/repository/org/opensearch/plugin/opensearch-jvector-plugin/3.6.0.0/opensearch-jvector-plugin-3.6.0.0.zip && \
+RUN opensearch-plugin install --batch file:///tmp/opensearch-jvector-plugin/repository/org/opensearch/plugin/opensearch-jvector-plugin/3.6.0.1/opensearch-jvector-plugin-3.6.0.1.zip && \
     opensearch-plugin install --batch file:///tmp/opensearch-neural-search/plugin.zip && \
     opensearch-plugin install --batch repository-gcs && \
     opensearch-plugin install --batch repository-azure && \
@@ -143,4 +143,3 @@ EXPOSE 9200 9300 9600 9650
 
 ENTRYPOINT ["./opensearch-entrypoint-wrapper.sh"]
 CMD []
-
