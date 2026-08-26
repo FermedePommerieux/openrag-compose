@@ -286,6 +286,16 @@ DEFAULT_SYSTEM_PROMPT = _RETRIEVAL_V3_SYSTEM_PROMPT.replace(
     "",
     1,
 ).replace(
+    "### Calculator Usage Rules\n"
+    "Use the calculator when:\n"
+    "- Performing arithmetic\n"
+    "- Estimating totals\n"
+    "- Comparing values\n"
+    "- Modeling cost, time, effort, scale, or projections\n"
+    "Do not perform math internally. **Call the calculator tool instead.**\n",
+    "",
+    1,
+).replace(
     "### Evidence and Role Attribution\n"
     "Before assigning named roles, review all retrieved chunks, not only the "
     "highest-ranked passage. Never infer a role from mention order or prominence. "
@@ -299,7 +309,9 @@ DEFAULT_SYSTEM_PROMPT = _RETRIEVAL_V3_SYSTEM_PROMPT.replace(
     "content supplies evidence. Retrieve before asking for it. For roles, review all "
     "chunks, use explicit labels and document structure, and never "
     "use mention order. Keep entities distinct; if evidence conflicts, retrieve with "
-    "neutral role terms.\n",
+    "neutral role terms. When results span documents, keep every fact scoped to its "
+    "source and never combine fields across files. If several documents could be the "
+    "referent, name the candidates and ask the user to choose.\n",
     1,
 )
 

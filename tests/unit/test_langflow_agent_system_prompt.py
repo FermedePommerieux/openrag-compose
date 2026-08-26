@@ -62,6 +62,8 @@ def test_default_agent_prompt_requires_document_wide_role_evidence():
     assert "explicit labels and document structure" in DEFAULT_SYSTEM_PROMPT
     assert "`this/ce document`" in DEFAULT_SYSTEM_PROMPT
     assert "Retrieve before asking for it" in DEFAULT_SYSTEM_PROMPT
+    assert "never combine fields across files" in DEFAULT_SYSTEM_PROMPT
+    assert "ask the user to choose" in DEFAULT_SYSTEM_PROMPT
     assert len(DEFAULT_SYSTEM_PROMPT) <= 5000
     assert len(LEGACY_SYSTEM_PROMPTS) == 4
     for legacy_prompt in LEGACY_SYSTEM_PROMPTS:
