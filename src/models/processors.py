@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any, Literal
 from config.settings import clients, get_embedding_model, get_index_name, get_openrag_config
 from session_manager import AnonymousUser
 from utils.document_processing import (
+    HYBRID_CHUNKING_SCHEMA_VERSION,
     HybridChunkingError,
     chunk_docling_hybrid,
     extract_relevant,
@@ -325,6 +326,9 @@ class TaskProcessor:
             "chunk_overlap": chunk_overlap if strategy == "character" else None,
             "hybrid_max_tokens": hybrid_max_tokens if strategy == "hybrid" else None,
             "hybrid_merge_peers": hybrid_merge_peers if strategy == "hybrid" else None,
+            "hybrid_schema_version": (
+                HYBRID_CHUNKING_SCHEMA_VERSION if strategy == "hybrid" else None
+            ),
         }
         canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
         return hashlib.sha256(canonical.encode("utf-8")).hexdigest()

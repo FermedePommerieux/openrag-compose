@@ -5,9 +5,114 @@ from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
+HYBRID_CHUNKING_SCHEMA_VERSION = 2
+
 
 class HybridChunkingError(RuntimeError):
     """Raised when an explicitly requested Docling hybrid chunk cannot be produced."""
+
+
+def _structural_supplement_chunks(
+    doc_dict: dict,
+    *,
+    covered_refs: set[str],
+    max_tokens: int,
+) -> list[dict]:
+    """Preserve Docling text items omitted by HybridChunker.
+
+    Docling deliberately classifies page headers and footers as document
+    furniture, which HybridChunker may omit from semantic body chunks. Those
+    regions often contain identity, legal, navigation, or payment evidence.
+    Emit only uncovered items and retain their page, region label, and spatial
+    position so downstream retrieval can verify relationships without relying
+    on mention order.
+    """
+    import tiktoken
+
+    tokenizer = tiktoken.get_encoding("cl100k_base")
+    token_limit = max(1, int(max_tokens))
+    grouped: dict[tuple[int, str], list[dict]] = defaultdict(list)
+
+    for index, item in enumerate(doc_dict.get("texts", [])):
+        if not isinstance(item, dict):
+            continue
+        text = str(item.get("text") or "").strip()
+        if not text:
+            continue
+        item_ref = str(item.get("self_ref") or f"#/texts/{index}")
+        if item_ref in covered_refs:
+            continue
+
+        provenance = item.get("prov") or []
+        first_prov = provenance[0] if provenance and isinstance(provenance[0], dict) else {}
+        try:
+            page = int(first_prov.get("page_no") or 1)
+        except (TypeError, ValueError):
+            page = 1
+        label = str(item.get("label") or "text")
+        bbox = first_prov.get("bbox") if isinstance(first_prov.get("bbox"), dict) else {}
+        grouped[(page, label)].append(
+            {
+                "index": index,
+                "text": text,
+                "left": bbox.get("l"),
+                "top": bbox.get("t"),
+            }
+        )
+
+    supplements: list[dict] = []
+    for (page, label), items in sorted(grouped.items()):
+        # Reading order inside repeated page furniture is spatial, not the
+        # serialization order returned by every converter version.
+        items.sort(
+            key=lambda item: (
+                -(float(item["top"]) if item["top"] is not None else 0.0),
+                float(item["left"]) if item["left"] is not None else 0.0,
+                item["index"],
+            )
+        )
+        header = f"[Document structural region]\nPage: {page}\nRegion: {label}"
+        header_tokens = len(tokenizer.encode(header))
+        available = max(1, token_limit - header_tokens - 2)
+        current_records: list[str] = []
+        current_tokens = 0
+
+        def flush(*, page: int = page, label: str = label, header: str = header) -> None:
+            nonlocal current_records, current_tokens
+            if not current_records:
+                return
+            supplements.append(
+                {
+                    "page": page,
+                    "type": "docling_structural_supplement",
+                    "labels": [label],
+                    "text": f"{header}\n" + "\n".join(current_records),
+                }
+            )
+            current_records = []
+            current_tokens = 0
+
+        for item in items:
+            left = "unknown" if item["left"] is None else f"{float(item['left']):.1f}"
+            top = "unknown" if item["top"] is None else f"{float(item['top']):.1f}"
+            prefix = f"- Position(left={left}, top={top}); Text: "
+            prefix_tokens = len(tokenizer.encode(prefix))
+            text_tokens = tokenizer.encode(item["text"])
+            text_limit = max(1, available - prefix_tokens)
+            parts = [
+                tokenizer.decode(text_tokens[start : start + text_limit])
+                for start in range(0, len(text_tokens), text_limit)
+            ] or [""]
+            for part in parts:
+                record = prefix + part
+                record_tokens = len(tokenizer.encode(record))
+                if current_records and current_tokens + record_tokens > available:
+                    flush()
+                current_records.append(record)
+                current_tokens += record_tokens
+        flush()
+
+    return supplements
 
 
 def process_text_file(file_path: str) -> dict:
@@ -212,9 +317,13 @@ def chunk_docling_hybrid(
         chunker = HybridChunker(tokenizer=tokenizer, merge_peers=merge_peers)
         document = DoclingDocument.model_validate(doc_dict)
         chunks: list[dict] = []
+        covered_refs: set[str] = set()
         for chunk in chunker.chunk(dl_doc=document):
             page = 1
             for item in getattr(getattr(chunk, "meta", None), "doc_items", []) or []:
+                item_ref = getattr(item, "self_ref", None)
+                if item_ref is not None:
+                    covered_refs.add(str(item_ref))
                 provenance = getattr(item, "prov", None) or []
                 if provenance:
                     page = getattr(provenance[0], "page_no", None) or page
@@ -224,6 +333,17 @@ def chunk_docling_hybrid(
                 chunks.append({"page": page, "type": "docling_hybrid", "text": text})
         if not chunks:
             raise HybridChunkingError("Hybrid chunking produced no usable chunks")
+        supplements = _structural_supplement_chunks(
+            doc_dict,
+            covered_refs=covered_refs,
+            max_tokens=max_tokens,
+        )
+        if supplements:
+            logger.info(
+                "Preserving Docling structural regions omitted by HybridChunker",
+                supplement_chunks=len(supplements),
+            )
+            chunks.extend(supplements)
         return chunks
     except Exception as exc:
         logger.warning("Docling HybridChunker failed", error=str(exc))
