@@ -39,7 +39,7 @@ async def test_standard_processor_uses_shared_writer_for_embedding_mapping_and_w
         admin_client.bulk_calls.append(kwargs)
         return {"errors": False, "items": []}
 
-    async def admin_search(*, index, body):
+    async def admin_search(*, index, body, **kwargs):
         if body.get("size") == 0:
             return {
                 "hits": {"total": {"value": 1, "relation": "eq"}},

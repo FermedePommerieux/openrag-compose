@@ -12,7 +12,7 @@ class ProfileOpenSearch:
     def __init__(self) -> None:
         self.update_body: dict[str, Any] | None = None
 
-    async def search(self, *, index: str, body: dict[str, Any]) -> dict[str, Any]:
+    async def search(self, *, index: str, body: dict[str, Any], **kwargs) -> dict[str, Any]:
         if body.get("size") == 0:
             return {"hits": {"total": {"value": 2, "relation": "eq"}}}
         first_text = "a" * 20
@@ -90,8 +90,8 @@ async def test_profile_refuses_incomplete_snapshot_hash():
     client = ProfileOpenSearch()
     original_search = client.search
 
-    async def incomplete_search(*, index: str, body: dict[str, Any]):
-        response = await original_search(index=index, body=body)
+    async def incomplete_search(*, index: str, body: dict[str, Any], **kwargs):
+        response = await original_search(index=index, body=body, **kwargs)
         if body.get("size") != 0:
             response["hits"]["hits"] = response["hits"]["hits"][:1]
         return response
@@ -115,8 +115,8 @@ async def test_profile_refuses_duplicate_or_gapped_chunk_order():
     client = ProfileOpenSearch()
     original_search = client.search
 
-    async def invalid_order_search(*, index: str, body: dict[str, Any]):
-        response = await original_search(index=index, body=body)
+    async def invalid_order_search(*, index: str, body: dict[str, Any], **kwargs):
+        response = await original_search(index=index, body=body, **kwargs)
         if body.get("size") != 0:
             response["hits"]["hits"][1]["_source"]["chunk_index"] = 9
         return response
@@ -140,8 +140,8 @@ async def test_profile_recalculates_chunk_text_digest():
     client = ProfileOpenSearch()
     original_search = client.search
 
-    async def corrupted_text_search(*, index: str, body: dict[str, Any]):
-        response = await original_search(index=index, body=body)
+    async def corrupted_text_search(*, index: str, body: dict[str, Any], **kwargs):
+        response = await original_search(index=index, body=body, **kwargs)
         if body.get("size") != 0:
             response["hits"]["hits"][0]["_source"]["text"] = "changed after hashing"
         return response

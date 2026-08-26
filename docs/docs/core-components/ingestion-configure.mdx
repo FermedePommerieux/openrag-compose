@@ -139,6 +139,13 @@ provider/model, chunking, Docling extraction, OCR, tables, and picture
 descriptions — apply only to future ingestion. OpenRAG does not
 automatically rebuild or remove existing indexed documents after a change.
 
+Large documents are indexed through bounded OpenSearch bulk requests (at most
+64 chunks and approximately 5 MiB per request). This is an ingestion safety
+contract, not a document-size limit: every verified leaf chunk is still
+written, then the complete generation is profiled and promoted atomically.
+Splitting the transport prevents a large embedding set from exceeding
+OpenSearch's HTTP request limit while preserving exhaustive coverage.
+
 ## Configure table parsing
 
 You can edit the following setting on the OpenRAG <Icon name="Settings2" aria-hidden="true"/> **Settings** page in the **Knowledge Ingest** section:

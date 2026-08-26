@@ -21,6 +21,14 @@ from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
+# OpenSearch's HTTP limit is a server protection boundary, not a batching
+# target. Keep each request far below the usual 100-MiB ceiling: embeddings
+# make a few hundred otherwise-small chunks surprisingly large once encoded as
+# JSON. The count cap also bounds client-side serialization memory.
+DEFAULT_BULK_MAX_BYTES = 5 * 1024 * 1024
+DEFAULT_BULK_MAX_CHUNKS = 64
+DEFAULT_PROFILE_REQUEST_TIMEOUT_SECONDS = 300
+
 
 @dataclass
 class DocumentIndexContext:
@@ -62,8 +70,20 @@ class DocumentIndexChunk:
 class DocumentIndexWriter:
     """Write document chunks with a trusted backend OpenSearch client."""
 
-    def __init__(self, opensearch_client: Any | None = None):
+    def __init__(
+        self,
+        opensearch_client: Any | None = None,
+        *,
+        bulk_max_bytes: int = DEFAULT_BULK_MAX_BYTES,
+        bulk_max_chunks: int = DEFAULT_BULK_MAX_CHUNKS,
+        profile_request_timeout: int = DEFAULT_PROFILE_REQUEST_TIMEOUT_SECONDS,
+    ):
+        if bulk_max_bytes < 1 or bulk_max_chunks < 1 or profile_request_timeout < 1:
+            raise ValueError("OpenSearch indexing bounds must be positive")
         self.opensearch_client = opensearch_client
+        self.bulk_max_bytes = bulk_max_bytes
+        self.bulk_max_chunks = bulk_max_chunks
+        self.profile_request_timeout = profile_request_timeout
 
     def _get_write_client(self) -> Any:
         from config.settings import clients
@@ -121,31 +141,57 @@ class DocumentIndexWriter:
 
         now = datetime.datetime.now(datetime.UTC).isoformat()
         bulk_body: list[dict[str, Any]] = []
+        bulk_bytes = 0
+        bulk_chunk_count = 0
+        bulk_request_count = 0
         for chunk in chunks:
             if len(chunk.vector) != dimensions:
                 raise ValueError(
                     "Embedding dimension mismatch in batch: "
                     f"expected {dimensions}, got {len(chunk.vector)} for {chunk.chunk_id}"
                 )
-            bulk_body.append(
-                {
-                    "index": {
-                        "_index": index_name,
-                        "_id": self.storage_chunk_id(context, chunk.chunk_id),
-                    }
+            action = {
+                "index": {
+                    "_index": index_name,
+                    "_id": self.storage_chunk_id(context, chunk.chunk_id),
                 }
+            }
+            document = self._build_chunk_document(
+                context=context,
+                chunk=chunk,
+                embedding_field=embedding_field,
+                indexed_time=now,
             )
-            bulk_body.append(
-                self._build_chunk_document(
-                    context=context,
-                    chunk=chunk,
-                    embedding_field=embedding_field,
-                    indexed_time=now,
-                )
-            )
+            pair_bytes = self._json_line_size(action) + self._json_line_size(document)
+            if bulk_body and (
+                bulk_chunk_count >= self.bulk_max_chunks
+                or bulk_bytes + pair_bytes > self.bulk_max_bytes
+            ):
+                result = await client.bulk(body=bulk_body, refresh=False)
+                self._raise_for_bulk_errors(result)
+                bulk_request_count += 1
+                bulk_body = []
+                bulk_bytes = 0
+                bulk_chunk_count = 0
+            bulk_body.extend((action, document))
+            bulk_bytes += pair_bytes
+            bulk_chunk_count += 1
 
-        result = await client.bulk(body=bulk_body, refresh=refresh)
-        self._raise_for_bulk_errors(result)
+        if bulk_body:
+            result = await client.bulk(body=bulk_body, refresh=refresh)
+            self._raise_for_bulk_errors(result)
+            bulk_request_count += 1
+
+        logger.info(
+            "Completed bounded OpenSearch bulk writes",
+            index_name=index_name,
+            document_id=context.document_id,
+            chunk_count=len(chunks),
+            bulk_request_count=bulk_request_count,
+            bulk_max_bytes=self.bulk_max_bytes,
+            bulk_max_chunks=self.bulk_max_chunks,
+        )
+
         profile: dict[str, Any] = {}
         if final:
             await self._refresh(index_name)
@@ -165,6 +211,25 @@ class DocumentIndexWriter:
             "document_id": context.document_id,
             **profile,
         }
+
+    @staticmethod
+    def _json_line_size(value: dict[str, Any]) -> int:
+        """Return a conservative NDJSON line size for bulk admission.
+
+        OpenSearch's serializer may encode a few scalar types differently, so
+        the 5-MiB request target deliberately leaves a wide server-side margin.
+        """
+        return (
+            len(
+                json.dumps(
+                    value,
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                    default=str,
+                ).encode("utf-8")
+            )
+            + 1
+        )
 
     @staticmethod
     def _document_profile_scope(context: DocumentIndexContext) -> list[dict[str, Any]]:
@@ -210,6 +275,7 @@ class DocumentIndexWriter:
                 "size": 0,
                 "track_total_hits": True,
             },
+            request_timeout=self.profile_request_timeout,
         )
         total = response.get("hits", {}).get("total", 0)
         chunk_count = int(total.get("value", 0) if isinstance(total, dict) else total or 0)
@@ -277,6 +343,7 @@ class DocumentIndexWriter:
             },
             refresh=True,
             conflicts="proceed",
+            request_timeout=self.profile_request_timeout,
         )
         updated = int(update_result.get("updated", 0) or 0)
         if updated != chunk_count:
@@ -333,7 +400,11 @@ class DocumentIndexWriter:
             }
             if search_after is not None:
                 body["search_after"] = search_after
-            response = await client.search(index=index_name, body=body)
+            response = await client.search(
+                index=index_name,
+                body=body,
+                request_timeout=DEFAULT_PROFILE_REQUEST_TIMEOUT_SECONDS,
+            )
             hits = response.get("hits", {}).get("hits", [])
             if not hits:
                 break

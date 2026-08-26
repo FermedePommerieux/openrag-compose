@@ -1025,7 +1025,11 @@ class TaskProcessor:
                     index_name=get_index_name(),
                     document_id=file_hash,
                     owner=owner,
-                    shared=shared,
+                    # No-auth local ingestion intentionally writes ownerless
+                    # chunks. Treat that exact ownerless scope as shared for
+                    # cleanup; otherwise a failed large ingest leaves its
+                    # temporary generation behind indefinitely.
+                    shared=shared or owner is None,
                 )
             except Exception as cleanup_error:
                 logger.error(

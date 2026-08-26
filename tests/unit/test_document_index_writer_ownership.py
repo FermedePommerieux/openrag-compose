@@ -25,9 +25,11 @@ class InMemoryIndices:
 class InMemoryOpenSearch:
     def __init__(self) -> None:
         self.documents: dict[str, dict[str, Any]] = {}
+        self.bulk_calls: list[dict[str, Any]] = []
         self.indices = InMemoryIndices()
 
     async def bulk(self, *, body: list[dict[str, Any]], refresh: bool | str) -> dict[str, Any]:
+        self.bulk_calls.append({"body": body, "refresh": refresh})
         for offset in range(0, len(body), 2):
             document_id = body[offset]["index"]["_id"]
             self.documents[document_id] = body[offset + 1]
@@ -63,6 +65,26 @@ def make_chunk(text: str = "same file") -> DocumentIndexChunk:
         text=text,
         vector=[0.1, 0.2, 0.3],
     )
+
+
+@pytest.mark.asyncio
+async def test_large_chunk_sets_are_written_as_bounded_bulk_requests():
+    opensearch = InMemoryOpenSearch()
+    writer = DocumentIndexWriter(
+        opensearch_client=opensearch,
+        bulk_max_chunks=1,
+        bulk_max_bytes=5 * 1024 * 1024,
+    )
+    chunks = [make_chunk(f"chunk-{index}") for index in range(3)]
+    for index, chunk in enumerate(chunks):
+        chunk.chunk_id = f"chunk-{index}"
+
+    result = await writer.index_chunks(make_context("user-a"), chunks, refresh=True)
+
+    assert result["indexed_chunks"] == 3
+    assert len(opensearch.bulk_calls) == 3
+    assert [call["refresh"] for call in opensearch.bulk_calls] == [False, False, True]
+    assert all(len(call["body"]) == 2 for call in opensearch.bulk_calls)
 
 
 @pytest.mark.asyncio
