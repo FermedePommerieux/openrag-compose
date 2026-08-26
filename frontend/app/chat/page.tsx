@@ -11,6 +11,7 @@ import { useTask } from "@/contexts/task-context";
 import { useOnboardingState } from "@/hooks/use-onboarding-state";
 import { useChatStreaming } from "@/hooks/useChatStreaming";
 import { trackLLMCall } from "@/lib/analytics";
+import { normalizeToolResult } from "@/lib/chat-stream-parsers";
 import { FILE_CONFIRMATION, FILES_REGEX } from "@/lib/constants";
 import { buildSearchPayloadFilters } from "@/lib/filter-normalization";
 import { uploadFileForContext } from "@/lib/upload-utils";
@@ -360,9 +361,7 @@ function ChatPage() {
                     arguments:
                       (toolCall.inputs as Record<string, unknown>) || {},
                     argumentsString: JSON.stringify(toolCall.inputs || {}),
-                    result: toolCall.results as
-                      | Record<string, unknown>
-                      | ToolCallResult[],
+                    result: normalizeToolResult(toolCall.results),
                     status:
                       (toolCall.status as "pending" | "completed" | "error") ||
                       "completed",
@@ -430,7 +429,7 @@ function ChatPage() {
                         : JSON.stringify(
                             toolCall.function?.arguments || toolCall.arguments,
                           ),
-                    result: toolCall.result,
+                    result: normalizeToolResult(toolCall.result),
                     status: "completed",
                     type: toolCall.type || "function",
                   });

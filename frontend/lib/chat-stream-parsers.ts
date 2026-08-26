@@ -30,6 +30,31 @@ function parseArguments(value: unknown): Record<string, unknown> | undefined {
   }
 }
 
+export function normalizeToolResult(value: unknown): FunctionCall["result"] {
+  let decoded = value;
+
+  for (let layer = 0; layer < 4 && typeof decoded === "string"; layer++) {
+    try {
+      decoded = JSON.parse(decoded);
+    } catch {
+      return value as FunctionCall["result"];
+    }
+  }
+
+  if (
+    decoded &&
+    typeof decoded === "object" &&
+    !Array.isArray(decoded) &&
+    "artifact" in decoded &&
+    Array.isArray((decoded as { artifact?: unknown }).artifact)
+  ) {
+    return (decoded as { artifact: unknown[] })
+      .artifact as FunctionCall["result"];
+  }
+
+  return decoded as FunctionCall["result"];
+}
+
 function findFunctionCallByEvent(
   calls: FunctionCall[],
   c: Chunk,
@@ -292,8 +317,7 @@ export function parseRealtimeChunk(
         | undefined) ||
         parseArguments(item.arguments) ||
         functionCall.arguments) as Record<string, unknown> | undefined;
-      if (item.results)
-        functionCall.result = item.results as FunctionCall["result"];
+      if (item.results) functionCall.result = normalizeToolResult(item.results);
     }
     return true;
   }
@@ -319,8 +343,7 @@ export function parseRealtimeChunk(
       functionCall.status = item.status === "completed" ? "completed" : "error";
       functionCall.id = item.id as string;
       functionCall.type = item.type as string;
-      if (item.results)
-        functionCall.result = item.results as FunctionCall["result"];
+      if (item.results) functionCall.result = normalizeToolResult(item.results);
     } else {
       calls.push({
         name: (item.tool_name || item.name || item.type || "unknown") as string,
@@ -328,7 +351,7 @@ export function parseRealtimeChunk(
         status: "completed",
         id: item.id as string,
         type: item.type as string,
-        result: item.results as FunctionCall["result"],
+        result: normalizeToolResult(item.results),
       });
     }
     return true;
