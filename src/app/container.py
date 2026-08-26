@@ -6,6 +6,8 @@ Returns a dict consumed by routes (via FastAPI Depends) and the lifespan hook.
 from config.settings import (
     ENABLE_BACKEND_DOCLING_POLLING,
     INGESTION_TIMEOUT,
+    INGESTION_TIMEOUT_MAX,
+    INGESTION_TIMEOUT_PER_MIB,
     JWT_SIGNING_KEY,
     SESSION_SECRET,
     clients,
@@ -108,6 +110,8 @@ async def initialize_services():
         document_service,
         models_service,
         ingestion_timeout=INGESTION_TIMEOUT,
+        ingestion_timeout_per_mib=INGESTION_TIMEOUT_PER_MIB,
+        ingestion_timeout_max=INGESTION_TIMEOUT_MAX,
         docling_service=clients.docling_service,
         docling_polling_service=docling_polling_service,
         session_manager=session_manager,

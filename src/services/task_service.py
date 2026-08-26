@@ -11,6 +11,10 @@ from typing import Any, TypeVar
 from models.tasks import DoclingPhaseStatus, FileTask, IngestionPhase, TaskStatus, UploadTask
 from session_manager import AnonymousUser
 from utils.gpu_detection import get_worker_count
+from utils.ingestion_timeout import (
+    adaptive_ingestion_timeout_seconds,
+    local_file_size_bytes,
+)
 from utils.logging_config import get_logger
 from utils.telemetry import Category, MessageId, TelemetryClient
 
@@ -161,6 +165,8 @@ class TaskService:
         document_service=None,
         models_service=None,
         ingestion_timeout=3600,
+        ingestion_timeout_per_mib=120,
+        ingestion_timeout_max=21600,
         docling_service=None,
         docling_polling_service=None,
         session_manager=None,
@@ -177,6 +183,8 @@ class TaskService:
         self.task_store: dict[str, dict[str, UploadTask]] = {}  # user_id -> {task_id -> UploadTask}
         self.background_tasks = set()
         self.ingestion_timeout = ingestion_timeout
+        self.ingestion_timeout_per_mib = ingestion_timeout_per_mib
+        self.ingestion_timeout_max = ingestion_timeout_max
         self._cleanup_task: asyncio.Task | None = None
         # Locks for task counter updates, keyed by task_id
         # Kept separate from UploadTask to maintain serialization compatibility
@@ -205,6 +213,17 @@ class TaskService:
             and os.path.isfile(path)
             and os.path.getsize(path) >= self._large_file_threshold_bytes
         )
+
+    def _ingestion_timeout_for_item(self, item: Any) -> tuple[int, int | None]:
+        """Return the auditable adaptive timeout and observed local file size."""
+        file_size = local_file_size_bytes(item)
+        timeout = adaptive_ingestion_timeout_seconds(
+            base_seconds=self.ingestion_timeout,
+            file_size_bytes=file_size,
+            seconds_per_mib=self.ingestion_timeout_per_mib,
+            max_seconds=self.ingestion_timeout_max,
+        )
+        return timeout, file_size
 
     def _get_task_lock(self, task_id: str) -> asyncio.Lock:
         """Get or create a lock for a specific task's counter updates"""
@@ -560,6 +579,8 @@ class TaskService:
                     file_task = upload_task.file_tasks[item_key]
                     file_task.status = TaskStatus.RUNNING
                     file_task.updated_at = time.time()
+                    timeout_seconds, file_size_bytes = self._ingestion_timeout_for_item(item)
+                    file_task.timeout_seconds = timeout_seconds
 
                     logger.info(
                         "File processing task running",
@@ -567,13 +588,15 @@ class TaskService:
                         task_id=task_id,
                         file_path=file_task.file_path,
                         large_file_lane=is_large_file,
+                        file_size_bytes=file_size_bytes,
+                        timeout_seconds=timeout_seconds,
                     )
 
                     try:
                         # Add timeout protection to prevent indefinite hangs
                         await self._process_with_timeout(
                             processor.process_item(upload_task, item, file_task),
-                            timeout_seconds=self.ingestion_timeout,
+                            timeout_seconds=timeout_seconds,
                         )
 
                         logger.info(
@@ -1235,6 +1258,8 @@ class TaskService:
 
         for file_path, file_task in upload_task.file_tasks.items():
             entry = self._serialize_file_task(file_task)
+            if file_task.timeout_seconds is not None:
+                entry["timeout_seconds"] = file_task.timeout_seconds
             if file_task.status == TaskStatus.FAILED:
                 metadata = self._infer_failure_metadata(file_task)
                 if metadata:

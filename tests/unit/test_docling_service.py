@@ -138,6 +138,26 @@ async def test_result_polling_defaults_to_ingestion_timeout(
 
 
 @pytest.mark.asyncio
+async def test_convert_file_passes_adaptive_timeout_to_polling(
+    docling_service, tmp_path, monkeypatch
+):
+    document = tmp_path / "scan.pdf"
+    document.write_bytes(b"x")
+    upload = AsyncMock(return_value="task123")
+    poll = AsyncMock(return_value={"ok": True})
+    monkeypatch.setattr(docling_service, "upload_to_docling_direct_async", upload)
+    monkeypatch.setattr(docling_service, "get_docling_result_async", poll)
+    monkeypatch.setattr("services.docling_service.INGESTION_TIMEOUT", 3600)
+    monkeypatch.setattr("services.docling_service.INGESTION_TIMEOUT_PER_MIB", 120)
+    monkeypatch.setattr("services.docling_service.INGESTION_TIMEOUT_MAX", 21600)
+
+    result = await docling_service.convert_file(str(document))
+
+    assert result == {"ok": True}
+    assert poll.await_args.kwargs["timeout"] == 3720
+
+
+@pytest.mark.asyncio
 async def test_poll_result_missing_content(docling_service, mock_httpx_client):
     """Raises DoclingServeError if result response is missing json_content."""
     mock_httpx_client.get.side_effect = [

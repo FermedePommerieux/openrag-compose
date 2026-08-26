@@ -656,9 +656,15 @@ LANGFLOW_REQUEST_RETRIES = get_env_int("LANGFLOW_REQUEST_RETRIES", 2)
 # Should be >= LANGFLOW_TIMEOUT to allow long-running ingestion to complete
 # Default: 3600 seconds (60 minutes)
 INGESTION_TIMEOUT = get_env_int("INGESTION_TIMEOUT", 3600)
+# The base timeout alone is intentionally not the final budget for known local
+# files. A conservative preflight adds two minutes per started MiB, capped at
+# six hours. This keeps a finite stuck-job guard while allowing large scanned
+# PDFs to complete without an arbitrary one-hour abandonment.
+INGESTION_TIMEOUT_PER_MIB = get_env_int("INGESTION_TIMEOUT_PER_MIB", 120)
+INGESTION_TIMEOUT_MAX = get_env_int("INGESTION_TIMEOUT_MAX", 21600)
 LANGFLOW_INGEST_CALLBACK_TTL_SECONDS = get_env_int(
     "LANGFLOW_INGEST_CALLBACK_TTL_SECONDS",
-    INGESTION_TIMEOUT + 300,
+    max(INGESTION_TIMEOUT, INGESTION_TIMEOUT_MAX) + 300,
 )
 LANGFLOW_INGEST_CALLBACK_BATCH_SIZE = get_env_int("LANGFLOW_INGEST_CALLBACK_BATCH_SIZE", 100)
 
@@ -669,7 +675,7 @@ def get_opensearch_jwt_ttl_seconds() -> int:
     """Return the effective short-lived OpenSearch JWT TTL."""
     return get_env_int(
         "OPENRAG_OPENSEARCH_JWT_TTL",
-        INGESTION_TIMEOUT + OPENSEARCH_JWT_TTL_BUFFER_SECONDS,
+        max(INGESTION_TIMEOUT, INGESTION_TIMEOUT_MAX) + OPENSEARCH_JWT_TTL_BUFFER_SECONDS,
     )
 
 

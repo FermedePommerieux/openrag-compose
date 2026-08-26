@@ -15,8 +15,11 @@ from config.settings import (
     DOCLING_SERVE_URL,
     DOCLING_SERVE_VERIFY_SSL,
     INGESTION_TIMEOUT,
+    INGESTION_TIMEOUT_MAX,
+    INGESTION_TIMEOUT_PER_MIB,
     get_openrag_config,
 )
+from utils.ingestion_timeout import adaptive_ingestion_timeout_seconds
 from utils.logging_config import get_logger
 from utils.run_mode_utils import is_run_mode_on_prem, is_run_mode_saas
 
@@ -538,6 +541,7 @@ class DoclingService:
         *,
         ocr: bool | None = None,
         picture_descriptions: bool | None = None,
+        timeout: float | None = None,
     ) -> dict[str, Any]:
         """
         Convert a local file via docling-serve async polling.
@@ -552,8 +556,19 @@ class DoclingService:
             ocr=ocr,
             picture_descriptions=picture_descriptions,
         )
+        effective_timeout = timeout
+        if effective_timeout is None:
+            effective_timeout = adaptive_ingestion_timeout_seconds(
+                base_seconds=INGESTION_TIMEOUT,
+                file_size_bytes=path.stat().st_size,
+                seconds_per_mib=INGESTION_TIMEOUT_PER_MIB,
+                max_seconds=INGESTION_TIMEOUT_MAX,
+            )
         return await self.get_docling_result_async(
-            task_id, user_id=user_id, auth_header=auth_header
+            task_id,
+            timeout=effective_timeout,
+            user_id=user_id,
+            auth_header=auth_header,
         )
 
     async def convert_bytes(

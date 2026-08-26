@@ -62,12 +62,13 @@ def test_opensearch_jwt_does_not_include_connector_group_roles(monkeypatch):
     assert payload["sub"] == "user-1"
 
 
-def test_opensearch_jwt_default_ttl_tracks_ingestion_timeout(monkeypatch):
+def test_opensearch_jwt_default_ttl_covers_adaptive_timeout_ceiling(monkeypatch):
     from session_manager import SessionManager, User
 
     monkeypatch.setenv("JWT_SIGNING_KEY", "unit-test-secret-with-32-bytes!!")
     monkeypatch.delenv("OPENRAG_OPENSEARCH_JWT_TTL", raising=False)
     monkeypatch.setattr("config.settings.INGESTION_TIMEOUT", 3600)
+    monkeypatch.setattr("config.settings.INGESTION_TIMEOUT_MAX", 21600)
 
     manager = SessionManager("test")
     user = User(user_id="user-1", email="user@example.com", name="User")
@@ -80,7 +81,7 @@ def test_opensearch_jwt_default_ttl_tracks_ingestion_timeout(monkeypatch):
         audience=["opensearch", "openrag"],
     )
 
-    assert payload["exp"] - payload["iat"] == 3900
+    assert payload["exp"] - payload["iat"] == 21900
 
 
 @pytest.mark.asyncio

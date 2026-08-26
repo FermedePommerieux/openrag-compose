@@ -35,6 +35,46 @@ def test_large_local_files_use_serialized_lane(task_service, tmp_path):
     assert task_service._requires_large_file_slot("connector-id") is False
 
 
+def test_timeout_budget_adapts_to_local_file_size(task_service, tmp_path):
+    task_service.ingestion_timeout = 3600
+    task_service.ingestion_timeout_per_mib = 120
+    task_service.ingestion_timeout_max = 21600
+    document = tmp_path / "large.pdf"
+    document.write_bytes(b"x" * (2 * 1024 * 1024 + 1))
+
+    timeout, size = task_service._ingestion_timeout_for_item(document)
+
+    assert size == 2 * 1024 * 1024 + 1
+    assert timeout == 3960
+
+
+def test_timeout_budget_is_bounded_and_unknown_items_keep_base(task_service, tmp_path):
+    task_service.ingestion_timeout = 3600
+    task_service.ingestion_timeout_per_mib = 120
+    task_service.ingestion_timeout_max = 3700
+    document = tmp_path / "large.pdf"
+    document.write_bytes(b"x" * (2 * 1024 * 1024))
+
+    assert task_service._ingestion_timeout_for_item(document)[0] == 3700
+    assert task_service._ingestion_timeout_for_item("connector-id") == (3600, None)
+
+
+def test_enhanced_file_task_status_exposes_effective_timeout(task_service):
+    file_task = FileTask(file_path="large.pdf", timeout_seconds=12720)
+    upload_task = UploadTask(
+        task_id="adaptive-timeout",
+        total_files=1,
+        file_tasks={"large.pdf": file_task},
+    )
+    task_service.task_store["user1"] = {"adaptive-timeout": upload_task}
+
+    status = task_service.get_task_status2("user1", "adaptive-timeout")
+
+    assert status is not None
+    assert status["files"]["large.pdf"]["timeout_seconds"] == 12720
+    assert "timeout_seconds" not in task_service._serialize_file_task(file_task)
+
+
 @pytest.mark.asyncio
 async def test_process_with_timeout_success(task_service):
     """Test that _process_with_timeout completes successfully within timeout"""

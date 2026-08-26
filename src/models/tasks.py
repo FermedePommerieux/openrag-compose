@@ -60,6 +60,9 @@ class FileTask:
     docling_status: DoclingPhaseStatus = DoclingPhaseStatus.PENDING
     phase: IngestionPhase = IngestionPhase.DOCLING
     document_id: str | None = None
+    # Effective operator-owned wall-clock budget after deterministic document
+    # preflight. Exposed in task status so long-running ingestion is auditable.
+    timeout_seconds: int | None = None
 
     @property
     def duration_seconds(self) -> float:

@@ -86,7 +86,9 @@ For Langflow flow IDs and Langflow timeout settings, see [Langflow settings](#la
 | `OPENRAG_INDEXED_DOCUMENTS_HOST_PATH` | Not set | Optional host-visible equivalent of `OPENRAG_INDEXED_DOCUMENTS_PATH`. When omitted, OpenRAG derives it from the ingestion runtime and host paths when possible. |
 | `OPENRAG_PUBLIC_URL` | Not set | Optional public OpenRAG base URL, such as `https://rag.example.com`. When set, retained originals receive an absolute authenticated `source_url`; otherwise the web UI uses a relative URL. |
 | `HOST_DOCKER_INTERNAL` | `host.docker.internal` | Host address for accessing services running on the host machine from within Docker containers. This is used to connect to the local Docling Serve instance started by OpenRAG. If your system uses a different hostname for this purpose, set this variable accordingly. |
-| `INGESTION_TIMEOUT` | `3600` | Document ingestion timeout limit in seconds for each file, including direct Docling polling. Increase this value if you ingest OCR-heavy or very large documents. Must be greater than or equal to [`LANGFLOW_TIMEOUT`](#langflow-settings).  |
+| `INGESTION_TIMEOUT` | `3600` | Minimum document ingestion timeout in seconds for each file, including direct Docling polling. Must be greater than or equal to [`LANGFLOW_TIMEOUT`](#langflow-settings). |
+| `INGESTION_TIMEOUT_PER_MIB` | `120` | Additional timeout allowance per started MiB for a local/uploaded file. The deterministic size preflight prevents large scanned PDFs from inheriting the same wall-clock budget as small documents. |
+| `INGESTION_TIMEOUT_MAX` | `21600` | Maximum adaptive per-file timeout in seconds (six hours by default). The effective budget is reported by the enhanced task-status API. Callback-token and default OpenSearch JWT lifetimes cover this ceiling. |
 | `UPLOAD_BATCH_SIZE` | `25` | When ingesting folders, set the maximum number of files to ingest per batch. Each batch is an [ingestion task](/ingestion#monitor-ingestion). Increase this value to ingest more files per batch. If this value is too high, performance issues can occur. |
 
 ## Langflow settings {#langflow-settings}
