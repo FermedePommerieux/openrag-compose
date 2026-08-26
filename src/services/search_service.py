@@ -209,6 +209,105 @@ class SearchService:
         except Exception as e:
             logger.warning("[SEARCH] Could not configure Ollama endpoint from config", error=str(e))
 
+    async def resolve_cited_chunks(
+        self,
+        chunk_ids: list[str],
+        *,
+        user_id: str | None,
+        jwt_token: str | None,
+        filters: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
+        """Hydrate exact non-streaming citations through the caller's DLS client.
+
+        Langflow's non-streaming Responses payload may contain the assistant
+        message but omit tool-call artifacts. The message still cites immutable
+        chunk ids. Resolve only those ids against the authenticated OpenSearch
+        view and preserve citation order. Missing or inaccessible ids disappear
+        rather than becoming unverified source cards.
+        """
+        ordered_ids = list(dict.fromkeys(item for item in chunk_ids if isinstance(item, str)))
+        if not ordered_ids:
+            return []
+        ordered_ids = ordered_ids[:100]
+
+        filter_clauses: list[dict[str, Any]] = []
+        field_mapping = {
+            "data_sources": "filename",
+            "document_types": "mimetype",
+            "owners": "owner",
+            "connector_types": "connector_type",
+        }
+        for filter_key, values in (filters or {}).items():
+            if not isinstance(values, list):
+                continue
+            field_name = field_mapping.get(filter_key, filter_key)
+            if not values:
+                filter_clauses.append({"term": {field_name: "__IMPOSSIBLE_VALUE__"}})
+            elif len(values) == 1:
+                filter_clauses.append({"term": {field_name: values[0]}})
+            else:
+                filter_clauses.append({"terms": {field_name: values}})
+
+        identity_query = {
+            "bool": {
+                "should": [
+                    {"terms": {"chunk_id": ordered_ids}},
+                    {"ids": {"values": ordered_ids}},
+                ],
+                "minimum_should_match": 1,
+            }
+        }
+        query: dict[str, Any] = identity_query
+        if filter_clauses:
+            query = {"bool": {"must": [identity_query], "filter": filter_clauses}}
+
+        source_fields = [
+            "filename",
+            "text",
+            "mimetype",
+            "page",
+            "chunk_id",
+            "document_id",
+            "source_url",
+            "connector_file_id",
+            "chunk_index",
+            "chunking_strategy",
+            "embedding_model",
+            "embedding_dimensions",
+            "parser",
+            "chunk_size",
+            "chunk_overlap",
+        ]
+        client = self.session_manager.get_user_opensearch_client(user_id, jwt_token)
+        response = await client.search(
+            index=get_index_name(),
+            body={
+                "query": query,
+                "_source": source_fields,
+                "size": len(ordered_ids),
+                "track_total_hits": False,
+            },
+        )
+
+        by_cited_identity: dict[str, dict[str, Any]] = {}
+        for hit in response.get("hits", {}).get("hits", []):
+            source = hit.get("_source", {})
+            stored_chunk_id = source.get("chunk_id") or hit.get("_id")
+            if not isinstance(stored_chunk_id, str):
+                continue
+            hydrated = {
+                **source,
+                "chunk_id": stored_chunk_id,
+                "id": stored_chunk_id,
+                "score": 0,
+            }
+            by_cited_identity[stored_chunk_id] = hydrated
+            hit_id = hit.get("_id")
+            if isinstance(hit_id, str):
+                by_cited_identity[hit_id] = hydrated
+
+        return [by_cited_identity[item] for item in ordered_ids if item in by_cited_identity]
+
     async def search_tool(self, query: str, embedding_model: str = None) -> dict[str, Any]:
         """
         Use this tool to search for documents relevant to the query.

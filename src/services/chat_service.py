@@ -4,14 +4,16 @@ from typing import Any
 from agent import async_chat, async_chat_stream, async_langflow
 from auth_context import set_auth_context
 from config.settings import LANGFLOW_CHAT_FLOW_ID, LANGFLOW_URL, NUDGES_FLOW_ID, clients
+from utils.langflow_utils import extract_source_citation_ids, parse_knowledge_chunks
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
 
 class ChatService:
-    def __init__(self, flows_service=None):
+    def __init__(self, flows_service=None, search_service=None):
         self.flows_service = flows_service
+        self.search_service = search_service
 
     async def chat(
         self,
@@ -206,6 +208,20 @@ class ChatService:
                 previous_response_id=previous_response_id,
                 filter_id=filter_id,
             )
+            citation_ids = extract_source_citation_ids(response_text)
+            if citation_ids and self.search_service is not None:
+                # Langflow's non-streaming response does not reliably return
+                # tool artifacts. Rehydrate the cited leaf chunks by exact id
+                # through the caller's DLS-scoped OpenSearch client. Parsing the
+                # model text provides identifiers only; all visible metadata
+                # comes from the trusted index response.
+                hydrated = await self.search_service.resolve_cited_chunks(
+                    citation_ids,
+                    user_id=user_id,
+                    jwt_token=jwt_token,
+                    filters=filters,
+                )
+                sources = parse_knowledge_chunks(hydrated)
             response_data = {"response": response_text}
             if response_id:
                 response_data["response_id"] = response_id

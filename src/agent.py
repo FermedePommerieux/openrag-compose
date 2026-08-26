@@ -2,6 +2,7 @@ from typing import Any
 
 from services.conversation_persistence_service import conversation_persistence
 from utils.langflow_utils import (
+    extract_source_citation_ids,
     normalize_retrieval_tool_event,
     parse_knowledge_chunks,
     strip_untrusted_fence_recursive,
@@ -667,21 +668,21 @@ async def async_langflow_chat(
         )
         sources.extend(parse_knowledge_chunks(implicit_results))
 
-    # Layer 3: Citation-text fallback.
-    # Parse "(Source: filename)" patterns emitted by the LLM when it cites documents.
-    # This is the last-resort fallback when Langflow's response object carries no
-    # structured retrieval data.
+    # Layer 3: exact citation-id fallback. Langflow's non-streaming response
+    # currently omits tool-call artifacts, so preserve only the immutable ids
+    # required for ChatService to hydrate user-visible provenance through the
+    # authenticated SearchService. Never interpret a filename or Python repr.
     if not sources:
-        import re
-
-        for match in re.finditer(r"\(Source:\s*([^\)]+)\)", response_text):
+        for chunk_id in extract_source_citation_ids(response_text):
             sources.append(
                 {
-                    "filename": match.group(1).strip(),
+                    "filename": "",
                     "text": "",
                     "score": 0,
                     "page": None,
                     "mimetype": None,
+                    "chunk_id": chunk_id,
+                    "id": chunk_id,
                 }
             )
 

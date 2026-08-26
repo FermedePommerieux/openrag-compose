@@ -1,5 +1,6 @@
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -69,6 +70,77 @@ async def test_langflow_chat_passes_owner_metadata(monkeypatch):
     assert headers["X-Langflow-Global-Var-OPENRAG_RETRIEVAL_URL"].endswith("/search")
     assert headers["X-Langflow-Global-Var-OPENRAG_QUERY_FILTER"] == (
         '{"filters": {"data_sources": ["archive.pdf"]}, "limit": 4, "scoreThreshold": 0.25}'
+    )
+
+
+@pytest.mark.asyncio
+async def test_non_streaming_chat_hydrates_complete_source_from_cited_chunk(monkeypatch):
+    fake_langflow_client = MagicMock()
+    monkeypatch.setattr(
+        "config.settings.clients.ensure_langflow_client",
+        AsyncMock(return_value=fake_langflow_client),
+    )
+    monkeypatch.setattr(
+        "utils.langflow_headers.add_provider_credentials_to_headers",
+        AsyncMock(),
+    )
+    monkeypatch.setattr(
+        "agent.async_langflow_chat",
+        AsyncMock(
+            return_value=(
+                "Verified answer. (Source: TEST_CHUNK_ID)",
+                "response-id",
+                [{"chunk_id": "TEST_CHUNK_ID", "filename": ""}],
+            )
+        ),
+    )
+    hydrated_source = {
+        "filename": "invoice.pdf",
+        "text": "verified evidence",
+        "mimetype": "application/pdf",
+        "page": 1,
+        "source_url": "/api/source-files/TEST_DOCUMENT_ID.token",
+        "document_id": "TEST_DOCUMENT_ID",
+        "chunk_id": "TEST_CHUNK_ID",
+        "chunk_index": 2,
+        "chunking_strategy": "hybrid",
+    }
+    search_service = SimpleNamespace(
+        resolve_cited_chunks=AsyncMock(return_value=[hydrated_source])
+    )
+    set_search_filters({})
+    chat_svc = ChatService(search_service=search_service)
+
+    response = await chat_svc.langflow_chat(
+        prompt="question",
+        user_id="user-42",
+        jwt_token="jwt-42",
+    )
+
+    assert response["sources"] == [
+        {
+            "filename": "invoice.pdf",
+            "text": "verified evidence",
+            "score": 0,
+            "page": 1,
+            "mimetype": "application/pdf",
+            "chunk_id": "TEST_CHUNK_ID",
+            "id": "TEST_CHUNK_ID",
+            "embedding_model": None,
+            "parser": None,
+            "chunk_size": None,
+            "chunk_overlap": None,
+            "source_url": "/api/source-files/TEST_DOCUMENT_ID.token",
+            "document_id": "TEST_DOCUMENT_ID",
+            "chunk_index": 2,
+            "chunking_strategy": "hybrid",
+        }
+    ]
+    search_service.resolve_cited_chunks.assert_awaited_once_with(
+        ["TEST_CHUNK_ID"],
+        user_id="user-42",
+        jwt_token="jwt-42",
+        filters={},
     )
 
 

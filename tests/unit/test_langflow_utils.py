@@ -8,7 +8,21 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from utils.langflow_utils import LangflowNotReadyError, parse_knowledge_chunks, wait_for_langflow
+from utils.langflow_utils import (
+    LangflowNotReadyError,
+    extract_source_citation_ids,
+    parse_knowledge_chunks,
+    wait_for_langflow,
+)
+
+
+def test_extract_source_citation_ids_accepts_only_exact_identifiers():
+    text = (
+        "First (Source: CHUNK_2) then (Source: CHUNK_1) "
+        "again (Source: CHUNK_2) but not (Source: report name.pdf)."
+    )
+
+    assert extract_source_citation_ids(text) == ["CHUNK_2", "CHUNK_1"]
 
 
 def _make_response(status_code: int) -> MagicMock:

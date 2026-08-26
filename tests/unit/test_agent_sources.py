@@ -65,6 +65,36 @@ async def test_async_langflow_chat_ignores_assistant_message_text_without_tool_r
     assert sources == []
 
 
+@pytest.mark.asyncio
+async def test_non_streaming_citation_fallback_preserves_exact_chunk_id(monkeypatch):
+    response = SimpleNamespace(output=[])
+
+    async def fake_async_response(*_args, **_kwargs):
+        return "Supported fact. (Source: TEST_CHUNK_ID)", "response-id", response
+
+    monkeypatch.setattr(agent, "async_response", fake_async_response)
+
+    _, _, sources = await agent.async_langflow_chat(
+        object(),
+        "flow-id",
+        "prompt",
+        "user-id",
+        store_conversation=False,
+    )
+
+    assert sources == [
+        {
+            "filename": "",
+            "text": "",
+            "score": 0,
+            "page": None,
+            "mimetype": None,
+            "chunk_id": "TEST_CHUNK_ID",
+            "id": "TEST_CHUNK_ID",
+        }
+    ]
+
+
 def test_streamed_tool_artifact_becomes_frontend_results_and_keeps_provenance():
     chunk = {
         "type": "response.output_item.done",

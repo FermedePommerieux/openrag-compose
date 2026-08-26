@@ -1,5 +1,6 @@
 import asyncio
 import random
+import re
 from typing import Any
 
 import httpx
@@ -10,6 +11,33 @@ logger = get_logger(__name__)
 
 _UNTRUSTED_FENCE_START = "<<<UNTRUSTED_DOC_CHUNK>>>"
 _UNTRUSTED_FENCE_END = "<<<END_UNTRUSTED_DOC_CHUNK>>>"
+_SOURCE_CITATION_PATTERN = re.compile(
+    r"\(Source:\s*([A-Za-z0-9][A-Za-z0-9_.:-]{0,511})\s*\)"
+)
+
+
+def extract_source_citation_ids(text: str, *, maximum: int = 100) -> list[str]:
+    """Extract unique exact chunk identifiers from model citations.
+
+    The agent contract requires ``(Source: <chunk_id>)``. Deliberately reject
+    whitespace-bearing labels such as filenames: non-streaming provenance is
+    hydrated by exact immutable identifiers, never by fuzzy text or filename
+    lookup. The bound prevents an untrusted response from causing an
+    unbounded OpenSearch terms query.
+    """
+    if not isinstance(text, str) or not text or maximum < 1:
+        return []
+    citations: list[str] = []
+    seen: set[str] = set()
+    for match in _SOURCE_CITATION_PATTERN.finditer(text):
+        chunk_id = match.group(1)
+        if chunk_id in seen:
+            continue
+        seen.add(chunk_id)
+        citations.append(chunk_id)
+        if len(citations) >= maximum:
+            break
+    return citations
 
 
 class LangflowNotReadyError(Exception):

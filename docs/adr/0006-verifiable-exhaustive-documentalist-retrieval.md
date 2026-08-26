@@ -79,6 +79,21 @@ This profile is factual metadata, not an LLM-generated summary. Future page,
 section or recursive summaries may be stored as navigation nodes, but factual
 citations must resolve to leaf chunks containing the source text.
 
+## Citation transport contract
+
+Streaming Langflow events carry retrieval results as a native structured
+artifact and the backend promotes that artifact to frontend tool results. The
+non-streaming Langflow response can omit those tool-call artifacts even when
+the assistant message contains valid `(Source: chunk_id)` citations. In that
+case OpenRAG extracts identifiers only and hydrates every source card by exact
+`chunk_id` through the requesting user's DLS-scoped OpenSearch client.
+
+Filenames, model-produced metadata and Python object representations are never
+treated as provenance. An inaccessible, malformed or missing id produces no
+source card. This makes the model citation a reference request, while the
+authenticated index remains the sole authority for filename, text, page,
+document id, source URL and chunk metadata.
+
 ## Truth contract
 
 OpenRAG distinguishes these outcomes:
