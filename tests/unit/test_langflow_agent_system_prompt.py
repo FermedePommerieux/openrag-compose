@@ -57,12 +57,15 @@ def test_default_agent_prompt_requires_document_wide_role_evidence():
         AgentConfig,
     )
 
-    assert "review all retrieved chunks" in DEFAULT_SYSTEM_PROMPT
-    assert "Never infer a role from mention order or prominence" in DEFAULT_SYSTEM_PROMPT
-    assert "addressee blocks" in DEFAULT_SYSTEM_PROMPT
-    assert "legal identity" in DEFAULT_SYSTEM_PROMPT
-    assert len(LEGACY_SYSTEM_PROMPTS) == 2
-    assert AgentConfig(system_prompt=LEGACY_SYSTEM_PROMPTS[1]).system_prompt == DEFAULT_SYSTEM_PROMPT
+    assert "review all chunks" in DEFAULT_SYSTEM_PROMPT
+    assert "never use mention order" in DEFAULT_SYSTEM_PROMPT
+    assert "explicit labels and document structure" in DEFAULT_SYSTEM_PROMPT
+    assert "`this/ce document`" in DEFAULT_SYSTEM_PROMPT
+    assert "Retrieve before asking for it" in DEFAULT_SYSTEM_PROMPT
+    assert len(DEFAULT_SYSTEM_PROMPT) <= 5000
+    assert len(LEGACY_SYSTEM_PROMPTS) == 4
+    for legacy_prompt in LEGACY_SYSTEM_PROMPTS:
+        assert AgentConfig(system_prompt=legacy_prompt).system_prompt == DEFAULT_SYSTEM_PROMPT
 
     from services.flows_service import FlowsService
 

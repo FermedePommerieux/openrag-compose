@@ -32,7 +32,7 @@ _UNSET = object()
 # lifecycle baseline; arbitrary user edits must require an explicit update.
 _LEGACY_RETRIEVAL_COMPONENT = "ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra"
 _BACKEND_RETRIEVAL_COMPONENT = "ext:openrag:OpenRAGBackendRetrievalComponent@extra"
-_RETRIEVAL_FLOW_MIGRATION_VERSION = 3
+_RETRIEVAL_FLOW_MIGRATION_VERSION = 4
 _LEGACY_SYSTEM_FLOW_ID = "1098eea1-6649-4e1d-aed1-b77249fb8dd0"
 # SHA-256 of ``flows/openrag_agent.json`` at lifecycle baseline 156f3664,
 # calculated over canonical ``data`` JSON.  Flow IDs and a lock alone are not
@@ -45,6 +45,14 @@ _LEGACY_RETRIEVAL_GRAPH_SHA256 = "1b1395db6d9d3890209dfe79820b558ae6e024e436b798
 _PREVIOUS_RETRIEVAL_GRAPH_SHA256 = "82980b36b952c2762bb9b5223da66413e8590814fc025caed2e2d52adcf04cd1"
 _PREVIOUS_VERSIONED_RETRIEVAL_GRAPH_SHA256 = (
     "828d33b5a0b6dc401713e1cfdc7b8d88cbb46d4a53a392ccb866d8858787b16e"
+)
+# Exact fingerprints of the role-evidence prompt revision. These authorize
+# only the next prompt-only upgrade; arbitrary Langflow edits still fail closed.
+_PREVIOUS_ROLE_EVIDENCE_GRAPH_SHA256 = (
+    "313d28617f1b34904f9d772797f89103ef4d7ceb1d1784255790be922978966a"
+)
+_PREVIOUS_VERSIONED_ROLE_EVIDENCE_GRAPH_SHA256 = (
+    "20012fd2b1e56830e58e2785fd362cc89f87ea766b95cdc23283aaddcf3fd795"
 )
 
 class FlowsService:
@@ -1227,13 +1235,19 @@ class FlowsService:
             return False
         marker = graph.get("openrag_retrieval_version")
         expected = (
-            _PREVIOUS_RETRIEVAL_GRAPH_SHA256
+            {
+                _PREVIOUS_RETRIEVAL_GRAPH_SHA256,
+                _PREVIOUS_ROLE_EVIDENCE_GRAPH_SHA256,
+            }
             if marker is None
-            else _PREVIOUS_VERSIONED_RETRIEVAL_GRAPH_SHA256
-            if marker == _RETRIEVAL_FLOW_MIGRATION_VERSION
-            else None
+            else {
+                _PREVIOUS_VERSIONED_RETRIEVAL_GRAPH_SHA256,
+                _PREVIOUS_VERSIONED_ROLE_EVIDENCE_GRAPH_SHA256,
+            }
+            if marker == 3
+            else set()
         )
-        return expected is not None and self._graph_fingerprint(flow_data) == expected
+        return self._graph_fingerprint(flow_data) in expected
 
     def _migrate_known_legacy_retrieval_flow(self, flow_data: dict[str, Any]) -> dict[str, Any] | None:
         """Replace only the known legacy retrieval tool in a locked default flow.
