@@ -50,6 +50,16 @@ def test_agent_prompt_forbids_unverified_answer_hypotheses_in_retrieval_queries(
     assert '"émetteur document-146 RODA TEST"' in prompt
 
 
+def test_default_agent_prompt_requires_document_wide_role_evidence():
+    from config.config_manager import DEFAULT_SYSTEM_PROMPT, LEGACY_SYSTEM_PROMPTS
+
+    assert "review all retrieved chunks" in DEFAULT_SYSTEM_PROMPT
+    assert "Never infer a role from mention order or prominence" in DEFAULT_SYSTEM_PROMPT
+    assert "addressee blocks" in DEFAULT_SYSTEM_PROMPT
+    assert "legal identity" in DEFAULT_SYSTEM_PROMPT
+    assert len(LEGACY_SYSTEM_PROMPTS) == 2
+
+
 @pytest.mark.asyncio
 async def test_update_chat_flow_system_prompt_updates_agent_node(monkeypatch):
     """update_chat_flow_system_prompt must write the new value into the Agent node's system_prompt field."""

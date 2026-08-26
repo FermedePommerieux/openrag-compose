@@ -8,7 +8,7 @@ describe("normalizeToolResult", () => {
   it("extracts provenance from a nested JSON ToolMessage artifact", () => {
     const source = {
       filename: "invoice.pdf",
-      text: "POMMERIEUX TEST",
+      text: "<<<UNTRUSTED_DOC_CHUNK>>>\nPOMMERIEUX TEST\n<<<END_UNTRUSTED_DOC_CHUNK>>>",
       page: 1,
       document_id: "TEST_DOCUMENT_ID",
       chunk_id: "TEST_CHUNK_ID",
@@ -20,7 +20,12 @@ describe("normalizeToolResult", () => {
     });
     result = JSON.stringify(JSON.stringify(result));
 
-    assert.deepEqual(normalizeToolResult(result), [source]);
+    assert.deepEqual(normalizeToolResult(result), [
+      {
+        ...source,
+        text: "POMMERIEUX TEST",
+      },
+    ]);
   });
 
   it("does not evaluate a Python repr", () => {
