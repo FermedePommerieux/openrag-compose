@@ -26,11 +26,17 @@ from config.embedding_constants import OPENAI_DEFAULT_EMBEDDING_MODEL
 from config.model_constants import (
     ANTHROPIC_DEFAULT_LANGUAGE_MODEL,
     OPENAI_DEFAULT_LANGUAGE_MODEL,
+    OPENAI_VALIDATION_MODELS,
 )
 
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
+
+def test_gpt_5_6_sol_is_available_without_changing_the_default():
+    assert "gpt-5.6-sol" in OPENAI_VALIDATION_MODELS
+    assert OPENAI_DEFAULT_LANGUAGE_MODEL == "gpt-5.4-mini"
 
 
 def _make_config(
