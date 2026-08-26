@@ -32,6 +32,7 @@ class UploadPathBody(BaseModel):
 
 class UploadBucketBody(BaseModel):
     s3_url: str
+    replace_duplicates: bool = False
 
 
 async def upload(

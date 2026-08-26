@@ -2,6 +2,7 @@ from unittest.mock import MagicMock
 
 import pytest
 from fastapi import FastAPI, HTTPException
+from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
 
 import api.settings.endpoints as settings_api
@@ -9,7 +10,11 @@ from session_manager import User
 
 
 def _route_permission_dependency(app: FastAPI):
-    route = next(route for route in app.routes if getattr(route, "path", None) == "/openrag-docs/refresh")
+    route = next(
+        route
+        for route in app.routes
+        if isinstance(route, APIRoute) and route.path == "/openrag-docs/refresh"
+    )
     return next(dependency.call for dependency in route.dependant.dependencies if dependency.call.__name__ == "_dep")
 
 
