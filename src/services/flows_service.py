@@ -39,6 +39,13 @@ _LEGACY_SYSTEM_FLOW_ID = "1098eea1-6649-4e1d-aed1-b77249fb8dd0"
 # sufficient proof that startup owns a graph: a customised system flow must be
 # left untouched and migrated deliberately by its operator.
 _LEGACY_RETRIEVAL_GRAPH_SHA256 = "1b1395db6d9d3890209dfe79820b558ae6e024e436b7985a873751b5ff7c67f0"
+# Exact fingerprints of the first Retrieval v2 graph, before and after its
+# runtime version marker.  They authorize only the prompt-only upgrade to the
+# document-wide evidence rule; arbitrary operator edits still fail closed.
+_PREVIOUS_RETRIEVAL_GRAPH_SHA256 = "82980b36b952c2762bb9b5223da66413e8590814fc025caed2e2d52adcf04cd1"
+_PREVIOUS_VERSIONED_RETRIEVAL_GRAPH_SHA256 = (
+    "828d33b5a0b6dc401713e1cfdc7b8d88cbb46d4a53a392ccb866d8858787b16e"
+)
 
 class FlowsService:
     def __init__(self) -> None:
@@ -1120,7 +1127,25 @@ class FlowsService:
         if not flow_path:
             raise RuntimeError("Bundled retrieval flow template was not found")
         with open(flow_path) as file:
-            return json.load(file)
+            template = json.load(file)
+
+        # Keep the protected graph's Agent prompt sourced from the same
+        # versioned default as onboarding and settings.  The raw Langflow JSON
+        # remains the exact first Retrieval v2 baseline so its fingerprint can
+        # still be recognized during an in-place upgrade.
+        from config.config_manager import DEFAULT_SYSTEM_PROMPT
+
+        agent_nodes = [
+            node
+            for node in template.get("data", {}).get("nodes", [])
+            if node.get("data", {}).get("node", {}).get("display_name") == "Agent"
+        ]
+        if len(agent_nodes) != 1:
+            raise RuntimeError("Bundled retrieval flow must contain exactly one Agent node")
+        agent_nodes[0]["data"]["node"]["template"]["system_prompt"]["value"] = (
+            DEFAULT_SYSTEM_PROMPT
+        )
+        return template
 
     @staticmethod
     def _graph_fingerprint(flow_data: dict[str, Any]) -> str | None:
@@ -1189,6 +1214,27 @@ class FlowsService:
             and self._graph_fingerprint(flow_data) == self._graph_fingerprint(template)
         )
 
+    def _is_known_previous_retrieval_v2_flow(self, flow_data: dict[str, Any]) -> bool:
+        """Recognize only the exact first Retrieval v2 prompt revision."""
+        if (
+            not isinstance(flow_data, dict)
+            or flow_data.get("id") != _LEGACY_SYSTEM_FLOW_ID
+            or not flow_data.get("locked")
+        ):
+            return False
+        graph = flow_data.get("data")
+        if not isinstance(graph, dict):
+            return False
+        marker = graph.get("openrag_retrieval_version")
+        expected = (
+            _PREVIOUS_RETRIEVAL_GRAPH_SHA256
+            if marker is None
+            else _PREVIOUS_VERSIONED_RETRIEVAL_GRAPH_SHA256
+            if marker == _RETRIEVAL_FLOW_MIGRATION_VERSION
+            else None
+        )
+        return expected is not None and self._graph_fingerprint(flow_data) == expected
+
     def _migrate_known_legacy_retrieval_flow(self, flow_data: dict[str, Any]) -> dict[str, Any] | None:
         """Replace only the known legacy retrieval tool in a locked default flow.
 
@@ -1205,7 +1251,8 @@ class FlowsService:
         # administrators legitimately lock customised flows too.
         known_legacy = self._is_known_legacy_retrieval_flow(flow_data)
         known_unversioned_v2 = self._is_known_unversioned_retrieval_v2_flow(flow_data)
-        if not known_legacy and not known_unversioned_v2:
+        known_previous_v2 = self._is_known_previous_retrieval_v2_flow(flow_data)
+        if not known_legacy and not known_unversioned_v2 and not known_previous_v2:
             return None
 
         legacy_nodes = [

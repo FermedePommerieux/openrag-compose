@@ -416,7 +416,45 @@ async def test_migrate_unversioned_retrieval_v2_flow_synchronized_by_gitops():
     assert result["backup_path"] == "/tmp/flow.json"
     assert transport.flow["locked"] is True
     assert transport.flow["data"]["openrag_retrieval_version"] == 3
+    agent_node = next(
+        node
+        for node in transport.flow["data"]["nodes"]
+        if node.get("data", {}).get("node", {}).get("display_name") == "Agent"
+    )
+    assert "review all retrieved chunks" in agent_node["data"]["node"]["template"][
+        "system_prompt"
+    ]["value"]
     assert backup.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_migrate_first_versioned_retrieval_v2_prompt_revision():
+    """The exact prior v3 graph may receive the document-wide evidence rule."""
+    service = FlowsService()
+    transport = _RetrievalMigrationTransport()
+    transport.flow = _unversioned_retrieval_v2_flow()
+    transport.flow["data"]["openrag_retrieval_version"] = 3
+
+    with (
+        patch("services.flows_service.clients.langflow_request", side_effect=transport.__call__),
+        patch.object(
+            service,
+            "_backup_flow",
+            new_callable=AsyncMock,
+            return_value="/tmp/flow.json",
+        ),
+    ):
+        result = await service.migrate_persisted_retrieval_flow()
+
+    assert result["status"] == "migrated"
+    agent_node = next(
+        node
+        for node in transport.flow["data"]["nodes"]
+        if node.get("data", {}).get("node", {}).get("display_name") == "Agent"
+    )
+    assert "review all retrieved chunks" in agent_node["data"]["node"]["template"][
+        "system_prompt"
+    ]["value"]
 
 
 @pytest.mark.asyncio

@@ -64,6 +64,12 @@ def test_default_agent_prompt_requires_document_wide_role_evidence():
     assert len(LEGACY_SYSTEM_PROMPTS) == 2
     assert AgentConfig(system_prompt=LEGACY_SYSTEM_PROMPTS[1]).system_prompt == DEFAULT_SYSTEM_PROMPT
 
+    from services.flows_service import FlowsService
+
+    flow = FlowsService()._load_retrieval_v2_template()
+    agent_node = _find_node_by_display_name(flow, "Agent")
+    assert agent_node["data"]["node"]["template"]["system_prompt"]["value"] == DEFAULT_SYSTEM_PROMPT
+
 
 @pytest.mark.asyncio
 async def test_update_chat_flow_system_prompt_updates_agent_node(monkeypatch):
