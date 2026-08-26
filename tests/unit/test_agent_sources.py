@@ -105,7 +105,8 @@ def test_streamed_tool_artifact_becomes_frontend_results_and_keeps_provenance():
     ]
 
 
-def test_streamed_json_tool_message_becomes_unfenced_frontend_results():
+@pytest.mark.parametrize("encoding_layers", [1, 2])
+def test_streamed_json_tool_message_becomes_unfenced_frontend_results(encoding_layers):
     source = {
         "filename": "invoice.pdf",
         "text": "<<<UNTRUSTED_DOC_CHUNK>>>\nPOMMERIEUX TEST\n<<<END_UNTRUSTED_DOC_CHUNK>>>",
@@ -114,17 +115,21 @@ def test_streamed_json_tool_message_becomes_unfenced_frontend_results():
         "chunk_id": "TEST_CHUNK_ID",
         "source_url": "https://example.test/api/source-files/TEST_DOCUMENT_ID.token",
     }
+    results = json.dumps(
+        {
+            "content": '[{"chunk_id":"TEST_CHUNK_ID"}]',
+            "artifact": [source],
+        }
+    )
+    if encoding_layers == 2:
+        results = json.dumps(results)
+
     chunk = {
         "type": "response.output_item.done",
         "item": {
             "type": "tool_call",
             "tool_name": "search_documents",
-            "results": json.dumps(
-                {
-                    "content": '[{"chunk_id":"TEST_CHUNK_ID"}]',
-                    "artifact": [source],
-                }
-            ),
+            "results": results,
         },
     }
 

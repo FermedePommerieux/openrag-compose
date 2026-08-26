@@ -159,12 +159,13 @@ def strip_untrusted_fence_recursive(obj: Any) -> None:
 def normalize_retrieval_tool_event(chunk_data: Any) -> None:
     """Expose a retrieval ToolMessage artifact as native frontend results.
 
-    Depending on the SDK event path, Langflow exposes ``item.results`` either
-    as a ToolMessage dict or as a JSON string encoding that dict. Retrieval v2
-    deliberately returns ``content_and_artifact``; the JSON content is
-    model-facing while the artifact is the stable source contract. Promote
-    that artifact at the backend SSE boundary so the frontend receives
-    ``results: list[chunk]``. Only valid JSON objects are decoded; legacy
+    Depending on the SDK and authentication event path, Langflow exposes
+    ``item.results`` either as a ToolMessage dict or with one or two JSON
+    encoding layers around that dict. Retrieval v2 deliberately returns
+    ``content_and_artifact``; the JSON content is model-facing while the
+    artifact is the stable source contract. Promote that artifact at the
+    backend SSE boundary so the frontend receives ``results: list[chunk]``.
+    Decoding is strictly bounded and accepts only a final JSON object; legacy
     Python repr strings remain untouched.
     """
     if not isinstance(chunk_data, dict) or chunk_data.get("type") != "response.output_item.done":
@@ -173,16 +174,15 @@ def normalize_retrieval_tool_event(chunk_data: Any) -> None:
     if not isinstance(item, dict) or item.get("tool_name") != "search_documents":
         return
     results = item.get("results")
-    if isinstance(results, str):
+    for _ in range(2):
+        if not isinstance(results, str):
+            break
         import json
 
         try:
-            decoded_results = json.loads(results)
+            results = json.loads(results)
         except (json.JSONDecodeError, TypeError):
             return
-        if not isinstance(decoded_results, dict):
-            return
-        results = decoded_results
     if not isinstance(results, dict):
         return
     artifact = results.get("artifact")
