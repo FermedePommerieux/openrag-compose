@@ -14,6 +14,7 @@ from config.settings import (
     DOCLING_ERROR_DETAIL_MAX_LENGTH,
     DOCLING_SERVE_URL,
     DOCLING_SERVE_VERIFY_SSL,
+    INGESTION_TIMEOUT,
     get_openrag_config,
 )
 from utils.logging_config import get_logger
@@ -338,13 +339,19 @@ class DoclingService:
         self,
         task_id: str,
         poll_interval: float = 1.0,
-        timeout: float = 600.0,
+        timeout: float | None = None,
         user_id: str | None = None,
         auth_header: str | None = None,
     ) -> dict[str, Any]:
         """
         Poll Docling Serve for the result of an async conversion task.
+
+        The polling horizon is the same operator-owned per-file ingestion
+        limit used by TaskService. Large, OCR-heavy PDFs commonly exceed ten
+        minutes on ARM workers; a shorter hidden timeout would abandon a job
+        that is still making valid progress.
         """
+        effective_timeout = float(INGESTION_TIMEOUT if timeout is None else timeout)
         client = self._get_client()
         should_close = client != self.httpx_client
 
@@ -352,11 +359,11 @@ class DoclingService:
             if should_close:
                 async with client:
                     return await self._poll_result(
-                        client, task_id, poll_interval, timeout, user_id, auth_header
+                        client, task_id, poll_interval, effective_timeout, user_id, auth_header
                     )
             else:
                 return await self._poll_result(
-                    client, task_id, poll_interval, timeout, user_id, auth_header
+                    client, task_id, poll_interval, effective_timeout, user_id, auth_header
                 )
         except Exception as e:
             logger.error("Docling result retrieval failed", task_id=task_id, error=str(e))

@@ -120,6 +120,24 @@ async def test_poll_result_timeout(docling_service, mock_httpx_client, no_sleep)
 
 
 @pytest.mark.asyncio
+async def test_result_polling_defaults_to_ingestion_timeout(
+    docling_service, mock_httpx_client, monkeypatch
+):
+    observed: dict[str, float] = {}
+
+    async def capture_timeout(client, task_id, poll_interval, timeout, user_id, auth_header):
+        observed["timeout"] = timeout
+        return {"ok": True}
+
+    monkeypatch.setattr(docling_service, "_poll_result", capture_timeout)
+
+    result = await docling_service.get_docling_result_async("task123")
+
+    assert result == {"ok": True}
+    assert observed["timeout"] == 3600.0
+
+
+@pytest.mark.asyncio
 async def test_poll_result_missing_content(docling_service, mock_httpx_client):
     """Raises DoclingServeError if result response is missing json_content."""
     mock_httpx_client.get.side_effect = [
