@@ -318,8 +318,19 @@ DEFAULT_SYSTEM_PROMPT = _RETRIEVAL_V3_SYSTEM_PROMPT.replace(
     "conversation file content, call OpenSearch before answering or asking for a source. "
     "Retrieve enough evidence to represent the relevant sources; never treat the top "
     "passage as complete. Keep every fact scoped to its source and never merge fields "
-    "across documents. If evidence conflicts, is ambiguous, or is insufficient, expose "
+    "across documents. For relationships or roles, review all relevant chunks and rely "
+    "on explicit labels plus document structure (identity blocks, signatures, and legal "
+    "or payment details); never infer from mention order or prominence. If evidence "
+    "conflicts, is ambiguous, or is insufficient, expose "
     "that limitation, ask for clarification when useful, and never guess.\n",
+    1,
+)
+
+_RETRIEVAL_V4_EVIDENCE_FIRST_SYSTEM_PROMPT = DEFAULT_SYSTEM_PROMPT.replace(
+    "For relationships or roles, review all relevant chunks and rely on explicit labels "
+    "plus document structure (identity blocks, signatures, and legal or payment details); "
+    "never infer from mention order or prominence. ",
+    "",
     1,
 )
 
@@ -330,6 +341,7 @@ LEGACY_SYSTEM_PROMPTS = (
     _RETRIEVAL_V1_SECURITY_SYSTEM_PROMPT,
     _RETRIEVAL_V2_SYSTEM_PROMPT,
     _RETRIEVAL_V3_SYSTEM_PROMPT,
+    _RETRIEVAL_V4_EVIDENCE_FIRST_SYSTEM_PROMPT,
 )
 
 

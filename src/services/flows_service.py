@@ -32,7 +32,7 @@ _UNSET = object()
 # lifecycle baseline; arbitrary user edits must require an explicit update.
 _LEGACY_RETRIEVAL_COMPONENT = "ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra"
 _BACKEND_RETRIEVAL_COMPONENT = "ext:openrag:OpenRAGBackendRetrievalComponent@extra"
-_RETRIEVAL_FLOW_MIGRATION_VERSION = 4
+_RETRIEVAL_FLOW_MIGRATION_VERSION = 5
 _LEGACY_SYSTEM_FLOW_ID = "1098eea1-6649-4e1d-aed1-b77249fb8dd0"
 # SHA-256 of ``flows/openrag_agent.json`` at lifecycle baseline 156f3664,
 # calculated over canonical ``data`` JSON.  Flow IDs and a lock alone are not
@@ -53,6 +53,14 @@ _PREVIOUS_ROLE_EVIDENCE_GRAPH_SHA256 = (
 )
 _PREVIOUS_VERSIONED_ROLE_EVIDENCE_GRAPH_SHA256 = (
     "20012fd2b1e56830e58e2785fd362cc89f87ea766b95cdc23283aaddcf3fd795"
+)
+# Exact fingerprints of the evidence-first prompt before relationship
+# attribution became an explicit corpus-wide invariant.
+_PREVIOUS_EVIDENCE_FIRST_GRAPH_SHA256 = (
+    "a1f64b1b5bbcb07e055df36cdf1e9bd4c05d4818dfa567ef1de5edceba34cc02"
+)
+_PREVIOUS_VERSIONED_EVIDENCE_FIRST_GRAPH_SHA256 = (
+    "15bcca4d7e21f4f98fa2020ff9c76b43ecd0a96c240565434458927b1d57518b"
 )
 
 class FlowsService:
@@ -1238,6 +1246,7 @@ class FlowsService:
             {
                 _PREVIOUS_RETRIEVAL_GRAPH_SHA256,
                 _PREVIOUS_ROLE_EVIDENCE_GRAPH_SHA256,
+                _PREVIOUS_EVIDENCE_FIRST_GRAPH_SHA256,
             }
             if marker is None
             else {
@@ -1245,6 +1254,8 @@ class FlowsService:
                 _PREVIOUS_VERSIONED_ROLE_EVIDENCE_GRAPH_SHA256,
             }
             if marker == 3
+            else {_PREVIOUS_VERSIONED_EVIDENCE_FIRST_GRAPH_SHA256}
+            if marker == 4
             else set()
         )
         return self._graph_fingerprint(flow_data) in expected

@@ -60,10 +60,12 @@ def test_default_agent_prompt_requires_document_wide_role_evidence():
     assert "any factual request that may depend on indexed sources" in DEFAULT_SYSTEM_PROMPT
     assert "never treat the top passage as complete" in DEFAULT_SYSTEM_PROMPT
     assert "never merge fields across documents" in DEFAULT_SYSTEM_PROMPT
+    assert "relationships or roles" in DEFAULT_SYSTEM_PROMPT
+    assert "never infer from mention order or prominence" in DEFAULT_SYSTEM_PROMPT
     assert "expose that limitation" in DEFAULT_SYSTEM_PROMPT
     assert "never guess" in DEFAULT_SYSTEM_PROMPT
     assert len(DEFAULT_SYSTEM_PROMPT) <= 5000
-    assert len(LEGACY_SYSTEM_PROMPTS) == 4
+    assert len(LEGACY_SYSTEM_PROMPTS) == 5
     for legacy_prompt in LEGACY_SYSTEM_PROMPTS:
         assert AgentConfig(system_prompt=legacy_prompt).system_prompt == DEFAULT_SYSTEM_PROMPT
 
