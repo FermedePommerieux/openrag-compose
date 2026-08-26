@@ -19,10 +19,20 @@ from utils.langflow_utils import (
 def test_extract_source_citation_ids_accepts_only_exact_identifiers():
     text = (
         "First (Source: CHUNK_2) then (Source: CHUNK_1) "
-        "again (Source: CHUNK_2) but not (Source: report name.pdf)."
+        "again (Source: CHUNK_2) and Markdown (Source: `CHUNK_3`) "
+        "but not (Source: report name.pdf)."
     )
 
-    assert extract_source_citation_ids(text) == ["CHUNK_2", "CHUNK_1"]
+    assert extract_source_citation_ids(text) == ["CHUNK_2", "CHUNK_1", "CHUNK_3"]
+
+
+def test_extract_source_citation_ids_rejects_unpaired_markdown_and_bare_ids():
+    text = (
+        "Unpaired (Source: `CHUNK_1) and (Source: CHUNK_2`) "
+        "plus a bare `CHUNK_3`."
+    )
+
+    assert extract_source_citation_ids(text) == []
 
 
 def _make_response(status_code: int) -> MagicMock:

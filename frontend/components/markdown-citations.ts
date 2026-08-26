@@ -76,10 +76,35 @@ export const preprocessCitations = (
   const citedSourcesList: CitedSource[] = [];
   let nextIndex = 1;
 
+  const addExactCitation = (rawId: string): string | undefined => {
+    const trimmedId = rawId.trim();
+    const exactId =
+      trimmedId.length >= 2 &&
+      trimmedId.startsWith("`") &&
+      trimmedId.endsWith("`")
+        ? trimmedId.slice(1, -1).trim()
+        : trimmedId;
+    const foundSource = sourceLookup.get(exactId);
+    if (!foundSource) return undefined;
+
+    const uniqueKey = (foundSource.chunk_id ||
+      foundSource.id ||
+      foundSource.filename ||
+      JSON.stringify(foundSource)) as string;
+
+    let index = citedSourcesMap.get(uniqueKey);
+    if (index === undefined) {
+      index = nextIndex++;
+      citedSourcesMap.set(uniqueKey, index);
+      citedSourcesList.push({ item: foundSource, index });
+    }
+    return `[\\[${index}\\]](#citation-${index})`;
+  };
+
   // Patterns: (Source: chunk_id) or [Source: chunk_id]
   const regex = /\[Source:\s*([^\]]+)\]|\(Source:\s*([^)]+)\)/g;
 
-  const processedText = text.replace(regex, (_match, p1, p2) => {
+  let processedText = text.replace(regex, (_match, p1, p2) => {
     const rawIds = p1 || p2;
     if (!rawIds) return "";
 
@@ -87,22 +112,8 @@ export const preprocessCitations = (
     const replacementBadges: string[] = [];
 
     for (const rawId of ids) {
-      const foundSource = sourceLookup.get(rawId);
-
-      if (foundSource) {
-        const uniqueKey = (foundSource.chunk_id ||
-          foundSource.id ||
-          foundSource.filename ||
-          JSON.stringify(foundSource)) as string;
-
-        let index = citedSourcesMap.get(uniqueKey);
-        if (index === undefined) {
-          index = nextIndex++;
-          citedSourcesMap.set(uniqueKey, index);
-          citedSourcesList.push({ item: foundSource, index });
-        }
-        replacementBadges.push(`[\\[${index}\\]](#citation-${index})`);
-      }
+      const badge = addExactCitation(rawId);
+      if (badge) replacementBadges.push(badge);
     }
 
     if (replacementBadges.length > 0) {
@@ -110,6 +121,14 @@ export const preprocessCitations = (
     }
 
     return "";
+  });
+
+  // Models sometimes answer a direct "cite your sources" request with a list
+  // of code-formatted chunk ids instead of the required Source wrapper. Only
+  // promote a token when it exactly matches a structured retrieval artifact;
+  // filenames, document ids, prose and invented ids remain ordinary code.
+  processedText = processedText.replace(/`([^`\r\n]+)`/g, (match, rawId) => {
+    return addExactCitation(rawId) ?? match;
   });
 
   return { text: processedText, citedSources: citedSourcesList };

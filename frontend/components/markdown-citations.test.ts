@@ -5,18 +5,18 @@ const citationsModule = "./markdown-citations.ts";
 const { preprocessCitations } = await import(citationsModule);
 
 describe("preprocessCitations", () => {
-  it("turns a chunk citation into an interactive source with provenance", () => {
-    const source = {
-      filename: "invoice.pdf",
-      text: "ÉMETTEUR: POMMERIEUX TEST",
-      page: 1,
-      document_id: "TEST_DOCUMENT_ID",
-      chunk_id: "TEST_CHUNK_ID",
-      source_url: "/api/source-files/TEST_DOCUMENT_ID.token",
-      chunk_index: 2,
-      chunking_strategy: "character",
-    };
+  const source = {
+    filename: "invoice.pdf",
+    text: "ÉMETTEUR: POMMERIEUX TEST",
+    page: 1,
+    document_id: "TEST_DOCUMENT_ID",
+    chunk_id: "TEST_CHUNK_ID",
+    source_url: "/api/source-files/TEST_DOCUMENT_ID.token",
+    chunk_index: 2,
+    chunking_strategy: "character",
+  };
 
+  it("turns a chunk citation into an interactive source with provenance", () => {
     const result = preprocessCitations(
       "POMMERIEUX TEST (Source: TEST_CHUNK_ID)",
       [source],
@@ -29,5 +29,28 @@ describe("preprocessCitations", () => {
       result.citedSources[0]?.item.source_url,
       "/api/source-files/TEST_DOCUMENT_ID.token",
     );
+  });
+
+  it("accepts Markdown code quoting around an exact Source identifier", () => {
+    const result = preprocessCitations(
+      "POMMERIEUX TEST (Source: `TEST_CHUNK_ID`)",
+      [source],
+    );
+
+    assert.equal(result.text, "POMMERIEUX TEST [\\[1\\]](#citation-1)");
+    assert.deepEqual(result.citedSources, [{ item: source, index: 1 }]);
+  });
+
+  it("links a bare code-formatted identifier only when it exactly matches an artifact", () => {
+    const result = preprocessCitations(
+      "Chunks: `TEST_CHUNK_ID` and `TEST_DOCUMENT_ID` and `unknown_chunk`.",
+      [source],
+    );
+
+    assert.equal(
+      result.text,
+      "Chunks: [\\[1\\]](#citation-1) and `TEST_DOCUMENT_ID` and `unknown_chunk`.",
+    );
+    assert.deepEqual(result.citedSources, [{ item: source, index: 1 }]);
   });
 });
