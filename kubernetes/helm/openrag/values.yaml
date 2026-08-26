@@ -571,8 +571,10 @@ ingress:
 # ============================================================================
 llmProviders:
   openai:
-    enabled: false
+    enabled: true
     apiKey: ""                            # OpenAI API key (stored in secret)
+    existingSecret: ""                    # Existing Secret containing the OpenAI API key
+    apiKeyKey: "openai-api-key"           # Key in existingSecret containing the OpenAI API key
   anthropic:
     enabled: false
     apiKey: ""                            # Anthropic API key (stored in secret)
