@@ -52,15 +52,6 @@ spec:
 
           command: ["langflow", "run", "--env-file", "/app/.env"]
 
-          {{- if and .Values.llmProviders.openai.enabled .Values.llmProviders.openai.existingSecret }}
-          env:
-            - name: OPENAI_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.llmProviders.openai.existingSecret | quote }}
-                  key: {{ .Values.llmProviders.openai.apiKeyKey | quote }}
-          {{- end }}
-
           volumeMounts:
             - name: openrag-langflow-dotenv
               mountPath: /app/.env

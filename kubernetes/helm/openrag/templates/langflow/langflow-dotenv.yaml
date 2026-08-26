@@ -52,8 +52,7 @@ stringData:
     {{- end }}
 
     # Model Provider API Keys / Endpoints
-    {{- if .Values.llmProviders.openai.existingSecret }}
-    {{- else if .Values.llmProviders.openai.apiKey }}
+    {{- if .Values.llmProviders.openai.apiKey }}
     OPENAI_API_KEY={{ .Values.llmProviders.openai.apiKey | quote }}
     {{- else }}
     OPENAI_API_KEY="None"
