@@ -130,18 +130,24 @@ async def get_settings(
             from config.settings import is_no_auth_mode
 
             local_archiving_available = is_no_auth_mode()
-            archive_stats = {}
+            archive_stats: dict[str, object] = {}
             if local_archiving_available:
                 from services.local_source_service import get_local_source_archive_stats
 
-                archive_stats = await asyncio.to_thread(
-                    get_local_source_archive_stats,
-                    include_used_bytes=include_archiving_stats,
+                archive_stats = dict(
+                    await asyncio.to_thread(
+                        get_local_source_archive_stats,
+                        include_used_bytes=include_archiving_stats,
+                    )
                 )
-            archiving_config = ArchivingConfig(
-                available=local_archiving_available,
-                enabled=(openrag_config.archiving.enabled if local_archiving_available else False),
-                **archive_stats,
+            archiving_config = ArchivingConfig.model_validate(
+                {
+                    "available": local_archiving_available,
+                    "enabled": (
+                        openrag_config.archiving.enabled if local_archiving_available else False
+                    ),
+                    **archive_stats,
+                }
             )
 
         # Only expose edit URLs when a public URL is configured
