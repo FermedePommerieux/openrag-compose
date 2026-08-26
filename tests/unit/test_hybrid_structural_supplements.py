@@ -32,6 +32,7 @@ def test_supplements_only_uncovered_items_and_preserves_spatial_structure():
     chunks = _structural_supplement_chunks(
         document,
         covered_refs={"#/texts/0"},
+        covered_text_lines=set(),
         max_tokens=128,
     )
 
@@ -57,8 +58,33 @@ def test_supplement_chunks_respect_hybrid_token_limit():
         ]
     }
 
-    chunks = _structural_supplement_chunks(document, covered_refs=set(), max_tokens=64)
+    chunks = _structural_supplement_chunks(
+        document,
+        covered_refs=set(),
+        covered_text_lines=set(),
+        max_tokens=64,
+    )
     tokenizer = tiktoken.get_encoding("cl100k_base")
 
     assert len(chunks) > 1
     assert all(len(tokenizer.encode(chunk["text"])) <= 64 for chunk in chunks)
+
+
+def test_exact_line_coverage_avoids_duplicates_without_hiding_short_headers():
+    document = {
+        "texts": [
+            _item("#/texts/0", "Document", "section_header", left=20, top=800),
+            _item("#/texts/1", "Document number: 42", "text", left=20, top=700),
+        ]
+    }
+
+    chunks = _structural_supplement_chunks(
+        document,
+        covered_refs=set(),
+        covered_text_lines={"document number: 42"},
+        max_tokens=128,
+    )
+
+    combined = "\n".join(chunk["text"] for chunk in chunks)
+    assert "Text: Document" in combined
+    assert "Document number: 42" not in combined

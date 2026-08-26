@@ -5,7 +5,7 @@ from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
-HYBRID_CHUNKING_SCHEMA_VERSION = 2
+HYBRID_CHUNKING_SCHEMA_VERSION = 3
 
 
 class HybridChunkingError(RuntimeError):
@@ -16,6 +16,7 @@ def _structural_supplement_chunks(
     doc_dict: dict,
     *,
     covered_refs: set[str],
+    covered_text_lines: set[str],
     max_tokens: int,
 ) -> list[dict]:
     """Preserve Docling text items omitted by HybridChunker.
@@ -40,7 +41,8 @@ def _structural_supplement_chunks(
         if not text:
             continue
         item_ref = str(item.get("self_ref") or f"#/texts/{index}")
-        if item_ref in covered_refs:
+        normalized_text = " ".join(text.split()).casefold()
+        if item_ref in covered_refs or normalized_text in covered_text_lines:
             continue
 
         provenance = item.get("prov") or []
@@ -318,6 +320,7 @@ def chunk_docling_hybrid(
         document = DoclingDocument.model_validate(doc_dict)
         chunks: list[dict] = []
         covered_refs: set[str] = set()
+        covered_text_lines: set[str] = set()
         for chunk in chunker.chunk(dl_doc=document):
             page = 1
             for item in getattr(getattr(chunk, "meta", None), "doc_items", []) or []:
@@ -330,12 +333,18 @@ def chunk_docling_hybrid(
                     break
             text = chunker.contextualize(chunk=chunk).strip()
             if text:
+                covered_text_lines.update(
+                    " ".join(line.split()).casefold()
+                    for line in text.splitlines()
+                    if line.strip()
+                )
                 chunks.append({"page": page, "type": "docling_hybrid", "text": text})
         if not chunks:
             raise HybridChunkingError("Hybrid chunking produced no usable chunks")
         supplements = _structural_supplement_chunks(
             doc_dict,
             covered_refs=covered_refs,
+            covered_text_lines=covered_text_lines,
             max_tokens=max_tokens,
         )
         if supplements:
