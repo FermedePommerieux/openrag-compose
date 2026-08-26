@@ -51,13 +51,18 @@ def test_agent_prompt_forbids_unverified_answer_hypotheses_in_retrieval_queries(
 
 
 def test_default_agent_prompt_requires_document_wide_role_evidence():
-    from config.config_manager import DEFAULT_SYSTEM_PROMPT, LEGACY_SYSTEM_PROMPTS
+    from config.config_manager import (
+        DEFAULT_SYSTEM_PROMPT,
+        LEGACY_SYSTEM_PROMPTS,
+        AgentConfig,
+    )
 
     assert "review all retrieved chunks" in DEFAULT_SYSTEM_PROMPT
     assert "Never infer a role from mention order or prominence" in DEFAULT_SYSTEM_PROMPT
     assert "addressee blocks" in DEFAULT_SYSTEM_PROMPT
     assert "legal identity" in DEFAULT_SYSTEM_PROMPT
     assert len(LEGACY_SYSTEM_PROMPTS) == 2
+    assert AgentConfig(system_prompt=LEGACY_SYSTEM_PROMPTS[1]).system_prompt == DEFAULT_SYSTEM_PROMPT
 
 
 @pytest.mark.asyncio

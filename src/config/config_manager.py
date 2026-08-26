@@ -222,7 +222,11 @@ class AgentConfig:
     )
 
     def __post_init__(self):
-        if self.system_prompt == self._v060_system_prompt:
+        previous_retrieval_prompt = globals().get("_RETRIEVAL_V2_SYSTEM_PROMPT")
+        if self.system_prompt == self._v060_system_prompt or (
+            previous_retrieval_prompt is not None
+            and self.system_prompt == previous_retrieval_prompt
+        ):
             self.system_prompt = DEFAULT_SYSTEM_PROMPT
 
 

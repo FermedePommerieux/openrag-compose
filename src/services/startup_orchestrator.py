@@ -99,6 +99,11 @@ async def ensure_system_retrieval_flow_ready(services) -> dict[str, object]:
 
     config_prompt = get_openrag_config().agent.system_prompt
     if config_prompt in LEGACY_SYSTEM_PROMPTS or config_prompt == DEFAULT_SYSTEM_PROMPT:
+        target_prompt = (
+            DEFAULT_SYSTEM_PROMPT
+            if config_prompt in LEGACY_SYSTEM_PROMPTS
+            else config_prompt
+        )
         try:
             current_prompt = await flows_service.get_chat_flow_system_prompt()
         except Exception as exc:
@@ -113,9 +118,9 @@ async def ensure_system_retrieval_flow_ready(services) -> dict[str, object]:
                 or current_prompt in LEGACY_SYSTEM_PROMPTS
                 or current_prompt == DEFAULT_SYSTEM_PROMPT
             ):
-                if current_prompt != config_prompt:
+                if current_prompt != target_prompt:
                     await flows_service.update_chat_flow_system_prompt(
-                        config_prompt, expected_prompt=current_prompt
+                        target_prompt, expected_prompt=current_prompt
                     )
                     logger.info("Ensured system prompt is synced to Langflow")
             else:
