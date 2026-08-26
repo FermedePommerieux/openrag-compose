@@ -33,4 +33,17 @@ describe("normalizeToolResult", () => {
 
     assert.equal(normalizeToolResult(repr), repr);
   });
+
+  it("cleans direct artifact arrays, including escaped transport fences", () => {
+    const result = [
+      {
+        filename: "invoice.pdf",
+        text: "\\<<<UNTRUSTED_DOC_CHUNK>>>\nPOMMERIEUX TEST\n\\<<<END_UNTRUSTED_DOC_CHUNK>>>",
+      },
+    ];
+
+    assert.deepEqual(normalizeToolResult(result), [
+      { filename: "invoice.pdf", text: "POMMERIEUX TEST" },
+    ]);
+  });
 });

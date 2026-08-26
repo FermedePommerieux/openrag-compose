@@ -41,6 +41,10 @@ export function normalizeToolResult(value: unknown): FunctionCall["result"] {
     }
   }
 
+  if (Array.isArray(decoded)) {
+    return sanitizeSourceItems(decoded) as FunctionCall["result"];
+  }
+
   if (
     decoded &&
     typeof decoded === "object" &&
@@ -48,25 +52,9 @@ export function normalizeToolResult(value: unknown): FunctionCall["result"] {
     "artifact" in decoded &&
     Array.isArray((decoded as { artifact?: unknown }).artifact)
   ) {
-    return (decoded as { artifact: unknown[] }).artifact.map((item) => {
-      if (!item || typeof item !== "object" || Array.isArray(item)) return item;
-
-      const source = { ...(item as Record<string, unknown>) };
-      if (typeof source.text === "string") {
-        source.text = stripUntrustedFence(source.text);
-      }
-      if (
-        source.data &&
-        typeof source.data === "object" &&
-        !Array.isArray(source.data)
-      ) {
-        const data = { ...(source.data as Record<string, unknown>) };
-        if (typeof data.text === "string")
-          data.text = stripUntrustedFence(data.text);
-        source.data = data;
-      }
-      return source;
-    }) as FunctionCall["result"];
+    return sanitizeSourceItems(
+      (decoded as { artifact: unknown[] }).artifact,
+    ) as FunctionCall["result"];
   }
 
   return decoded as FunctionCall["result"];
@@ -75,8 +63,32 @@ export function normalizeToolResult(value: unknown): FunctionCall["result"] {
 const UNTRUSTED_FENCE_START = "<<<UNTRUSTED_DOC_CHUNK>>>";
 const UNTRUSTED_FENCE_END = "<<<END_UNTRUSTED_DOC_CHUNK>>>";
 
+function sanitizeSourceItems(items: unknown[]): unknown[] {
+  return items.map((item) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return item;
+
+    const source = { ...(item as Record<string, unknown>) };
+    if (typeof source.text === "string") {
+      source.text = stripUntrustedFence(source.text);
+    }
+    if (
+      source.data &&
+      typeof source.data === "object" &&
+      !Array.isArray(source.data)
+    ) {
+      const data = { ...(source.data as Record<string, unknown>) };
+      if (typeof data.text === "string")
+        data.text = stripUntrustedFence(data.text);
+      source.data = data;
+    }
+    return source;
+  });
+}
+
 function stripUntrustedFence(text: string): string {
-  let stripped = text;
+  let stripped = text
+    .replaceAll(`\\${UNTRUSTED_FENCE_START}`, UNTRUSTED_FENCE_START)
+    .replaceAll(`\\${UNTRUSTED_FENCE_END}`, UNTRUSTED_FENCE_END);
   if (stripped.startsWith(UNTRUSTED_FENCE_START)) {
     stripped = stripped.slice(UNTRUSTED_FENCE_START.length).replace(/^\n/, "");
   }
@@ -85,9 +97,7 @@ function stripUntrustedFence(text: string): string {
       .slice(0, -UNTRUSTED_FENCE_END.length)
       .replace(/\n$/, "");
   }
-  return stripped
-    .replaceAll(`\\${UNTRUSTED_FENCE_START}`, UNTRUSTED_FENCE_START)
-    .replaceAll(`\\${UNTRUSTED_FENCE_END}`, UNTRUSTED_FENCE_END);
+  return stripped;
 }
 
 function findFunctionCallByEvent(
