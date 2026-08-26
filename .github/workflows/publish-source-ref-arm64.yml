@@ -21,11 +21,6 @@ on:
         required: true
         default: v0.6.0-retrieval-v2
         type: string
-      images:
-        description: JSON array of fork-owned images to build
-        required: true
-        default: '["backend","frontend","langflow","opensearch"]'
-        type: string
 
 permissions:
   contents: read
@@ -43,7 +38,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        name: ${{ fromJSON(inputs.images) }}
+        include:
+          - name: backend
+            dockerfile: Dockerfile.backend
+          - name: frontend
+            dockerfile: Dockerfile.frontend
+          - name: langflow
+            dockerfile: Dockerfile.langflow
+          - name: opensearch
+            dockerfile: Dockerfile
 
     steps:
       - name: Checkout requested source
@@ -72,11 +75,6 @@ jobs:
 
           echo "sha=${source_sha}" >> "${GITHUB_OUTPUT}"
           echo "name=ghcr.io/${repository}/openrag-${{ matrix.name }}" >> "${GITHUB_OUTPUT}"
-          if [[ '${{ matrix.name }}' == 'opensearch' ]]; then
-            echo "dockerfile=Dockerfile" >> "${GITHUB_OUTPUT}"
-          else
-            echo "dockerfile=Dockerfile.${{ matrix.name }}" >> "${GITHUB_OUTPUT}"
-          fi
           echo "release_tag=${release_tag}" >> "${GITHUB_OUTPUT}"
           echo "channel_tag=${channel_tag}" >> "${GITHUB_OUTPUT}"
 
@@ -104,7 +102,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: ./${{ steps.image.outputs.dockerfile }}
+          file: ./${{ matrix.dockerfile }}
           platforms: linux/arm64
           push: true
           provenance: false
