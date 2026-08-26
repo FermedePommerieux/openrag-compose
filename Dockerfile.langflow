@@ -22,11 +22,13 @@ RUN pip install --no-cache-dir \
     fastapi-pagination>=0.15.16 \
     fastapi>=0.140.5 \
     "langflow-base[docling,openai,anthropic,google,ollama,opensearch,langfuse]==0.11.2" \
+    "langchain-openai==1.6.0" \
     "ibm-watsonx-ai>=1.3.1,<2.0.0" \
     "langchain-ibm~=1.1.0" \
     uv \
     && pip uninstall -y clickhouse-connect \
-    && pip uninstall -y ragstack-ai-knowledge-store
+    && pip uninstall -y ragstack-ai-knowledge-store \
+    && python -c "from langchain_openai import ChatOpenAI, OpenAIEmbeddings"
 
 # Create a symlink for backwards compatibility with the 'langflow' command
 RUN ln -s /opt/app-root/bin/langflow-base /usr/local/bin/langflow
@@ -48,6 +50,7 @@ ENV MEM0_DIR=/tmp/.mem0
 ENV LANGFLOW_CONFIG_DIR=/app/langflow
 ENV GUNICORN_CMD_ARGS="--worker-tmp-dir /tmp"
 ENV LANGFLOW_ALEMBIC_LOG_TO_STDOUT=true
+ENV LANGFLOW_LOG_TRACE_LOCALS=false
 
 # Set proper ownership for the app directory with OpenShift compatibility
 # Use root group (GID 0) with group-write permissions for OpenShift arbitrary UIDs
