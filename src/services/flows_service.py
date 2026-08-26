@@ -8,6 +8,7 @@ from typing import Any
 
 from cachetools import LRUCache
 
+from config.paths import get_flows_source_metadata
 from config.settings import (
     AGENT_COMPONENT_DISPLAY_NAME,
     LANGFLOW_CHAT_FLOW_ID,
@@ -988,6 +989,9 @@ class FlowsService:
                 "flow_type": flow_type,
                 "flow_id": flow_id,
                 "is_custom": not is_locked,
+                # This is the provenance of the files that the update action
+                # will apply, not the version of the Langflow container.
+                "source": get_flows_source_metadata(),
             }
         return None
 

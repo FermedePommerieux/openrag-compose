@@ -113,8 +113,13 @@ maps should be added to the same evidence ledger as they become available.
   authenticates continuation cursors. A secret rotation invalidates active
   cursors and forces a safe restart of the evidence read.
 - The ingest callback token remains a secret-typed Langflow global. The run id
-  remains a non-secret string. Flow changes are deployed from this repository
-  through the guarded migration; the generic Langflow update action is not used.
+  remains a non-secret string.
+- A production deployment injects the repository slug, published branch and
+  immutable revision of its installed flow files. The OpenRAG update prompt
+  displays and links to that provenance. Its action replaces only the four
+  OpenRAG flow definitions from `OPENRAG_FLOWS_PATH`; it does not upgrade the
+  Langflow application or pull anything from an implicit upstream repository.
+  Missing or malformed provenance is never replaced by an invented default.
 
 ## Validation requirements
 

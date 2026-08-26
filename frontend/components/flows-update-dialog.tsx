@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertCircle } from "lucide-react";
+import { AlertCircle, ExternalLink } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { useDismissFlowsUpdateMutation } from "@/app/api/mutations/useDismissFlowsUpdateMutation";
@@ -49,6 +49,7 @@ export function FlowsUpdateDialog({
 
   const undismissedUpdates = updates?.filter((u) => !u.dismissed) ?? [];
   const hasUndismissed = undismissedUpdates.length > 0;
+  const source = undismissedUpdates.find((update) => update.source)?.source;
 
   const [prevIsLoading, setPrevIsLoading] = useState(isLoading);
   const [prevHasUndismissed, setPrevHasUndismissed] = useState(hasUndismissed);
@@ -108,8 +109,8 @@ export function FlowsUpdateDialog({
         toast.success("Flows updated successfully");
         setShowConfirm(false);
       }
-    } catch (e: any) {
-      const msg = e?.message || "Failed to update flows";
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Failed to update flows";
       setErrorMessage(msg);
       toast.error(msg);
     }
@@ -126,9 +127,9 @@ export function FlowsUpdateDialog({
       <Dialog open={isOpen} onOpenChange={setIsOpen}>
         <DialogContent className="sm:max-w-[540px]">
           <DialogHeader>
-            <DialogTitle>Update required from Langflow</DialogTitle>
+            <DialogTitle>OpenRAG flow update available</DialogTitle>
             <DialogDescription>
-              OpenRAG will back up your customized flows first
+              OpenRAG will back up your customized flows first.
             </DialogDescription>
           </DialogHeader>
 
@@ -142,11 +143,45 @@ export function FlowsUpdateDialog({
             )}
 
             <p className="text-sm text-muted-foreground leading-relaxed">
-              Updating Langflow discards your customizations to OpenRAG flows.
-              OpenRAG copies the core flows before updating, so you can reapply
-              your changes afterward. OpenRAG stores the copies in its embedded
-              Langflow instance.
+              This action updates only the four OpenRAG flow definitions. It
+              does not update the Langflow application or container image. The
+              current flows are copied first so you can inspect or reapply
+              custom changes afterward.
             </p>
+
+            {source ? (
+              <div className="rounded-md border bg-muted/40 p-3 text-sm">
+                <div className="font-medium">Configured release source</div>
+                <div className="mt-1 text-muted-foreground break-all">
+                  {source.repository} · {source.branch} ·{" "}
+                  {source.revision.slice(0, 12)}
+                </div>
+                <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
+                  <a
+                    href={source.branch_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1 text-primary hover:underline"
+                  >
+                    Open published branch
+                    <ExternalLink className="h-3.5 w-3.5" />
+                  </a>
+                  <a
+                    href={source.revision_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1 text-primary hover:underline"
+                  >
+                    Verify exact revision
+                    <ExternalLink className="h-3.5 w-3.5" />
+                  </a>
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-md border bg-muted/40 p-3 text-sm text-muted-foreground">
+                Source: flow files installed with this OpenRAG deployment.
+              </div>
+            )}
 
             <div className="flex items-center space-x-2 pt-2">
               <Checkbox
@@ -167,7 +202,9 @@ export function FlowsUpdateDialog({
             <Button variant="outline" onClick={handleDismiss}>
               Skip action
             </Button>
-            <Button onClick={handleInitialUpdateClick}>Update flow</Button>
+            <Button onClick={handleInitialUpdateClick}>
+              Update OpenRAG flows
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -175,13 +212,14 @@ export function FlowsUpdateDialog({
       <Dialog open={showConfirm} onOpenChange={setShowConfirm}>
         <DialogContent className="sm:max-w-[540px]">
           <DialogHeader>
-            <DialogTitle>Confirm Langflow Update</DialogTitle>
+            <DialogTitle>Confirm OpenRAG flow update</DialogTitle>
           </DialogHeader>
 
           <div className="py-2">
             <p className="text-sm text-muted-foreground leading-relaxed">
-              Updating Langflow will overwrite any custom changes made. Backup
-              copies of your flows will be created in Langflow. Do you want to
+              The configured OpenRAG flow definitions will replace the active
+              core flows. Backup copies will be created in Langflow. The
+              Langflow application itself will remain unchanged. Do you want to
               continue?
             </p>
           </div>

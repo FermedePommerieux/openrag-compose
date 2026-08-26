@@ -5,6 +5,8 @@ below remains as a compatibility wrapper for callers not yet migrated.
 """
 
 import os
+import re
+from urllib.parse import quote
 
 
 # ---------------------------------------------------------------------------
@@ -52,6 +54,45 @@ def get_flows_backup_path() -> str:
     Default: ``<flows_path>/backup``
     """
     return os.getenv("OPENRAG_FLOWS_BACKUP_PATH") or os.path.join(get_flows_path(), "backup")
+
+
+def get_flows_source_metadata() -> dict[str, str] | None:
+    """Return the immutable repository provenance for installed core flows.
+
+    The update dialog resets persisted Langflow graphs from ``OPENRAG_FLOWS_PATH``;
+    it does *not* update the Langflow application.  A deployment that downloads
+    those files from Git should set all three variables below so operators can
+    verify exactly which release source the dialog will apply:
+
+    - ``OPENRAG_FLOWS_SOURCE_REPOSITORY``: GitHub ``owner/repository`` slug
+    - ``OPENRAG_FLOWS_SOURCE_BRANCH``: human-readable published release branch
+    - ``OPENRAG_FLOWS_SOURCE_REVISION``: immutable 40-character commit SHA
+
+    Incomplete or malformed provenance fails closed to ``None``: the UI then
+    describes the source as local installed files and never invents an upstream
+    repository.  The flow update itself remains available for ordinary local
+    OpenRAG installations.
+    """
+    repository = os.getenv("OPENRAG_FLOWS_SOURCE_REPOSITORY", "").strip()
+    branch = os.getenv("OPENRAG_FLOWS_SOURCE_BRANCH", "").strip()
+    revision = os.getenv("OPENRAG_FLOWS_SOURCE_REVISION", "").strip().lower()
+
+    slug_pattern = r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+"
+    if not re.fullmatch(slug_pattern, repository):
+        return None
+    if not branch or any(character in branch for character in "\r\n"):
+        return None
+    if not re.fullmatch(r"[0-9a-f]{40}", revision):
+        return None
+
+    repository_url = f"https://github.com/{repository}"
+    return {
+        "repository": repository,
+        "branch": branch,
+        "revision": revision,
+        "branch_url": f"{repository_url}/tree/{quote(branch, safe='/')}",
+        "revision_url": f"{repository_url}/tree/{revision}/flows",
+    }
 
 
 # ---------------------------------------------------------------------------

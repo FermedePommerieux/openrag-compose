@@ -54,11 +54,11 @@ export function LangflowUpdatesBanner() {
             )}
             <div className="truncate">
               <span className="font-semibold text-foreground">
-                Langflow update detected
+                OpenRAG flow update detected
               </span>
               <span className="text-muted-foreground ml-2 hidden sm:inline text-mmd">
-                Modifications to Langflow require an update to revert any custom
-                changes.
+                A newer definition is available from the configured OpenRAG
+                release source.
               </span>
             </div>
           </div>

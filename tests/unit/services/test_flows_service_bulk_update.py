@@ -756,3 +756,31 @@ async def test_get_flows_updates_available_includes_all_flows():
 
     assert len(updates) == 4
     assert all(u["flow_type"] in ["nudges", "retrieval", "ingest", "url_ingest"] for u in updates)
+
+
+@pytest.mark.asyncio
+async def test_check_flow_update_reports_installed_source_provenance(tmp_path, monkeypatch):
+    """The prompt identifies the installed flow source, never Langflow upstream."""
+    service = FlowsService()
+    flow_file = tmp_path / "openrag_agent.json"
+    flow_file.write_text("{}")
+    monkeypatch.setenv("OPENRAG_FLOWS_SOURCE_REPOSITORY", "FermedePommerieux/openrag-compose")
+    monkeypatch.setenv(
+        "OPENRAG_FLOWS_SOURCE_BRANCH", "pommerieux/v0.6.0-retrieval-v2"
+    )
+    monkeypatch.setenv(
+        "OPENRAG_FLOWS_SOURCE_REVISION",
+        "92a40e9922e12fd7aa06b53bf841b061b41d4818",
+    )
+
+    with patch.object(service, "_find_flow_file_by_id", return_value=str(flow_file)):
+        update = await service._check_flow_update(
+            "retrieval",
+            "flow-retrieval-123",
+            {"updated_at": "1970-01-01T00:00:00Z", "locked": True},
+        )
+
+    assert update is not None
+    assert update["source"]["repository"] == "FermedePommerieux/openrag-compose"
+    assert update["source"]["branch"] == "pommerieux/v0.6.0-retrieval-v2"
+    assert update["source"]["revision"].startswith("92a40e99")

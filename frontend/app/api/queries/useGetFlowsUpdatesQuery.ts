@@ -5,6 +5,13 @@ export type FlowUpdate = {
   flow_id: string;
   is_custom: boolean;
   dismissed: boolean;
+  source?: {
+    repository: string;
+    branch: string;
+    revision: string;
+    branch_url: string;
+    revision_url: string;
+  } | null;
 };
 
 export function useGetFlowsUpdatesQuery(options?: { enabled?: boolean }) {
