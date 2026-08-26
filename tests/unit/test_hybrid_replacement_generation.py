@@ -109,6 +109,12 @@ async def test_rename_promotion_deletes_old_connector_chunks_only_after_success(
     calls: list[str] = []
 
     class Client:
+        def __init__(self):
+            self.indices = SimpleNamespace(refresh=self.refresh)
+
+        async def refresh(self, **kwargs):
+            calls.append("refresh")
+
         async def search(self, **kwargs):
             calls.append("search")
             return {"_scroll_id": None, "hits": {"hits": [{"_id": old_id}, {"_id": new_id}]}}
@@ -133,7 +139,7 @@ async def test_rename_promotion_deletes_old_connector_chunks_only_after_success(
         connector_type="sharepoint",
     )
 
-    assert calls[-1] == "delete"
+    assert calls[-2:] == ["delete", "refresh"]
 
 
 @pytest.mark.asyncio
@@ -178,6 +184,9 @@ async def test_hybrid_promotion_same_hash_never_selects_another_owner(monkeypatc
             return {"_scroll_id": None, "hits": {"hits": [{"_id": "owner-a-old", "_source": {"owner": "A"}}]}}
 
     class WriteClient:
+        def __init__(self):
+            self.indices = SimpleNamespace(refresh=AsyncMock())
+
         async def delete(self, **kwargs):
             deleted_ids.append(kwargs["id"])
             return {"result": "deleted"}

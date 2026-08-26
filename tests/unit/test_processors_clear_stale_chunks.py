@@ -238,13 +238,14 @@ async def test_stale_chunks_are_cleared_only_after_new_generation_is_indexed(mon
         f"new generation must index before any old chunk is deleted. Saw order: {ops}"
     )
 
-    # 3) One primary-id delete per visible stale chunk, refresh=True.
+    # 3) One primary-id delete per visible stale chunk without an index-wide
+    # refresh per ID; promotion performs one bounded refresh after the set.
     delete_calls = [kw for op, kw in op_order if op == "delete"]
     assert len(delete_calls) == len(stale_chunk_ids)
     for call, expected_id in zip(delete_calls, stale_chunk_ids, strict=True):
         assert call["index"] == "test-index"
         assert call["id"] == expected_id
-        assert call.get("refresh") is True
+        assert call.get("refresh") is False
 
     # 4) The centralized writer receives the new chunks after cleanup.
     index_call = next(kw for op, kw in op_order if op == "index")

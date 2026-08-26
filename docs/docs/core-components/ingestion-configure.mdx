@@ -145,6 +145,9 @@ contract, not a document-size limit: every verified leaf chunk is still
 written, then the complete generation is profiled and promoted atomically.
 Splitting the transport prevents a large embedding set from exceeding
 OpenSearch's HTTP request limit while preserving exhaustive coverage.
+Finalization uses one extended-timeout index refresh. Replacing a prior
+generation deletes concrete stale chunk IDs without refreshing the entire
+index after every ID, then performs the same single bounded refresh.
 
 ## Configure table parsing
 

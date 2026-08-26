@@ -11,6 +11,9 @@ from utils.embedding_fields import get_embedding_field_name
 
 
 class InMemoryIndices:
+    def __init__(self) -> None:
+        self.refresh_calls: list[dict[str, Any]] = []
+
     async def exists(self, *, index: str) -> bool:
         return True
 
@@ -18,7 +21,8 @@ class InMemoryIndices:
         field = get_embedding_field_name("test-model")
         return {index: {"mappings": {"properties": {field: {"type": "knn_vector"}}}}}
 
-    async def refresh(self, *, index: str) -> None:
+    async def refresh(self, *, index: str, request_timeout: int) -> None:
+        self.refresh_calls.append({"index": index, "request_timeout": request_timeout})
         return None
 
 
@@ -85,6 +89,18 @@ async def test_large_chunk_sets_are_written_as_bounded_bulk_requests():
     assert len(opensearch.bulk_calls) == 3
     assert [call["refresh"] for call in opensearch.bulk_calls] == [False, False, True]
     assert all(len(call["body"]) == 2 for call in opensearch.bulk_calls)
+
+
+@pytest.mark.asyncio
+async def test_final_refresh_uses_profile_request_timeout():
+    opensearch = InMemoryOpenSearch()
+    writer = DocumentIndexWriter(opensearch_client=opensearch, profile_request_timeout=300)
+
+    await writer._refresh("documents")
+
+    assert opensearch.indices.refresh_calls == [
+        {"index": "documents", "request_timeout": 300}
+    ]
 
 
 @pytest.mark.asyncio

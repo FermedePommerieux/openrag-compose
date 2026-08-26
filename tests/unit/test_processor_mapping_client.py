@@ -32,8 +32,8 @@ async def test_standard_processor_uses_shared_writer_for_embedding_mapping_and_w
         async def exists(self, *, index):
             return True
 
-        async def refresh(self, *, index):
-            admin_client.refresh_calls.append({"index": index})
+        async def refresh(self, *, index, **kwargs):
+            admin_client.refresh_calls.append({"index": index, **kwargs})
 
     async def bulk(**kwargs):
         admin_client.bulk_calls.append(kwargs)

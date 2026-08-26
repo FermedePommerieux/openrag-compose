@@ -530,6 +530,7 @@ class DocumentIndexWriter:
             body=body,
             refresh=True,
             conflicts="proceed",
+            request_timeout=self.profile_request_timeout,
         )
         deleted = int(response.get("deleted", 0)) if isinstance(response, dict) else 0
         logger.info(
@@ -769,4 +770,10 @@ class DocumentIndexWriter:
 
     async def _refresh(self, index_name: str) -> None:
         client = self._get_write_client()
-        await client.indices.refresh(index=index_name)
+        # A refresh after hundreds of vector chunks can legitimately exceed the
+        # client's short default on compact OpenSearch nodes. It is idempotent
+        # and belongs to the same finalization contract as profile queries.
+        await client.indices.refresh(
+            index=index_name,
+            request_timeout=self.profile_request_timeout,
+        )

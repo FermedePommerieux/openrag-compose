@@ -447,11 +447,23 @@ class TaskProcessor:
         stale_ids = set(old_hits) - new_storage_ids
         if stale_ids:
             try:
-                await delete_document_ids(
+                deleted_count = await delete_document_ids(
                     write_client,
                     index=get_index_name(),
                     document_ids=sorted(stale_ids),
-                    refresh=True,
+                    # Refresh once after the bounded set of concrete deletes.
+                    # Refresh-per-ID turns a 2,000-chunk replacement into 2,000
+                    # index-wide refreshes and can stall compact clusters.
+                    refresh=False,
+                )
+                if deleted_count != len(stale_ids):
+                    raise RuntimeError(
+                        "Generation promotion deleted an incomplete stale set: "
+                        f"expected={len(stale_ids)}, deleted={deleted_count}"
+                    )
+                await write_client.indices.refresh(
+                    index=get_index_name(),
+                    request_timeout=300,
                 )
             except Exception as delete_error:
                 # Individual DLS-safe deletes can fail after a subset succeeds.
