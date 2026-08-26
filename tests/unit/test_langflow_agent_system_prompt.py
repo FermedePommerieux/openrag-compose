@@ -36,18 +36,17 @@ def test_agent_flow_has_agent_node_with_system_prompt():
     )
 
 
-def test_agent_prompt_forbids_unverified_answer_hypotheses_in_retrieval_queries():
-    flow = _load_flow("flows/openrag_agent.json")
+def test_agent_prompt_requires_neutral_retrieval_queries():
+    from services.flows_service import FlowsService
+
+    flow = FlowsService()._load_retrieval_v2_template()
     agent_node = _find_node_by_display_name(flow, "Agent")
     prompt = agent_node["data"]["node"]["template"]["system_prompt"]["value"]
 
-    assert "stable identifiers and established context" in prompt
-    assert "Never add a candidate answer" in prompt
-    assert "attribute being looked up" in prompt
-    assert "DESTINATAIRE: RODA TEST" in prompt
-    assert "ÉMETTEUR: POMMERIEUX TEST" in prompt
-    assert '"émetteur document-146"' in prompt
-    assert '"émetteur document-146 RODA TEST"' in prompt
+    assert "Build neutral queries from stable identifiers" in prompt
+    assert "Never add a candidate answer for an unknown attribute" in prompt
+    assert "RODA TEST" not in prompt
+    assert "POMMERIEUX TEST" not in prompt
 
 
 def test_default_agent_prompt_requires_document_wide_role_evidence():
@@ -57,13 +56,12 @@ def test_default_agent_prompt_requires_document_wide_role_evidence():
         AgentConfig,
     )
 
-    assert "review all chunks" in DEFAULT_SYSTEM_PROMPT
-    assert "never use mention order" in DEFAULT_SYSTEM_PROMPT
-    assert "explicit labels and document structure" in DEFAULT_SYSTEM_PROMPT
-    assert "`this/ce document`" in DEFAULT_SYSTEM_PROMPT
-    assert "Retrieve before asking for it" in DEFAULT_SYSTEM_PROMPT
-    assert "never combine fields across files" in DEFAULT_SYSTEM_PROMPT
-    assert "ask the user to choose" in DEFAULT_SYSTEM_PROMPT
+    assert "Evidence-First Retrieval and Provenance" in DEFAULT_SYSTEM_PROMPT
+    assert "any factual request that may depend on indexed sources" in DEFAULT_SYSTEM_PROMPT
+    assert "never treat the top passage as complete" in DEFAULT_SYSTEM_PROMPT
+    assert "never merge fields across documents" in DEFAULT_SYSTEM_PROMPT
+    assert "expose that limitation" in DEFAULT_SYSTEM_PROMPT
+    assert "never guess" in DEFAULT_SYSTEM_PROMPT
     assert len(DEFAULT_SYSTEM_PROMPT) <= 5000
     assert len(LEGACY_SYSTEM_PROMPTS) == 4
     for legacy_prompt in LEGACY_SYSTEM_PROMPTS:

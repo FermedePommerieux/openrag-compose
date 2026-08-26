@@ -421,7 +421,7 @@ async def test_migrate_unversioned_retrieval_v2_flow_synchronized_by_gitops():
         for node in transport.flow["data"]["nodes"]
         if node.get("data", {}).get("node", {}).get("display_name") == "Agent"
     )
-    assert "Retrieve before asking for it" in agent_node["data"]["node"]["template"][
+    assert "Evidence-First Retrieval and Provenance" in agent_node["data"]["node"]["template"][
         "system_prompt"
     ]["value"]
     assert backup.await_count == 1
@@ -452,7 +452,7 @@ async def test_migrate_first_versioned_retrieval_v2_prompt_revision():
         for node in transport.flow["data"]["nodes"]
         if node.get("data", {}).get("node", {}).get("display_name") == "Agent"
     )
-    assert "Retrieve before asking for it" in agent_node["data"]["node"]["template"][
+    assert "Evidence-First Retrieval and Provenance" in agent_node["data"]["node"]["template"][
         "system_prompt"
     ]["value"]
 

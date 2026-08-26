@@ -34,8 +34,13 @@ from config.model_constants import (
 # ---------------------------------------------------------------------------
 
 
-def test_gpt_5_6_sol_is_available_without_changing_the_default():
-    assert "gpt-5.6-sol" in OPENAI_VALIDATION_MODELS
+def test_latest_openai_models_are_available_without_changing_the_default():
+    assert {
+        "gpt-5.5",
+        "gpt-5.6-sol",
+        "gpt-5.6-terra",
+        "gpt-5.6-luna",
+    } <= set(OPENAI_VALIDATION_MODELS)
     assert OPENAI_DEFAULT_LANGUAGE_MODEL == "gpt-5.4-mini"
 
 

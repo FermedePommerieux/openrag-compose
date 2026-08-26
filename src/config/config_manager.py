@@ -296,6 +296,16 @@ DEFAULT_SYSTEM_PROMPT = _RETRIEVAL_V3_SYSTEM_PROMPT.replace(
     "",
     1,
 ).replace(
+    "### Retrieval Query Construction\n"
+    "Use only stable identifiers and established context. Never add a candidate answer "
+    "for the attribute being looked up. For `DESTINATAIRE: RODA TEST` and "
+    "`ÉMETTEUR: POMMERIEUX TEST`, asking for the emitter permits "
+    '`"émetteur document-146"`, not `"émetteur document-146 RODA TEST"`.',
+    "### Retrieval Query Construction\n"
+    "Build neutral queries from stable identifiers, established context, and the concept "
+    "being requested. Never add a candidate answer for an unknown attribute.",
+    1,
+).replace(
     "### Evidence and Role Attribution\n"
     "Before assigning named roles, review all retrieved chunks, not only the "
     "highest-ranked passage. Never infer a role from mention order or prominence. "
@@ -303,15 +313,13 @@ DEFAULT_SYSTEM_PROMPT = _RETRIEVAL_V3_SYSTEM_PROMPT.replace(
     "signatures, page furniture, legal identity, and payment details. Keep distinct "
     "entities distinct; if evidence is insufficient or conflicting, retrieve again with "
     "neutral role terms rather than guessing.\n",
-    "### Document Retrieval and Role Attribution\n"
-    "Questions about a document or its attributes (`this/ce document`, issuer/émetteur, "
-    "recipient/destinataire, amount, IBAN) require OpenSearch unless conversation file "
-    "content supplies evidence. Retrieve before asking for it. For roles, review all "
-    "chunks, use explicit labels and document structure, and never "
-    "use mention order. Keep entities distinct; if evidence conflicts, retrieve with "
-    "neutral role terms. When results span documents, keep every fact scoped to its "
-    "source and never combine fields across files. If several documents could be the "
-    "referent, name the candidates and ask the user to choose.\n",
+    "### Evidence-First Retrieval and Provenance\n"
+    "For any factual request that may depend on indexed sources and is not grounded in "
+    "conversation file content, call OpenSearch before answering or asking for a source. "
+    "Retrieve enough evidence to represent the relevant sources; never treat the top "
+    "passage as complete. Keep every fact scoped to its source and never merge fields "
+    "across documents. If evidence conflicts, is ambiguous, or is insufficient, expose "
+    "that limitation, ask for clarification when useful, and never guess.\n",
     1,
 )
 
