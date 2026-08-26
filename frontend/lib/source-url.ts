@@ -35,6 +35,26 @@ export function isArchivedSourceUrl(sourceUrl?: string): boolean {
 
 export type SourcePreviewKind = "image" | "document";
 
+/**
+ * Return the iframe sandbox policy for a document preview.
+ *
+ * Chromium's built-in PDF viewer cannot render inside an iframe restricted to
+ * `allow-downloads`; it produces an empty white frame even though the PDF was
+ * fetched successfully. PDFs are therefore allowed to use the native viewer
+ * without a sandbox. Other document types keep the restrictive policy because
+ * they may contain browser-renderable markup.
+ */
+export function getDocumentPreviewSandbox(
+  filename: string,
+  mimetype?: string,
+): "allow-downloads" | undefined {
+  const normalizedMimeType = mimetype?.split(";", 1)[0].trim().toLowerCase();
+  const isPdf =
+    normalizedMimeType === "application/pdf" ||
+    filename.toLowerCase().endsWith(".pdf");
+  return isPdf ? undefined : "allow-downloads";
+}
+
 const IMAGE_MIME_TYPES = new Set([
   "image/avif",
   "image/bmp",

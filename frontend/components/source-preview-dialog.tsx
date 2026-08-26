@@ -11,6 +11,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
+  getDocumentPreviewSandbox,
   getDownloadSourceUrl,
   getPreviewSourceUrl,
   type SourcePreviewKind,
@@ -48,6 +49,7 @@ export function SourcePreviewDialog({
       : undefined;
   const previewUrl = getPreviewSourceUrl(sourceUrl, pdfReferencePage);
   const downloadUrl = getDownloadSourceUrl(sourceUrl);
+  const documentSandbox = getDocumentPreviewSandbox(filename, mimetype);
 
   if (!previewUrl || !downloadUrl) return null;
 
@@ -70,7 +72,7 @@ export function SourcePreviewDialog({
           ) : (
             <iframe
               key={previewKey}
-              sandbox="allow-downloads"
+              sandbox={documentSandbox}
               referrerPolicy="no-referrer"
               src={previewUrl}
               title={`Preview of ${filename}`}
