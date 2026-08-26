@@ -157,3 +157,23 @@ def test_streamed_python_repr_tool_message_is_not_parsed():
     normalize_retrieval_tool_event(chunk)
 
     assert chunk["item"]["results"] == results
+
+
+def test_streamed_retrieval_artifact_does_not_require_repeated_tool_name():
+    source = {
+        "filename": "invoice.pdf",
+        "text": "POMMERIEUX TEST",
+        "document_id": "TEST_DOCUMENT_ID",
+        "chunk_id": "TEST_CHUNK_ID",
+    }
+    chunk = {
+        "type": "response.output_item.done",
+        "item": {
+            "type": "tool_call",
+            "results": json.dumps({"artifact": [source]}),
+        },
+    }
+
+    normalize_retrieval_tool_event(chunk)
+
+    assert chunk["item"]["results"] == [source]

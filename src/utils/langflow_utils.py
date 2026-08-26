@@ -171,7 +171,10 @@ def normalize_retrieval_tool_event(chunk_data: Any) -> None:
     if not isinstance(chunk_data, dict) or chunk_data.get("type") != "response.output_item.done":
         return
     item = chunk_data.get("item")
-    if not isinstance(item, dict) or item.get("tool_name") != "search_documents":
+    if not isinstance(item, dict) or item.get("type") != "tool_call":
+        return
+    tool_name = item.get("tool_name") or item.get("name")
+    if tool_name not in (None, "search_documents"):
         return
     results = item.get("results")
     for _ in range(4):
