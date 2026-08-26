@@ -9,7 +9,7 @@ on:
       source_ref:
         description: Branch, tag, or commit to build
         required: true
-        default: pommerieux/v0.6.0
+        default: pommerieux/v0.6.0-retrieval-v2
         type: string
       release_tag:
         description: Immutable image tag (for example v0.6.0-retrieval-v2.1)
