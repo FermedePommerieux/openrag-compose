@@ -95,6 +95,7 @@ async def test_standard_processor_uses_shared_writer_for_embedding_mapping_and_w
                 embedding_model="",
                 chunk_size=1000,
                 chunk_overlap=100,
+                chunking_strategy="character",
             )
         ),
     )

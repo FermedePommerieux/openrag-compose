@@ -11,6 +11,7 @@ Pins: `src/models/processors.py` :: TaskProcessor.process_document_standard.
 import sys
 import tempfile
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -70,6 +71,7 @@ def _patch_embedding_pipeline(monkeypatch, chunk_count: int, write_client=None):
     # Embedding model resolution path (config + fallback).
     fake_config = MagicMock()
     fake_config.knowledge.embedding_model = "text-embedding-3-small"
+    fake_config.knowledge.chunking_strategy = "character"
     monkeypatch.setattr(processors_mod, "get_openrag_config", lambda: fake_config)
     monkeypatch.setattr(processors_mod, "get_embedding_model", lambda: "text-embedding-3-small")
     monkeypatch.setattr(processors_mod, "get_index_name", lambda: "test-index")
@@ -99,6 +101,59 @@ def _patch_embedding_pipeline(monkeypatch, chunk_count: int, write_client=None):
     fake_clients.patched_embedding_client = fake_embed_client
     fake_clients.opensearch = write_client
     monkeypatch.setattr(processors_mod, "clients", fake_clients)
+
+
+@pytest.mark.asyncio
+async def test_missing_internal_chunking_strategy_fails_clearly(monkeypatch):
+    processor, _ = _make_processor_with_mocks()
+
+    from models import processors as processors_mod
+
+    config = SimpleNamespace(
+        knowledge=SimpleNamespace(
+            embedding_model="text-embedding-3-small",
+            chunk_size=1000,
+            chunk_overlap=200,
+        )
+    )
+    monkeypatch.setattr(processors_mod, "get_openrag_config", lambda: config)
+
+    with pytest.raises(
+        ValueError,
+        match=r"knowledge\.chunking_strategy must be explicitly set",
+    ):
+        await processor.process_document_standard(
+            file_path="unused.txt",
+            file_hash="missing-strategy",
+            owner_user_id="alice",
+        )
+
+
+@pytest.mark.asyncio
+async def test_invalid_internal_chunking_strategy_fails_clearly(monkeypatch):
+    processor, _ = _make_processor_with_mocks()
+
+    from models import processors as processors_mod
+
+    config = SimpleNamespace(
+        knowledge=SimpleNamespace(
+            embedding_model="text-embedding-3-small",
+            chunk_size=1000,
+            chunk_overlap=200,
+            chunking_strategy="unexpected",
+        )
+    )
+    monkeypatch.setattr(processors_mod, "get_openrag_config", lambda: config)
+
+    with pytest.raises(
+        ValueError,
+        match=r"knowledge\.chunking_strategy must be explicitly set",
+    ):
+        await processor.process_document_standard(
+            file_path="unused.txt",
+            file_hash="invalid-strategy",
+            owner_user_id="alice",
+        )
 
 
 @pytest.mark.asyncio

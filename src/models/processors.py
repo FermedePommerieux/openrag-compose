@@ -40,6 +40,21 @@ if TYPE_CHECKING:
     from connectors.base import DocumentACL
 
 
+def _require_chunking_strategy(config: Any) -> Literal["character", "hybrid"]:
+    """Return an explicitly configured, supported internal chunking strategy."""
+    knowledge_config = getattr(config, "knowledge", None)
+    configured_strategy = getattr(knowledge_config, "chunking_strategy", None)
+    if isinstance(configured_strategy, str):
+        if configured_strategy == "character":
+            return "character"
+        if configured_strategy == "hybrid":
+            return "hybrid"
+    raise ValueError(
+        "Invalid internal knowledge configuration: knowledge.chunking_strategy "
+        "must be explicitly set to 'character' or 'hybrid'"
+    )
+
+
 def _verification_client(fallback_client):
     """Client for post-ingestion verification ("did the chunks land in the
     index?"). That is a system integrity check, not a user-visibility check,
@@ -539,7 +554,7 @@ class TaskProcessor:
         if not replace:
             return "skip"
 
-        if get_openrag_config().knowledge.chunking_strategy == "hybrid":
+        if _require_chunking_strategy(get_openrag_config()) == "hybrid":
             logger.info("Deferring duplicate deletion until hybrid generation promotion", filename=filename)
             return "replace_pending"
 
@@ -742,10 +757,7 @@ class TaskProcessor:
             chunk_overlap = int(chunk_overlap)
         except (TypeError, ValueError):
             chunk_overlap = 200
-        configured_strategy = getattr(config.knowledge, "chunking_strategy", "character")
-        requested_chunking_strategy = (
-            configured_strategy if configured_strategy in {"character", "hybrid"} else "character"
-        )
+        requested_chunking_strategy = _require_chunking_strategy(config)
         configured_hybrid_max_tokens = getattr(config.knowledge, "hybrid_max_tokens", 512)
         try:
             hybrid_max_tokens = max(1, int(configured_hybrid_max_tokens))
@@ -1481,7 +1493,9 @@ class ConnectorFileProcessor(TaskProcessor):
                 self.mark_duplicate_skipped(upload_task, file_task)
                 return
 
-            knowledge_config = get_openrag_config().knowledge
+            config = get_openrag_config()
+            chunking_strategy = _require_chunking_strategy(config)
+            knowledge_config = config.knowledge
 
             # Rename cleanup: a connector file keeps a stable id across renames,
             # but chunks are keyed by filename/content-hash, so a renamed file
@@ -1492,7 +1506,7 @@ class ConnectorFileProcessor(TaskProcessor):
             # Match against file_task.filename — the cleaned name the file is
             # actually indexed under — so duplicate/rename detection lines up
             # with how chunks are keyed.
-            if knowledge_config.chunking_strategy == "hybrid":
+            if chunking_strategy == "hybrid":
                 # Hybrid replacement is transactional: detect a rename without
                 # deleting its old chunks. The backend promotes the validated
                 # new generation and only then removes these stale ids.
@@ -1538,7 +1552,7 @@ class ConnectorFileProcessor(TaskProcessor):
                 file_hash = hash_id(tmp_path)
 
                 if (
-                    knowledge_config.chunking_strategy != "hybrid"
+                    chunking_strategy != "hybrid"
                     and not renamed
                     and await self.check_document_exists(
                         file_hash,
@@ -1562,7 +1576,7 @@ class ConnectorFileProcessor(TaskProcessor):
                     # HybridChunker is implemented by the backend-owned
                     # standard processor.  Do not silently send connectors
                     # through Langflow's independent chunking path.
-                    and knowledge_config.chunking_strategy != "hybrid"
+                    and chunking_strategy != "hybrid"
                     and self.connector_service.langflow_service is not None
                 ):
                     # Delete existing chunks for this document before Langflow re-ingestion

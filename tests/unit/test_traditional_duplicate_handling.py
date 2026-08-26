@@ -1,5 +1,6 @@
 """Unit tests for the unified duplicate-filename policy."""
 
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -10,6 +11,21 @@ from models.processors import (
     S3FileProcessor,
 )
 from models.tasks import FileTask, TaskStatus, UploadTask
+
+
+@pytest.fixture(autouse=True)
+def explicit_character_chunking(monkeypatch):
+    """Immediate duplicate deletion is the explicit Character-path contract."""
+    monkeypatch.setattr(
+        "models.processors.get_openrag_config",
+        lambda: SimpleNamespace(
+            knowledge=SimpleNamespace(
+                chunking_strategy="character",
+                ocr=False,
+                picture_descriptions=False,
+            )
+        ),
+    )
 
 
 @pytest.mark.asyncio

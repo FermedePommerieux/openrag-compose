@@ -21,6 +21,20 @@ from models.processors import DocumentFileProcessor, LangflowFileProcessor
 from models.tasks import FileTask, TaskStatus, UploadTask
 
 
+@pytest.fixture(autouse=True)
+def explicit_character_chunking(monkeypatch):
+    """Immediate duplicate deletion is the explicit Character-path contract."""
+    knowledge = SimpleNamespace(
+        chunking_strategy="character",
+        ocr=False,
+        picture_descriptions=False,
+    )
+    monkeypatch.setattr(
+        "models.processors.get_openrag_config",
+        lambda: SimpleNamespace(knowledge=knowledge),
+    )
+
+
 def _admin_clients(monkeypatch):
     """Patch the module-level `clients` with a mock admin OpenSearch client."""
     admin_client = AsyncMock()

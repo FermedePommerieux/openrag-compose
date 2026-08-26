@@ -7,6 +7,7 @@ SharePoint UI when a same-named document already exists triggers the
 """
 
 from datetime import datetime
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -15,6 +16,26 @@ from connectors.base import ConnectorDocument, DocumentACL
 from models.processors import ConnectorFileProcessor
 from models.tasks import FileTask, TaskStatus, UploadTask
 from utils.file_utils import get_filename_aliases
+
+
+@pytest.fixture(autouse=True)
+def explicit_character_chunking(monkeypatch):
+    """These tests exercise the historical Character/Langflow ingest paths."""
+    knowledge = SimpleNamespace(
+        chunking_strategy="character",
+        disable_ingest_with_langflow=False,
+        embedding_model="",
+        chunk_size=1000,
+        chunk_overlap=200,
+        hybrid_max_tokens=512,
+        hybrid_merge_peers=True,
+        ocr=False,
+        picture_descriptions=False,
+    )
+    monkeypatch.setattr(
+        "models.processors.get_openrag_config",
+        lambda: SimpleNamespace(knowledge=knowledge),
+    )
 
 
 @pytest.fixture(autouse=True)
