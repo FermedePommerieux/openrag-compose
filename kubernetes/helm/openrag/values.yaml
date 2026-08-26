@@ -75,6 +75,7 @@ langflow:
   image:
     repository: langflowai/openrag-langflow
     tag: ""                               # Uses global.imageTag if empty
+    pullPolicy: ""                        # Uses global.imagePullPolicy if empty
 
   # Single pod - vertical scaling only (SQLite requires single writer)
   replicaCount: 1
@@ -237,6 +238,7 @@ backend:
   image:
     repository: langflowai/openrag-backend
     tag: ""                               # Uses global.imageTag if empty
+    pullPolicy: ""                        # Uses global.imagePullPolicy if empty
 
   oauthBrokerUrl: ""                      # Public return URL for OAuth redirects
 
@@ -382,6 +384,7 @@ frontend:
   image:
     repository: langflowai/openrag-frontend
     tag: ""                               # Uses global.imageTag if empty
+    pullPolicy: ""                        # Uses global.imagePullPolicy if empty
 
   # Can be multiple replicas (stateless)
   replicaCount: 2
