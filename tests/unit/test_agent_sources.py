@@ -1,9 +1,10 @@
+import json
 from types import SimpleNamespace
 
 import pytest
 
 import agent
-from utils.langflow_utils import normalize_retrieval_tool_event
+from utils.langflow_utils import normalize_retrieval_tool_event, strip_untrusted_fence_recursive
 
 
 @pytest.mark.asyncio
@@ -102,3 +103,52 @@ def test_streamed_tool_artifact_becomes_frontend_results_and_keeps_provenance():
             "chunking_strategy": "character",
         }
     ]
+
+
+def test_streamed_json_tool_message_becomes_unfenced_frontend_results():
+    source = {
+        "filename": "invoice.pdf",
+        "text": "<<<UNTRUSTED_DOC_CHUNK>>>\nPOMMERIEUX TEST\n<<<END_UNTRUSTED_DOC_CHUNK>>>",
+        "page": 1,
+        "document_id": "TEST_DOCUMENT_ID",
+        "chunk_id": "TEST_CHUNK_ID",
+        "source_url": "https://example.test/api/source-files/TEST_DOCUMENT_ID.token",
+    }
+    chunk = {
+        "type": "response.output_item.done",
+        "item": {
+            "type": "tool_call",
+            "tool_name": "search_documents",
+            "results": json.dumps(
+                {
+                    "content": '[{"chunk_id":"TEST_CHUNK_ID"}]',
+                    "artifact": [source],
+                }
+            ),
+        },
+    }
+
+    normalize_retrieval_tool_event(chunk)
+    strip_untrusted_fence_recursive(chunk)
+
+    assert chunk["item"]["results"] == [
+        {
+            **source,
+            "text": "POMMERIEUX TEST",
+        }
+    ]
+
+
+def test_streamed_python_repr_tool_message_is_not_parsed():
+    results = "{'artifact': [{'chunk_id': 'TEST_CHUNK_ID'}]}"
+    chunk = {
+        "type": "response.output_item.done",
+        "item": {
+            "tool_name": "search_documents",
+            "results": results,
+        },
+    }
+
+    normalize_retrieval_tool_event(chunk)
+
+    assert chunk["item"]["results"] == results

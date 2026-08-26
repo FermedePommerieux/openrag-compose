@@ -195,11 +195,11 @@ async def async_response_stream(
                 else:
                     chunk_data = str(chunk)
 
-                # Retrieved chunks are fenced before reaching the model. Strip
-                # those transport-only markers before exposing or logging
-                # streamed tool payloads.
-                strip_untrusted_fence_recursive(chunk_data)
+                # Normalize the SDK's dict/JSON-string ToolMessage variants
+                # before stripping transport-only fence markers from the
+                # promoted source artifact.
                 normalize_retrieval_tool_event(chunk_data)
+                strip_untrusted_fence_recursive(chunk_data)
 
                 # Log detailed chunk structure for investigation (especially for Granite 3.3 8b)
                 if isinstance(chunk_data, dict):
