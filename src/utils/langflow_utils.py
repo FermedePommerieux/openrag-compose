@@ -160,12 +160,12 @@ def normalize_retrieval_tool_event(chunk_data: Any) -> None:
     """Expose a retrieval ToolMessage artifact as native frontend results.
 
     Depending on the SDK and authentication event path, Langflow exposes
-    ``item.results`` either as a ToolMessage dict or with one or two JSON
-    encoding layers around that dict. Retrieval v2 deliberately returns
+    ``item.results`` either as a ToolMessage dict or with up to three observed
+    JSON encoding layers around that dict. Retrieval v2 deliberately returns
     ``content_and_artifact``; the JSON content is model-facing while the
     artifact is the stable source contract. Promote that artifact at the
     backend SSE boundary so the frontend receives ``results: list[chunk]``.
-    Decoding is strictly bounded and accepts only a final JSON object; legacy
+    Decoding is bounded to four layers and accepts only a final JSON object; legacy
     Python repr strings remain untouched.
     """
     if not isinstance(chunk_data, dict) or chunk_data.get("type") != "response.output_item.done":
@@ -174,7 +174,7 @@ def normalize_retrieval_tool_event(chunk_data: Any) -> None:
     if not isinstance(item, dict) or item.get("tool_name") != "search_documents":
         return
     results = item.get("results")
-    for _ in range(2):
+    for _ in range(4):
         if not isinstance(results, str):
             break
         import json

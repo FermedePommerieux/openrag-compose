@@ -105,7 +105,7 @@ def test_streamed_tool_artifact_becomes_frontend_results_and_keeps_provenance():
     ]
 
 
-@pytest.mark.parametrize("encoding_layers", [1, 2])
+@pytest.mark.parametrize("encoding_layers", [1, 2, 3, 4])
 def test_streamed_json_tool_message_becomes_unfenced_frontend_results(encoding_layers):
     source = {
         "filename": "invoice.pdf",
@@ -121,7 +121,7 @@ def test_streamed_json_tool_message_becomes_unfenced_frontend_results(encoding_l
             "artifact": [source],
         }
     )
-    if encoding_layers == 2:
+    for _ in range(encoding_layers - 1):
         results = json.dumps(results)
 
     chunk = {
