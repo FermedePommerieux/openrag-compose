@@ -602,8 +602,11 @@ appConfig:
   knowledge:
     chunkOverlap: 200
     chunkSize: 1000
+    chunkingStrategy: "hybrid"
     embeddingModel: "text-embedding-3-large"
     embeddingProvider: "openai"
+    hybridMaxTokens: 512
+    hybridMergePeers: true
     ocr: false
     pictureDescriptions: false
     tableStructure: true

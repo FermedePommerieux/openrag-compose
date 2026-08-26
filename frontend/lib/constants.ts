@@ -13,7 +13,7 @@ export const DEFAULT_AGENT_SETTINGS = {
 export const DEFAULT_KNOWLEDGE_SETTINGS = {
   chunk_size: 1000,
   chunk_overlap: 200,
-  chunking_strategy: "character",
+  chunking_strategy: "hybrid",
   hybrid_max_tokens: 512,
   hybrid_merge_peers: true,
   table_structure: true,

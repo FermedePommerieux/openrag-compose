@@ -44,7 +44,7 @@ export function IngestSettingsSection() {
   const [chunkOverlap, setChunkOverlap] = useState<number>(50);
   const [chunkingStrategy, setChunkingStrategy] = useState<
     "character" | "hybrid"
-  >("character");
+  >(DEFAULT_KNOWLEDGE_SETTINGS.chunking_strategy);
   const [hybridMaxTokens, setHybridMaxTokens] = useState<number>(512);
   const [hybridMergePeers, setHybridMergePeers] = useState<boolean>(true);
   const [chunkValidationError, setChunkValidationError] = useState<
@@ -202,7 +202,8 @@ export function IngestSettingsSection() {
 
   const k = settings.knowledge;
   const knowledgeIngestDirty =
-    chunkingStrategy !== (k?.chunking_strategy ?? "character") ||
+    chunkingStrategy !==
+      (k?.chunking_strategy ?? DEFAULT_KNOWLEDGE_SETTINGS.chunking_strategy) ||
     (chunkingStrategy === "character" &&
       (chunkSize !== (k?.chunk_size ?? chunkSize) ||
         chunkOverlap !== (k?.chunk_overlap ?? chunkOverlap))) ||

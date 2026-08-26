@@ -17,8 +17,11 @@ data:
     knowledge:
       chunk_overlap: {{ .Values.appConfig.knowledge.chunkOverlap }}
       chunk_size: {{ .Values.appConfig.knowledge.chunkSize }}
+      chunking_strategy: {{ .Values.appConfig.knowledge.chunkingStrategy | quote }}
       embedding_model: {{ .Values.appConfig.knowledge.embeddingModel | quote }}
       embedding_provider: {{ .Values.appConfig.knowledge.embeddingProvider | quote }}
+      hybrid_max_tokens: {{ .Values.appConfig.knowledge.hybridMaxTokens }}
+      hybrid_merge_peers: {{ .Values.appConfig.knowledge.hybridMergePeers }}
       ocr: {{ .Values.appConfig.knowledge.ocr }}
       picture_descriptions: {{ .Values.appConfig.knowledge.pictureDescriptions }}
       table_structure: {{ .Values.appConfig.knowledge.tableStructure }}

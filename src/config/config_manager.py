@@ -173,10 +173,10 @@ class KnowledgeConfig:
     embedding_provider: str = "openai"  # Which provider to use for embeddings
     chunk_size: int = 1000
     chunk_overlap: int = 200
-    # ``character`` preserves the historical splitter.  ``hybrid`` is an
-    # opt-in Docling/Core strategy used by retrieval v2 when the optional
-    # Docling chunking dependency is available.
-    chunking_strategy: str = "character"
+    # ``hybrid`` is the product default because it preserves Docling document
+    # structure. ``character`` remains available as an explicit compatibility
+    # choice for documents that require the historical fixed-size splitter.
+    chunking_strategy: str = "hybrid"
     hybrid_max_tokens: int = 512
     hybrid_merge_peers: bool = True
     table_structure: bool = True

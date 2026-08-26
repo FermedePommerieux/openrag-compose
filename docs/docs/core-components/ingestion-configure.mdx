@@ -95,6 +95,11 @@ strategy for new documents:
   Hybrid is explicit and fail-fast: if Docling's HybridChunker is unavailable,
   ingestion fails rather than silently falling back to Character.
 
+**Hybrid is the default for new installations and workspaces.** Character
+chunking remains available only as an explicit compatibility choice. Changing
+the strategy affects new or reingested documents; it does not rewrite existing
+indexed generations automatically.
+
 Hybrid chunking is not the same as **Hybrid retrieval**, which means searching
 both lexical and semantic/vector lanes in **Settings > Retrieval**.
 
