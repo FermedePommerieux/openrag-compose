@@ -201,6 +201,8 @@ export function IngestSettingsSection() {
   }, [settings.knowledge]);
 
   const k = settings.knowledge;
+  const pictureDescriptionVlmConfigured =
+    k?.picture_description_vlm_configured === true;
   const knowledgeIngestDirty =
     chunkingStrategy !==
       (k?.chunking_strategy ?? DEFAULT_KNOWLEDGE_SETTINGS.chunking_strategy) ||
@@ -630,13 +632,18 @@ export function IngestSettingsSection() {
                   Picture Descriptions
                 </Label>
                 <div className="text-sm text-muted-foreground">
-                  Adds captions for images. Ingest is slower when enabled.
+                  {pictureDescriptionVlmConfigured
+                    ? "Adds captions for images using the configured VLM. Ingest is slower when enabled."
+                    : "Requires an explicitly configured remote VLM or a local model installed on every Docling worker."}
                 </div>
               </div>
               <Switch
                 id="picture-descriptions"
                 checked={pictureDescriptions}
                 onCheckedChange={setPictureDescriptions}
+                disabled={
+                  !pictureDescriptionVlmConfigured && !pictureDescriptions
+                }
               />
             </div>
           </div>

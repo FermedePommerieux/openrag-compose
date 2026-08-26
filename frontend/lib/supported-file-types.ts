@@ -3,7 +3,7 @@
  * Only extensions verified to ingest successfully in the Langflow pipeline.
  * If modified, update docs (docs/docs/core-components/ingestion.mdx).
  *
- * documents: txt, md, html, htm, adoc, asciidoc, asc, pdf, docx
+ * documents: txt, md, html, htm, adoc, asciidoc, asc, pdf, docx, eml
  * spreadsheets: csv, xlsx
  * presentations: pptx
  * images (OCR required): bmp, jpeg, jpg, png, tiff, webp
@@ -16,6 +16,7 @@ export const BASE_SUPPORTED_FILE_TYPES: SupportedFileTypes = {
   "text/html": [".html", ".htm"],
   "text/asciidoc": [".adoc", ".asciidoc", ".asc"],
   "application/pdf": [".pdf"],
+  "message/rfc822": [".eml"],
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document": [
     ".docx",
   ],

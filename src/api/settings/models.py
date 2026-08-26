@@ -198,6 +198,7 @@ class KnowledgeConfig(BaseModel):
     table_structure: bool | None
     ocr: bool | None
     picture_descriptions: bool | None
+    picture_description_vlm_configured: bool = False
     index_name: str | None
     disable_ingest_with_langflow: bool | None
     retrieval_strategy: str | None = None

@@ -91,7 +91,13 @@ from dependencies import (
     get_task_service,
     require_permission,
 )
-from services.docling_service import DoclingConfig, get_docling_preset_configs
+from services.docling_service import (
+    DoclingConfig,
+    PictureDescriptionConfigurationError,
+    get_docling_preset_configs,
+    get_picture_description_options,
+    is_picture_description_vlm_configured,
+)
 from services.rbac_service import is_rbac_enforced
 from session_manager import User
 from utils import provider_health_cache
@@ -262,6 +268,9 @@ async def get_settings(
                 table_structure=knowledge_config.table_structure,
                 ocr=knowledge_config.ocr,
                 picture_descriptions=knowledge_config.picture_descriptions,
+                picture_description_vlm_configured=is_picture_description_vlm_configured(
+                    openrag_config
+                ),
                 index_name=knowledge_config.index_name,
                 disable_ingest_with_langflow=knowledge_config.disable_ingest_with_langflow,
                 retrieval_strategy=knowledge_config.retrieval_strategy,
@@ -535,6 +544,11 @@ async def update_settings(
                 logger.error(f"Failed to update docling settings in flow: {str(e)}")
 
         if body.picture_descriptions is not None:
+            if body.picture_descriptions:
+                try:
+                    get_picture_description_options(working_config)
+                except PictureDescriptionConfigurationError as exc:
+                    return JSONResponse({"error": str(exc)}, status_code=422)
             working_config.knowledge.picture_descriptions = body.picture_descriptions
             config_updated = True
             await TelemetryClient.send_event(

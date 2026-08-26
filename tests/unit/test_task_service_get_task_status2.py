@@ -57,6 +57,23 @@ def _store_task(task_service: TaskService, user_id: str, upload_task: UploadTask
 
 
 class TestInferFailureMetadata:
+    def test_picture_description_configuration_error_is_actionable(self, task_service):
+        ft = _make_file_task(
+            error=(
+                "Picture descriptions require an explicitly configured VLM. "
+                "Disable Picture Descriptions."
+            )
+        )
+
+        meta = task_service._infer_failure_metadata(ft)
+
+        assert meta == {
+            "component": "openrag",
+            "failure_phase": "configuration",
+            "user_facing_message": ft.error,
+            "actionable_by": "USER_ACTIONABLE",
+        }
+
     def test_docling_failed_status(self, task_service):
         ft = _make_file_task(docling_status=DoclingPhaseStatus.FAILED)
         meta = task_service._infer_failure_metadata(ft)

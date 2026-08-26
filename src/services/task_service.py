@@ -5,6 +5,7 @@ import time
 import traceback
 import uuid
 from collections.abc import Coroutine
+from contextlib import AsyncExitStack
 from typing import Any, TypeVar
 
 from models.tasks import DoclingPhaseStatus, FileTask, IngestionPhase, TaskStatus, UploadTask
@@ -66,6 +67,10 @@ _TRANSIENT_CONNECTIVITY_ERROR_MARKERS = (
 
 # Raster image formats that require OCR to produce any text content.
 _OCR_REQUIRED_EXTENSIONS = frozenset({"bmp", "jpeg", "jpg", "png", "tiff", "webp"})
+
+_PICTURE_DESCRIPTION_CONFIGURATION_MARKER = (
+    "picture descriptions require an explicitly configured vlm"
+)
 
 
 def _is_non_retryable_file_error(error: str) -> bool:
@@ -180,6 +185,26 @@ class TaskService:
         # TaskService is a singleton, so this limits concurrency system-wide.
         self._worker_count = get_worker_count()
         self._processing_semaphore = asyncio.Semaphore(self._worker_count)
+        # Ordinary documents can use all Docling workers concurrently, but
+        # large local sources are serialized. RQ stores uploaded bytes in the
+        # Valkey job payload, so parallel 100+ MiB PDFs multiply memory before
+        # conversion even starts.
+        self._large_file_threshold_bytes = max(
+            1, int(os.getenv("OPENRAG_LARGE_INGEST_FILE_BYTES", 32 * 1024 * 1024))
+        )
+        self._large_file_semaphore = asyncio.Semaphore(1)
+
+    def _requires_large_file_slot(self, item: Any) -> bool:
+        """Return whether a local source must use the serialized heavy lane."""
+        try:
+            path = os.fspath(item)
+        except TypeError:
+            return False
+        return (
+            os.path.isabs(path)
+            and os.path.isfile(path)
+            and os.path.getsize(path) >= self._large_file_threshold_bytes
+        )
 
     def _get_task_lock(self, task_id: str) -> asyncio.Lock:
         """Get or create a lock for a specific task's counter updates"""
@@ -524,7 +549,14 @@ class TaskService:
             # - Limits concurrency across all tasks, not just within this one
             # - Potential bottlenecks related to downstream Langflow / Docling capacity rather than backend I/O
             async def process_with_semaphore(item, item_key: str):
-                async with self._processing_semaphore:
+                is_large_file = self._requires_large_file_slot(item)
+                # Acquire the heavy lane first so a second large file waits
+                # without consuming a normal worker slot; a small document can
+                # still use the other worker while the first large PDF runs.
+                async with AsyncExitStack() as stack:
+                    if is_large_file:
+                        await stack.enter_async_context(self._large_file_semaphore)
+                    await stack.enter_async_context(self._processing_semaphore)
                     file_task = upload_task.file_tasks[item_key]
                     file_task.status = TaskStatus.RUNNING
                     file_task.updated_at = time.time()
@@ -534,6 +566,7 @@ class TaskService:
                         task_number=upload_task.sequence_number,
                         task_id=task_id,
                         file_path=file_task.file_path,
+                        large_file_lane=is_large_file,
                     )
 
                     try:
@@ -975,6 +1008,17 @@ class TaskService:
             return {
                 "failure_phase": "cancelled",
                 "user_facing_message": "Ingestion was cancelled.",
+                "actionable_by": "USER_ACTIONABLE",
+            }
+
+        # Configuration failures are deterministic and must not be flattened
+        # into a transient Docling availability error.  Preserve the backend's
+        # actionable remediation in the task dialog.
+        if _PICTURE_DESCRIPTION_CONFIGURATION_MARKER in error.lower():
+            return {
+                "component": "openrag",
+                "failure_phase": "configuration",
+                "user_facing_message": error,
                 "actionable_by": "USER_ACTIONABLE",
             }
 

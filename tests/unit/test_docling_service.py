@@ -3,12 +3,19 @@ Unit tests for services/docling_service.py
 Validates async conversion logic, polling behavior, and error handling.
 """
 
+import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
 
-from services.docling_service import DoclingServeError, DoclingService, get_docling_preset_configs
+from services.docling_service import (
+    DoclingServeError,
+    DoclingService,
+    PictureDescriptionConfigurationError,
+    get_docling_preset_configs,
+    get_picture_description_options,
+)
 
 
 def _make_response(status_code: int, json_data: dict = None) -> MagicMock:
@@ -189,8 +196,12 @@ async def test_upload_ocr_enabled_sends_rapidocr_preset(docling_service, mock_ht
 async def test_upload_http_error(docling_service, mock_httpx_client):
     """Raises exception if upload returns non-200."""
     mock_httpx_client.post.return_value = _make_response(400)
+    mock_config = MagicMock()
+    mock_config.knowledge.table_structure = False
+    mock_config.knowledge.ocr = False
+    mock_config.knowledge.picture_descriptions = False
 
-    with patch("services.docling_service.get_openrag_config"):
+    with patch("services.docling_service.get_openrag_config", return_value=mock_config):
         with pytest.raises(httpx.HTTPStatusError):
             await docling_service.upload_to_docling_direct_async("test.pdf", b"data")
 
@@ -215,6 +226,75 @@ def test_build_docling_options_toggles(docling_service):
     assert "ocr_custom_config" not in options
     assert options["do_picture_description"] is False
     assert options["to_formats"] == "json"
+
+
+def test_picture_descriptions_fail_before_submission_without_explicit_vlm(docling_service):
+    """The feature toggle must never trigger Docling's implicit local model."""
+    mock_config = MagicMock()
+    mock_config.knowledge.table_structure = True
+    mock_config.knowledge.ocr = True
+    mock_config.knowledge.picture_descriptions = True
+
+    with (
+        patch("services.docling_service.get_openrag_config", return_value=mock_config),
+        patch.dict("services.docling_service.os.environ", {}, clear=True),
+        pytest.raises(PictureDescriptionConfigurationError, match="explicitly configured VLM"),
+    ):
+        docling_service._build_docling_options()
+
+
+def test_remote_picture_description_options_are_explicit_and_authenticated():
+    """Build Docling's OpenAI-compatible API option without exposing a default model."""
+    mock_config = MagicMock()
+    mock_config.providers.openai.api_key = "provider-key"
+
+    with patch.dict(
+        "services.docling_service.os.environ",
+        {
+            "OPENRAG_PICTURE_DESCRIPTION_API_URL": (
+                "https://api.openai.com/v1/chat/completions"
+            ),
+            "OPENRAG_PICTURE_DESCRIPTION_MODEL": "gpt-5.6-sol",
+        },
+        clear=True,
+    ):
+        options = get_picture_description_options(mock_config)
+
+    remote = options["picture_description_api"]
+    assert remote["url"] == "https://api.openai.com/v1/chat/completions"
+    assert remote["params"] == {"model": "gpt-5.6-sol"}
+    assert remote["headers"] == {"Authorization": "Bearer provider-key"}
+
+
+@pytest.mark.asyncio
+async def test_upload_serializes_remote_picture_description_options(
+    docling_service, mock_httpx_client
+):
+    """Nested remote VLM options are JSON multipart fields accepted by Docling Serve."""
+    mock_httpx_client.post.return_value = _make_response(200, {"task_id": "vlm-task"})
+    mock_config = MagicMock()
+    mock_config.knowledge.table_structure = True
+    mock_config.knowledge.ocr = True
+    mock_config.knowledge.picture_descriptions = True
+    mock_config.providers.openai.api_key = "provider-key"
+
+    with (
+        patch("services.docling_service.get_openrag_config", return_value=mock_config),
+        patch.dict(
+            "services.docling_service.os.environ",
+            {
+                "OPENRAG_PICTURE_DESCRIPTION_API_URL": "https://vlm.example/v1/chat/completions",
+                "OPENRAG_PICTURE_DESCRIPTION_MODEL": "vision-model",
+            },
+            clear=True,
+        ),
+    ):
+        task_id = await docling_service.upload_to_docling_direct_async("test.pdf", b"data")
+
+    assert task_id == "vlm-task"
+    data = mock_httpx_client.post.call_args.kwargs["data"]
+    remote = json.loads(data["picture_description_api"])
+    assert remote["params"] == {"model": "vision-model"}
 
 
 def test_preset_configs_ocr_uses_rapidocr_independently_of_host_platform():

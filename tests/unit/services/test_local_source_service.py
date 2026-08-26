@@ -142,7 +142,7 @@ async def test_failed_source_is_returned_to_inbox(documents_path):
 
 
 def test_collection_excludes_archive_and_symlinks(documents_path):
-    """Exclude archived, partial, and symlinked files from path ingestion."""
+    """Exclude archived, partial, hidden, unsupported and symlinked files."""
     inbox = documents_path / "inbox"
     inbox.mkdir()
     source = inbox / "document.txt"
@@ -153,10 +153,14 @@ def test_collection_excludes_archive_and_symlinks(documents_path):
     archived.write_text("old")
     (inbox / "linked.txt").symlink_to(source)
     (inbox / ".upload.part").write_text("incomplete")
+    (inbox / ".DS_Store").write_bytes(b"metadata")
+    (inbox / "documents.zip").write_bytes(b"archive")
 
     assert collect_ingest_files(documents_path) == [str(source.resolve())]
     assert collect_ingest_files(source) == [str(source.resolve())]
     assert collect_ingest_files(inbox / ".upload.part") == []
+    assert collect_ingest_files(inbox / ".DS_Store") == []
+    assert collect_ingest_files(inbox / "documents.zip") == []
     assert collect_ingest_files(archived) == []
 
 

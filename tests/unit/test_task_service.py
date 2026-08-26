@@ -23,6 +23,18 @@ def task_service():
     )
 
 
+def test_large_local_files_use_serialized_lane(task_service, tmp_path):
+    task_service._large_file_threshold_bytes = 10
+    small = tmp_path / "small.pdf"
+    large = tmp_path / "large.pdf"
+    small.write_bytes(b"123456789")
+    large.write_bytes(b"1234567890")
+
+    assert task_service._requires_large_file_slot(small) is False
+    assert task_service._requires_large_file_slot(large) is True
+    assert task_service._requires_large_file_slot("connector-id") is False
+
+
 @pytest.mark.asyncio
 async def test_process_with_timeout_success(task_service):
     """Test that _process_with_timeout completes successfully within timeout"""

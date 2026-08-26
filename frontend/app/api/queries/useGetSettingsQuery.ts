@@ -22,6 +22,7 @@ export interface KnowledgeSettings {
   table_structure?: boolean;
   ocr?: boolean;
   picture_descriptions?: boolean;
+  picture_description_vlm_configured?: boolean;
   disable_ingest_with_langflow?: boolean;
   retrieval_strategy?: "weighted" | "rrf";
   retrieval_mode?: "hybrid" | "lexical" | "vector";

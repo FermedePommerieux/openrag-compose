@@ -1,9 +1,11 @@
 import asyncio
 import json
+import os
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 import httpx
 from pydantic import BaseModel
@@ -34,6 +36,91 @@ class DoclingServeError(Exception):
 
 class DoclingTransientError(DoclingServeError):
     """Raised for errors that may resolve on retry (network failures, 5xx)."""
+
+
+class PictureDescriptionConfigurationError(DoclingServeError):
+    """Raised before submission when picture descriptions have no explicit VLM."""
+
+
+PICTURE_DESCRIPTION_CONFIGURATION_MESSAGE = (
+    "Picture descriptions require an explicitly configured VLM. Disable Picture "
+    "Descriptions, or configure both OPENRAG_PICTURE_DESCRIPTION_API_URL and "
+    "OPENRAG_PICTURE_DESCRIPTION_MODEL for an OpenAI-compatible remote service, "
+    "or OPENRAG_PICTURE_DESCRIPTION_LOCAL_MODEL for a model installed on every "
+    "Docling worker."
+)
+
+
+def get_picture_description_options(config: Any | None = None) -> dict[str, Any]:
+    """Resolve an explicitly operator-owned Docling picture-description backend.
+
+    Docling otherwise selects its local default (currently SmolVLM), which makes
+    a UI feature toggle depend on an undeclared model cache on every worker.  We
+    deliberately provide no model default here: remote and local execution must
+    both be intentional and reproducible across the worker pool.
+
+    A remote endpoint uses Docling's OpenAI-compatible chat-completions option.
+    ``OPENRAG_PICTURE_DESCRIPTION_API_KEY`` wins when present; otherwise the
+    configured OpenAI provider key is reused.  Authentication is optional for a
+    private compatible endpoint, but mandatory for api.openai.com.
+    """
+    api_url = os.getenv("OPENRAG_PICTURE_DESCRIPTION_API_URL", "").strip()
+    api_model = os.getenv("OPENRAG_PICTURE_DESCRIPTION_MODEL", "").strip()
+    local_model = os.getenv("OPENRAG_PICTURE_DESCRIPTION_LOCAL_MODEL", "").strip()
+
+    if local_model and (api_url or api_model):
+        raise PictureDescriptionConfigurationError(
+            "Picture descriptions have both remote and local VLM settings. Configure exactly one backend."
+        )
+
+    if local_model:
+        return {"picture_description_local": {"repo_id": local_model}}
+
+    if not api_url and not api_model:
+        raise PictureDescriptionConfigurationError(PICTURE_DESCRIPTION_CONFIGURATION_MESSAGE)
+    if not api_url or not api_model:
+        raise PictureDescriptionConfigurationError(
+            "Remote picture descriptions require both "
+            "OPENRAG_PICTURE_DESCRIPTION_API_URL and OPENRAG_PICTURE_DESCRIPTION_MODEL."
+        )
+
+    parsed_url = urlparse(api_url)
+    if parsed_url.scheme not in {"http", "https"} or not parsed_url.netloc:
+        raise PictureDescriptionConfigurationError(
+            "OPENRAG_PICTURE_DESCRIPTION_API_URL must be an absolute HTTP(S) URL."
+        )
+
+    api_key = os.getenv("OPENRAG_PICTURE_DESCRIPTION_API_KEY", "").strip()
+    if not api_key and config is not None:
+        configured_key = getattr(
+            getattr(getattr(config, "providers", None), "openai", None), "api_key", ""
+        )
+        if isinstance(configured_key, str):
+            api_key = configured_key.strip()
+
+    if parsed_url.hostname == "api.openai.com" and not api_key:
+        raise PictureDescriptionConfigurationError(
+            "The OpenAI picture-description endpoint requires a configured OpenAI API key."
+        )
+
+    headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
+    return {
+        "picture_description_api": {
+            "url": api_url,
+            "headers": headers,
+            "params": {"model": api_model},
+            "provenance": f"remote:{api_model}",
+        }
+    }
+
+
+def is_picture_description_vlm_configured(config: Any | None = None) -> bool:
+    """Return whether the current operator configuration resolves to one VLM."""
+    try:
+        get_picture_description_options(config)
+    except PictureDescriptionConfigurationError:
+        return False
+    return True
 
 
 class DoclingTaskState(StrEnum):
@@ -161,17 +248,20 @@ class DoclingService:
         config = get_openrag_config()
         knowledge_config = config.knowledge
 
+        picture_descriptions = (
+            picture_descriptions_override
+            if picture_descriptions_override is not None
+            else knowledge_config.picture_descriptions
+        )
         preset = get_docling_preset_configs(
             table_structure=knowledge_config.table_structure,
             ocr=ocr_override if ocr_override is not None else knowledge_config.ocr,
-            picture_descriptions=(
-                picture_descriptions_override
-                if picture_descriptions_override is not None
-                else knowledge_config.picture_descriptions
-            ),
+            picture_descriptions=picture_descriptions,
         )
 
         options = {"to_formats": "json", "image_export_mode": "placeholder", **preset}
+        if picture_descriptions:
+            options.update(get_picture_description_options(config))
         return options
 
     def _get_auth_headers(
@@ -204,14 +294,16 @@ class DoclingService:
 
         # Docling serve async multipart endpoint /v1/convert/file/async
         # Options are passed as form data
+        # Docling Serve accepts nested option models as JSON form fields.  This
+        # covers both explicit local and remote picture-description backends.
         data = {
-            k: str(v).lower() if isinstance(v, bool) else v
-            for k, v in options.items()
-            if not isinstance(v, dict)
-        }  # picture_description_local needs to be JSON if it's a dict
-
-        if "picture_description_local" in options:
-            data["picture_description_local"] = json.dumps(options["picture_description_local"])
+            key: json.dumps(value)
+            if isinstance(value, dict)
+            else str(value).lower()
+            if isinstance(value, bool)
+            else value
+            for key, value in options.items()
+        }
 
         files = {"files": (filename, file_content)}
 

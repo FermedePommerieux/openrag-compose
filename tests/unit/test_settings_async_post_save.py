@@ -32,6 +32,7 @@ def _make_config_for_ollama_removal():
         knowledge=SimpleNamespace(
             embedding_provider="ollama",
             embedding_model="nomic-embed-text",
+            picture_descriptions=False,
         ),
         providers=providers,
     )
@@ -133,3 +134,22 @@ async def test_provider_removal_triggers_mcp_server_update(monkeypatch):
     kwargs = post_save_mock.call_args.kwargs
     assert kwargs["update_mcp_servers"] is True
     assert kwargs["update_model_values"] is True
+
+
+@pytest.mark.asyncio
+async def test_picture_descriptions_cannot_be_enabled_without_explicit_vlm(monkeypatch):
+    config = _make_config_for_ollama_removal()
+    monkeypatch.setattr(settings_api, "get_openrag_config", lambda: config, raising=True)
+    monkeypatch.delenv("OPENRAG_PICTURE_DESCRIPTION_API_URL", raising=False)
+    monkeypatch.delenv("OPENRAG_PICTURE_DESCRIPTION_MODEL", raising=False)
+    monkeypatch.delenv("OPENRAG_PICTURE_DESCRIPTION_LOCAL_MODEL", raising=False)
+
+    response = await settings_api.update_settings(
+        settings_api.SettingsUpdateBody(picture_descriptions=True),
+        session_manager=object(),
+        user=None,
+    )
+
+    assert response.status_code == 422
+    assert "explicitly configured VLM" in response.body.decode()
+    assert config.knowledge.picture_descriptions is False

@@ -206,12 +206,49 @@ def resolve_ingestion_path(requested_path: str | None = None) -> Path | None:
     return None
 
 
+SUPPORTED_LOCAL_INGEST_EXTENSIONS = frozenset(
+    {
+        ".adoc",
+        ".asc",
+        ".asciidoc",
+        ".bmp",
+        ".csv",
+        ".docx",
+        ".eml",
+        ".htm",
+        ".html",
+        ".jpeg",
+        ".jpg",
+        ".md",
+        ".pdf",
+        ".png",
+        ".pptx",
+        ".tiff",
+        ".txt",
+        ".webp",
+        ".xlsx",
+    }
+)
+
+
+def _is_supported_local_ingest_file(path: Path) -> bool:
+    """Accept only formats covered by OpenRAG's verified ingestion contract.
+
+    Folder ingestion is a server-side entry point and therefore cannot rely on
+    the browser picker for validation.  In particular, hidden macOS metadata
+    and ZIP archives must never reach Docling: RQ embeds uploaded bytes in its
+    job payload, so accepting arbitrary files also creates an avoidable queue
+    memory-amplification vector.
+    """
+    return not path.name.startswith(".") and path.suffix.lower() in SUPPORTED_LOCAL_INGEST_EXTENSIONS
+
+
 def collect_ingest_files(directory: str | os.PathLike[str]) -> list[str]:
-    """Collect a regular file or directory, excluding the archive and symlinks."""
+    """Collect verified ingest files, excluding archives, hidden files and symlinks."""
     root = Path(directory).expanduser().resolve()
     archive_root = get_indexed_documents_path()
     if root.is_file() and not root.is_symlink():
-        if root.name.endswith(".part"):
+        if root.name.endswith(".part") or not _is_supported_local_ingest_file(root):
             return []
         return [] if _is_relative_to(root, archive_root) else [str(root)]
     if not root.is_dir() or _is_relative_to(root, archive_root):
@@ -227,7 +264,7 @@ def collect_ingest_files(directory: str | os.PathLike[str]) -> list[str]:
         ]
         for filename in filenames:
             candidate = current / filename
-            if filename.endswith(".part"):
+            if filename.endswith(".part") or not _is_supported_local_ingest_file(candidate):
                 continue
             if candidate.is_symlink() or not candidate.is_file():
                 continue
