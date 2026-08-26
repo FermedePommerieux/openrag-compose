@@ -156,6 +156,28 @@ def strip_untrusted_fence_recursive(obj: Any) -> None:
             strip_untrusted_fence_recursive(item)
 
 
+def normalize_retrieval_tool_event(chunk_data: Any) -> None:
+    """Expose a retrieval ToolMessage artifact as native frontend results.
+
+    Langflow wraps completed tool output in ``item.results`` as a serialized
+    ToolMessage. Retrieval v2 deliberately returns ``content_and_artifact``;
+    the JSON content is model-facing while the artifact is the stable source
+    contract. Promote that artifact at the backend SSE boundary so the
+    frontend receives ``results: list[chunk]`` rather than a Python repr.
+    """
+    if not isinstance(chunk_data, dict) or chunk_data.get("type") != "response.output_item.done":
+        return
+    item = chunk_data.get("item")
+    if not isinstance(item, dict) or item.get("tool_name") != "search_documents":
+        return
+    results = item.get("results")
+    if not isinstance(results, dict):
+        return
+    artifact = results.get("artifact")
+    if isinstance(artifact, list):
+        item["results"] = artifact
+
+
 def parse_knowledge_chunks(results: Any) -> list[dict]:
     """Parse and standardize knowledge chunks from Langflow output formats."""
     import json

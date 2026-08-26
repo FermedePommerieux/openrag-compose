@@ -36,6 +36,20 @@ def test_agent_flow_has_agent_node_with_system_prompt():
     )
 
 
+def test_agent_prompt_forbids_unverified_answer_hypotheses_in_retrieval_queries():
+    flow = _load_flow("flows/openrag_agent.json")
+    agent_node = _find_node_by_display_name(flow, "Agent")
+    prompt = agent_node["data"]["node"]["template"]["system_prompt"]["value"]
+
+    assert "stable identifiers and established context" in prompt
+    assert "Never add a candidate answer" in prompt
+    assert "attribute being looked up" in prompt
+    assert "DESTINATAIRE: RODA TEST" in prompt
+    assert "ÉMETTEUR: POMMERIEUX TEST" in prompt
+    assert '"émetteur document-146"' in prompt
+    assert '"émetteur document-146 RODA TEST"' in prompt
+
+
 @pytest.mark.asyncio
 async def test_update_chat_flow_system_prompt_updates_agent_node(monkeypatch):
     """update_chat_flow_system_prompt must write the new value into the Agent node's system_prompt field."""

@@ -159,14 +159,31 @@ class OpenRAGBackendRetrievalComponent(LCToolComponent):
         return data
 
     def build_tool(self) -> StructuredTool:
-        def search_documents(search_query: str) -> list[Data]:
-            return self.search_documents(search_query)
+        def search_documents(search_query: str) -> tuple[str, list[dict[str, Any]]]:
+            data_items = self.search_documents(search_query)
+            artifact: list[dict[str, Any]] = []
+            for item in data_items:
+                raw_data = getattr(item, "data", None)
+                if isinstance(raw_data, dict):
+                    artifact.append(dict(raw_data))
+                    continue
+                dumped = item.model_dump() if hasattr(item, "model_dump") else vars(item)
+                nested_data = dumped.get("data") if isinstance(dumped, dict) else None
+                artifact.append(dict(nested_data) if isinstance(nested_data, dict) else dict(dumped))
+
+            # LangChain stores the second tuple element on ToolMessage.artifact.
+            # JSON content remains useful to the model, while the native artifact
+            # survives Langflow/OpenAI transport without relying on Data.__repr__.
+            return json.dumps(artifact, ensure_ascii=False), artifact
 
         return StructuredTool.from_function(
             func=search_documents,
             name="search_documents",
             description=(
                 "Search the indexed OpenRAG knowledge base. "
-                "Use returned chunk_id values for inline citations."
+                "Build queries from stable identifiers and established context only; never "
+                "add a candidate answer for the attribute being looked up. Use returned "
+                "chunk_id values for inline citations."
             ),
+            response_format="content_and_artifact",
         )

@@ -236,6 +236,15 @@ DEFAULT_SYSTEM_PROMPT = AgentConfig._v060_system_prompt.replace(
     "### Available Tools",
     1,
 ).replace(
+    "When uncertain → **Retrieve.** Retrieval is low risk and improves grounding.",
+    "When uncertain → **Retrieve.**\n"
+    "### Retrieval Query Construction\n"
+    "Use only stable identifiers and established context. Never add a candidate answer "
+    "for the attribute being looked up. For `DESTINATAIRE: RODA TEST` and "
+    "`ÉMETTEUR: POMMERIEUX TEST`, asking for the emitter permits "
+    '`"émetteur document-146"`, not `"émetteur document-146 RODA TEST"`.',
+    1,
+).replace(
     "3. Support factual claims with citations in the format: (Source: <chunk_id>) placed "
     "exactly where the claim occurs (e.g., at the end of the sentence or clause making the "
     "claim). If multiple sources support a claim, cite them sequentially like: "

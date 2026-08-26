@@ -1,6 +1,6 @@
 from typing import Any
 
-from docling_core.types.doc import ImageRefMode
+from docling_core.types.doc import ContentLayer, ImageRefMode
 
 from lfx.base.data.docling_utils import extract_docling_documents
 from lfx.custom import Component
@@ -118,6 +118,7 @@ class ExportDoclingDocumentComponent(Component):
                         image_mode=image_mode,
                         image_placeholder=self.md_image_placeholder,
                         page_no=page_no,
+                        included_content_layers={ContentLayer.BODY, ContentLayer.FURNITURE},
                     )
                 except TypeError:
                     # Fallback to from_page/to_page parameters
@@ -126,6 +127,7 @@ class ExportDoclingDocumentComponent(Component):
                         image_placeholder=self.md_image_placeholder,
                         from_page=page_no,
                         to_page=page_no,
+                        included_content_layers={ContentLayer.BODY, ContentLayer.FURNITURE},
                     )
             except Exception:
                 # Any exception from either attempt: fall back to whole-document export
@@ -161,6 +163,7 @@ class ExportDoclingDocumentComponent(Component):
                         image_mode=image_mode,
                         image_placeholder=self.md_image_placeholder,
                         page_break_placeholder=self.md_page_break_placeholder,
+                        included_content_layers={ContentLayer.BODY, ContentLayer.FURNITURE},
                     )
                 elif self.export_format == "HTML":
                     content = doc.export_to_html(image_mode=image_mode)

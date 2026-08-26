@@ -1,7 +1,11 @@
 from typing import Any
 
 from services.conversation_persistence_service import conversation_persistence
-from utils.langflow_utils import parse_knowledge_chunks, strip_untrusted_fence_recursive
+from utils.langflow_utils import (
+    normalize_retrieval_tool_event,
+    parse_knowledge_chunks,
+    strip_untrusted_fence_recursive,
+)
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -195,6 +199,7 @@ async def async_response_stream(
                 # those transport-only markers before exposing or logging
                 # streamed tool payloads.
                 strip_untrusted_fence_recursive(chunk_data)
+                normalize_retrieval_tool_event(chunk_data)
 
                 # Log detailed chunk structure for investigation (especially for Granite 3.3 8b)
                 if isinstance(chunk_data, dict):

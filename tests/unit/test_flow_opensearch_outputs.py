@@ -4,6 +4,25 @@ import json
 from pathlib import Path
 
 
+def test_docling_markdown_export_includes_footer_furniture_layer():
+    root = Path(__file__).resolve().parents[2]
+    component_code = (root / "flows/components/export_docling_document.py").read_text(
+        encoding="utf-8"
+    )
+    flow = json.loads((root / "flows/ingestion_flow.json").read_text(encoding="utf-8"))
+    export_node = next(
+        node
+        for node in flow["data"]["nodes"]
+        if node["data"].get("type") == "ExportDoclingDocument"
+    )
+
+    assert "ContentLayer" in component_code
+    assert "ContentLayer.BODY" in component_code
+    assert "ContentLayer.FURNITURE" in component_code
+    assert component_code.count("included_content_layers=") == 3
+    assert export_node["data"]["node"]["template"]["code"]["value"] == component_code
+
+
 def _load_flow(flow_path: str) -> dict:
     return json.loads(Path(flow_path).read_text(encoding="utf-8"))
 

@@ -3,6 +3,7 @@ from types import SimpleNamespace
 import pytest
 
 import agent
+from utils.langflow_utils import normalize_retrieval_tool_event
 
 
 @pytest.mark.asyncio
@@ -61,3 +62,43 @@ async def test_async_langflow_chat_ignores_assistant_message_text_without_tool_r
     )
 
     assert sources == []
+
+
+def test_streamed_tool_artifact_becomes_frontend_results_and_keeps_provenance():
+    chunk = {
+        "type": "response.output_item.done",
+        "item": {
+            "type": "tool_call",
+            "tool_name": "search_documents",
+            "results": {
+                "content": '[{"chunk_id":"TEST_CHUNK_ID"}]',
+                "artifact": [
+                    {
+                        "filename": "invoice.pdf",
+                        "text": "POMMERIEUX TEST",
+                        "page": 1,
+                        "document_id": "TEST_DOCUMENT_ID",
+                        "chunk_id": "TEST_CHUNK_ID",
+                        "source_url": "/api/source-files/TEST_DOCUMENT_ID.token",
+                        "chunk_index": 2,
+                        "chunking_strategy": "character",
+                    }
+                ],
+            },
+        },
+    }
+
+    normalize_retrieval_tool_event(chunk)
+
+    assert chunk["item"]["results"] == [
+        {
+            "filename": "invoice.pdf",
+            "text": "POMMERIEUX TEST",
+            "page": 1,
+            "document_id": "TEST_DOCUMENT_ID",
+            "chunk_id": "TEST_CHUNK_ID",
+            "source_url": "/api/source-files/TEST_DOCUMENT_ID.token",
+            "chunk_index": 2,
+            "chunking_strategy": "character",
+        }
+    ]

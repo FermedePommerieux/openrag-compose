@@ -176,3 +176,19 @@ def test_backend_tool_forwards_request_and_preserves_provenance(monkeypatch):
     assert {key: citations[0][key] for key in search_result if key != "text"} == {
         key: value for key, value in search_result.items() if key != "text"
     }
+
+    built_tool = tool.build_tool()
+    assert built_tool["response_format"] == "content_and_artifact"
+    content, artifact = built_tool["func"]("where is the archive?")
+    assert json.loads(content)[0]["chunk_id"] == "chunk-42"
+    assert artifact == [
+        {
+            **search_result,
+            "text": (
+                "<<<UNTRUSTED_DOC_CHUNK>>>\n"
+                "untrusted document text\n"
+                "<<<END_UNTRUSTED_DOC_CHUNK>>>"
+            ),
+        }
+    ]
+    assert "JSON(text_key=" not in content
