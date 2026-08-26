@@ -1,7 +1,7 @@
 name: Publish OpenRAG source ref for ARM64
 
 # Build every fork-owned image from one explicit ref and publish it under the
-# resolved commit SHA, an immutable Pommerieux release tag, and the mutable
+# resolved commit SHA, an immutable retrieval-v2 release tag, and the mutable
 # branch channel consumed by GitOps. The workflow remains manually triggered.
 on:
   workflow_dispatch:
@@ -12,14 +12,14 @@ on:
         default: pommerieux/v0.6.0
         type: string
       release_tag:
-        description: Immutable image tag (for example v0.6.0-pommerieux.1)
+        description: Immutable image tag (for example v0.6.0-retrieval-v2.1)
         required: true
-        default: v0.6.0-pommerieux.1
+        default: v0.6.0-retrieval-v2.1
         type: string
       channel_tag:
         description: Mutable branch channel followed by GitOps
         required: true
-        default: v0.6.0-pommerieux
+        default: v0.6.0-retrieval-v2
         type: string
 
 permissions:
@@ -64,11 +64,11 @@ jobs:
           release_tag='${{ inputs.release_tag }}'
           channel_tag='${{ inputs.channel_tag }}'
 
-          if [[ ! "${release_tag}" =~ ^v0\.6\.0-pommerieux\.[1-9][0-9]*$ ]]; then
+          if [[ ! "${release_tag}" =~ ^v0\.6\.0-retrieval-v2\.[1-9][0-9]*$ ]]; then
             echo "Invalid immutable release tag: ${release_tag}" >&2
             exit 1
           fi
-          if [[ "${channel_tag}" != "v0.6.0-pommerieux" ]]; then
+          if [[ "${channel_tag}" != "v0.6.0-retrieval-v2" ]]; then
             echo "Invalid branch channel tag: ${channel_tag}" >&2
             exit 1
           fi
