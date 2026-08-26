@@ -39,6 +39,7 @@ LANGFLOW_GENERIC_GLOBAL_VARIABLES = frozenset(
         "MIMETYPE",
         "OLLAMA_BASE_URL",
         "OPENRAG-QUERY-FILTER",
+        "OPENRAG_INGEST_RUN_ID",
         "OPENSEARCH_INDEX_NAME",
         "OPENSEARCH_URL",
         "SELECTED_EMBEDDING_MODEL",
@@ -80,6 +81,10 @@ def _required_generic_global_values(config) -> dict[str, str]:
         "MIMETYPE": "None",
         "OLLAMA_BASE_URL": _string_value(getattr(ollama, "endpoint", None)),
         "OPENRAG-QUERY-FILTER": "{}",
+        # Correlation identifier overridden for every request. It is routing
+        # metadata, not a credential, and Langflow rejects Credential globals
+        # when they feed the component's ordinary StrInput.
+        "OPENRAG_INGEST_RUN_ID": "OPENRAG_INGEST_RUN_ID",
         "OPENSEARCH_INDEX_NAME": _string_value(getattr(knowledge, "index_name", None))
         or "documents",
         "OPENSEARCH_URL": settings.get_langflow_opensearch_url(),
