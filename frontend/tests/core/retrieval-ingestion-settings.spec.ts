@@ -27,6 +27,7 @@ const BASE_KNOWLEDGE: Knowledge = {
   retrieval_vector_candidates: 50,
   retrieval_rrf_k: 60,
   retrieval_max_chunks_per_document: 3,
+  retrieval_adaptive_max_chunks_per_document: 20,
   retrieval_debug: false,
 };
 
@@ -225,9 +226,14 @@ test.describe("Retrieval and ingestion settings contracts", () => {
       ],
       ["RRF k", "1001", "RRF k must be between 1 and 1000."],
       [
-        "Max chunks per document",
+        "Base chunks per document",
         "101",
-        "Max chunks per document must be between 1 and 100.",
+        "Base chunks per document must be between 1 and 100.",
+      ],
+      [
+        "Adaptive maximum",
+        "101",
+        "Adaptive maximum must be between the base quota and 100.",
       ],
     ] as const;
     for (const [label, value, error] of invalidCases) {

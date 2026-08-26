@@ -84,6 +84,7 @@ async def test_langflow_ingest_callback_indexes_authoritative_token_context():
                 text="hello",
                 vector=[0.1, 0.2],
                 page=3,
+                chunk_index=0,
                 metadata={"owner": "forged-owner", "filename": "forged.pdf"},
             )
         ],
@@ -411,9 +412,11 @@ def test_ingest_flows_resolve_callback_config_from_global_vars(flow_path):
     assert template["openrag_ingest_url"]["input_types"] == ["Text", "Message"]
     assert template["openrag_ingest_token"]["input_types"] == ["Text", "Message"]
     assert template["openrag_ingest_run_id"]["input_types"] == ["Text", "Message"]
-    assert template["openrag_ingest_token"]["_input_type"] == "StrInput"
+    assert template["openrag_ingest_token"]["_input_type"] == "SecretStrInput"
     assert "OPENRAG_INGEST_URL" in template["code"]["value"]
     assert "_openrag_ingest_global_placeholders" in template["code"]["value"]
+    assert '"chunk_index": metadata.get("chunk_index")' in template["code"]["value"]
+    assert 'metadata = {**metadata, "chunk_index": i}' in template["code"]["value"]
     assert 'url = self._openrag_callback_value("openrag_ingest_url")' in template["code"]["value"]
     assert (
         'token = self._openrag_callback_value("openrag_ingest_token")' in template["code"]["value"]

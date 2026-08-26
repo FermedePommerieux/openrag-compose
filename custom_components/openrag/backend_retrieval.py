@@ -116,11 +116,25 @@ class OpenRAGBackendRetrievalComponent(LCToolComponent):
             raise ValueError("OpenRAG retrieval limit or score threshold is invalid") from exc
         return filters, limit, score_threshold
 
-    def search_documents(self, search_query: str) -> list[Data]:
-        """Call the authenticated backend endpoint and preserve every provenance field."""
+    def _retrieve_payload(
+        self,
+        search_query: str,
+        *,
+        evidence_mode: str = "focused",
+        document_id: str = "",
+        cursor: str = "",
+        batch_size: int = 20,
+    ) -> dict[str, Any]:
+        """Call the backend and retain results plus its coverage certificate."""
         query = _as_text(search_query)
-        if not query:
-            return []
+        mode = _as_text(evidence_mode) or "focused"
+        if mode not in {"focused", "exhaustive"}:
+            raise ValueError("evidence_mode must be focused or exhaustive")
+        resolved_document_id = _as_text(document_id)
+        if mode == "focused" and not query:
+            return {"results": []}
+        if mode == "exhaustive" and not resolved_document_id:
+            raise ValueError("document_id is required in exhaustive mode")
 
         url = _as_text(getattr(self, "openrag_retrieval_url", ""))
         if not url or url == "OPENRAG_RETRIEVAL_URL":
@@ -140,41 +154,56 @@ class OpenRAGBackendRetrievalComponent(LCToolComponent):
                     "filters": filters,
                     "limit": limit,
                     "scoreThreshold": score_threshold,
+                    "evidenceMode": mode,
+                    "documentId": resolved_document_id or None,
+                    "cursor": _as_text(cursor),
+                    "batchSize": min(50, max(1, int(batch_size))),
                 },
             )
             response.raise_for_status()
             payload = response.json()
 
-        results = payload.get("results", []) if isinstance(payload, dict) else []
+        if not isinstance(payload, dict):
+            raise ValueError("OpenRAG retrieval response must be a JSON object")
+        results = payload.get("results", [])
         if not isinstance(results, list):
             raise ValueError("OpenRAG retrieval response has an invalid results field")
 
-        data: list[Data] = []
+        fenced_results: list[dict[str, Any]] = []
         for item in results:
             if not isinstance(item, dict):
                 continue
             item = dict(item)
             item["text"] = _fence_untrusted_text(str(item.get("text") or ""))
-            data.append(Data(**item))
-        return data
+            fenced_results.append(item)
+        return {**payload, "results": fenced_results}
+
+    def search_documents(self, search_query: str) -> list[Data]:
+        """Backward-compatible focused search used by component previews."""
+        payload = self._retrieve_payload(search_query)
+        return [Data(**item) for item in payload["results"]]
 
     def build_tool(self) -> StructuredTool:
-        def search_documents(search_query: str) -> tuple[str, list[dict[str, Any]]]:
-            data_items = self.search_documents(search_query)
-            artifact: list[dict[str, Any]] = []
-            for item in data_items:
-                raw_data = getattr(item, "data", None)
-                if isinstance(raw_data, dict):
-                    artifact.append(dict(raw_data))
-                    continue
-                dumped = item.model_dump() if hasattr(item, "model_dump") else vars(item)
-                nested_data = dumped.get("data") if isinstance(dumped, dict) else None
-                artifact.append(dict(nested_data) if isinstance(nested_data, dict) else dict(dumped))
+        def search_documents(
+            search_query: str,
+            evidence_mode: str = "focused",
+            document_id: str = "",
+            cursor: str = "",
+            batch_size: int = 20,
+        ) -> tuple[str, list[dict[str, Any]]]:
+            payload = self._retrieve_payload(
+                search_query,
+                evidence_mode=evidence_mode,
+                document_id=document_id,
+                cursor=cursor,
+                batch_size=batch_size,
+            )
+            artifact = payload["results"]
 
             # LangChain stores the second tuple element on ToolMessage.artifact.
             # JSON content remains useful to the model, while the native artifact
             # survives Langflow/OpenAI transport without relying on Data.__repr__.
-            return json.dumps(artifact, ensure_ascii=False), artifact
+            return json.dumps(payload, ensure_ascii=False), artifact
 
         return StructuredTool.from_function(
             func=search_documents,
@@ -183,7 +212,11 @@ class OpenRAGBackendRetrievalComponent(LCToolComponent):
                 "Search the indexed OpenRAG knowledge base. "
                 "Build queries from stable identifiers and established context only; never "
                 "add a candidate answer for the attribute being looked up. Use returned "
-                "chunk_id values for inline citations."
+                "chunk_id values for inline citations. Use evidence_mode='focused' for "
+                "ranked discovery. For exhaustive/list-all/compare/audit requests, first "
+                "discover document_id values, then call evidence_mode='exhaustive' once "
+                "per document and keep following coverage.next_cursor until complete=true. "
+                "Never claim exhaustive coverage while complete is false."
             ),
             response_format="content_and_artifact",
         )

@@ -9,7 +9,10 @@ becoming the source of truth for API/SDK search.
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
+import math
+from base64 import urlsafe_b64decode, urlsafe_b64encode
 from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any
@@ -19,6 +22,9 @@ import httpx
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
+
+EXHAUSTIVE_PROFILE_VERSION = 1
+EXHAUSTIVE_BATCH_MAX = 50
 
 
 @dataclass(frozen=True)
@@ -31,6 +37,7 @@ class RetrievalSettings:
     vector_candidates: int = 50
     rrf_k: int = 60
     max_chunks_per_document: int = 3
+    adaptive_max_chunks_per_document: int = 20
     reranker_url: str = ""
     reranker_timeout: int = 5
     debug: bool = False
@@ -52,6 +59,9 @@ class RetrievalSettings:
             vector_candidates=bounded("retrieval_vector_candidates", 50, 500),
             rrf_k=bounded("retrieval_rrf_k", 60, 1000),
             max_chunks_per_document=bounded("retrieval_max_chunks_per_document", 3, 100),
+            adaptive_max_chunks_per_document=bounded(
+                "retrieval_adaptive_max_chunks_per_document", 20, 100
+            ),
             reranker_url=str(getattr(knowledge, "retrieval_reranker_url", "") or "").strip(),
             reranker_timeout=bounded("retrieval_reranker_timeout", 5, 120),
             debug=bool(getattr(knowledge, "retrieval_debug", False)),
@@ -112,23 +122,190 @@ def reciprocal_rank_fusion(
     return fused
 
 
+def _document_key(hit: dict[str, Any]) -> str:
+    source = hit.get("_source") if isinstance(hit.get("_source"), dict) else hit
+    return str(
+        source.get("document_id")
+        or source.get("connector_file_id")
+        or source.get("filename")
+        or hit_identity(hit)
+    )
+
+
+def adaptive_chunk_limit(
+    document_chunk_count: Any,
+    *,
+    base_chunks_per_document: int,
+    adaptive_max_chunks_per_document: int,
+) -> int:
+    """Return a bounded per-query quota derived from the ingestion profile.
+
+    The square-root curve lets a long document contribute more evidence without
+    scaling context linearly with its size.  A 3-chunk invoice keeps all three
+    chunks, a 100-chunk report may contribute ten, and very large documents are
+    still bounded by the operator-controlled adaptive maximum.  Legacy chunks
+    without a profile retain the historical base quota.
+    """
+    base = max(1, int(base_chunks_per_document))
+    ceiling = max(base, int(adaptive_max_chunks_per_document))
+    try:
+        total = int(document_chunk_count)
+    except (TypeError, ValueError):
+        return base
+    if total < 1:
+        return base
+    return min(total, ceiling, max(base, math.ceil(math.sqrt(total))))
+
+
 def limit_chunks_per_document(
-    hits: Iterable[dict[str, Any]], *, max_chunks_per_document: int
+    hits: Iterable[dict[str, Any]],
+    *,
+    max_chunks_per_document: int,
+    adaptive_max_chunks_per_document: int | None = None,
 ) -> list[dict[str, Any]]:
-    """Keep rank order while preventing one document from monopolising context."""
-    max_chunks = max(1, int(max_chunks_per_document))
+    """Select evidence using a diversity pass followed by adaptive fill.
+
+    The first pass preserves the configured base quota for each represented
+    document.  The second pass fills additional ranked chunks only when the
+    ingestion profile proves that the document is larger.  This avoids both
+    failure modes: a 100-page PDF being clipped to three chunks and one large
+    PDF crowding every other relevant document out of the candidate set.
+    """
+    ranked_hits = list(hits)
+    base = max(1, int(max_chunks_per_document))
+    adaptive_ceiling = (
+        base
+        if adaptive_max_chunks_per_document is None
+        else max(base, int(adaptive_max_chunks_per_document))
+    )
+    caps: dict[str, int] = {}
+    for hit in ranked_hits:
+        source = hit.get("_source") if isinstance(hit.get("_source"), dict) else hit
+        key = _document_key(hit)
+        caps[key] = adaptive_chunk_limit(
+            source.get("document_chunk_count"),
+            base_chunks_per_document=base,
+            adaptive_max_chunks_per_document=adaptive_ceiling,
+        )
+
     counts: dict[str, int] = {}
     selected: list[dict[str, Any]] = []
-    for hit in hits:
-        source = hit.get("_source") if isinstance(hit.get("_source"), dict) else hit
-        document_key = str(
-            source.get("document_id") or source.get("connector_file_id") or source.get("filename") or hit_identity(hit)
-        )
-        if counts.get(document_key, 0) >= max_chunks:
+    selected_ids: set[str] = set()
+
+    # Diversity pass: every represented document can first contribute its base
+    # evidence in fused rank order.
+    for hit in ranked_hits:
+        key = _document_key(hit)
+        if counts.get(key, 0) >= min(base, caps[key]):
             continue
-        counts[document_key] = counts.get(document_key, 0) + 1
+        identity = hit_identity(hit)
+        counts[key] = counts.get(key, 0) + 1
+        selected_ids.add(identity)
+        selected.append(hit)
+
+    # Adaptive fill: large profiled documents may contribute more evidence,
+    # still in their original fused order and still below the configured cap.
+    for hit in ranked_hits:
+        identity = hit_identity(hit)
+        if identity in selected_ids:
+            continue
+        key = _document_key(hit)
+        if counts.get(key, 0) >= caps[key]:
+            continue
+        counts[key] = counts.get(key, 0) + 1
         selected.append(hit)
     return selected
+
+
+def encode_exhaustive_cursor(
+    *,
+    document_id: str,
+    snapshot_sha256: str,
+    search_after: list[Any],
+    covered_chunks: int,
+    scope_sha256: str,
+) -> str:
+    """Encode an authenticated cursor bound to a snapshot and access scope.
+
+    Coverage accounting must never trust counters supplied by a caller. The
+    HMAC makes skipped positions or edited counters detectable, while the scope
+    digest prevents replay with another principal or filter set.
+    """
+    payload = json.dumps(
+        {
+            "v": 1,
+            "document_id": document_id,
+            "snapshot_sha256": snapshot_sha256,
+            "search_after": search_after,
+            "covered_chunks": covered_chunks,
+            "scope_sha256": scope_sha256,
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    encoded = urlsafe_b64encode(payload).decode("ascii").rstrip("=")
+    from config.settings import SESSION_SECRET
+
+    signature = hmac.digest(SESSION_SECRET.encode("utf-8"), encoded.encode("ascii"), "sha256")
+    encoded_signature = urlsafe_b64encode(signature).decode("ascii").rstrip("=")
+    return f"{encoded}.{encoded_signature}"
+
+
+def decode_exhaustive_cursor(
+    cursor: str,
+    *,
+    document_id: str,
+    scope_sha256: str,
+) -> dict[str, Any]:
+    """Authenticate and validate an exhaustive evidence continuation cursor."""
+    if not cursor:
+        return {}
+    try:
+        encoded, encoded_signature = cursor.split(".", 1)
+        from config.settings import SESSION_SECRET
+
+        expected_signature = hmac.digest(
+            SESSION_SECRET.encode("utf-8"), encoded.encode("ascii"), "sha256"
+        )
+        signature_padding = "=" * (-len(encoded_signature) % 4)
+        supplied_signature = urlsafe_b64decode(
+            (encoded_signature + signature_padding).encode("ascii")
+        )
+        if not hmac.compare_digest(supplied_signature, expected_signature):
+            raise ValueError("cursor signature mismatch")
+        padded = encoded + "=" * (-len(encoded) % 4)
+        payload = json.loads(urlsafe_b64decode(padded.encode("ascii")).decode("utf-8"))
+    except (ValueError, TypeError, json.JSONDecodeError) as exc:
+        raise ValueError("Invalid exhaustive retrieval cursor") from exc
+    if not isinstance(payload, dict) or payload.get("v") != 1:
+        raise ValueError("Unsupported exhaustive retrieval cursor")
+    if payload.get("document_id") != document_id:
+        raise ValueError("Exhaustive retrieval cursor belongs to another document")
+    if payload.get("scope_sha256") != scope_sha256:
+        raise ValueError("Exhaustive retrieval cursor belongs to another access scope")
+    search_after = payload.get("search_after")
+    snapshot = payload.get("snapshot_sha256")
+    covered = payload.get("covered_chunks")
+    if (
+        not isinstance(search_after, list)
+        or not isinstance(snapshot, str)
+        or len(snapshot) != 64
+        or not isinstance(covered, int)
+        or covered < 0
+    ):
+        raise ValueError("Invalid exhaustive retrieval cursor payload")
+    return payload
+
+
+def exhaustive_scope_sha256(*, user_id: str, filters: dict[str, Any] | None) -> str:
+    """Fingerprint the DLS principal and caller filters used by an evidence read."""
+    canonical = json.dumps(
+        {"user_id": user_id, "filters": filters or {}},
+        sort_keys=True,
+        default=str,
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
 class HttpReranker:
@@ -172,7 +349,12 @@ class HttpReranker:
             if not isinstance(result, dict):
                 continue
             index = result.get("index", result.get("document_index"))
-            if not isinstance(index, int) or index < 0 or index >= len(hits) or index in used_indexes:
+            if (
+                not isinstance(index, int)
+                or index < 0
+                or index >= len(hits)
+                or index in used_indexes
+            ):
                 continue
             raw_score = result.get("relevance_score", result.get("score", 0.0))
             try:

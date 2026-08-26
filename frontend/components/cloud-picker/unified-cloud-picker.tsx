@@ -50,7 +50,7 @@ export const UnifiedCloudPicker = ({
       chunkOverlap: 200,
       ocr: false,
       pictureDescriptions: false,
-      embeddingModel: "text-embedding-3-small",
+      embeddingModel: "text-embedding-3-large",
     });
 
   const ingestSettings = isControlled

@@ -29,6 +29,7 @@ export interface KnowledgeSettings {
   retrieval_vector_candidates?: number;
   retrieval_rrf_k?: number;
   retrieval_max_chunks_per_document?: number;
+  retrieval_adaptive_max_chunks_per_document?: number;
   retrieval_reranker_url?: string;
   retrieval_reranker_timeout?: number;
   retrieval_debug?: boolean;

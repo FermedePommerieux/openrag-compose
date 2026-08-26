@@ -42,6 +42,7 @@ def test_latest_openai_models_are_available_without_changing_the_default():
         "gpt-5.6-luna",
     } <= set(OPENAI_VALIDATION_MODELS)
     assert OPENAI_DEFAULT_LANGUAGE_MODEL == "gpt-5.4-mini"
+    assert OPENAI_DEFAULT_EMBEDDING_MODEL == "text-embedding-3-large"
 
 
 def _make_config(

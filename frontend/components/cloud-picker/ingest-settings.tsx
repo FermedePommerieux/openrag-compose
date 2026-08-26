@@ -104,7 +104,7 @@ export const IngestSettings = ({
     embeddingModel:
       apiSettings.knowledge?.embedding_model?.trim() ||
       defaultEmbedding ||
-      "text-embedding-3-small",
+      "text-embedding-3-large",
   };
 
   const currentSettings = settings ?? defaultSettings;
@@ -122,8 +122,8 @@ export const IngestSettings = ({
         ? base
         : [
             {
-              value: "text-embedding-3-small",
-              label: "text-embedding-3-small",
+              value: "text-embedding-3-large",
+              label: "text-embedding-3-large",
             },
           ];
     }
@@ -142,7 +142,7 @@ export const IngestSettings = ({
       (m) => m.value === currentSettings.embeddingModel,
     ) && currentSettings.embeddingModel
       ? currentSettings.embeddingModel
-      : (embeddingSelectOptions[0]?.value ?? "text-embedding-3-small");
+      : (embeddingSelectOptions[0]?.value ?? "text-embedding-3-large");
 
   const handleSettingsChange = (newSettings: Partial<IngestSettingsType>) => {
     onSettingsChange?.({ ...currentSettings, ...newSettings });

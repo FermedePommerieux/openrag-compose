@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import datetime
 import hashlib
+import hmac
 import json
 from dataclasses import dataclass, field
 from typing import Any
@@ -92,7 +93,17 @@ class DocumentIndexWriter:
         if not chunks:
             if final:
                 await self._refresh(context.index_name or get_index_name())
-            return {"indexed_chunks": 0, "ingest_run_id": context.ingest_run_id}
+                final_profile = await self._finalize_document_profile(
+                    context,
+                    index_name=context.index_name or get_index_name(),
+                )
+            else:
+                final_profile = {}
+            return {
+                "indexed_chunks": 0,
+                "ingest_run_id": context.ingest_run_id,
+                **final_profile,
+            }
 
         first_vector = chunks[0].vector
         if not first_vector:
@@ -135,8 +146,10 @@ class DocumentIndexWriter:
 
         result = await client.bulk(body=bulk_body, refresh=refresh)
         self._raise_for_bulk_errors(result)
+        profile: dict[str, Any] = {}
         if final:
             await self._refresh(index_name)
+            profile = await self._finalize_document_profile(context, index_name=index_name)
 
         logger.info(
             "Indexed document chunks",
@@ -150,6 +163,239 @@ class DocumentIndexWriter:
             "indexed_chunks": len(chunks),
             "ingest_run_id": context.ingest_run_id,
             "document_id": context.document_id,
+            **profile,
+        }
+
+    @staticmethod
+    def _document_profile_scope(context: DocumentIndexContext) -> list[dict[str, Any]]:
+        """Return the exact generation/ownership scope used for profiling.
+
+        Profiling is performed before a replacement generation is promoted, so
+        the random ingest run id is the primary boundary.  The document and
+        owner filters remain mandatory defence in depth for the administrative
+        writer client.
+        """
+        if not context.document_id:
+            raise ValueError("Cannot profile an ingest without a document id")
+        if not context.ingest_run_id:
+            raise ValueError("Cannot profile an ingest without a generation id")
+        filters: list[dict[str, Any]] = [{"term": {"document_id": context.document_id}}]
+        filters.append({"term": {"ingest_run_id": context.ingest_run_id}})
+        if context.owner is None:
+            filters.append({"bool": {"must_not": {"exists": {"field": "owner"}}}})
+        else:
+            filters.append({"term": {"owner": context.owner}})
+        return filters
+
+    async def _finalize_document_profile(
+        self,
+        context: DocumentIndexContext,
+        *,
+        index_name: str,
+    ) -> dict[str, Any]:
+        """Compute a deterministic document profile and stamp every chunk.
+
+        This is the ingestion analysis pass used by adaptive retrieval.  It is
+        deliberately based on indexed chunk/page counters rather than an LLM
+        summary, so the profile is reproducible, cheap, and cannot invent
+        document properties.  It also works when Langflow delivered chunks in
+        several callback batches.
+        """
+        client = self._get_write_client()
+        filters = self._document_profile_scope(context)
+        response = await client.search(
+            index=index_name,
+            body={
+                "query": {"bool": {"filter": filters}},
+                "size": 0,
+                "track_total_hits": True,
+            },
+        )
+        total = response.get("hits", {}).get("total", 0)
+        chunk_count = int(total.get("value", 0) if isinstance(total, dict) else total or 0)
+        if isinstance(total, dict) and total.get("relation", "eq") != "eq":
+            raise RuntimeError("Document profiling requires an exact indexed chunk count")
+        if chunk_count < 1:
+            raise RuntimeError(
+                "Document profiling found no indexed chunks for the completed ingest run"
+            )
+        leaf_profile = await self._compute_document_leaf_profile(
+            client,
+            index_name=index_name,
+            filters=filters,
+            expected_chunk_count=chunk_count,
+        )
+        page_count = leaf_profile["page_count"]
+        max_page = leaf_profile["max_page"]
+        character_count = leaf_profile["character_count"]
+        content_digest = leaf_profile["content_sha256"]
+        if chunk_count <= 8:
+            size_class = "small"
+        elif chunk_count <= 32:
+            size_class = "medium"
+        elif chunk_count <= 128:
+            size_class = "large"
+        else:
+            size_class = "very_large"
+
+        profile = {
+            "document_profile_version": 1,
+            "document_chunk_count": chunk_count,
+            "document_page_count": page_count,
+            "document_max_page": max_page,
+            "document_character_count": character_count,
+            "document_size_class": size_class,
+            "document_content_sha256": content_digest,
+            "document_order_verified": True,
+        }
+        update_result = await client.update_by_query(
+            index=index_name,
+            body={
+                "query": {"bool": {"filter": filters}},
+                "script": {
+                    "lang": "painless",
+                    "source": (
+                        "ctx._source.document_profile_version=params.version; "
+                        "ctx._source.document_chunk_count=params.chunks; "
+                        "ctx._source.document_page_count=params.pages; "
+                        "ctx._source.document_max_page=params.max_page; "
+                        "ctx._source.document_character_count=params.characters; "
+                        "ctx._source.document_size_class=params.size_class; "
+                        "ctx._source.document_content_sha256=params.content_digest; "
+                        "ctx._source.document_order_verified=true"
+                    ),
+                    "params": {
+                        "version": profile["document_profile_version"],
+                        "chunks": chunk_count,
+                        "pages": page_count,
+                        "max_page": max_page,
+                        "characters": character_count,
+                        "size_class": size_class,
+                        "content_digest": content_digest,
+                    },
+                },
+            },
+            refresh=True,
+            conflicts="proceed",
+        )
+        updated = int(update_result.get("updated", 0) or 0)
+        if updated != chunk_count:
+            raise RuntimeError(
+                "Document profiling did not update every indexed chunk: "
+                f"expected {chunk_count}, updated {updated}"
+            )
+        logger.info(
+            "Finalized deterministic document profile",
+            index_name=index_name,
+            document_id=context.document_id,
+            ingest_run_id=context.ingest_run_id,
+            **profile,
+        )
+        return profile
+
+    @staticmethod
+    async def _compute_document_leaf_profile(
+        client: Any,
+        *,
+        index_name: str,
+        filters: list[dict[str, Any]],
+        expected_chunk_count: int,
+    ) -> dict[str, Any]:
+        """Verify and profile the complete ordered leaf set exactly.
+
+        No cardinality aggregation is used because it is probabilistic. Every
+        leaf is scanned in source order, its text hash is recalculated, and its
+        page and character counters are accumulated locally. ``search_after``
+        avoids the result-window limit for arbitrarily large documents.
+        """
+        digest = hashlib.sha256()
+        seen = 0
+        pages: set[int] = set()
+        max_page = 0
+        character_count = 0
+        search_after: list[Any] | None = None
+        while True:
+            body: dict[str, Any] = {
+                "query": {"bool": {"filter": filters}},
+                "_source": [
+                    "chunk_id",
+                    "chunk_content_sha256",
+                    "chunk_character_count",
+                    "chunk_index",
+                    "page",
+                    "text",
+                ],
+                "size": 1000,
+                "sort": [
+                    {"chunk_index": {"order": "asc", "missing": "_last"}},
+                    {"chunk_id": {"order": "asc"}},
+                ],
+            }
+            if search_after is not None:
+                body["search_after"] = search_after
+            response = await client.search(index=index_name, body=body)
+            hits = response.get("hits", {}).get("hits", [])
+            if not hits:
+                break
+            for hit in hits:
+                source = hit.get("_source", {})
+                chunk_id = source.get("chunk_id")
+                chunk_digest = source.get("chunk_content_sha256")
+                chunk_index = source.get("chunk_index")
+                text = source.get("text")
+                stored_character_count = source.get("chunk_character_count")
+                if (
+                    not chunk_id
+                    or not isinstance(chunk_digest, str)
+                    or len(chunk_digest) != 64
+                    or not isinstance(chunk_index, int)
+                    or not isinstance(text, str)
+                    or not isinstance(stored_character_count, int)
+                ):
+                    raise RuntimeError(
+                        "Document profiling requires verifiable content metadata for every chunk"
+                    )
+                if chunk_index != seen:
+                    raise RuntimeError(
+                        "Document profiling requires unique contiguous chunk_index values: "
+                        f"expected {seen}, found {chunk_index}"
+                    )
+                recalculated_digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
+                if not hmac.compare_digest(recalculated_digest, chunk_digest):
+                    raise RuntimeError("Document profiling detected a chunk text digest mismatch")
+                if stored_character_count != len(text):
+                    raise RuntimeError("Document profiling detected a character count mismatch")
+                page = source.get("page")
+                if isinstance(page, int):
+                    pages.add(page)
+                    max_page = max(max_page, page)
+                character_count += len(text)
+                digest.update(str(chunk_id).encode("utf-8"))
+                digest.update(b"\0")
+                digest.update(str(chunk_digest).encode("ascii"))
+                digest.update(b"\0")
+                digest.update(str(chunk_index).encode("ascii"))
+                digest.update(b"\0")
+                digest.update(str(page if page is not None else "").encode("utf-8"))
+                digest.update(b"\n")
+                seen += 1
+            search_after = hits[-1].get("sort")
+            if not search_after:
+                if len(hits) < 1000:
+                    break
+                raise RuntimeError("Document profiling cannot paginate without stable sort values")
+            if len(hits) < 1000:
+                break
+        if seen != expected_chunk_count:
+            raise RuntimeError(
+                "Document profiling snapshot is incomplete: "
+                f"expected {expected_chunk_count} chunks, hashed {seen}"
+            )
+        return {
+            "content_sha256": digest.hexdigest(),
+            "page_count": len(pages),
+            "max_page": max_page,
+            "character_count": character_count,
         }
 
     @staticmethod
@@ -267,6 +513,16 @@ class DocumentIndexWriter:
             "parser": {"type": "keyword"},
             "chunk_size": {"type": "integer"},
             "chunk_overlap": {"type": "integer"},
+            "chunk_character_count": {"type": "integer"},
+            "chunk_content_sha256": {"type": "keyword"},
+            "document_profile_version": {"type": "integer"},
+            "document_chunk_count": {"type": "integer"},
+            "document_page_count": {"type": "integer"},
+            "document_max_page": {"type": "integer"},
+            "document_character_count": {"type": "long"},
+            "document_size_class": {"type": "keyword"},
+            "document_content_sha256": {"type": "keyword"},
+            "document_order_verified": {"type": "boolean"},
         }
         try:
             mappings = await client.indices.get_mapping(index=index_name)
@@ -276,9 +532,7 @@ class DocumentIndexWriter:
                 if isinstance(candidate, dict):
                     properties.update(candidate)
             missing = {
-                name: definition
-                for name, definition in required.items()
-                if name not in properties
+                name: definition for name, definition in required.items() if name not in properties
             }
             incompatible = {
                 name: properties[name].get("type")
@@ -328,11 +582,11 @@ class DocumentIndexWriter:
             "mimetype": mimetype,
             "page": chunk.page if chunk.page is not None else metadata.get("page", 0),
             "chunk_index": (
-                chunk.chunk_index
-                if chunk.chunk_index is not None
-                else metadata.get("chunk_index")
+                chunk.chunk_index if chunk.chunk_index is not None else metadata.get("chunk_index")
             ),
             "text": chunk.text,
+            "chunk_character_count": len(chunk.text),
+            "chunk_content_sha256": hashlib.sha256(chunk.text.encode("utf-8")).hexdigest(),
             embedding_field: chunk.vector,
             "embedding_model": context.embedding_model,
             "embedding_dimensions": len(chunk.vector),

@@ -19,6 +19,7 @@ class LangflowIngestChunk(BaseModel):
     text: str
     vector: list[float] = Field(min_length=1)
     page: int | None = None
+    chunk_index: int | None = Field(default=None, ge=0)
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -91,10 +92,14 @@ async def ingest_langflow_chunks(
             text=chunk.text,
             vector=chunk.vector,
             page=chunk.page,
-            # Index is local to a Langflow callback batch; the trusted chunk id
-            # remains globally unique.  It still gives clients a stable order
-            # for chunks delivered together by the flow.
-            chunk_index=index,
+            # Current repository flows send a document-global index. The
+            # fallback keeps older callbacks ingestible but their non-contiguous
+            # order will fail the final verifiable-profile check when batched.
+            chunk_index=(
+                chunk.chunk_index
+                if chunk.chunk_index is not None
+                else body.batch_id * 1_000_000 + index
+            ),
             metadata={
                 **chunk.metadata,
                 "langflow_chunk_id": chunk.id,

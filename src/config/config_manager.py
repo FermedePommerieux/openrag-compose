@@ -191,7 +191,10 @@ class KnowledgeConfig:
     retrieval_lexical_candidates: int = 50
     retrieval_vector_candidates: int = 50
     retrieval_rrf_k: int = 60
+    # The historical value is now the guaranteed diversity quota.  Documents
+    # profiled at ingestion may contribute more chunks, up to the adaptive cap.
     retrieval_max_chunks_per_document: int = 3
+    retrieval_adaptive_max_chunks_per_document: int = 20
     retrieval_reranker_url: str = ""
     retrieval_reranker_timeout: int = 5
     retrieval_debug: bool = False
@@ -273,57 +276,62 @@ _RETRIEVAL_V3_SYSTEM_PROMPT = _RETRIEVAL_V2_SYSTEM_PROMPT.replace(
     1,
 )
 
-DEFAULT_SYSTEM_PROMPT = _RETRIEVAL_V3_SYSTEM_PROMPT.replace(
-    "### File Upload vs URL Distinction\n"
-    "**File uploads** (already in context):\n"
-    "- Filenames like: README.md, document.pdf, notes.txt, data.csv\n"
-    "- When you see file confirmation messages\n"
-    "- Use conversation context directly - do NOT call URL tool\n"
-    "**Web URLs** (need ingestion):\n"
-    "- Start with http:// or https://\n"
-    "- Examples: https://example.com, http://docs.site.org\n"
-    "- User explicitly asks to fetch from web\n",
-    "",
-    1,
-).replace(
-    "### Calculator Usage Rules\n"
-    "Use the calculator when:\n"
-    "- Performing arithmetic\n"
-    "- Estimating totals\n"
-    "- Comparing values\n"
-    "- Modeling cost, time, effort, scale, or projections\n"
-    "Do not perform math internally. **Call the calculator tool instead.**\n",
-    "",
-    1,
-).replace(
-    "### Retrieval Query Construction\n"
-    "Use only stable identifiers and established context. Never add a candidate answer "
-    "for the attribute being looked up. For `DESTINATAIRE: RODA TEST` and "
-    "`ÉMETTEUR: POMMERIEUX TEST`, asking for the emitter permits "
-    '`"émetteur document-146"`, not `"émetteur document-146 RODA TEST"`.',
-    "### Retrieval Query Construction\n"
-    "Build neutral queries from stable identifiers, established context, and the concept "
-    "being requested. Never add a candidate answer for an unknown attribute.",
-    1,
-).replace(
-    "### Evidence and Role Attribution\n"
-    "Before assigning named roles, review all retrieved chunks, not only the "
-    "highest-ranked passage. Never infer a role from mention order or prominence. "
-    "Use explicit labels and document-wide structural evidence such as addressee blocks, "
-    "signatures, page furniture, legal identity, and payment details. Keep distinct "
-    "entities distinct; if evidence is insufficient or conflicting, retrieve again with "
-    "neutral role terms rather than guessing.\n",
-    "### Evidence-First Retrieval and Provenance\n"
-    "For any factual request that may depend on indexed sources and is not grounded in "
-    "conversation file content, call OpenSearch before answering or asking for a source. "
-    "Retrieve enough evidence to represent the relevant sources; never treat the top "
-    "passage as complete. Keep every fact scoped to its source and never merge fields "
-    "across documents. For relationships or roles, review all relevant chunks and rely "
-    "on explicit labels plus document structure (identity blocks, signatures, and legal "
-    "or payment details); never infer from mention order or prominence. If evidence "
-    "conflicts, is ambiguous, or is insufficient, expose "
-    "that limitation, ask for clarification when useful, and never guess.\n",
-    1,
+DEFAULT_SYSTEM_PROMPT = (
+    _RETRIEVAL_V3_SYSTEM_PROMPT.replace(
+        "### File Upload vs URL Distinction\n"
+        "**File uploads** (already in context):\n"
+        "- Filenames like: README.md, document.pdf, notes.txt, data.csv\n"
+        "- When you see file confirmation messages\n"
+        "- Use conversation context directly - do NOT call URL tool\n"
+        "**Web URLs** (need ingestion):\n"
+        "- Start with http:// or https://\n"
+        "- Examples: https://example.com, http://docs.site.org\n"
+        "- User explicitly asks to fetch from web\n",
+        "",
+        1,
+    )
+    .replace(
+        "### Calculator Usage Rules\n"
+        "Use the calculator when:\n"
+        "- Performing arithmetic\n"
+        "- Estimating totals\n"
+        "- Comparing values\n"
+        "- Modeling cost, time, effort, scale, or projections\n"
+        "Do not perform math internally. **Call the calculator tool instead.**\n",
+        "",
+        1,
+    )
+    .replace(
+        "### Retrieval Query Construction\n"
+        "Use only stable identifiers and established context. Never add a candidate answer "
+        "for the attribute being looked up. For `DESTINATAIRE: RODA TEST` and "
+        "`ÉMETTEUR: POMMERIEUX TEST`, asking for the emitter permits "
+        '`"émetteur document-146"`, not `"émetteur document-146 RODA TEST"`.',
+        "### Retrieval Query Construction\n"
+        "Build neutral queries from stable identifiers, established context, and the concept "
+        "being requested. Never add a candidate answer for an unknown attribute.",
+        1,
+    )
+    .replace(
+        "### Evidence and Role Attribution\n"
+        "Before assigning named roles, review all retrieved chunks, not only the "
+        "highest-ranked passage. Never infer a role from mention order or prominence. "
+        "Use explicit labels and document-wide structural evidence such as addressee blocks, "
+        "signatures, page furniture, legal identity, and payment details. Keep distinct "
+        "entities distinct; if evidence is insufficient or conflicting, retrieve again with "
+        "neutral role terms rather than guessing.\n",
+        "### Evidence-First Retrieval and Provenance\n"
+        "For any factual request that may depend on indexed sources and is not grounded in "
+        "conversation file content, call OpenSearch before answering or asking for a source. "
+        "Retrieve enough evidence to represent the relevant sources; never treat the top "
+        "passage as complete. Keep every fact scoped to its source and never merge fields "
+        "across documents. For relationships or roles, review all relevant chunks and rely "
+        "on explicit labels plus document structure (identity blocks, signatures, and legal "
+        "or payment details); never infer from mention order or prominence. If evidence "
+        "conflicts, is ambiguous, or is insufficient, expose "
+        "that limitation, ask for clarification when useful, and never guess.\n",
+        1,
+    )
 )
 
 _RETRIEVAL_V4_EVIDENCE_FIRST_SYSTEM_PROMPT = DEFAULT_SYSTEM_PROMPT.replace(
@@ -334,6 +342,23 @@ _RETRIEVAL_V4_EVIDENCE_FIRST_SYSTEM_PROMPT = DEFAULT_SYSTEM_PROMPT.replace(
     1,
 )
 
+# The readable prompt is shared with the repository-owned Langflow graph. The
+# backend image always includes ``flows/``; retaining the previous prompt as a
+# fallback keeps source-only packaging usable without weakening upgrades from
+# a known historical default.
+_RETRIEVAL_V5_FOCUSED_SYSTEM_PROMPT = DEFAULT_SYSTEM_PROMPT
+_DOCUMENTALIST_PROMPT_PATH = (
+    Path(__file__).resolve().parents[2] / "flows" / "components" / "openrag_agent_system_prompt.md"
+)
+try:
+    DEFAULT_SYSTEM_PROMPT = _DOCUMENTALIST_PROMPT_PATH.read_text(encoding="utf-8").rstrip("\n")
+except OSError:
+    logger.warning(
+        "Documentalist system prompt file is unavailable; using bundled fallback",
+        path=str(_DOCUMENTALIST_PROMPT_PATH),
+    )
+    DEFAULT_SYSTEM_PROMPT = _RETRIEVAL_V5_FOCUSED_SYSTEM_PROMPT
+
 # Recognize every shipped default so an in-place upgrade can safely synchronize
 # security, query-neutrality, role-evidence, and document-reference rules.
 LEGACY_SYSTEM_PROMPTS = (
@@ -342,6 +367,7 @@ LEGACY_SYSTEM_PROMPTS = (
     _RETRIEVAL_V2_SYSTEM_PROMPT,
     _RETRIEVAL_V3_SYSTEM_PROMPT,
     _RETRIEVAL_V4_EVIDENCE_FIRST_SYSTEM_PROMPT,
+    _RETRIEVAL_V5_FOCUSED_SYSTEM_PROMPT,
 )
 
 

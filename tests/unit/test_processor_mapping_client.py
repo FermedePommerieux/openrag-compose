@@ -39,8 +39,38 @@ async def test_standard_processor_uses_shared_writer_for_embedding_mapping_and_w
         admin_client.bulk_calls.append(kwargs)
         return {"errors": False, "items": []}
 
+    async def admin_search(*, index, body):
+        if body.get("size") == 0:
+            return {
+                "hits": {"total": {"value": 1, "relation": "eq"}},
+                "aggregations": {
+                    "page_count": {"value": 1},
+                    "max_page": {"value": 1},
+                    "character_count": {"value": 18},
+                    "chunk_index_count": {"value": 1},
+                    "min_chunk_index": {"value": 0},
+                    "max_chunk_index": {"value": 0},
+                },
+            }
+        source = admin_client.bulk_calls[-1]["body"][1]
+        return {
+            "hits": {
+                "hits": [
+                    {
+                        "sort": [source["chunk_id"]],
+                        "_source": source,
+                    }
+                ]
+            }
+        }
+
+    async def update_by_query(**kwargs):
+        return {"updated": 1}
+
     admin_client.indices = Indices()
     admin_client.bulk = bulk
+    admin_client.search = admin_search
+    admin_client.update_by_query = update_by_query
 
     class SessionManager:
         def get_user_opensearch_client(self, user_id, jwt_token):

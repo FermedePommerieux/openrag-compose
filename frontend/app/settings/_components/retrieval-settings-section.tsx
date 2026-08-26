@@ -37,6 +37,7 @@ const FALLBACK_RETRIEVAL = {
   vectorCandidates: 50,
   rrfK: 60,
   maxChunksPerDocument: 3,
+  adaptiveMaxChunksPerDocument: 20,
 };
 
 function effectiveValues(knowledge?: KnowledgeSettings) {
@@ -53,6 +54,9 @@ function effectiveValues(knowledge?: KnowledgeSettings) {
     maxChunksPerDocument:
       knowledge?.retrieval_max_chunks_per_document ??
       FALLBACK_RETRIEVAL.maxChunksPerDocument,
+    adaptiveMaxChunksPerDocument:
+      knowledge?.retrieval_adaptive_max_chunks_per_document ??
+      FALLBACK_RETRIEVAL.adaptiveMaxChunksPerDocument,
   };
 }
 
@@ -103,6 +107,8 @@ export function RetrievalSettingsSection() {
   const [maxChunksPerDocument, setMaxChunksPerDocument] = useState(
     FALLBACK_RETRIEVAL.maxChunksPerDocument,
   );
+  const [adaptiveMaxChunksPerDocument, setAdaptiveMaxChunksPerDocument] =
+    useState(FALLBACK_RETRIEVAL.adaptiveMaxChunksPerDocument);
   const [validationError, setValidationError] = useState<string | null>(null);
 
   const updateSettings = useUpdateSettingsMutation({
@@ -121,6 +127,7 @@ export function RetrievalSettingsSection() {
     setVectorCandidates(values.vectorCandidates);
     setRrfK(values.rrfK);
     setMaxChunksPerDocument(values.maxChunksPerDocument);
+    setAdaptiveMaxChunksPerDocument(values.adaptiveMaxChunksPerDocument);
   }, [settings.knowledge]);
 
   const saved = effectiveValues(settings.knowledge);
@@ -131,7 +138,8 @@ export function RetrievalSettingsSection() {
       (lexicalCandidates !== saved.lexicalCandidates ||
         vectorCandidates !== saved.vectorCandidates ||
         rrfK !== saved.rrfK ||
-        maxChunksPerDocument !== saved.maxChunksPerDocument));
+        maxChunksPerDocument !== saved.maxChunksPerDocument ||
+        adaptiveMaxChunksPerDocument !== saved.adaptiveMaxChunksPerDocument));
 
   const save = () => {
     if (strategy === "rrf") {
@@ -149,7 +157,16 @@ export function RetrievalSettingsSection() {
       }
       if (maxChunksPerDocument < 1 || maxChunksPerDocument > 100) {
         setValidationError(
-          "Max chunks per document must be between 1 and 100.",
+          "Base chunks per document must be between 1 and 100.",
+        );
+        return;
+      }
+      if (
+        adaptiveMaxChunksPerDocument < maxChunksPerDocument ||
+        adaptiveMaxChunksPerDocument > 100
+      ) {
+        setValidationError(
+          "Adaptive maximum must be between the base quota and 100.",
         );
         return;
       }
@@ -165,6 +182,8 @@ export function RetrievalSettingsSection() {
             retrieval_vector_candidates: vectorCandidates,
             retrieval_rrf_k: rrfK,
             retrieval_max_chunks_per_document: maxChunksPerDocument,
+            retrieval_adaptive_max_chunks_per_document:
+              adaptiveMaxChunksPerDocument,
           }
         : {}),
     });
@@ -283,11 +302,19 @@ export function RetrievalSettingsSection() {
                 />
                 <NumericField
                   id="retrieval-max-chunks-per-document"
-                  label="Max chunks per document"
-                  help="1–100. Keeps one document from monopolizing results."
+                  label="Base chunks per document"
+                  help="Guaranteed diversity quota before adaptive evidence fill."
                   value={maxChunksPerDocument}
                   max={100}
                   onChange={setMaxChunksPerDocument}
+                />
+                <NumericField
+                  id="retrieval-adaptive-max-chunks-per-document"
+                  label="Adaptive maximum"
+                  help="Upper bound for focused search only; exhaustive mode has no top-k cutoff."
+                  value={adaptiveMaxChunksPerDocument}
+                  max={100}
+                  onChange={setAdaptiveMaxChunksPerDocument}
                 />
               </div>
             </section>

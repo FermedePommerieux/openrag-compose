@@ -131,6 +131,7 @@ async def test_update_settings_persists_hybrid_and_rrf_configuration(monkeypatch
             retrieval_vector_candidates=80,
             retrieval_rrf_k=42,
             retrieval_max_chunks_per_document=4,
+            retrieval_adaptive_max_chunks_per_document=25,
         ),
         session_manager=object(),
         user=None,
@@ -146,6 +147,7 @@ async def test_update_settings_persists_hybrid_and_rrf_configuration(monkeypatch
     assert saved.retrieval_vector_candidates == 80
     assert saved.retrieval_rrf_k == 42
     assert saved.retrieval_max_chunks_per_document == 4
+    assert saved.retrieval_adaptive_max_chunks_per_document == 25
 
 
 @pytest.mark.parametrize(
@@ -159,6 +161,8 @@ async def test_update_settings_persists_hybrid_and_rrf_configuration(monkeypatch
         ("retrieval_rrf_k", 1001),
         ("retrieval_max_chunks_per_document", 0),
         ("retrieval_max_chunks_per_document", 101),
+        ("retrieval_adaptive_max_chunks_per_document", 0),
+        ("retrieval_adaptive_max_chunks_per_document", 101),
     ],
 )
 def test_retrieval_settings_reject_backend_out_of_range_values(field, value):

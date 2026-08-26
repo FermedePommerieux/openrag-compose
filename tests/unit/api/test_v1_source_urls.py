@@ -142,3 +142,88 @@ async def test_search_endpoint_preserves_source_url():
     assert payload["results"][0]["chunk_index"] == 7
     assert payload["results"][0]["chunking_strategy"] == "hybrid"
     assert payload["results"][0]["connector_file_id"] == "drive-file-1"
+
+
+@pytest.mark.asyncio
+async def test_search_endpoint_preserves_exhaustive_coverage_contract():
+    search_service = MagicMock()
+    search_service.search = AsyncMock(
+        return_value={
+            "results": [{"chunk_id": "chunk-1", "text": "Evidence"}],
+            "coverage": {
+                "mode": "exhaustive",
+                "document_id": "document-1",
+                "covered_chunks": 20,
+                "total_chunks": 40,
+                "complete": False,
+                "next_cursor": "cursor-2",
+            },
+        }
+    )
+    user = User(
+        user_id="user-1",
+        email="u@example.com",
+        name="User",
+        jwt_token="Bearer tok",
+    )
+
+    response = await search_endpoint(
+        SearchV1Body(
+            query="audit",
+            evidence_mode="exhaustive",
+            document_id="document-1",
+            cursor="cursor-1",
+            batch_size=20,
+        ),
+        search_service=search_service,
+        user=user,
+        knowledge_filter_service=MagicMock(),
+    )
+
+    payload = json.loads(response.body.decode())
+    assert payload["coverage"]["complete"] is False
+    search_service.search.assert_awaited_once()
+    assert search_service.search.await_args.kwargs["evidence_mode"] == "exhaustive"
+    assert search_service.search.await_args.kwargs["document_id"] == "document-1"
+    assert search_service.search.await_args.kwargs["cursor"] == "cursor-1"
+
+
+@pytest.mark.asyncio
+async def test_exhaustive_search_accepts_an_empty_ranked_query():
+    """Source-order reading is keyed by document id, not a semantic query."""
+    search_service = MagicMock()
+    search_service.search = AsyncMock(
+        return_value={
+            "results": [],
+            "coverage": {
+                "mode": "exhaustive",
+                "document_id": "document-1",
+                "snapshot_sha256": "a" * 64,
+                "covered_chunks": 0,
+                "total_chunks": 0,
+                "coverage_ratio": 1.0,
+                "complete": True,
+                "next_cursor": None,
+            },
+        }
+    )
+    user = User(
+        user_id="user-1",
+        email="u@example.com",
+        name="User",
+        jwt_token="Bearer tok",
+    )
+
+    response = await search_endpoint(
+        SearchV1Body(
+            query="",
+            evidence_mode="exhaustive",
+            document_id="document-1",
+        ),
+        search_service=search_service,
+        user=user,
+        knowledge_filter_service=MagicMock(),
+    )
+
+    assert response.status_code == 200
+    search_service.search.assert_awaited_once()

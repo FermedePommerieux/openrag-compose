@@ -5,11 +5,11 @@ Provides semantic search functionality.
 Uses API key authentication.
 """
 
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import Depends
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from api.v1._filter_resolution import merge_filter_overrides, resolve_filter_id
 from auth_context import set_auth_context
@@ -31,6 +31,10 @@ class SearchV1Body(BaseModel):
     limit: int = 10
     score_threshold: float = 0
     filter_id: str | None = None
+    evidence_mode: Literal["focused", "exhaustive"] = "focused"
+    document_id: str | None = None
+    cursor: str = ""
+    batch_size: int = Field(default=20, ge=1, le=50)
 
 
 async def search_endpoint(
@@ -41,8 +45,13 @@ async def search_endpoint(
 ):
     """Perform semantic search on documents. POST /v1/search"""
     query = body.query.strip()
-    if not query:
+    if body.evidence_mode == "focused" and not query:
         return JSONResponse({"error": "Query is required"}, status_code=400)
+    if body.evidence_mode == "exhaustive" and not (body.document_id or "").strip():
+        return JSONResponse(
+            {"error": "document_id is required for exhaustive retrieval"},
+            status_code=400,
+        )
 
     # API-key requests can arrive without a JWT. Set the auth context before
     # resolving filters so search_tool() can still identify the caller.
@@ -80,7 +89,14 @@ async def search_endpoint(
             filters=resolved_filters or {},
             limit=resolved_limit,
             score_threshold=resolved_score_threshold,
+            evidence_mode=body.evidence_mode,
+            document_id=body.document_id,
+            cursor=body.cursor,
+            batch_size=min(50, max(1, body.batch_size)),
         )
+
+        if body.evidence_mode == "exhaustive":
+            return JSONResponse(result)
 
         results = [
             {
@@ -101,6 +117,8 @@ async def search_endpoint(
 
         return JSONResponse({"results": results})
 
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
     except OpenSearchDiskSpaceError as e:
         logger.error("Search blocked by disk space constraint", error=str(e), user_id=user.user_id)
         return JSONResponse({"error": DISK_SPACE_ERROR_MESSAGE}, status_code=507)

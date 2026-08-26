@@ -167,6 +167,49 @@ const results = await client.search.query("API documentation", {
 });
 ```
 
+### Verifiable exhaustive reading
+
+Focused search discovers candidate documents. Exhaustive mode then reads every
+indexed leaf chunk of one immutable document snapshot in source order. A document
+is complete only when the returned coverage certificate says `complete === true`.
+
+```typescript
+// 1. Discover the relevant document.
+const focused = await client.search.query("termination conditions");
+const documentId = focused.results[0].document_id;
+if (!documentId) throw new Error("Focused result has no document identity");
+
+// 2. Read and verify every indexed chunk of that document snapshot.
+let cursor: string | undefined;
+let snapshot: string | null | undefined;
+const allChunks = [];
+let totalChunks = 0;
+for (;;) {
+  const page = await client.search.query("", {
+    evidenceMode: "exhaustive",
+    documentId,
+    cursor,
+    batchSize: 50,
+  });
+  if (!page.coverage) throw new Error("Missing coverage certificate");
+  snapshot ??= page.coverage.snapshot_sha256;
+  if (page.coverage.snapshot_sha256 !== snapshot) {
+    throw new Error("Document snapshot changed during exhaustive reading");
+  }
+  allChunks.push(...page.results);
+  totalChunks = page.coverage.total_chunks;
+  if (page.coverage.complete) break;
+  cursor = page.coverage.next_cursor ?? undefined;
+  if (!cursor) throw new Error("Incomplete response has no continuation cursor");
+}
+
+if (allChunks.length !== totalChunks) throw new Error("Incomplete evidence set");
+```
+
+Repeat this loop separately for each document when a conclusion spans several
+documents. Summaries and ranked matches help navigation; they are not proof of
+complete coverage.
+
 ## Documents
 
 ```typescript

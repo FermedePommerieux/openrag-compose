@@ -35,6 +35,7 @@ class SettingsUpdateBody(BaseModel):
     retrieval_vector_candidates: int | None = Field(None, gt=0, le=500)
     retrieval_rrf_k: int | None = Field(None, gt=0, le=1000)
     retrieval_max_chunks_per_document: int | None = Field(None, gt=0, le=100)
+    retrieval_adaptive_max_chunks_per_document: int | None = Field(None, gt=0, le=100)
     retrieval_reranker_url: str | None = Field(None, max_length=2048)
     retrieval_reranker_timeout: int | None = Field(None, gt=0, le=120)
     retrieval_debug: bool | None = None
@@ -205,6 +206,7 @@ class KnowledgeConfig(BaseModel):
     retrieval_vector_candidates: int | None = None
     retrieval_rrf_k: int | None = None
     retrieval_max_chunks_per_document: int | None = None
+    retrieval_adaptive_max_chunks_per_document: int | None = None
     retrieval_reranker_url: str | None = None
     retrieval_reranker_timeout: int | None = None
     retrieval_debug: bool | None = None

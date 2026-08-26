@@ -296,6 +296,29 @@ def _unversioned_retrieval_v2_flow() -> dict:
     return json.loads((ROOT / "flows" / "openrag_agent.json").read_text())
 
 
+def _versioned_retrieval_v5_flow() -> dict:
+    """Load the exact deployed repository graph and add its runtime marker."""
+    raw = subprocess.check_output(
+        [
+            "git",
+            "show",
+            "b8a8203f2c2e506bba1670f3364570876d6aa69b:flows/openrag_agent.json",
+        ],
+        cwd=ROOT,
+        text=True,
+    )
+    flow = json.loads(raw)
+    flow["data"]["openrag_retrieval_version"] = 5
+    return flow
+
+
+def _previous_bundled_retrieval_flow() -> dict:
+    """Load the pre-documentalist bundled graph for historical migrations."""
+    flow = _versioned_retrieval_v5_flow()
+    flow["data"].pop("openrag_retrieval_version")
+    return flow
+
+
 def _flow_response(status_code: int, payload: dict | None = None) -> MagicMock:
     response = MagicMock(status_code=status_code)
     response.json.return_value = payload
@@ -378,7 +401,9 @@ async def test_migrate_known_lifecycle_retrieval_flow_is_backed_up_and_idempoten
 
     with (
         patch("services.flows_service.clients.langflow_request", side_effect=mock_langflow_request),
-        patch.object(service, "_backup_flow", new_callable=AsyncMock, return_value="/tmp/flow.json") as backup,
+        patch.object(
+            service, "_backup_flow", new_callable=AsyncMock, return_value="/tmp/flow.json"
+        ) as backup,
     ):
         first = await service.migrate_persisted_retrieval_flow()
         second = await service.migrate_persisted_retrieval_flow()
@@ -392,7 +417,10 @@ async def test_migrate_known_lifecycle_retrieval_flow_is_backed_up_and_idempoten
         for node in migrated_flow["data"]["nodes"]
     ]
     assert "ext:openrag:OpenRAGBackendRetrievalComponent@extra" in component_types
-    assert "ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra" not in component_types
+    assert (
+        "ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra"
+        not in component_types
+    )
     assert [payload for method, payload in calls if method == "PATCH"] == [
         {"locked": False},
         {"locked": True},
@@ -408,23 +436,52 @@ async def test_migrate_unversioned_retrieval_v2_flow_synchronized_by_gitops():
 
     with (
         patch("services.flows_service.clients.langflow_request", side_effect=transport.__call__),
-        patch.object(service, "_backup_flow", new_callable=AsyncMock, return_value="/tmp/flow.json") as backup,
+        patch.object(
+            service, "_backup_flow", new_callable=AsyncMock, return_value="/tmp/flow.json"
+        ) as backup,
     ):
         result = await service.migrate_persisted_retrieval_flow()
 
     assert result["status"] == "migrated"
     assert result["backup_path"] == "/tmp/flow.json"
     assert transport.flow["locked"] is True
-    assert transport.flow["data"]["openrag_retrieval_version"] == 5
+    assert transport.flow["data"]["openrag_retrieval_version"] == 6
     agent_node = next(
         node
         for node in transport.flow["data"]["nodes"]
         if node.get("data", {}).get("node", {}).get("display_name") == "Agent"
     )
-    assert "Evidence-First Retrieval and Provenance" in agent_node["data"]["node"]["template"][
-        "system_prompt"
-    ]["value"]
+    assert (
+        "exhaustive digital documentalist"
+        in agent_node["data"]["node"]["template"]["system_prompt"]["value"]
+    )
     assert backup.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_migrate_exact_deployed_v5_graph_to_documentalist_v6():
+    """Repository-owned v5 upgrades without authorizing any edited graph."""
+    service = FlowsService()
+    transport = _RetrievalMigrationTransport()
+    transport.flow = _versioned_retrieval_v5_flow()
+
+    with (
+        patch(
+            "services.flows_service.clients.langflow_request",
+            side_effect=transport.__call__,
+        ),
+        patch.object(
+            service,
+            "_backup_flow",
+            new_callable=AsyncMock,
+            return_value="/tmp/flow.json",
+        ),
+    ):
+        result = await service.migrate_persisted_retrieval_flow()
+
+    assert result["status"] == "migrated"
+    assert transport.flow["data"]["openrag_retrieval_version"] == 6
+    assert transport.flow["locked"] is True
 
 
 @pytest.mark.asyncio
@@ -432,7 +489,7 @@ async def test_migrate_first_versioned_retrieval_v2_prompt_revision():
     """The exact prior v3 graph may receive the document-wide evidence rule."""
     service = FlowsService()
     transport = _RetrievalMigrationTransport()
-    transport.flow = _unversioned_retrieval_v2_flow()
+    transport.flow = _previous_bundled_retrieval_flow()
     transport.flow["data"]["openrag_retrieval_version"] = 3
 
     with (
@@ -452,9 +509,10 @@ async def test_migrate_first_versioned_retrieval_v2_prompt_revision():
         for node in transport.flow["data"]["nodes"]
         if node.get("data", {}).get("node", {}).get("display_name") == "Agent"
     )
-    assert "Evidence-First Retrieval and Provenance" in agent_node["data"]["node"]["template"][
-        "system_prompt"
-    ]["value"]
+    assert (
+        "exhaustive digital documentalist"
+        in agent_node["data"]["node"]["template"]["system_prompt"]["value"]
+    )
 
 
 @pytest.mark.asyncio
@@ -464,15 +522,13 @@ async def test_migrate_role_evidence_prompt_revision():
 
     service = FlowsService()
     transport = _RetrievalMigrationTransport()
-    transport.flow = service._load_retrieval_v2_template()
+    transport.flow = _previous_bundled_retrieval_flow()
     agent_node = next(
         node
         for node in transport.flow["data"]["nodes"]
         if node.get("data", {}).get("node", {}).get("display_name") == "Agent"
     )
-    agent_node["data"]["node"]["template"]["system_prompt"]["value"] = (
-        LEGACY_SYSTEM_PROMPTS[-2]
-    )
+    agent_node["data"]["node"]["template"]["system_prompt"]["value"] = LEGACY_SYSTEM_PROMPTS[-3]
     transport.flow["data"]["openrag_retrieval_version"] = 3
 
     with (
@@ -487,7 +543,7 @@ async def test_migrate_role_evidence_prompt_revision():
         result = await service.migrate_persisted_retrieval_flow()
 
     assert result["status"] == "migrated"
-    assert transport.flow["data"]["openrag_retrieval_version"] == 5
+    assert transport.flow["data"]["openrag_retrieval_version"] == 6
 
 
 @pytest.mark.asyncio
@@ -497,15 +553,13 @@ async def test_migrate_evidence_first_prompt_revision():
 
     service = FlowsService()
     transport = _RetrievalMigrationTransport()
-    transport.flow = service._load_retrieval_v2_template()
+    transport.flow = _previous_bundled_retrieval_flow()
     agent_node = next(
         node
         for node in transport.flow["data"]["nodes"]
         if node.get("data", {}).get("node", {}).get("display_name") == "Agent"
     )
-    agent_node["data"]["node"]["template"]["system_prompt"]["value"] = (
-        LEGACY_SYSTEM_PROMPTS[-1]
-    )
+    agent_node["data"]["node"]["template"]["system_prompt"]["value"] = LEGACY_SYSTEM_PROMPTS[-2]
     transport.flow["data"]["openrag_retrieval_version"] = 4
 
     with (
@@ -520,7 +574,7 @@ async def test_migrate_evidence_first_prompt_revision():
         result = await service.migrate_persisted_retrieval_flow()
 
     assert result["status"] == "migrated"
-    assert transport.flow["data"]["openrag_retrieval_version"] == 5
+    assert transport.flow["data"]["openrag_retrieval_version"] == 6
 
 
 @pytest.mark.asyncio
@@ -631,7 +685,9 @@ async def test_migrate_retrieval_flow_reports_unlock_failure_with_locked_state()
 
     with (
         patch("services.flows_service.clients.langflow_request", side_effect=transport.__call__),
-        patch.object(service, "_backup_flow", new_callable=AsyncMock, return_value="/tmp/flow.json"),
+        patch.object(
+            service, "_backup_flow", new_callable=AsyncMock, return_value="/tmp/flow.json"
+        ),
     ):
         result = await service.migrate_persisted_retrieval_flow()
 
@@ -649,7 +705,9 @@ async def test_migrate_retrieval_flow_restores_lock_after_safe_transition_failur
 
     with (
         patch("services.flows_service.clients.langflow_request", side_effect=transport.__call__),
-        patch.object(service, "_backup_flow", new_callable=AsyncMock, return_value="/tmp/flow.json"),
+        patch.object(
+            service, "_backup_flow", new_callable=AsyncMock, return_value="/tmp/flow.json"
+        ),
     ):
         result = await service.migrate_persisted_retrieval_flow()
 
@@ -667,7 +725,9 @@ async def test_migrate_retrieval_flow_fails_closed_when_lock_cannot_be_restored(
 
     with (
         patch("services.flows_service.clients.langflow_request", side_effect=transport.__call__),
-        patch.object(service, "_backup_flow", new_callable=AsyncMock, return_value="/tmp/flow.json"),
+        patch.object(
+            service, "_backup_flow", new_callable=AsyncMock, return_value="/tmp/flow.json"
+        ),
     ):
         result = await service.migrate_persisted_retrieval_flow()
 
@@ -676,7 +736,7 @@ async def test_migrate_retrieval_flow_fails_closed_when_lock_cannot_be_restored(
     assert result["error"]
     assert result["lock_error"]
     assert result["flow_id"]
-    assert result["version"] == 5
+    assert result["version"] == 6
     assert result["flow_state"]["known_state"] in {"unlocked", "missing"}
 
 

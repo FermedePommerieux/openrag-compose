@@ -1,5 +1,7 @@
 import asyncio
 import copy
+import hashlib
+import hmac
 import os
 import re
 from typing import Any
@@ -10,8 +12,13 @@ from auth_context import get_auth_context
 from config.embedding_constants import get_declared_default_embedding_model
 from config.settings import clients, get_embedding_model, get_index_name, get_openrag_config
 from services.retrieval_service import (
+    EXHAUSTIVE_BATCH_MAX,
+    EXHAUSTIVE_PROFILE_VERSION,
     HttpReranker,
     RetrievalSettings,
+    decode_exhaustive_cursor,
+    encode_exhaustive_cursor,
+    exhaustive_scope_sha256,
     limit_chunks_per_document,
     reciprocal_rank_fusion,
 )
@@ -226,9 +233,7 @@ class SearchService:
         embedding_model = (
             embedding_model
             or get_embedding_model()
-            or get_declared_default_embedding_model(
-                openrag_config.knowledge.embedding_provider
-            )
+            or get_declared_default_embedding_model(openrag_config.knowledge.embedding_provider)
         )
         embedding_field_name = get_embedding_field_name(embedding_model)
 
@@ -581,6 +586,12 @@ class SearchService:
             "parser",
             "chunk_size",
             "chunk_overlap",
+            "document_profile_version",
+            "document_chunk_count",
+            "document_page_count",
+            "document_max_page",
+            "document_character_count",
+            "document_size_class",
             "allowed_users",
             "allowed_groups",
             "allowed_principal_labels",
@@ -646,9 +657,7 @@ class SearchService:
             vector_body: dict[str, Any] = {
                 "query": {
                     "bool": {
-                        "should": [
-                            {"dis_max": {"tie_breaker": 0.0, "queries": knn_queries}}
-                        ],
+                        "should": [{"dis_max": {"tie_breaker": 0.0, "queries": knn_queries}}],
                         "minimum_should_match": 1,
                         "filter": all_filters,
                     }
@@ -728,7 +737,9 @@ class SearchService:
             except RequestError as error:
                 error_message = str(error)
                 if is_disk_space_error(error):
-                    logger.error("OpenSearch query blocked by disk space constraint", error=error_message)
+                    logger.error(
+                        "OpenSearch query blocked by disk space constraint", error=error_message
+                    )
                     raise OpenSearchDiskSpaceError(DISK_SPACE_ERROR_MESSAGE) from error
                 if (
                     fallback_body is not None
@@ -748,7 +759,9 @@ class SearchService:
                                 "OpenSearch retry blocked by disk space constraint",
                                 error=str(retry_error),
                             )
-                            raise OpenSearchDiskSpaceError(DISK_SPACE_ERROR_MESSAGE) from retry_error
+                            raise OpenSearchDiskSpaceError(
+                                DISK_SPACE_ERROR_MESSAGE
+                            ) from retry_error
                         logger.error(
                             "OpenSearch retry without num_candidates failed",
                             error=str(retry_error),
@@ -765,7 +778,9 @@ class SearchService:
                 raise
             except Exception as error:
                 if is_disk_space_error(error):
-                    logger.error("OpenSearch query blocked by disk space constraint", error=str(error))
+                    logger.error(
+                        "OpenSearch query blocked by disk space constraint", error=str(error)
+                    )
                     raise OpenSearchDiskSpaceError(DISK_SPACE_ERROR_MESSAGE) from error
                 logger.error("OpenSearch query failed", error=str(error), retrieval_lane=label)
                 raise
@@ -791,6 +806,9 @@ class SearchService:
             raw_hits = limit_chunks_per_document(
                 raw_hits,
                 max_chunks_per_document=retrieval_settings.max_chunks_per_document,
+                adaptive_max_chunks_per_document=(
+                    retrieval_settings.adaptive_max_chunks_per_document
+                ),
             )
             raw_hits = await HttpReranker(
                 retrieval_settings.reranker_url,
@@ -828,6 +846,12 @@ class SearchService:
                     "parser": source.get("parser"),
                     "chunk_size": source.get("chunk_size"),
                     "chunk_overlap": source.get("chunk_overlap"),
+                    "document_profile_version": source.get("document_profile_version"),
+                    "document_chunk_count": source.get("document_chunk_count"),
+                    "document_page_count": source.get("document_page_count"),
+                    "document_max_page": source.get("document_max_page"),
+                    "document_character_count": source.get("document_character_count"),
+                    "document_size_class": source.get("document_size_class"),
                     # Legacy chunks predate the source ``chunk_id`` mapping;
                     # keep their existing primary id visible to callers.
                     "chunk_id": source.get("chunk_id") or hit.get("_id"),
@@ -881,9 +905,219 @@ class SearchService:
                 },
                 "rrf_k": retrieval_settings.rrf_k,
                 "max_chunks_per_document": retrieval_settings.max_chunks_per_document,
+                "adaptive_max_chunks_per_document": (
+                    retrieval_settings.adaptive_max_chunks_per_document
+                ),
                 "reranker_enabled": bool(retrieval_settings.reranker_url),
             }
         return response
+
+    async def read_document_chunks(
+        self,
+        document_id: str,
+        *,
+        user_id: str,
+        jwt_token: str | None,
+        filters: dict[str, Any] | None = None,
+        cursor: str = "",
+        batch_size: int = 20,
+    ) -> dict[str, Any]:
+        """Read one immutable document snapshot in deterministic source order.
+
+        This is the evidence path for exhaustive questions.  Unlike ranked
+        search it does not discard low-scoring chunks.  The cursor is bound to
+        the document content digest, so a replacement cannot silently mix two
+        generations in one audit.
+        """
+        resolved_document_id = str(document_id or "").strip()
+        if not resolved_document_id:
+            raise ValueError("document_id is required for exhaustive retrieval")
+        resolved_batch_size = min(EXHAUSTIVE_BATCH_MAX, max(1, int(batch_size)))
+        scope_sha256 = exhaustive_scope_sha256(user_id=user_id, filters=filters)
+        cursor_payload = decode_exhaustive_cursor(
+            cursor,
+            document_id=resolved_document_id,
+            scope_sha256=scope_sha256,
+        )
+        snapshot_sha256 = cursor_payload.get("snapshot_sha256")
+        covered_before = int(cursor_payload.get("covered_chunks", 0))
+
+        filter_clauses: list[dict[str, Any]] = [
+            {"term": {"document_id": resolved_document_id}},
+            {"term": {"document_profile_version": EXHAUSTIVE_PROFILE_VERSION}},
+            {"term": {"document_order_verified": True}},
+        ]
+        field_mapping = {
+            "data_sources": "filename",
+            "document_types": "mimetype",
+            "owners": "owner",
+            "connector_types": "connector_type",
+        }
+        for filter_key, values in (filters or {}).items():
+            if values is None or not isinstance(values, list):
+                continue
+            field_name = field_mapping.get(filter_key, filter_key)
+            if not values:
+                filter_clauses.append({"term": {field_name: "__IMPOSSIBLE_VALUE__"}})
+            elif len(values) == 1:
+                filter_clauses.append({"term": {field_name: values[0]}})
+            else:
+                filter_clauses.append({"terms": {field_name: values}})
+        if snapshot_sha256:
+            filter_clauses.append({"term": {"document_content_sha256": snapshot_sha256}})
+
+        source_fields = [
+            "chunk_id",
+            "chunk_content_sha256",
+            "document_id",
+            "document_content_sha256",
+            "document_chunk_count",
+            "document_page_count",
+            "document_max_page",
+            "document_character_count",
+            "document_size_class",
+            "document_order_verified",
+            "filename",
+            "mimetype",
+            "page",
+            "chunk_index",
+            "chunking_strategy",
+            "text",
+            "source_url",
+            "connector_file_id",
+            "owner",
+            "owner_name",
+            "owner_email",
+            "file_size",
+            "connector_type",
+            "embedding_model",
+            "embedding_dimensions",
+            "parser",
+            "chunk_size",
+            "chunk_overlap",
+        ]
+        body: dict[str, Any] = {
+            "query": {"bool": {"filter": filter_clauses}},
+            "_source": source_fields,
+            "size": resolved_batch_size,
+            "track_total_hits": True,
+            "sort": [
+                {"chunk_index": {"order": "asc", "missing": "_last"}},
+                {"page": {"order": "asc", "missing": "_last"}},
+                {"chunk_id": {"order": "asc"}},
+            ],
+            "aggs": {"snapshots": {"terms": {"field": "document_content_sha256", "size": 2}}},
+        }
+        if cursor_payload:
+            body["search_after"] = cursor_payload["search_after"]
+
+        client = self.session_manager.get_user_opensearch_client(user_id, jwt_token)
+        response = await client.search(
+            index=get_index_name(), body=body, params={"terminate_after": 0}
+        )
+        raw_hits = response.get("hits", {}).get("hits", [])
+        total_value = response.get("hits", {}).get("total", 0)
+        if isinstance(total_value, dict) and total_value.get("relation", "eq") != "eq":
+            raise RuntimeError("Exhaustive retrieval requires an exact snapshot chunk count")
+        total_chunks = int(
+            total_value.get("value", 0) if isinstance(total_value, dict) else total_value or 0
+        )
+        snapshot_buckets = response.get("aggregations", {}).get("snapshots", {}).get("buckets", [])
+        snapshots = [
+            str(bucket.get("key"))
+            for bucket in snapshot_buckets
+            if isinstance(bucket, dict) and bucket.get("key")
+        ]
+        if not snapshot_sha256:
+            if not snapshots:
+                return {
+                    "results": [],
+                    "error": (
+                        "The document has no verifiable ingestion profile; "
+                        "reindex it before exhaustive retrieval"
+                    ),
+                    "coverage": {
+                        "mode": "exhaustive",
+                        "document_id": resolved_document_id,
+                        "complete": False,
+                        "covered_chunks": 0,
+                        "total_chunks": total_chunks,
+                    },
+                }
+            if len(snapshots) != 1:
+                return {
+                    "results": [],
+                    "error": (
+                        "The document changed during exhaustive retrieval; "
+                        "restart after ingestion completes"
+                    ),
+                    "coverage": {
+                        "mode": "exhaustive",
+                        "document_id": resolved_document_id,
+                        "complete": False,
+                        "covered_chunks": 0,
+                        "total_chunks": total_chunks,
+                    },
+                }
+            snapshot_sha256 = snapshots[0]
+
+        chunks: list[dict[str, Any]] = []
+        for hit in raw_hits:
+            source = hit.get("_source", {})
+            if source.get("document_content_sha256") != snapshot_sha256:
+                raise RuntimeError("Exhaustive retrieval mixed document snapshots")
+            if source.get("document_order_verified") is not True:
+                raise RuntimeError("Exhaustive retrieval encountered an unverified document order")
+            chunk_digest = source.get("chunk_content_sha256")
+            text = source.get("text")
+            if (
+                not source.get("chunk_id")
+                or not isinstance(chunk_digest, str)
+                or len(chunk_digest) != 64
+                or not isinstance(text, str)
+            ):
+                raise RuntimeError("Exhaustive retrieval encountered an unverifiable source chunk")
+            recalculated_digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
+            if not hmac.compare_digest(recalculated_digest, chunk_digest):
+                raise RuntimeError("Exhaustive retrieval detected a chunk text digest mismatch")
+            expected_chunk_index = covered_before + len(chunks)
+            if source.get("chunk_index") != expected_chunk_index:
+                raise RuntimeError("Exhaustive retrieval encountered a non-contiguous source order")
+            chunks.append(
+                {
+                    **source,
+                    "id": hit.get("_id"),
+                    "score": None,
+                    "evidence_order": covered_before + len(chunks) + 1,
+                }
+            )
+
+        covered_chunks = covered_before + len(chunks)
+        if covered_chunks > total_chunks:
+            raise RuntimeError("Exhaustive retrieval coverage exceeded snapshot size")
+        complete = covered_chunks == total_chunks
+        next_cursor: str | None = None
+        if not complete:
+            if not raw_hits or not raw_hits[-1].get("sort"):
+                raise RuntimeError("Exhaustive retrieval stopped before complete coverage")
+            next_cursor = encode_exhaustive_cursor(
+                document_id=resolved_document_id,
+                snapshot_sha256=snapshot_sha256,
+                search_after=raw_hits[-1]["sort"],
+                covered_chunks=covered_chunks,
+                scope_sha256=scope_sha256,
+            )
+        coverage = {
+            "mode": "exhaustive",
+            "document_id": resolved_document_id,
+            "snapshot_sha256": snapshot_sha256,
+            "covered_chunks": covered_chunks,
+            "total_chunks": total_chunks,
+            "coverage_ratio": 1.0 if total_chunks == 0 else covered_chunks / total_chunks,
+            "complete": complete,
+            "next_cursor": next_cursor,
+        }
+        return {"results": chunks, "total": len(chunks), "coverage": coverage}
 
     async def search(
         self,
@@ -894,6 +1128,10 @@ class SearchService:
         limit: int = 10,
         score_threshold: float = 0,
         embedding_model: str = None,
+        evidence_mode: str = "focused",
+        document_id: str | None = None,
+        cursor: str = "",
+        batch_size: int = 20,
     ) -> dict[str, Any]:
         """Public search method for API endpoints
 
@@ -901,6 +1139,9 @@ class SearchService:
             embedding_model: Embedding model to use for search (defaults to the
                 currently configured embedding model)
         """
+        if evidence_mode not in {"focused", "exhaustive"}:
+            raise ValueError("evidence_mode must be 'focused' or 'exhaustive'")
+
         # Set auth context if provided (for direct API calls)
         from config.settings import is_no_auth_mode
 
@@ -914,6 +1155,18 @@ class SearchService:
             from auth_context import set_search_filters
 
             set_search_filters(filters)
+
+        if evidence_mode == "exhaustive":
+            if not user_id:
+                return {"results": [], "error": "Authentication required"}
+            return await self.read_document_chunks(
+                document_id or "",
+                user_id=user_id,
+                jwt_token=jwt_token,
+                filters=filters,
+                cursor=cursor,
+                batch_size=batch_size,
+            )
 
         from auth_context import set_score_threshold, set_search_limit
 

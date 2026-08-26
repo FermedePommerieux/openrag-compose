@@ -6,7 +6,7 @@
 export interface Source {
   filename: string;
   text: string;
-  score: number;
+  score: number | null;
   page?: number | null;
   mimetype?: string | null;
   source_url?: string | null;
@@ -15,6 +15,9 @@ export interface Source {
   chunk_index?: number | null;
   chunking_strategy?: string | null;
   connector_file_id?: string | null;
+  chunk_content_sha256?: string | null;
+  document_content_sha256?: string | null;
+  evidence_order?: number | null;
 }
 
 export interface ChatResponse {
@@ -46,7 +49,7 @@ export type StreamEvent = ContentEvent | SourcesEvent | DoneEvent;
 export interface SearchResult {
   filename: string;
   text: string;
-  score: number;
+  score: number | null;
   page?: number | null;
   mimetype?: string | null;
   source_url?: string | null;
@@ -55,10 +58,26 @@ export interface SearchResult {
   chunk_index?: number | null;
   chunking_strategy?: string | null;
   connector_file_id?: string | null;
+  chunk_content_sha256?: string | null;
+  document_content_sha256?: string | null;
+  evidence_order?: number | null;
+}
+
+export interface EvidenceCoverage {
+  mode: "exhaustive";
+  document_id: string;
+  snapshot_sha256?: string | null;
+  covered_chunks: number;
+  total_chunks: number;
+  coverage_ratio?: number | null;
+  complete: boolean;
+  next_cursor?: string | null;
 }
 
 export interface SearchResponse {
   results: SearchResult[];
+  coverage?: EvidenceCoverage;
+  error?: string;
 }
 
 export interface SearchFilters {
@@ -146,6 +165,7 @@ export interface KnowledgeSettings {
   retrieval_vector_candidates?: number | null;
   retrieval_rrf_k?: number | null;
   retrieval_max_chunks_per_document?: number | null;
+  retrieval_adaptive_max_chunks_per_document?: number | null;
   retrieval_reranker_url?: string | null;
   retrieval_reranker_timeout?: number | null;
   retrieval_debug?: boolean | null;
@@ -197,6 +217,7 @@ export interface SettingsUpdateOptions {
   retrieval_vector_candidates?: number;
   retrieval_rrf_k?: number;
   retrieval_max_chunks_per_document?: number;
+  retrieval_adaptive_max_chunks_per_document?: number;
   /** Administrator-configured HTTP reranker endpoint. */
   retrieval_reranker_url?: string;
   retrieval_reranker_timeout?: number;
@@ -320,6 +341,14 @@ export interface SearchQueryOptions {
   scoreThreshold?: number;
   /** Knowledge filter ID to apply to the search. */
   filterId?: string;
+  /** Ranked discovery or complete source-order evidence reading. */
+  evidenceMode?: "focused" | "exhaustive";
+  /** Required for exhaustive mode. Obtain it from focused discovery. */
+  documentId?: string;
+  /** Opaque continuation cursor returned in coverage.next_cursor. */
+  cursor?: string;
+  /** Exhaustive page size, from 1 to 50. */
+  batchSize?: number;
 }
 
 // Error types

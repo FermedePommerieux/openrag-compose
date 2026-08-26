@@ -195,7 +195,7 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
             value=[],
             input_types=["Data", "JSON"],
         ),
-        StrInput(
+        SecretStrInput(
             name="openrag_ingest_token",
             display_name="OpenRAG Ingest Token",
             value="OPENRAG_INGEST_TOKEN",
@@ -432,7 +432,7 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
             advanced=True,
             info="Internal OpenRAG callback URL for backend-owned document indexing.",
         ),
-        StrInput(
+        SecretStrInput(
             name="openrag_ingest_token",
             display_name="OpenRAG Ingest Token",
             value="OPENRAG_INGEST_TOKEN",
@@ -968,6 +968,7 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
             "text": request.get(text_field, ""),
             "vector": request[vector_field],
             "page": page if isinstance(page, int) else None,
+            "chunk_index": metadata.get("chunk_index"),
             "metadata": metadata,
         }
 
@@ -1020,6 +1021,9 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
 
         for i, text in enumerate(texts):
             metadata = metadatas[i] if metadatas else {}
+            # The index is global to the complete document, not the callback
+            # batch. Exhaustive reads require a unique contiguous source order.
+            metadata = {**metadata, "chunk_index": i}
             if vector_dimensions is not None and "embedding_dimensions" not in metadata:
                 metadata = {**metadata, "embedding_dimensions": vector_dimensions}
 

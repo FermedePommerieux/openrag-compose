@@ -1,27 +1,30 @@
-from typing import Any, Dict
+from typing import Any, Literal
 
 from fastapi import Depends
-from pydantic import BaseModel, Field
 from fastapi.responses import JSONResponse
-from utils.logging_config import get_logger
-from utils.opensearch_utils import OpenSearchDiskSpaceError, DISK_SPACE_ERROR_MESSAGE
+from pydantic import BaseModel, Field
 
 from dependencies import (
     get_search_service,
     get_session_manager,
-    get_current_user,
     require_permission,
 )
 from session_manager import User
+from utils.logging_config import get_logger
+from utils.opensearch_utils import DISK_SPACE_ERROR_MESSAGE, OpenSearchDiskSpaceError
 
 logger = get_logger(__name__)
 
 
 class SearchBody(BaseModel):
     query: str
-    filters: Dict[str, Any] = Field(default_factory=dict)
+    filters: dict[str, Any] = Field(default_factory=dict)
     limit: int = 10
     scoreThreshold: float = Field(default=0, alias="scoreThreshold")
+    evidenceMode: Literal["focused", "exhaustive"] = Field(default="focused", alias="evidenceMode")
+    documentId: str | None = Field(default=None, alias="documentId")
+    cursor: str = ""
+    batchSize: int = Field(default=20, ge=1, le=50, alias="batchSize")
 
     model_config = {"populate_by_name": True}
 
@@ -34,6 +37,11 @@ async def search(
 ):
     """Search for documents"""
     try:
+        if body.evidenceMode == "exhaustive" and not (body.documentId or "").strip():
+            return JSONResponse(
+                {"error": "documentId is required for exhaustive retrieval"},
+                status_code=400,
+            )
         jwt_token = user.jwt_token
 
         logger.debug(
@@ -44,6 +52,10 @@ async def search(
             filters=body.filters,
             limit=body.limit,
             score_threshold=body.scoreThreshold,
+            evidence_mode=body.evidenceMode,
+            document_id=body.documentId,
+            cursor=body.cursor,
+            batch_size=body.batchSize,
         )
 
         result = await search_service.search(
@@ -53,16 +65,19 @@ async def search(
             filters=body.filters,
             limit=body.limit,
             score_threshold=body.scoreThreshold,
+            evidence_mode=body.evidenceMode,
+            document_id=body.documentId,
+            cursor=body.cursor,
+            batch_size=body.batchSize,
         )
         return JSONResponse(result, status_code=200)
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
     except OpenSearchDiskSpaceError:
         return JSONResponse({"error": DISK_SPACE_ERROR_MESSAGE}, status_code=507)
     except Exception as e:
         error_msg = str(e)
-        if (
-            "AuthenticationException" in error_msg
-            or "access denied" in error_msg.lower()
-        ):
+        if "AuthenticationException" in error_msg or "access denied" in error_msg.lower():
             return JSONResponse({"error": error_msg}, status_code=403)
         else:
             return JSONResponse({"error": error_msg}, status_code=500)

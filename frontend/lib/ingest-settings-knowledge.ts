@@ -15,6 +15,6 @@ export function knowledgeToIngestSettings(
       knowledge?.picture_descriptions ??
       DEFAULT_KNOWLEDGE_SETTINGS.picture_descriptions,
     embeddingModel:
-      knowledge?.embedding_model?.trim() || "text-embedding-3-small",
+      knowledge?.embedding_model?.trim() || "text-embedding-3-large",
   };
 }

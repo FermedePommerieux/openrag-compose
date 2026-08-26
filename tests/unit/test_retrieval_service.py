@@ -1,3 +1,4 @@
+import hashlib
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
@@ -5,6 +6,10 @@ import pytest
 
 from services.retrieval_service import (
     RetrievalSettings,
+    adaptive_chunk_limit,
+    decode_exhaustive_cursor,
+    encode_exhaustive_cursor,
+    exhaustive_scope_sha256,
     limit_chunks_per_document,
     reciprocal_rank_fusion,
 )
@@ -75,7 +80,10 @@ def test_rrf_uses_persisted_chunk_id_across_simulated_shard_ties():
 
 def test_rrf_legacy_hit_without_sortable_chunk_id_has_explicit_fallback_identity():
     legacy = _hit("legacy-physical-id", "legacy-document")
-    current = {"_id": "physical-current", "_source": {"chunk_id": "current", "document_id": "current"}}
+    current = {
+        "_id": "physical-current",
+        "_source": {"chunk_id": "current", "document_id": "current"},
+    }
 
     fused = reciprocal_rank_fusion([[current], [legacy]], k=60)
 
@@ -88,6 +96,171 @@ def test_document_diversity_keeps_rank_order_and_caps_each_document():
     selected = limit_chunks_per_document(hits, max_chunks_per_document=2)
 
     assert [hit["_id"] for hit in selected] == ["a1", "a2", "b1"]
+
+
+def test_adaptive_quota_scales_without_turning_focused_search_into_full_scan():
+    assert (
+        adaptive_chunk_limit(3, base_chunks_per_document=3, adaptive_max_chunks_per_document=20)
+        == 3
+    )
+    assert (
+        adaptive_chunk_limit(100, base_chunks_per_document=3, adaptive_max_chunks_per_document=20)
+        == 10
+    )
+    assert (
+        adaptive_chunk_limit(400, base_chunks_per_document=3, adaptive_max_chunks_per_document=20)
+        == 20
+    )
+    assert (
+        adaptive_chunk_limit(None, base_chunks_per_document=3, adaptive_max_chunks_per_document=20)
+        == 3
+    )
+
+
+def test_adaptive_diversity_gives_each_document_base_quota_before_extra_fill():
+    hits = []
+    for identifier, document_id in [
+        ("a1", "a"),
+        ("a2", "a"),
+        ("a3", "a"),
+        ("b1", "b"),
+        ("a4", "a"),
+        ("b2", "b"),
+    ]:
+        hit = _hit(identifier, document_id)
+        hit["_source"]["document_chunk_count"] = 100
+        hits.append(hit)
+
+    selected = limit_chunks_per_document(
+        hits,
+        max_chunks_per_document=2,
+        adaptive_max_chunks_per_document=10,
+    )
+
+    assert [hit["_id"] for hit in selected] == ["a1", "a2", "b1", "b2", "a3", "a4"]
+
+
+def test_exhaustive_cursor_is_snapshot_and_document_bound():
+    scope = exhaustive_scope_sha256(user_id="user-1", filters={"owners": ["user-1"]})
+    cursor = encode_exhaustive_cursor(
+        document_id="document-a",
+        snapshot_sha256="a" * 64,
+        search_after=[4, 5, "chunk-5"],
+        covered_chunks=5,
+        scope_sha256=scope,
+    )
+
+    assert decode_exhaustive_cursor(
+        cursor,
+        document_id="document-a",
+        scope_sha256=scope,
+    ) == {
+        "v": 1,
+        "document_id": "document-a",
+        "snapshot_sha256": "a" * 64,
+        "search_after": [4, 5, "chunk-5"],
+        "covered_chunks": 5,
+        "scope_sha256": scope,
+    }
+    with pytest.raises(ValueError, match="another document"):
+        decode_exhaustive_cursor(cursor, document_id="document-b", scope_sha256=scope)
+
+    other_scope = exhaustive_scope_sha256(user_id="user-2", filters={})
+    with pytest.raises(ValueError, match="another access scope"):
+        decode_exhaustive_cursor(
+            cursor,
+            document_id="document-a",
+            scope_sha256=other_scope,
+        )
+
+
+def test_exhaustive_cursor_rejects_tampered_coverage_accounting():
+    scope = exhaustive_scope_sha256(user_id="user-1", filters={})
+    cursor = encode_exhaustive_cursor(
+        document_id="document-a",
+        snapshot_sha256="a" * 64,
+        search_after=[4, 5, "chunk-5"],
+        covered_chunks=5,
+        scope_sha256=scope,
+    )
+    encoded, signature = cursor.split(".", 1)
+    tampered = ("A" if encoded[0] != "A" else "B") + encoded[1:] + "." + signature
+    with pytest.raises(ValueError, match="Invalid exhaustive retrieval cursor"):
+        decode_exhaustive_cursor(
+            tampered,
+            document_id="document-a",
+            scope_sha256=scope,
+        )
+
+
+@pytest.mark.asyncio
+async def test_exhaustive_read_paginates_one_immutable_snapshot(monkeypatch):
+    from services import search_service
+
+    snapshot = "b" * 64
+
+    def evidence_hit(index: int) -> dict:
+        text = f"page {index + 1}"
+        return {
+            "_id": f"physical-{index}",
+            "sort": [index, index + 1, f"logical-{index}"],
+            "_source": {
+                "chunk_id": f"logical-{index}",
+                "chunk_content_sha256": hashlib.sha256(text.encode()).hexdigest(),
+                "document_id": "document-1",
+                "document_content_sha256": snapshot,
+                "document_order_verified": True,
+                "document_chunk_count": 3,
+                "filename": "large.pdf",
+                "page": index + 1,
+                "chunk_index": index,
+                "text": text,
+            },
+        }
+
+    class OpenSearchClient:
+        bodies: list[dict] = []
+
+        async def search(self, *, index, body, params):
+            self.bodies.append(body)
+            page = (
+                [evidence_hit(2)]
+                if body.get("search_after")
+                else [evidence_hit(0), evidence_hit(1)]
+            )
+            return {
+                "hits": {"total": {"value": 3, "relation": "eq"}, "hits": page},
+                "aggregations": {"snapshots": {"buckets": [{"key": snapshot, "doc_count": 3}]}},
+            }
+
+    monkeypatch.setattr(search_service, "get_index_name", lambda: "documents")
+    client = OpenSearchClient()
+    session_manager = MagicMock()
+    session_manager.get_user_opensearch_client.return_value = client
+    service = SearchService(session_manager=session_manager)
+
+    first = await service.read_document_chunks(
+        "document-1", user_id="user-1", jwt_token="jwt", batch_size=2
+    )
+    assert first["coverage"]["complete"] is False
+    assert first["coverage"]["covered_chunks"] == 2
+    assert first["coverage"]["total_chunks"] == 3
+    assert [item["evidence_order"] for item in first["results"]] == [1, 2]
+
+    second = await service.read_document_chunks(
+        "document-1",
+        user_id="user-1",
+        jwt_token="jwt",
+        cursor=first["coverage"]["next_cursor"],
+        batch_size=2,
+    )
+    assert second["coverage"]["complete"] is True
+    assert second["coverage"]["coverage_ratio"] == 1.0
+    assert second["coverage"]["next_cursor"] is None
+    assert second["results"][0]["evidence_order"] == 3
+    assert {"term": {"document_content_sha256": snapshot}} in client.bodies[1]["query"]["bool"][
+        "filter"
+    ]
 
 
 def test_settings_normalize_invalid_or_unbounded_values():
@@ -168,7 +341,11 @@ async def test_search_service_rrf_fuses_lanes_preserves_provenance_and_emits_deb
         async def search(self, *, index, body, params):
             self.bodies.append(body)
             if body.get("size") == 0:
-                return {"aggregations": {"embedding_models": {"buckets": [{"key": "test-model", "doc_count": 3}]}}}
+                return {
+                    "aggregations": {
+                        "embedding_models": {"buckets": [{"key": "test-model", "doc_count": 3}]}
+                    }
+                }
             should = body.get("query", {}).get("bool", {}).get("should", [])
             is_vector = bool(should and "dis_max" in should[0])
             hits = [shared, vector_same_document] if is_vector else [lexical_only, shared]

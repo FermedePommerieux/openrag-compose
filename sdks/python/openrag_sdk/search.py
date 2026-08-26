@@ -2,8 +2,6 @@
 
 from typing import TYPE_CHECKING, Any
 
-import httpx
-
 from .models import SearchFilters, SearchResponse, SearchResult
 
 if TYPE_CHECKING:
@@ -24,9 +22,13 @@ class SearchClient:
         limit: int = 10,
         score_threshold: float = 0,
         filter_id: str | None = None,
+        evidence_mode: str = "focused",
+        document_id: str | None = None,
+        cursor: str = "",
+        batch_size: int = 20,
     ) -> SearchResponse:
         """
-        Perform semantic search on documents.
+        Search for documents or read one immutable document snapshot exhaustively.
 
         Args:
             query: The search query text.
@@ -34,14 +36,22 @@ class SearchClient:
             limit: Maximum number of results (default 10).
             score_threshold: Minimum score threshold (default 0).
             filter_id: Optional knowledge filter ID to apply.
+            evidence_mode: ``focused`` discovery or ``exhaustive`` reading.
+            document_id: Required for exhaustive reading.
+            cursor: Opaque continuation cursor from the previous coverage object.
+            batch_size: Exhaustive page size, between 1 and 50.
 
         Returns:
-            SearchResponse containing the search results.
+            SearchResponse containing focused matches or an exhaustive page and its
+            machine-verifiable coverage certificate. In exhaustive mode, keep
+            calling with ``coverage.next_cursor`` until ``coverage.complete``.
         """
         body: dict[str, Any] = {
             "query": query,
             "limit": limit,
             "score_threshold": score_threshold,
+            "evidence_mode": evidence_mode,
+            "batch_size": batch_size,
         }
 
         if filters:
@@ -52,6 +62,10 @@ class SearchClient:
 
         if filter_id:
             body["filter_id"] = filter_id
+        if document_id:
+            body["document_id"] = document_id
+        if cursor:
+            body["cursor"] = cursor
 
         response = await self._client._request(
             "POST",
@@ -61,5 +75,7 @@ class SearchClient:
 
         data = response.json()
         return SearchResponse(
-            results=[SearchResult(**r) for r in data.get("results", [])]
+            results=[SearchResult(**r) for r in data.get("results", [])],
+            coverage=data.get("coverage"),
+            error=data.get("error"),
         )

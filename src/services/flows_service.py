@@ -30,9 +30,11 @@ _UNSET = object()
 # This migration is intentionally narrow.  A flow is only eligible when it
 # still contains this exact, locked OpenRAG default component from the
 # lifecycle baseline; arbitrary user edits must require an explicit update.
-_LEGACY_RETRIEVAL_COMPONENT = "ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra"
+_LEGACY_RETRIEVAL_COMPONENT = (
+    "ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra"
+)
 _BACKEND_RETRIEVAL_COMPONENT = "ext:openrag:OpenRAGBackendRetrievalComponent@extra"
-_RETRIEVAL_FLOW_MIGRATION_VERSION = 5
+_RETRIEVAL_FLOW_MIGRATION_VERSION = 6
 _LEGACY_SYSTEM_FLOW_ID = "1098eea1-6649-4e1d-aed1-b77249fb8dd0"
 # SHA-256 of ``flows/openrag_agent.json`` at lifecycle baseline 156f3664,
 # calculated over canonical ``data`` JSON.  Flow IDs and a lock alone are not
@@ -42,7 +44,9 @@ _LEGACY_RETRIEVAL_GRAPH_SHA256 = "1b1395db6d9d3890209dfe79820b558ae6e024e436b798
 # Exact fingerprints of the first Retrieval v2 graph, before and after its
 # runtime version marker.  They authorize only the prompt-only upgrade to the
 # document-wide evidence rule; arbitrary operator edits still fail closed.
-_PREVIOUS_RETRIEVAL_GRAPH_SHA256 = "82980b36b952c2762bb9b5223da66413e8590814fc025caed2e2d52adcf04cd1"
+_PREVIOUS_RETRIEVAL_GRAPH_SHA256 = (
+    "82980b36b952c2762bb9b5223da66413e8590814fc025caed2e2d52adcf04cd1"
+)
 _PREVIOUS_VERSIONED_RETRIEVAL_GRAPH_SHA256 = (
     "828d33b5a0b6dc401713e1cfdc7b8d88cbb46d4a53a392ccb866d8858787b16e"
 )
@@ -62,6 +66,13 @@ _PREVIOUS_EVIDENCE_FIRST_GRAPH_SHA256 = (
 _PREVIOUS_VERSIONED_EVIDENCE_FIRST_GRAPH_SHA256 = (
     "15bcca4d7e21f4f98fa2020ff9c76b43ecd0a96c240565434458927b1d57518b"
 )
+# Exact fingerprint of Retrieval v2 version 5. This is the deployed
+# repository-owned graph immediately before exhaustive evidence pagination.
+# It authorizes that one upgrade only; any operator edit still fails closed.
+_PREVIOUS_VERSIONED_FOCUSED_RETRIEVAL_GRAPH_SHA256 = (
+    "4e4a839c17ffa6b36ee5ee4ac93e60c83fd43b8d16af96c1dda8c94cc1b91621"
+)
+
 
 class FlowsService:
     def __init__(self) -> None:
@@ -1096,7 +1107,9 @@ class FlowsService:
         try:
             response = await clients.langflow_request("GET", f"/api/v1/flows/{flow_id}")
         except Exception as exc:
-            logger.error("Custom retrieval flow readiness check failed", flow_id=flow_id, error=str(exc))
+            logger.error(
+                "Custom retrieval flow readiness check failed", flow_id=flow_id, error=str(exc)
+            )
             return {
                 "status": "system_migration_failed",
                 "reason": "custom_flow_fetch_failed",
@@ -1132,10 +1145,7 @@ class FlowsService:
         data = node.get("data", {}) if isinstance(node, dict) else {}
         component = data.get("node", {}) if isinstance(data, dict) else {}
         return str(
-            component.get("namespaced_id")
-            or data.get("type")
-            or component.get("name")
-            or ""
+            component.get("namespaced_id") or data.get("type") or component.get("name") or ""
         )
 
     def _load_retrieval_v2_template(self) -> dict[str, Any]:
@@ -1158,9 +1168,7 @@ class FlowsService:
         ]
         if len(agent_nodes) != 1:
             raise RuntimeError("Bundled retrieval flow must contain exactly one Agent node")
-        agent_nodes[0]["data"]["node"]["template"]["system_prompt"]["value"] = (
-            DEFAULT_SYSTEM_PROMPT
-        )
+        agent_nodes[0]["data"]["node"]["template"]["system_prompt"]["value"] = DEFAULT_SYSTEM_PROMPT
         return template
 
     @staticmethod
@@ -1256,11 +1264,15 @@ class FlowsService:
             if marker == 3
             else {_PREVIOUS_VERSIONED_EVIDENCE_FIRST_GRAPH_SHA256}
             if marker == 4
+            else {_PREVIOUS_VERSIONED_FOCUSED_RETRIEVAL_GRAPH_SHA256}
+            if marker == 5
             else set()
         )
         return self._graph_fingerprint(flow_data) in expected
 
-    def _migrate_known_legacy_retrieval_flow(self, flow_data: dict[str, Any]) -> dict[str, Any] | None:
+    def _migrate_known_legacy_retrieval_flow(
+        self, flow_data: dict[str, Any]
+    ) -> dict[str, Any] | None:
         """Replace only the known legacy retrieval tool in a locked default flow.
 
         Returning ``None`` means the caller must leave the persisted flow
@@ -1442,7 +1454,9 @@ class FlowsService:
                     "System retrieval flow is not the exact known locked lifecycle graph; "
                     "it was not migrated and cannot be served. Use the flow update/rollback procedure."
                 )
-                logger.error("System retrieval flow migration requires manual review", flow_id=flow_id)
+                logger.error(
+                    "System retrieval flow migration requires manual review", flow_id=flow_id
+                )
                 return {
                     "status": "system_migration_failed",
                     "reason": "system_flow_unverified",
@@ -1474,8 +1488,12 @@ class FlowsService:
                     raise RuntimeError(f"Langflow flow update failed: HTTP {update.status_code}")
 
                 verify = await clients.langflow_request("GET", f"/api/v1/flows/{flow_id}")
-                if verify.status_code != 200 or not self._is_known_migrated_retrieval_flow(verify.json()):
-                    raise RuntimeError("Langflow persisted flow verification failed after retrieval migration")
+                if verify.status_code != 200 or not self._is_known_migrated_retrieval_flow(
+                    verify.json()
+                ):
+                    raise RuntimeError(
+                        "Langflow persisted flow verification failed after retrieval migration"
+                    )
 
                 await self._patch_flow_lock(flow_id, locked=True)
                 final_verify = await clients.langflow_request("GET", f"/api/v1/flows/{flow_id}")
@@ -1483,7 +1501,9 @@ class FlowsService:
                     final_verify.json().get("locked")
                     and self._is_known_migrated_retrieval_flow(final_verify.json())
                 ):
-                    raise RuntimeError("Langflow flow was not verified locked after retrieval migration")
+                    raise RuntimeError(
+                        "Langflow flow was not verified locked after retrieval migration"
+                    )
                 maintenance_window_open = False
             except Exception as exc:
                 flow_state = {"known_state": "locked", "locked": True}
@@ -1509,7 +1529,9 @@ class FlowsService:
                         "version": _RETRIEVAL_FLOW_MIGRATION_VERSION,
                         "backup_path": backup_path,
                     }
-                logger.error("Retrieval flow migration update failed", flow_id=flow_id, error=str(exc))
+                logger.error(
+                    "Retrieval flow migration update failed", flow_id=flow_id, error=str(exc)
+                )
                 return {
                     "status": "system_migration_failed",
                     "reason": (
@@ -1677,10 +1699,7 @@ class FlowsService:
                 configured_providers.append("ollama")
 
             # Ensure current provider is in the list for counting purposes if it's being configured
-            if (
-                provider in ["openai", "watsonx", "ollama"]
-                and provider not in configured_providers
-            ):
+            if provider in ["openai", "watsonx", "ollama"] and provider not in configured_providers:
                 configured_providers.append(provider)
 
             all_possible = ["openai", "watsonx", "ollama"]
@@ -1772,9 +1791,7 @@ class FlowsService:
             )
             if agent_node:
                 node_tasks.append(
-                    wrap_node_update(
-                        agent_node, provider, llm_model, f"agent model: {llm_model}"
-                    )
+                    wrap_node_update(agent_node, provider, llm_model, f"agent model: {llm_model}")
                 )
 
         # Execute all node updates simultaneously

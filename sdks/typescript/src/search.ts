@@ -9,11 +9,12 @@ export class SearchClient {
   constructor(private client: OpenRAGClient) {}
 
   /**
-   * Perform semantic search on documents.
+   * Find ranked matches or read one immutable document snapshot exhaustively.
    *
    * @param query - The search query text.
    * @param options - Optional search options.
-   * @returns SearchResponse containing the search results.
+   * @returns Focused matches, or an exhaustive page with a coverage certificate.
+   * Continue with coverage.next_cursor until coverage.complete is true.
    */
   async query(
     query: string,
@@ -23,6 +24,7 @@ export class SearchClient {
       query,
       limit: options?.limit ?? 10,
       score_threshold: options?.scoreThreshold ?? 0,
+      evidence_mode: options?.evidenceMode ?? "focused",
     };
 
     if (options?.filters) {
@@ -32,6 +34,9 @@ export class SearchClient {
     if (options?.filterId) {
       body["filter_id"] = options.filterId;
     }
+    if (options?.documentId) body["document_id"] = options.documentId;
+    if (options?.cursor) body["cursor"] = options.cursor;
+    if (options?.batchSize) body["batch_size"] = options.batchSize;
 
     const response = await this.client._request("POST", "/api/v1/search", {
       body: JSON.stringify(body),
@@ -40,6 +45,8 @@ export class SearchClient {
     const data = await response.json();
     return {
       results: data.results || [],
+      coverage: data.coverage,
+      error: data.error,
     };
   }
 }

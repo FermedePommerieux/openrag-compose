@@ -145,6 +145,45 @@ results = await client.search.query(
 )
 ```
 
+### Verifiable exhaustive reading
+
+Focused search discovers candidate documents. Exhaustive mode then reads every
+indexed leaf chunk of one immutable document snapshot in source order. A document
+is complete only when the returned coverage certificate says `complete=True`.
+
+```python
+# 1. Discover the relevant document.
+focused = await client.search.query("termination conditions")
+document_id = focused.results[0].document_id
+
+# 2. Read and verify every indexed chunk of that document snapshot.
+cursor = ""
+snapshot = None
+all_chunks = []
+while True:
+    page = await client.search.query(
+        "",
+        evidence_mode="exhaustive",
+        document_id=document_id,
+        cursor=cursor,
+        batch_size=50,
+    )
+    assert page.coverage is not None
+    snapshot = snapshot or page.coverage.snapshot_sha256
+    assert page.coverage.snapshot_sha256 == snapshot
+    all_chunks.extend(page.results)
+    if page.coverage.complete:
+        break
+    cursor = page.coverage.next_cursor or ""
+    assert cursor  # An incomplete response must provide its continuation.
+
+assert len(all_chunks) == page.coverage.total_chunks
+```
+
+Repeat this loop separately for each document when a conclusion spans several
+documents. Summaries and ranked matches help navigation; they are not proof of
+complete coverage.
+
 ## Documents
 
 ```python

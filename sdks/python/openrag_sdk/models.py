@@ -11,7 +11,7 @@ class Source(BaseModel):
 
     filename: str
     text: str
-    score: float
+    score: float | None
     page: int | None = None
     mimetype: str | None = None
     source_url: str | None = None
@@ -20,6 +20,22 @@ class Source(BaseModel):
     chunk_index: int | None = None
     chunking_strategy: str | None = None
     connector_file_id: str | None = None
+    chunk_content_sha256: str | None = None
+    document_content_sha256: str | None = None
+    evidence_order: int | None = None
+
+
+class EvidenceCoverage(BaseModel):
+    """Machine-verifiable progress for one exhaustive document snapshot."""
+
+    mode: Literal["exhaustive"] = "exhaustive"
+    document_id: str
+    snapshot_sha256: str | None = None
+    covered_chunks: int
+    total_chunks: int
+    coverage_ratio: float | None = None
+    complete: bool
+    next_cursor: str | None = None
 
 
 class ChatResponse(BaseModel):
@@ -59,11 +75,11 @@ class DoneEvent(StreamEvent):
 
 # Search models
 class SearchResult(BaseModel):
-    """A single search result."""
+    """A focused match or one leaf chunk from an exhaustive evidence read."""
 
     filename: str
     text: str
-    score: float
+    score: float | None
     page: int | None = None
     mimetype: str | None = None
     source_url: str | None = None
@@ -72,12 +88,17 @@ class SearchResult(BaseModel):
     chunk_index: int | None = None
     chunking_strategy: str | None = None
     connector_file_id: str | None = None
+    chunk_content_sha256: str | None = None
+    document_content_sha256: str | None = None
+    evidence_order: int | None = None
 
 
 class SearchResponse(BaseModel):
     """Response from a search request."""
 
     results: list[SearchResult]
+    coverage: EvidenceCoverage | None = None
+    error: str | None = None
 
 
 # Document models

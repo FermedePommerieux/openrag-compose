@@ -270,6 +270,9 @@ async def get_settings(
                 retrieval_vector_candidates=knowledge_config.retrieval_vector_candidates,
                 retrieval_rrf_k=knowledge_config.retrieval_rrf_k,
                 retrieval_max_chunks_per_document=knowledge_config.retrieval_max_chunks_per_document,
+                retrieval_adaptive_max_chunks_per_document=(
+                    knowledge_config.retrieval_adaptive_max_chunks_per_document
+                ),
                 retrieval_reranker_url=knowledge_config.retrieval_reranker_url,
                 retrieval_reranker_timeout=knowledge_config.retrieval_reranker_timeout,
                 retrieval_debug=knowledge_config.retrieval_debug,
@@ -632,6 +635,7 @@ async def update_settings(
             "retrieval_vector_candidates",
             "retrieval_rrf_k",
             "retrieval_max_chunks_per_document",
+            "retrieval_adaptive_max_chunks_per_document",
             "retrieval_reranker_url",
             "retrieval_reranker_timeout",
             "retrieval_debug",
