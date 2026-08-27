@@ -373,19 +373,28 @@ async def test_search_service_rrf_fuses_lanes_preserves_provenance_and_emits_deb
 
     class OpenSearchClient:
         bodies: list[dict] = []
-        deleted_pits: list[dict] = []
+        scroll_bodies: list[dict] = []
+        cleared_scrolls: list[dict] = []
 
         class indices:
             @staticmethod
             async def get_mapping(*, index):
                 return {index: {"mappings": {"properties": {"chunk_id": {"type": "keyword"}}}}}
 
-        async def create_pit(self, *, index, params):
-            return {"pit_id": "audit-pit"}
+        async def scroll(self, *, body):
+            self.scroll_bodies.append(body)
+            lexical_second_page["sort"] = [0.9, lexical_second_page["_id"]]
+            return {
+                "_scroll_id": "audit-scroll-2",
+                "hits": {
+                    "total": {"value": 3, "relation": "eq"},
+                    "hits": [lexical_second_page],
+                },
+            }
 
-        async def delete_pit(self, *, body):
-            self.deleted_pits.append(body)
-            return {"pits": [{"pit_id": "audit-pit", "successful": True}]}
+        async def clear_scroll(self, *, body):
+            self.cleared_scrolls.append(body)
+            return {"succeeded": True, "num_freed": 1}
 
         async def search(self, *, body, params, index=None):
             self.bodies.append(body)
@@ -408,26 +417,25 @@ async def test_search_service_rrf_fuses_lanes_preserves_provenance_and_emits_deb
                     [shared, vector_same_document] if "test_model_a" in vector_field else [shared]
                 )
             else:
-                if body.get("pit"):
-                    hits = (
-                        [lexical_second_page]
-                        if body.get("search_after")
-                        else [lexical_only, shared]
-                    )
-                    for rank, hit in enumerate(hits):
-                        hit["sort"] = [1.0, hit["_id"], rank]
+                if params.get("scroll"):
+                    hits = [lexical_only, shared]
+                    for hit in hits:
+                        hit["sort"] = [1.0, hit["_id"]]
                 else:
                     hits = [lexical_only, shared]
-            return {
+            result = {
                 "hits": {
                     "total": {
-                        "value": 3 if body.get("pit") else len(hits),
+                        "value": 3 if params.get("scroll") else len(hits),
                         "relation": "eq",
                     },
                     "hits": hits,
                 },
                 "aggregations": {"data_sources": {"buckets": []}},
             }
+            if params.get("scroll"):
+                result["_scroll_id"] = "audit-scroll-1"
+            return result
 
     embedding_response = SimpleNamespace(data=[SimpleNamespace(embedding=[0.1, 0.2])])
     monkeypatch.setattr(
@@ -473,15 +481,14 @@ async def test_search_service_rrf_fuses_lanes_preserves_provenance_and_emits_deb
     opensearch_client.bodies.clear()
     audit_result = await service.search_tool("shared text", audit_discovery=True)
     audit_bodies = [body for body in opensearch_client.bodies if body.get("size") != 0]
-    assert len(audit_bodies) == 4
-    assert audit_bodies[0]["size"] == 500
-    assert audit_bodies[0]["pit"]["id"] == "audit-pit"
-    assert audit_bodies[0]["track_total_hits"] is True
-    assert audit_bodies[1]["size"] == 500
-    assert audit_bodies[1]["search_after"]
-    assert "aggs" not in audit_bodies[1]
-    assert [body["size"] for body in audit_bodies[2:]] == [2, 1]
-    assert opensearch_client.deleted_pits == [{"pit_id": ["audit-pit"]}]
+    assert len(audit_bodies) == 3
+    lexical_audit_body = next(body for body in audit_bodies if body["size"] == 500)
+    assert lexical_audit_body["track_total_hits"] is True
+    assert sorted(body["size"] for body in audit_bodies if body is not lexical_audit_body) == [1, 2]
+    assert opensearch_client.scroll_bodies == [
+        {"scroll_id": "audit-scroll-1", "scroll": "5m"}
+    ]
+    assert opensearch_client.cleared_scrolls == [{"scroll_id": ["audit-scroll-2"]}]
     assert audit_result["discovery"]["mode"] == "archive_audit"
     assert audit_result["discovery"]["documents_found"] == 3
     assert audit_result["discovery"]["lanes"]["lexical"]["pages"] == 2

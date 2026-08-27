@@ -32,10 +32,12 @@ MAX_EMBED_RETRIES = 3
 EMBED_RETRY_INITIAL_DELAY = 1.0
 EMBED_RETRY_MAX_DELAY = 8.0
 # Archive audit discovery must never turn a transport batch size into a silent
-# recall limit. Lexical hits are therefore read from one point-in-time snapshot
-# until OpenSearch reports that the result set is exhausted. Vector search is a
-# ranked nearest-neighbour operation and cannot prove semantic completeness;
-# its depth is expanded adaptively and any engine ceiling is disclosed.
+# recall limit. Lexical hits are therefore read from one OpenSearch scroll
+# snapshot until the result set is exhausted. Scroll is required here because
+# the OpenSearch Security plugin rejects PIT creation under document-level
+# security. Vector search is a ranked nearest-neighbour operation and cannot
+# prove semantic completeness; its depth is expanded adaptively and any engine
+# ceiling is disclosed.
 ARCHIVE_AUDIT_PAGE_SIZE = 500
 ARCHIVE_AUDIT_VECTOR_INITIAL_DEPTH = 100
 ARCHIVE_AUDIT_VECTOR_MAX_DEPTH = 10_000
@@ -888,18 +890,21 @@ class SearchService:
 
         search_params = {"terminate_after": 0}
 
-        async def execute_search(body: dict[str, Any], label: str) -> dict[str, Any]:
+        async def execute_search(
+            body: dict[str, Any],
+            label: str,
+            *,
+            extra_params: dict[str, Any] | None = None,
+        ) -> dict[str, Any]:
             fallback_body = without_num_candidates(body)
+            request_params = {**search_params, **(extra_params or {})}
 
             async def run(search_body: dict[str, Any]) -> dict[str, Any]:
                 kwargs: dict[str, Any] = {
                     "body": search_body,
-                    "params": search_params,
+                    "params": request_params,
                 }
-                # A PIT identifies its index and must not be combined with an
-                # index path. Ordinary focused requests keep the existing API.
-                if "pit" not in search_body:
-                    kwargs["index"] = get_index_name()
+                kwargs["index"] = get_index_name()
                 return await opensearch_client.search(**kwargs)
 
             try:
@@ -958,36 +963,37 @@ class SearchService:
         async def execute_lexical_audit(
             body: dict[str, Any], label: str
         ) -> tuple[dict[str, Any], dict[str, Any]]:
-            """Read every lexical match from one immutable OpenSearch snapshot."""
-            pit_response = await opensearch_client.create_pit(
-                index=get_index_name(), params={"keep_alive": "5m"}
-            )
-            pit_id = pit_response.get("pit_id") or pit_response.get("id")
-            if not pit_id:
-                raise RuntimeError("OpenSearch did not return a point-in-time identifier")
-
+            """Read every lexical match from one DLS-compatible scroll snapshot."""
             hits: list[dict[str, Any]] = []
             first_result: dict[str, Any] | None = None
             pages = 0
             exhausted = False
+            scroll_id: str | None = None
             try:
-                search_after: list[Any] | None = None
                 while True:
-                    page_body = copy.deepcopy(body)
-                    page_body["size"] = ARCHIVE_AUDIT_PAGE_SIZE
-                    page_body["track_total_hits"] = True
-                    page_body["pit"] = {"id": pit_id, "keep_alive": "5m"}
-                    # PIT supplies a stable shard-local tiebreaker for otherwise
-                    # identical score/chunk_id values, including legacy chunks.
-                    page_body["sort"] = [*page_body.get("sort", []), {"_shard_doc": "asc"}]
-                    if search_after is not None:
-                        page_body["search_after"] = search_after
-                        page_body.pop("aggs", None)
-
-                    page_result = await execute_search(page_body, label)
+                    if first_result is None:
+                        page_body = copy.deepcopy(body)
+                        page_body["size"] = ARCHIVE_AUDIT_PAGE_SIZE
+                        page_body["track_total_hits"] = True
+                        page_result = await execute_search(
+                            page_body,
+                            label,
+                            extra_params={"scroll": "5m"},
+                        )
+                    else:
+                        if not scroll_id:
+                            raise RuntimeError(
+                                "OpenSearch lexical audit omitted its scroll identifier"
+                            )
+                        page_result = await opensearch_client.scroll(
+                            body={"scroll_id": scroll_id, "scroll": "5m"}
+                        )
                     pages += 1
                     if first_result is None:
                         first_result = page_result
+                    next_scroll_id = page_result.get("_scroll_id")
+                    if next_scroll_id:
+                        scroll_id = str(next_scroll_id)
                     page_hits = page_result.get("hits", {}).get("hits", [])
                     hits.extend(page_hits)
                     total = page_result.get("hits", {}).get("total", {})
@@ -997,14 +1003,9 @@ class SearchService:
                     ):
                         exhausted = True
                         break
-                    last_sort = page_hits[-1].get("sort")
-                    if not isinstance(last_sort, list) or not last_sort:
-                        raise RuntimeError(
-                            "OpenSearch lexical audit page omitted its search_after cursor"
-                        )
-                    search_after = last_sort
             finally:
-                await opensearch_client.delete_pit(body={"pit_id": [pit_id]})
+                if scroll_id:
+                    await opensearch_client.clear_scroll(body={"scroll_id": [scroll_id]})
 
             merged = dict(first_result or {})
             merged["hits"] = {
@@ -1016,7 +1017,7 @@ class SearchService:
                 "returned": len(hits),
                 "matching": merged.get("hits", {}).get("total"),
                 "exhausted": exhausted,
-                "snapshot": "point_in_time",
+                "snapshot": "scroll",
                 "truncated": not exhausted,
             }
 

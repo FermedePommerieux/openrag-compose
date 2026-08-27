@@ -168,9 +168,10 @@ synthesis.
 
 Retrieval flow version 13 gives explicit exhaustive intent a separate
 archive-audit discovery profile. The lexical lane opens an immutable
-OpenSearch point-in-time snapshot and follows `search_after` pages until every
-matching hit has been consumed; 500 is only its transport page size, never a
-candidate limit. Each embedding-model lane deepens independently until its
+OpenSearch scroll snapshot and consumes it until every matching hit has been
+returned; 500 is only its transport page size, never a candidate limit. Scroll
+is intentional because the OpenSearch Security plugin rejects PIT creation
+when document-level security is active. Each embedding-model lane deepens independently until its
 filtered vector population is exhausted, document discovery stabilizes across
 successive expansions, or OpenSearch's declared k-NN ceiling is reached. The
 response exposes the attempts, reached depth and any truncation instead of
