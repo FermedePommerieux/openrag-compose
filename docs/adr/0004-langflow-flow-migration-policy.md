@@ -62,6 +62,13 @@ the two exact version 8 graphs seen before and after that normalization. This
 keeps `load_from_db: true` stable across restarts without broadening migration
 authority to operator-edited flows.
 
+Retrieval flow version 10 closes the deployment-side half of the same incident.
+Production sets `OPENRAG_FLOWS_PATH` to a shared volume; that volume must be
+refreshed from the exact immutable application revision whenever the image tag
+changes. GitOps now pins both to the same commit. Version 10 recognizes only
+the intended v9 graph and the exact stale-volume v9 graph observed during this
+transition, then replaces either with the corrected shared template.
+
 ## Consequences
 
 An explicit system migration error requires operator review and blocks ASGI

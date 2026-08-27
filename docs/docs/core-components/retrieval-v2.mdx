@@ -159,6 +159,12 @@ after startup. Retrieval flow version 9 migrates both exact repository-owned
 version 8 states (before and after that normalization) to the stable string
 binding; edited graphs still fail closed.
 
+On clustered deployments, `OPENRAG_FLOWS_PATH` may point to a shared volume
+rather than the files baked into the backend image. The GitOps flow revision
+must therefore equal the immutable source revision behind the image tag, and
+the deployment refreshes those shared files on rollout. Retrieval flow version
+10 safely repairs the exact stale-volume v9 state that exposed this mismatch.
+
 The Knowledge document-detail page uses the same exhaustive contract. The
 table passes the stable `document_id`; legacy filename-only links first resolve
 that identity through an exact `data_sources` lookup. The frontend then follows

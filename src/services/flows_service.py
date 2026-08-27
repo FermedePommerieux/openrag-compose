@@ -35,7 +35,7 @@ _LEGACY_RETRIEVAL_COMPONENT = (
     "ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra"
 )
 _BACKEND_RETRIEVAL_COMPONENT = "ext:openrag:OpenRAGBackendRetrievalComponent@extra"
-_RETRIEVAL_FLOW_MIGRATION_VERSION = 9
+_RETRIEVAL_FLOW_MIGRATION_VERSION = 10
 _LEGACY_SYSTEM_FLOW_ID = "1098eea1-6649-4e1d-aed1-b77249fb8dd0"
 # SHA-256 of ``flows/openrag_agent.json`` at lifecycle baseline 156f3664,
 # calculated over canonical ``data`` JSON.  Flow IDs and a lock alone are not
@@ -96,6 +96,17 @@ _PREVIOUS_VERSIONED_REQUEST_BOUND_GRAPH_SHA256 = (
 )
 _PREVIOUS_VERSIONED_LANGFLOW_NORMALIZED_GRAPH_SHA256 = (
     "d62f6aedf721ce4093add756b0675940a99b18905f25edaed430f8d1974c78eb"
+)
+# Version 9 was first deployed while ``OPENRAG_FLOWS_PATH`` still referenced a
+# volume pinned to an older repository revision. The migration marker was
+# therefore written onto that exact stale graph. Version 10 authorizes both the
+# intended v9 graph and this observed transitional graph after GitOps refreshes
+# the shared flow source to the same immutable revision as the application.
+_PREVIOUS_VERSIONED_STABLE_BINDING_GRAPH_SHA256 = (
+    "ec088a83a118da48b0102d4a71d03ce5ac8a6b7e8c5c37636df1e7644a710bb5"
+)
+_PREVIOUS_VERSIONED_STALE_SHARED_FLOW_GRAPH_SHA256 = (
+    "8d1a317642e129d3c6dc719cd097b58a28a9c9e815f10ee503919eab0bbc8e2b"
 )
 
 
@@ -1303,6 +1314,11 @@ class FlowsService:
                 _PREVIOUS_VERSIONED_LANGFLOW_NORMALIZED_GRAPH_SHA256,
             }
             if marker == 8
+            else {
+                _PREVIOUS_VERSIONED_STABLE_BINDING_GRAPH_SHA256,
+                _PREVIOUS_VERSIONED_STALE_SHARED_FLOW_GRAPH_SHA256,
+            }
+            if marker == 9
             else set()
         )
         return self._graph_fingerprint(flow_data) in expected
