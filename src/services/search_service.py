@@ -42,6 +42,12 @@ ARCHIVE_AUDIT_PAGE_SIZE = 500
 ARCHIVE_AUDIT_VECTOR_INITIAL_DEPTH = 100
 ARCHIVE_AUDIT_VECTOR_MAX_DEPTH = 10_000
 ARCHIVE_AUDIT_VECTOR_STABILITY_ROUNDS = 2
+# Audit discovery is fed a topical query, not a bag of independent trigger
+# words. Requiring all terms for one- and two-token queries, then half for
+# longer queries, prevents generic request words from matching most of an
+# archive while preserving multi-concept evidence. Vector lanes cover wording
+# variation independently. This is an adaptive relevance rule, not a result cap.
+ARCHIVE_AUDIT_LEXICAL_MINIMUM_SHOULD_MATCH = "2<50%"
 
 
 # Variable used to store the active instance for the tool wrapper
@@ -57,6 +63,72 @@ def _build_file_facet_aggregations() -> dict[str, Any]:
         "connector_types": {"terms": {"field": "connector_type", "size": 10}},
         "embedding_models": {"terms": {"field": "embedding_model", "size": 10}},
     }
+
+
+def _calibrate_audit_vector_lanes(
+    retrieval_results: dict[str, dict[str, Any]],
+    audit_lane_metadata: dict[str, dict[str, Any]],
+) -> None:
+    """Select grounded semantic audit candidates without a fixed top-k.
+
+    A deep k-NN query eventually returns weak neighbours for nearly every
+    document. Each model's score scale is instead calibrated against documents
+    independently supported by the exhausted lexical lane. An uncalibrated
+    vector lane is excluded rather than turning an unknown scale into thousands
+    of purportedly relevant documents; metadata makes that loss of semantic
+    evidence explicit and semantic completeness remains false.
+    """
+    lexical_result = retrieval_results.get("lexical", {})
+    lexical_document_ids = {
+        str(hit.get("_source", {}).get("document_id"))
+        for hit in lexical_result.get("hits", {}).get("hits", [])
+        if hit.get("_source", {}).get("document_id")
+    }
+    for lane, lane_result in retrieval_results.items():
+        if not lane.startswith("vector:"):
+            continue
+        vector_hits = lane_result.get("hits", {}).get("hits", [])
+        best_lexical_score_by_document: dict[str, float] = {}
+        for hit in vector_hits:
+            document_id = str(hit.get("_source", {}).get("document_id") or "")
+            score = hit.get("_score")
+            if document_id not in lexical_document_ids or not isinstance(score, (int, float)):
+                continue
+            previous = best_lexical_score_by_document.get(document_id)
+            if previous is None or float(score) > previous:
+                best_lexical_score_by_document[document_id] = float(score)
+
+        calibration_scores = sorted(best_lexical_score_by_document.values())
+        if not calibration_scores:
+            lane_result["hits"]["hits"] = []
+            audit_lane_metadata[lane]["selection"] = {
+                "rule": "uncalibrated_excluded",
+                "reason": "no_lexical_supported_document_in_vector_lane",
+                "calibration_documents": 0,
+                "raw_candidates": len(vector_hits),
+                "selected_candidates": 0,
+            }
+            continue
+
+        middle = len(calibration_scores) // 2
+        threshold = (
+            calibration_scores[middle]
+            if len(calibration_scores) % 2
+            else (calibration_scores[middle - 1] + calibration_scores[middle]) / 2
+        )
+        selected_hits = [
+            hit
+            for hit in vector_hits
+            if isinstance(hit.get("_score"), (int, float)) and float(hit["_score"]) >= threshold
+        ]
+        lane_result["hits"]["hits"] = selected_hits
+        audit_lane_metadata[lane]["selection"] = {
+            "rule": "lexical_supported_median_similarity",
+            "score_threshold": threshold,
+            "calibration_documents": len(calibration_scores),
+            "raw_candidates": len(vector_hits),
+            "selected_candidates": len(selected_hits),
+        }
 
 
 def _is_exact_token_query(query: str) -> bool:
@@ -813,6 +885,11 @@ class SearchService:
                     {"chunk_id": {"order": "asc", "missing": "_last"}},
                 ],
             }
+            if audit_discovery:
+                multi_match = lexical_body["query"]["bool"]["should"][0]["multi_match"]
+                multi_match[
+                    "minimum_should_match"
+                ] = ARCHIVE_AUDIT_LEXICAL_MINIMUM_SHOULD_MATCH
             if score_threshold > 0:
                 lexical_body["min_score"] = score_threshold
             if retrieval_settings.mode in {"hybrid", "lexical"}:
@@ -1018,6 +1095,10 @@ class SearchService:
                 "matching": merged.get("hits", {}).get("total"),
                 "exhausted": exhausted,
                 "snapshot": "scroll",
+                "query_rule": {
+                    "type": "adaptive_minimum_should_match",
+                    "minimum_should_match": ARCHIVE_AUDIT_LEXICAL_MINIMUM_SHOULD_MATCH,
+                },
                 "truncated": not exhausted,
             }
 
@@ -1135,6 +1216,8 @@ class SearchService:
 
         raw_hits = results.get("hits", {}).get("hits", [])
         if retrieval_results:
+            if audit_discovery and "lexical" in retrieval_results:
+                _calibrate_audit_vector_lanes(retrieval_results, audit_lane_metadata)
             ranked_lists = [
                 lane_result.get("hits", {}).get("hits", [])
                 for lane_result in retrieval_results.values()

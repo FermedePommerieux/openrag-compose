@@ -14,7 +14,7 @@ from services.retrieval_service import (
     limit_chunks_per_document,
     reciprocal_rank_fusion,
 )
-from services.search_service import SearchService
+from services.search_service import SearchService, _calibrate_audit_vector_lanes
 
 
 @pytest.mark.parametrize(
@@ -46,6 +46,27 @@ def test_focused_or_negated_intent_is_not_promoted(prompt):
 
 def _hit(identifier: str, document_id: str, text: str = "text") -> dict:
     return {"_id": identifier, "_source": {"document_id": document_id, "text": text}}
+
+
+def test_uncalibrated_audit_vector_lane_is_excluded_and_disclosed():
+    vector_hit = _hit("semantic-only", "document-semantic-only")
+    vector_hit["_score"] = 0.99
+    retrieval_results = {
+        "lexical": {"hits": {"hits": []}},
+        "vector:model": {"hits": {"hits": [vector_hit]}},
+    }
+    metadata = {"lexical": {}, "vector:model": {}}
+
+    _calibrate_audit_vector_lanes(retrieval_results, metadata)
+
+    assert retrieval_results["vector:model"]["hits"]["hits"] == []
+    assert metadata["vector:model"]["selection"] == {
+        "rule": "uncalibrated_excluded",
+        "reason": "no_lexical_supported_document_in_vector_lane",
+        "calibration_documents": 0,
+        "raw_candidates": 1,
+        "selected_candidates": 0,
+    }
 
 
 def test_rrf_rewards_hits_present_in_both_ranked_lists():
@@ -370,6 +391,8 @@ async def test_search_service_rrf_fuses_lanes_preserves_provenance_and_emits_deb
     lexical_only["_source"].update({"filename": "a.pdf", "chunk_index": 2})
     lexical_second_page = _hit("lexical-page-2", "document-c", "lexical continuation")
     vector_same_document = _hit("vector-a", "document-a", "other text")
+    shared["_score"] = 0.9
+    vector_same_document["_score"] = 0.8
 
     class OpenSearchClient:
         bodies: list[dict] = []
@@ -484,6 +507,12 @@ async def test_search_service_rrf_fuses_lanes_preserves_provenance_and_emits_deb
     assert len(audit_bodies) == 3
     lexical_audit_body = next(body for body in audit_bodies if body["size"] == 500)
     assert lexical_audit_body["track_total_hits"] is True
+    assert (
+        lexical_audit_body["query"]["bool"]["should"][0]["multi_match"][
+            "minimum_should_match"
+        ]
+        == "2<50%"
+    )
     assert sorted(body["size"] for body in audit_bodies if body is not lexical_audit_body) == [1, 2]
     assert opensearch_client.scroll_bodies == [
         {"scroll_id": "audit-scroll-1", "scroll": "5m"}
@@ -493,6 +522,18 @@ async def test_search_service_rrf_fuses_lanes_preserves_provenance_and_emits_deb
     assert audit_result["discovery"]["documents_found"] == 3
     assert audit_result["discovery"]["lanes"]["lexical"]["pages"] == 2
     assert audit_result["discovery"]["lanes"]["lexical"]["returned"] == 3
+    assert audit_result["discovery"]["lanes"]["lexical"]["query_rule"] == {
+        "type": "adaptive_minimum_should_match",
+        "minimum_should_match": "2<50%",
+    }
+    selection = audit_result["discovery"]["lanes"]["vector:test-model-a"]["selection"]
+    assert selection["score_threshold"] == pytest.approx(0.85)
+    assert {key: value for key, value in selection.items() if key != "score_threshold"} == {
+        "rule": "lexical_supported_median_similarity",
+        "calibration_documents": 2,
+        "raw_candidates": 2,
+        "selected_candidates": 1,
+    }
     assert audit_result["discovery"]["lexical_completeness_certified"] is True
     assert audit_result["discovery"]["truncated"] is False
     assert audit_result["discovery"]["semantic_completeness_certified"] is False

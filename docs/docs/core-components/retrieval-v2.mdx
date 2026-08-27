@@ -171,7 +171,11 @@ archive-audit discovery profile. The lexical lane opens an immutable
 OpenSearch scroll snapshot and consumes it until every matching hit has been
 returned; 500 is only its transport page size, never a candidate limit. Scroll
 is intentional because the OpenSearch Security plugin rejects PIT creation
-when document-level security is active. Each embedding-model lane deepens independently until its
+when document-level security is active. Audit BM25 requires all lexical terms
+for one- and two-term queries and half for longer queries (`2<50%`). This
+adaptive relevance predicate prevents generic words from making most of the
+archive a candidate; it limits no result count, and its fully consumed match
+set is reported in metadata. Each embedding-model lane deepens independently until its
 filtered vector population is exhausted, document discovery stabilizes across
 successive expansions, or OpenSearch's declared k-NN ceiling is reached. The
 response exposes the attempts, reached depth and any truncation instead of
@@ -180,8 +184,19 @@ hit per document before complete source-order reads begin. Ordinary chat
 remains at the administrator-configured candidate depth. The resulting
 `archive_audit_candidates` certificate proves that every document in that
 multi-lane union was read. Lexical completeness can be certified for the exact
-query and PIT snapshot; semantic corpus completeness remains false because a
+query predicate and scroll snapshot; semantic corpus completeness remains false because a
 ranked nearest-neighbour search cannot prove that no unstated synonym exists.
+
+Deep vector retrieval is not allowed to turn every weak neighbour into a
+document read. For each embedding-model lane, OpenRAG calibrates the raw
+similarity scale against documents independently supported by the exhausted
+lexical lane. A semantic-only candidate is retained when it scores at least as
+high as the median lexical candidate in that same embedding space. This yields
+a query-, corpus- and model-specific threshold rather than a fixed top-k; the
+threshold, calibration population, raw candidate count and selected count are
+returned in the audit metadata. An uncalibrated lane is explicitly labelled
+and excluded rather than treating thousands of weak neighbours as relevant;
+it never receives a semantic-completeness certificate.
 
 Each embedding model is an independent RRF lane. OpenRAG no longer compares
 scores from different vector spaces inside one `dis_max` query: BM25 and every
