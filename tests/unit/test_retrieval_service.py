@@ -7,6 +7,7 @@ import pytest
 from services.retrieval_service import (
     RetrievalSettings,
     adaptive_chunk_limit,
+    audit_topic_query,
     decode_exhaustive_cursor,
     encode_exhaustive_cursor,
     exhaustive_retrieval_requested,
@@ -18,6 +19,7 @@ from services.search_service import (
     ARCHIVE_AUDIT_VECTOR_INITIAL_DEPTH,
     ARCHIVE_AUDIT_VECTOR_MAX_DEPTH,
     SearchService,
+    _audit_expansion_document_limit,
     _calibrate_audit_vector_lanes,
     _propagate_provenance_paths,
     _provenance_relation_paths,
@@ -27,6 +29,13 @@ from services.search_service import (
 def test_archive_audit_vector_depth_is_bounded_to_empirical_neighbourhood():
     assert ARCHIVE_AUDIT_VECTOR_INITIAL_DEPTH == 100
     assert ARCHIVE_AUDIT_VECTOR_MAX_DEPTH == 100
+
+
+def test_archive_expansion_gate_adapts_by_idf_instead_of_fixed_candidate_cap():
+    assert _audit_expansion_document_limit(5_756) == 76
+    assert _audit_expansion_document_limit(100) == 10
+    assert _audit_expansion_document_limit(4) == 8
+    assert _audit_expansion_document_limit(None) is None
 
 
 def test_archive_audit_reasoner_can_be_cheaper_than_final_agent(monkeypatch):
@@ -75,6 +84,23 @@ def test_explicit_exhaustive_intent_is_detected(prompt):
 )
 def test_focused_or_negated_intent_is_not_promoted(prompt):
     assert exhaustive_retrieval_requested(prompt) is False
+
+
+def test_archive_audit_extracts_topic_from_real_misspelled_request():
+    prompt = (
+        "e veux que tu fasse une recherche exhaustive complète sur toute l'archive sur la "
+        "thématique ancien surface pastorale/sylvopastoralisme en lien avec la ddt. "
+        "je veux tous les échanges administratifs sur ce projet, vérifies tout"
+    )
+
+    assert exhaustive_retrieval_requested(prompt) is True
+    assert audit_topic_query(prompt) == "ancien surface pastorale sylvopastoralisme ddt"
+
+
+def test_archive_topic_extraction_fails_open_without_explicit_marker():
+    prompt = "Recherche exhaustive des anciennes surfaces pastorales"
+
+    assert audit_topic_query(prompt) == prompt
 
 
 def _hit(identifier: str, document_id: str, text: str = "text") -> dict:
@@ -646,6 +672,8 @@ async def test_search_service_rrf_fuses_lanes_preserves_provenance_and_emits_deb
         async def search(self, *, body, params, index=None):
             self.bodies.append(body)
             if body.get("size") == 0:
+                if "audit_expansion_documents" in body.get("aggs", {}):
+                    return {"aggregations": {"audit_expansion_documents": {"value": 3}}}
                 return {
                     "aggregations": {
                         "embedding_models": {
@@ -653,7 +681,8 @@ async def test_search_service_rrf_fuses_lanes_preserves_provenance_and_emits_deb
                                 {"key": "test-model-a", "doc_count": 1_000},
                                 {"key": "test-model-b", "doc_count": 1_000},
                             ]
-                        }
+                        },
+                        "audit_scope_documents": {"value": 100},
                     }
                 }
             bool_query = body.get("query", {}).get("bool", {})
@@ -808,6 +837,13 @@ async def test_search_service_rrf_fuses_lanes_preserves_provenance_and_emits_deb
     assert audit_result["discovery"]["lanes"]["entity_expansion:1"]["query"] == "DDT 41"
     assert audit_result["discovery"]["lanes"]["entity_expansion:1"]["query_rule"] == {
         "type": "grounded_entity_phrase"
+    }
+    assert audit_result["discovery"]["lanes"]["entity_expansion:1"]["selection"] == {
+        "rule": "adaptive_idf_expansion_gate",
+        "selected": True,
+        "visible_corpus_documents": 100,
+        "maximum_matching_documents": 10,
+        "matching_documents": 3,
     }
     assert audit_result["discovery"]["contextual_review_complete"] is None
     assert audit_result["discovery"]["candidate_selection_complete"] is True

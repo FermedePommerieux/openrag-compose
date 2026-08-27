@@ -135,9 +135,12 @@ For an example, see the [Langflow quickstart](https://docs.langflow.org/get-star
 ## Exhaustive audit continuity and usage
 
 An explicitly exhaustive archive request is executed as a durable,
-owner-scoped audit job. Closing the page or losing the streaming connection
-does not cancel the producer. When a live page loses its stream, the chat polls
-the existing audit identifier and displays its stored result when complete.
+owner-scoped audit job. Losing a live page's streaming connection does not
+cancel the producer: that page polls the existing audit identifier and
+displays its stored result when complete. The durable status also preserves a
+non-empty terminal explanation, token usage and progress counters when an
+upstream operation fails; the UI must show that failure rather than remaining
+on `Thinking`.
 
 Assistant messages display provider-reported input, cached, output and
 reasoning tokens. They also display a USD estimate based on the dated public

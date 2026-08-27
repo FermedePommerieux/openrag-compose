@@ -57,6 +57,7 @@ export function useChatStreaming({
     let timeoutId: NodeJS.Timeout | null = null;
     let hasReceivedData = false;
     let auditId: string | null = null;
+    let terminalUsage: TokenUsage | undefined;
 
     try {
       setIsLoading(true);
@@ -148,6 +149,7 @@ export function useChatStreaming({
         value: undefined,
       };
       let auditTerminalReceived = false;
+      let auditFailure: string | null = null;
 
       if (!controller.signal.aborted && thisStreamId === streamIdRef.current) {
         setStreamingMessage({
@@ -210,7 +212,23 @@ export function useChatStreaming({
                   typeof chunk.usage === "object"
                 ) {
                   usage.value = chunk.usage as TokenUsage;
+                  terminalUsage = usage.value;
                   auditTerminalReceived = true;
+                }
+                if (chunk.type === "openrag.audit.failed") {
+                  if (chunk.progress && typeof chunk.progress === "object") {
+                    progress.value = chunk.progress as AuditProgress;
+                  }
+                  if (chunk.usage && typeof chunk.usage === "object") {
+                    usage.value = chunk.usage as TokenUsage;
+                    terminalUsage = usage.value;
+                  }
+                  auditFailure =
+                    typeof chunk.error === "string" && chunk.error.trim()
+                      ? chunk.error
+                      : "Exhaustive audit failed before verification completed";
+                  window.localStorage.removeItem("openrag_active_audit");
+                  break streamLoop;
                 }
 
                 parseOpenAIChatChunk(chunk, content, currentFunctionCalls) ||
@@ -259,6 +277,13 @@ export function useChatStreaming({
         if (timeoutId) clearTimeout(timeoutId);
       }
 
+      // Failure is a first-class terminal audit event. Surface its persisted
+      // explanation immediately instead of waiting for another status poll or
+      // falling through to the generic "No response" error.
+      if (auditFailure) {
+        throw new Error(auditFailure);
+      }
+
       // A reverse proxy or browser may end a long SSE response while the
       // detached audit is still healthy. Poll the durable job instead of
       // treating transport loss as task loss or starting a duplicate audit.
@@ -292,6 +317,10 @@ export function useChatStreaming({
               isStreaming: true,
               progress: progress.value,
             });
+          }
+          if (status.usage) {
+            usage.value = status.usage;
+            terminalUsage = status.usage;
           }
           if (status.status === "completed") {
             content.value = status.response || content.value;
@@ -385,6 +414,7 @@ export function useChatStreaming({
         timestamp: new Date(),
         isStreaming: false,
         error: true,
+        usage: terminalUsage,
       };
 
       // Pass error message to onComplete so it gets added to chat history

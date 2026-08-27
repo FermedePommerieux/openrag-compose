@@ -35,7 +35,7 @@ _LEGACY_RETRIEVAL_COMPONENT = (
     "ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra"
 )
 _BACKEND_RETRIEVAL_COMPONENT = "ext:openrag:OpenRAGBackendRetrievalComponent@extra"
-_RETRIEVAL_FLOW_MIGRATION_VERSION = 16
+_RETRIEVAL_FLOW_MIGRATION_VERSION = 17
 _LEGACY_SYSTEM_FLOW_ID = "1098eea1-6649-4e1d-aed1-b77249fb8dd0"
 # SHA-256 of ``flows/openrag_agent.json`` at lifecycle baseline 156f3664,
 # calculated over canonical ``data`` JSON.  Flow IDs and a lock alone are not
@@ -139,6 +139,13 @@ _PREVIOUS_VERSIONED_ARCHIVE_AUDIT_GRAPH_SHA256 = (
 # sending that unsupported combination to ``/v1/chat/completions``.
 _PREVIOUS_VERSIONED_CHAT_COMPLETIONS_AGENT_GRAPH_SHA256 = (
     "962a3aa2a15c9cab327600d805afd65c659ca5ca23c1872f20b13818be59dd71"
+)
+# Exact v16 graph after GPT-5.6 tool transport moved to Responses but before
+# alternate lexical predicates received their adaptive IDF gate and the
+# retrieval component received an audit-sized backend timeout. Version 17
+# authorizes only this repository-owned graph for automatic migration.
+_PREVIOUS_VERSIONED_UNGATED_EXPANSION_GRAPH_SHA256 = (
+    "5c3536ffbfa58199fa06aa5bbb4db0482be9ac8e5a7c38ff18d8f39fa67a5197"
 )
 
 
@@ -1361,6 +1368,8 @@ class FlowsService:
             if marker == 13
             else {_PREVIOUS_VERSIONED_CHAT_COMPLETIONS_AGENT_GRAPH_SHA256}
             if marker == 15
+            else {_PREVIOUS_VERSIONED_UNGATED_EXPANSION_GRAPH_SHA256}
+            if marker == 16
             else set()
         )
         return self._graph_fingerprint(flow_data) in expected

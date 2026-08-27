@@ -23,7 +23,9 @@ class _MemoryStructuredCache:
             [scope, model, schema_name, schema, prompt, namespace],
             sort_keys=True,
         )
-        return hashlib.sha256(value.encode()).hexdigest(), hashlib.sha256(scope.encode()).hexdigest()
+        return hashlib.sha256(value.encode()).hexdigest(), hashlib.sha256(
+            scope.encode()
+        ).hexdigest()
 
     async def get(self, cache_key):
         return self.items.get(cache_key)
@@ -62,17 +64,46 @@ async def test_audit_query_expansion_keeps_only_grounded_unique_variants():
 
     expansion, metadata = await service.expand_query(
         "surface pastorale DDT",
-        [_hit("seed", "Anciennes surfaces pastorales à Nouan-le-Fuzelier")],
+        [
+            _hit(
+                "seed",
+                "Anciennes surfaces pastorales ASP avec la DDT 41 à Nouan-le-Fuzelier",
+            )
+        ],
     )
 
     assert expansion.queries == ["ASP DDT Nouan-le-Fuzelier"]
     assert expansion.entities == ["DDT 41", "Nouan-le-Fuzelier"]
     assert metadata["available"] is True
+    assert metadata["ungrounded_or_redundant_hints_rejected"] == 0
     request = client.responses.create.await_args.kwargs
     assert request["model"] == "gpt-5.6-sol"
     assert request["text"]["format"]["type"] == "json_schema"
     assert request["text"]["format"]["strict"] is True
     assert request["timeout"] == 1_200.0
+
+
+@pytest.mark.asyncio
+async def test_audit_query_expansion_rejects_ungrounded_and_redundant_broad_hints():
+    response = SimpleNamespace(
+        output_text=json.dumps(
+            {
+                "queries": ["surface pastorale DDT 41", "unrelated wind turbines"],
+                "entities": ["DDT", "DDT 41", "invented-case-999"],
+            }
+        )
+    )
+    client = SimpleNamespace(responses=SimpleNamespace(create=AsyncMock(return_value=response)))
+    service = AuditReasoningService(client, "gpt-5.6-luna")
+
+    expansion, metadata = await service.expand_query(
+        "surface pastorale DDT",
+        [_hit("seed", "Dossier de surface pastorale suivi par la DDT 41")],
+    )
+
+    assert expansion.queries == ["surface pastorale DDT 41"]
+    assert expansion.entities == ["DDT 41"]
+    assert metadata["ungrounded_or_redundant_hints_rejected"] == 3
 
 
 @pytest.mark.asyncio
@@ -89,7 +120,12 @@ async def test_identical_structured_audit_work_reuses_user_scoped_cache():
         cache_scope="user-42",
         cache_service=cache,
     )
-    seeds = [_hit("seed", "Anciennes surfaces pastorales avec la DDT 41")]
+    seeds = [
+        _hit(
+            "seed",
+            "ASP et sylvopastoralisme en Loir-et-Cher avec la DDT 41",
+        )
+    ]
 
     first, first_metadata = await service.expand_query("surface pastorale", seeds)
     second, second_metadata = await service.expand_query("surface pastorale", seeds)
@@ -225,9 +261,7 @@ async def test_related_query_reuses_prior_expansion_only_as_additive_discovery_m
         ttl_days=0,
     )
     responses = [
-        SimpleNamespace(
-            output_text=json.dumps({"queries": ["ASP DDT"], "entities": ["DDT 41"]})
-        ),
+        SimpleNamespace(output_text=json.dumps({"queries": ["ASP DDT"], "entities": ["DDT 41"]})),
         SimpleNamespace(
             output_text=json.dumps(
                 {
@@ -237,11 +271,14 @@ async def test_related_query_reuses_prior_expansion_only_as_additive_discovery_m
             )
         ),
     ]
-    client = SimpleNamespace(
-        responses=SimpleNamespace(create=AsyncMock(side_effect=responses))
-    )
+    client = SimpleNamespace(responses=SimpleNamespace(create=AsyncMock(side_effect=responses)))
     embeddings = {"text-embedding-3-large": [0.3, -0.4, 0.1, 0.8, -0.2]}
-    seeds = [_hit("seed", "Anciennes surfaces pastorales avec la DDT 41")]
+    seeds = [
+        _hit(
+            "seed",
+            "ASP et sylvopastoralisme en Loir-et-Cher avec la DDT 41",
+        )
+    ]
 
     first_service = AuditReasoningService(
         client,

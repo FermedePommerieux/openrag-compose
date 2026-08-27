@@ -2,6 +2,7 @@ import asyncio
 import copy
 import hashlib
 import hmac
+import math
 import os
 import re
 from typing import Any
@@ -18,6 +19,7 @@ from services.retrieval_service import (
     EXHAUSTIVE_PROFILE_VERSION,
     HttpReranker,
     RetrievalSettings,
+    audit_topic_query,
     decode_exhaustive_cursor,
     encode_exhaustive_cursor,
     exhaustive_scope_sha256,
@@ -52,6 +54,16 @@ ARCHIVE_AUDIT_VECTOR_MAX_DEPTH = 100
 ARCHIVE_AUDIT_VECTOR_STABILITY_ROUNDS = 2
 ARCHIVE_AUDIT_EXPANSION_CONCURRENCY = 4
 ARCHIVE_AUDIT_DOCUMENT_READ_CONCURRENCY = 4
+# Alternate queries are recall helpers, not independent proof that every match
+# is on-topic.  A lane is safe to exhaust only when its document frequency is
+# no greater than sqrt(N) for the caller-visible corpus.  This is equivalent to
+# requiring at least half of the corpus's maximum inverse-document-frequency:
+# ``log(N / df) >= 0.5 * log(N)``.  Unlike a fixed top-k, the predicate adapts
+# to archive size and either consumes every qualifying match or rejects the
+# whole over-broad expansion. The original topical lexical lane is always
+# exhausted and PROV-O still recovers implicit replies/attachments.
+ARCHIVE_AUDIT_EXPANSION_MIN_SELECTIVE_DOCUMENTS = 8
+ARCHIVE_AUDIT_CARDINALITY_PRECISION = 40_000
 # Audit discovery is fed a topical query, not a bag of independent trigger
 # words. Requiring all terms for one- and two-token queries, then half for
 # longer queries, prevents generic request words from matching most of an
@@ -98,7 +110,11 @@ def _calibrate_audit_vector_lanes(
     lexical_document_ids = {
         str(hit.get("_source", {}).get("document_id"))
         for lane, result in retrieval_results.items()
-        if _is_audit_lexical_lane(lane)
+        # Only the original topical predicate is an independent calibration
+        # anchor. Alternate queries are derived from those same seeds and
+        # cannot bootstrap their own semantic threshold without circularly
+        # admitting query drift.
+        if lane == "lexical"
         for hit in result.get("hits", {}).get("hits", [])
         if hit.get("_source", {}).get("document_id")
     }
@@ -162,6 +178,21 @@ def _hits_by_document(hits: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
 def _is_audit_lexical_lane(lane: str) -> bool:
     """Return whether a lane is an exhaustively consumed lexical predicate."""
     return lane == "lexical" or lane.startswith(("lexical_expansion:", "entity_expansion:"))
+
+
+def _audit_expansion_document_limit(visible_documents: int | None) -> int | None:
+    """Return the adaptive IDF gate for an alternate lexical predicate."""
+
+    if (
+        not isinstance(visible_documents, int)
+        or isinstance(visible_documents, bool)
+        or visible_documents <= 0
+    ):
+        return None
+    return max(
+        ARCHIVE_AUDIT_EXPANSION_MIN_SELECTIVE_DOCUMENTS,
+        math.ceil(math.sqrt(visible_documents)),
+    )
 
 
 def _provenance_relations(hit: dict[str, Any]) -> list[tuple[str, str]]:
@@ -612,6 +643,14 @@ class SearchService:
                 message="Searching lexical and semantic archive lanes",
             )
 
+        # Audit instructions and their topical predicate have different jobs.
+        # Keep the complete request for the later evidence synthesis, but do
+        # not ask BM25/embeddings to rank control words such as "exhaustive",
+        # "archive" or "verify everything".  A deterministic extractor only
+        # changes queries with an explicit topic marker and otherwise leaves
+        # the model-supplied search text untouched.
+        retrieval_query = audit_topic_query(query) if audit_discovery else query
+
         # Strategy: Use provided model, or default to the configured embedding
         # model. This assumes documents are embedded with that model by default.
         # Future enhancement: Could auto-detect available models in corpus.
@@ -629,7 +668,8 @@ class SearchService:
             "[SEARCH] Query started",
             embedding_model=embedding_model,
             embedding_field=embedding_field_name,
-            query_preview=query[:50] if query else None,
+            query_preview=retrieval_query[:50] if retrieval_query else None,
+            audit_topic_extracted=(audit_discovery and retrieval_query != query),
             retrieval_strategy=retrieval_settings.strategy,
             retrieval_mode=retrieval_settings.mode,
         )
@@ -656,12 +696,13 @@ class SearchService:
         )
         result_limit = limit
         # Detect wildcard request ("*") to return global facets/stats without semantic search
-        is_wildcard_match_all = isinstance(query, str) and query.strip() == "*"
+        is_wildcard_match_all = isinstance(retrieval_query, str) and retrieval_query.strip() == "*"
 
         # Get available embedding models from corpus
         query_embeddings = {}
         available_models = []
         available_model_counts: dict[str, int] = {}
+        audit_scope_documents: int | None = None
         failed_models: list = []
 
         opensearch_client = self.session_manager.get_user_opensearch_client(user_id, jwt_token)
@@ -714,6 +755,13 @@ class SearchService:
                         "embedding_models": {"terms": {"field": "embedding_model", "size": 10}}
                     },
                 }
+                if audit_discovery:
+                    agg_query["aggs"]["audit_scope_documents"] = {
+                        "cardinality": {
+                            "field": "document_id",
+                            "precision_threshold": ARCHIVE_AUDIT_CARDINALITY_PRECISION,
+                        }
+                    }
 
                 # Apply filters to model detection if any exist
                 if filter_clauses:
@@ -733,6 +781,11 @@ class SearchService:
                     for bucket in buckets
                     if bucket.get("key")
                 }
+                scope_value = (
+                    agg_result.get("aggregations", {}).get("audit_scope_documents", {}).get("value")
+                )
+                if isinstance(scope_value, int) and not isinstance(scope_value, bool):
+                    audit_scope_documents = max(0, scope_value)
 
                 if not available_models:
                     # Fallback to configured model if no documents indexed yet
@@ -773,7 +826,7 @@ class SearchService:
                     attempts += 1
                     try:
                         resp = await clients.patched_embedding_client.embeddings.create(
-                            model=formatted_model, input=[query]
+                            model=formatted_model, input=[retrieval_query]
                         )
                         from services.token_usage_service import token_usage_service
 
@@ -835,7 +888,7 @@ class SearchService:
                 "Generated query embeddings",
                 models=list(query_embeddings.keys()),
                 failed_models=failed_models,
-                query_preview=query[:50],
+                query_preview=retrieval_query[:50],
             )
         else:
             # Wildcard query - no embedding needed
@@ -949,7 +1002,7 @@ class SearchService:
                 [
                     {
                         "multi_match": {
-                            "query": query,
+                            "query": retrieval_query,
                             "fields": ["text^2", "filename^1.5"],
                             "type": "best_fields",
                             "operator": "or",
@@ -965,7 +1018,7 @@ class SearchService:
                         # match_phrase_prefix with a bounded expansion is safer.
                         "match_phrase_prefix": {
                             "text": {
-                                "query": query,
+                                "query": retrieval_query,
                                 "max_expansions": 50,
                                 "boost": 0.25,
                             }
@@ -1053,7 +1106,7 @@ class SearchService:
                         "should": [
                             {
                                 "multi_match": {
-                                    "query": query,
+                                    "query": retrieval_query,
                                     "fields": ["text^2", "filename^1.5"],
                                     "type": "best_fields",
                                     "operator": "or",
@@ -1062,7 +1115,10 @@ class SearchService:
                             },
                             {
                                 "match_phrase_prefix": {
-                                    "text": {"query": query, "max_expansions": 50}
+                                    "text": {
+                                        "query": retrieval_query,
+                                        "max_expansions": 50,
+                                    }
                                 }
                             },
                         ],
@@ -1621,7 +1677,7 @@ class SearchService:
             if audit_discovery and "lexical" in retrieval_results:
                 if audit_reasoner is not None:
                     expansion, audit_query_expansion = await audit_reasoner.expand_query(
-                        query,
+                        retrieval_query,
                         retrieval_results["lexical"].get("hits", {}).get("hits", []),
                     )
                     expansion_jobs: list[tuple[str, dict[str, Any], str]] = []
@@ -1650,6 +1706,9 @@ class SearchService:
                         ]
                         expansion_jobs.append((f"entity_expansion:{index}", entity_body, entity))
                     if expansion_jobs:
+                        expansion_selectivity_limit = _audit_expansion_document_limit(
+                            audit_scope_documents
+                        )
                         audit_progress_service.update(
                             audit_progress_id,
                             phase="expanded_search",
@@ -1666,11 +1725,84 @@ class SearchService:
                             lane: str, body: dict[str, Any]
                         ) -> tuple[dict[str, Any], dict[str, Any]]:
                             async with expansion_semaphore:
+                                matching_documents: int | None = None
+                                if expansion_selectivity_limit is not None:
+                                    # Probe document frequency before opening a
+                                    # scroll. An alternate term that matches a
+                                    # large part of the archive (for example
+                                    # "project" or "DDT") is not evidence that
+                                    # those documents concern this subject. It
+                                    # adds no safe recall beyond the original
+                                    # topical lane, semantic calibration and
+                                    # PROV-O closure, so do not materialize its
+                                    # entire noisy match set.
+                                    probe_body = copy.deepcopy(body)
+                                    probe_body["size"] = 0
+                                    probe_body["track_total_hits"] = False
+                                    probe_body.pop("sort", None)
+                                    probe_body["aggs"] = {
+                                        "audit_expansion_documents": {
+                                            "cardinality": {
+                                                "field": "document_id",
+                                                "precision_threshold": (
+                                                    ARCHIVE_AUDIT_CARDINALITY_PRECISION
+                                                ),
+                                            }
+                                        }
+                                    }
+                                    probe = await execute_search(probe_body, f"{lane}:selectivity")
+                                    probe_value = (
+                                        probe.get("aggregations", {})
+                                        .get("audit_expansion_documents", {})
+                                        .get("value")
+                                    )
+                                    if isinstance(probe_value, int) and not isinstance(
+                                        probe_value, bool
+                                    ):
+                                        matching_documents = max(0, probe_value)
+                                    if (
+                                        matching_documents is not None
+                                        and matching_documents > expansion_selectivity_limit
+                                    ):
+                                        return {"hits": {"hits": []}}, {
+                                            "pages": 0,
+                                            "returned": 0,
+                                            "matching_documents": matching_documents,
+                                            "exhausted": False,
+                                            "snapshot": "cardinality_probe",
+                                            "truncated": False,
+                                            "selection": {
+                                                "rule": "adaptive_idf_expansion_gate",
+                                                "selected": False,
+                                                "reason": "over_broad_alternate_predicate",
+                                                "visible_corpus_documents": (audit_scope_documents),
+                                                "maximum_matching_documents": (
+                                                    expansion_selectivity_limit
+                                                ),
+                                                "matching_documents": matching_documents,
+                                            },
+                                        }
                                 if lane.startswith("entity_expansion:"):
                                     result, metadata = await execute_scroll_audit(body, lane)
                                     metadata["query_rule"] = {"type": "grounded_entity_phrase"}
-                                    return result, metadata
-                                return await execute_lexical_audit(body, lane)
+                                else:
+                                    result, metadata = await execute_lexical_audit(body, lane)
+                                exact_documents = len(
+                                    _hits_by_document(result.get("hits", {}).get("hits", []))
+                                )
+                                metadata["matching_documents"] = (
+                                    matching_documents
+                                    if matching_documents is not None
+                                    else exact_documents
+                                )
+                                metadata["selection"] = {
+                                    "rule": "adaptive_idf_expansion_gate",
+                                    "selected": True,
+                                    "visible_corpus_documents": audit_scope_documents,
+                                    "maximum_matching_documents": expansion_selectivity_limit,
+                                    "matching_documents": metadata["matching_documents"],
+                                }
+                                return result, metadata
 
                         expansion_results = await asyncio.gather(
                             *[
@@ -1741,7 +1873,7 @@ class SearchService:
             raw_hits = await HttpReranker(
                 retrieval_settings.reranker_url,
                 retrieval_settings.reranker_timeout,
-            ).rerank(query, raw_hits)
+            ).rerank(retrieval_query, raw_hits)
             if not audit_discovery:
                 raw_hits = raw_hits[:result_limit]
 
@@ -1808,7 +1940,7 @@ class SearchService:
         # Preserve ordinary hybrid/RRF results. Exact narrowing is only for
         # identifier-like queries with an actual verbatim match.
         chunks, aggregations = _apply_exact_match_file_filter(
-            query,
+            retrieval_query,
             chunks,
             _normalize_file_facet_aggregations(results.get("aggregations", {})),
             is_wildcard_match_all=is_wildcard_match_all,
@@ -1827,9 +1959,21 @@ class SearchService:
                 lane: metadata
                 for lane, metadata in audit_lane_metadata.items()
                 if _is_audit_lexical_lane(lane)
+                and metadata.get("selection", {}).get("selected") is not False
             }
             response["discovery"] = {
                 "mode": "archive_audit",
+                "query_normalization": {
+                    "applied": retrieval_query != query,
+                    "topic_query": retrieval_query,
+                },
+                "expansion_selectivity": {
+                    "rule": "adaptive_idf_expansion_gate",
+                    "visible_corpus_documents": audit_scope_documents,
+                    "maximum_matching_documents": _audit_expansion_document_limit(
+                        audit_scope_documents
+                    ),
+                },
                 "documents_found": len(
                     {item.get("document_id") for item in chunks if item.get("document_id")}
                 ),

@@ -4,7 +4,13 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from services.chat_audit_job_service import ChatAuditJobService
+from services.chat_audit_job_service import ChatAuditJobService, _audit_error_message
+
+
+def test_empty_timeout_error_is_persisted_with_a_useful_explanation() -> None:
+    assert _audit_error_message(TimeoutError()) == (
+        "Exhaustive audit timed out before source verification completed"
+    )
 
 
 @pytest.mark.asyncio
@@ -76,3 +82,29 @@ async def test_audit_producer_survives_subscriber_disconnect() -> None:
     assert status["response_id"] == "response-1"
     assert status["usage"]["total_tokens"] == 110
     assert status["usage"]["cost_usd"] == pytest.approx(0.0006)
+
+
+@pytest.mark.asyncio
+async def test_failed_audit_event_is_terminal_and_contains_the_durable_error() -> None:
+    async def stream():
+        raise TimeoutError
+        yield b""  # pragma: no cover - makes this an async generator
+
+    service = ChatAuditJobService()
+    service._create_row = AsyncMock()  # type: ignore[method-assign]
+    service._checkpoint = AsyncMock()  # type: ignore[method-assign]
+    await service.start(
+        audit_id="audit-timeout",
+        user_id="user-1",
+        model="gpt-5.6-luna",
+        stream=stream(),
+    )
+
+    runtime = service._runtimes["audit-timeout"]
+    assert runtime.task is not None
+    await runtime.task
+    failed = json.loads(runtime.events[-1].decode())
+
+    assert failed["type"] == "openrag.audit.failed"
+    assert failed["status"] == "failed"
+    assert failed["error"] == ("Exhaustive audit timed out before source verification completed")

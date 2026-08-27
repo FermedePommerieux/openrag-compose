@@ -27,6 +27,7 @@ logger = get_logger(__name__)
 
 AUDIT_REASONING_BATCH_DOCUMENTS = 16
 AUDIT_REASONING_MAX_EXCERPT_CHARACTERS = 4_000
+AUDIT_QUERY_EXPANSION_SEED_DOCUMENTS = 24
 AUDIT_REASONING_CONCURRENCY = 4
 AUDIT_REASONING_TIMEOUT_SECONDS = 1_200.0
 AUDIT_SYNTHESIS_BATCH_CHUNKS = 24
@@ -375,6 +376,13 @@ class AuditReasoningService:
                     "source_relation_target_ids": source.get("source_relation_target_ids", []),
                 }
             )
+            # Query expansion only needs a bounded, rank-ordered sample of the
+            # already accepted topical seeds. Passing thousands of excerpts to
+            # a model neither increases lexical completeness nor justifies a
+            # larger candidate set; the original OpenSearch predicate still
+            # exhausts every direct match and PROV-O follows their relations.
+            if len(compact_seeds) >= AUDIT_QUERY_EXPANSION_SEED_DOCUMENTS:
+                break
         prompt = (
             "Create grounded OpenSearch query expansions for an exhaustive archive audit.\n"
             f"Original query: {query}\n"
@@ -412,21 +420,60 @@ class AuditReasoningService:
             related_memory.entities if isinstance(related_memory, AuditQueryExpansion) else []
         )
         original = _normalize_query(query).casefold()
+        original_terms = set(re.findall(r"[\w]+", original, flags=re.UNICODE))
+        seed_grounding = _normalize_query(
+            " ".join(
+                str(value or "")
+                for seed in compact_seeds
+                for value in (
+                    seed.get("filename"),
+                    seed.get("text"),
+                    seed.get("source_entity_id"),
+                    " ".join(
+                        str(identifier)
+                        for identifier in seed.get("source_relation_target_ids") or []
+                        if identifier
+                    ),
+                )
+            )
+        ).casefold()
+        seed_terms = set(re.findall(r"[\w]+", seed_grounding, flags=re.UNICODE))
+
+        def grounded_new_terms(candidate: str) -> bool:
+            """Reject drift and redundant broad subsets before OpenSearch.
+
+            An expansion must contribute at least one term absent from the
+            original topical query, and every contributed term must occur in
+            the current visible seed evidence. Related-cache hints pass the
+            same check, so a nearby prior question can save work without
+            importing entities from another evidence scope.
+            """
+
+            candidate_terms = set(re.findall(r"[\w]+", candidate.casefold(), flags=re.UNICODE))
+            new_terms = candidate_terms - original_terms
+            return bool(new_terms) and new_terms.issubset(seed_terms)
+
         queries: list[str] = []
+        rejected_ungrounded = 0
         for candidate in [*expansion.queries, *prior_queries]:
             normalized = _normalize_query(candidate)
             if not normalized or normalized.casefold() == original:
                 continue
+            if not grounded_new_terms(normalized):
+                rejected_ungrounded += 1
+                continue
             if normalized.casefold() not in {item.casefold() for item in queries}:
                 queries.append(normalized)
-        entities = list(
-            dict.fromkeys(
-                normalized
-                for value in [*expansion.entities, *prior_entities]
-                for normalized in [_normalize_query(value)]
-                if normalized
-            )
-        )
+        entities: list[str] = []
+        for value in [*expansion.entities, *prior_entities]:
+            normalized = _normalize_query(value)
+            if not normalized:
+                continue
+            if not grounded_new_terms(normalized):
+                rejected_ungrounded += 1
+                continue
+            if normalized.casefold() not in {item.casefold() for item in entities}:
+                entities.append(normalized)
         normalized_expansion = AuditQueryExpansion(
             queries=queries[:12],
             entities=entities[:32],
@@ -436,6 +483,8 @@ class AuditReasoningService:
             "model": self.model,
             "queries": normalized_expansion.queries,
             "entities": normalized_expansion.entities,
+            "seed_documents_supplied": len(compact_seeds),
+            "ungrounded_or_redundant_hints_rejected": rejected_ungrounded,
             "related_research_memory": {
                 "used": bool(prior_queries or prior_entities),
                 "queries_added": len(prior_queries),

@@ -64,6 +64,23 @@ def _delta_text(event: dict[str, Any]) -> str:
     return ""
 
 
+def _audit_error_message(error: Exception) -> str:
+    """Return a non-empty durable explanation for every terminal failure.
+
+    Built-in ``TimeoutError`` stringifies to an empty string. Persisting that
+    value made a ten-minute upstream timeout look like an audit that was still
+    thinking and erased the explanation once the backend pod changed.
+    """
+
+    message = str(error).strip()
+    if message:
+        return message
+    error_name = type(error).__name__
+    if "timeout" in error_name.casefold():
+        return "Exhaustive audit timed out before source verification completed"
+    return f"Exhaustive audit failed with {error_name} before source verification completed"
+
+
 class ChatAuditJobService:
     """Own exhaustive execution lifetime and expose reconnect-safe status."""
 
@@ -174,7 +191,7 @@ class ChatAuditJobService:
             )
         except Exception as error:
             status = "failed"
-            runtime.error = str(error)
+            runtime.error = _audit_error_message(error)
             audit_progress_service.fail(runtime.audit_id)
             runtime.progress = audit_progress_service.snapshot(runtime.audit_id) or runtime.progress
             runtime.usage = token_usage_service.snapshot(runtime.audit_id)
@@ -183,7 +200,14 @@ class ChatAuditJobService:
                 runtime,
                 (
                     json.dumps(
-                        {"type": "openrag.audit.failed", "audit_id": runtime.audit_id},
+                        {
+                            "type": "openrag.audit.failed",
+                            "status": "failed",
+                            "audit_id": runtime.audit_id,
+                            "error": runtime.error,
+                            "progress": runtime.progress,
+                            "usage": runtime.usage,
+                        },
                         ensure_ascii=False,
                     )
                     + "\n"

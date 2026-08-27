@@ -649,6 +649,10 @@ UPLOAD_BATCH_SIZE = get_env_int("UPLOAD_BATCH_SIZE", 25)
 # Default: 40 minutes total, 40 minutes read timeout
 LANGFLOW_TIMEOUT = get_env_float("LANGFLOW_TIMEOUT", 2400.0)  # 40 minutes
 LANGFLOW_CONNECT_TIMEOUT = get_env_float("LANGFLOW_CONNECT_TIMEOUT", 30.0)  # 30 seconds
+# The OpenAI-compatible /responses connection wraps the complete Langflow tool
+# execution. Archive audits can legitimately outlive ordinary ingestion/chat
+# calls, so its read budget is separate and defaults to six hours.
+LANGFLOW_STREAM_TIMEOUT = get_env_float("LANGFLOW_STREAM_TIMEOUT", 21600.0)
 # Retries for transient Langflow HTTP failures (disconnects, 502/503/504).
 LANGFLOW_REQUEST_RETRIES = get_env_int("LANGFLOW_REQUEST_RETRIES", 2)
 
@@ -1096,8 +1100,22 @@ class AppClients:
         await get_langflow_api_key()
         if LANGFLOW_KEY and self.langflow_client is None:
             try:
+                # AsyncOpenAI otherwise uses the SDK's hidden 600-second read
+                # timeout. Exhaustive audits legitimately spend longer inside
+                # the Langflow retrieval tool, and a production audit was
+                # cancelled at exactly that default despite LANGFLOW_TIMEOUT
+                # being configured to 2,400 seconds. Apply the explicit
+                # long-running stream budget instead of the SDK default.
                 self.langflow_client = AsyncOpenAI(
-                    base_url=f"{LANGFLOW_URL}/api/v1", api_key=LANGFLOW_KEY
+                    base_url=f"{LANGFLOW_URL}/api/v1",
+                    api_key=LANGFLOW_KEY,
+                    timeout=httpx.Timeout(
+                        timeout=LANGFLOW_STREAM_TIMEOUT,
+                        connect=LANGFLOW_CONNECT_TIMEOUT,
+                        read=LANGFLOW_STREAM_TIMEOUT,
+                        write=LANGFLOW_CONNECT_TIMEOUT,
+                        pool=LANGFLOW_CONNECT_TIMEOUT,
+                    ),
                 )
                 logger.info("Langflow client initialized on-demand")
             except Exception as e:

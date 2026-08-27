@@ -83,6 +83,11 @@ AUDIT_DOCUMENT_CONTEXT_FIELDS = (
 # conservative margin below a 272k context once prompts and answer tokens are
 # included. New archive audits never rely on this fallback.
 MODEL_RAW_EVIDENCE_CHARACTER_BUDGET = 600_000
+FOCUSED_BACKEND_TIMEOUT_SECONDS = 2_400.0
+# Keep this below the backend's default LANGFLOW_STREAM_TIMEOUT (six hours) so
+# the inner failure can be checkpointed and delivered before the outer
+# OpenAI-compatible Langflow connection reaches its own guard.
+AUDIT_BACKEND_TIMEOUT_SECONDS = 18_000.0
 
 
 def _as_text(value: Any) -> str:
@@ -198,6 +203,8 @@ def _model_payload(payload: dict[str, Any]) -> dict[str, Any]:
             key: discovery[key]
             for key in (
                 "mode",
+                "query_normalization",
+                "expansion_selectivity",
                 "documents_found",
                 "chunks_returned",
                 "lanes",
@@ -488,7 +495,12 @@ class OpenRAGBackendRetrievalComponent(LCToolComponent):
         # Archive audits may page an entire lexical result set and then read
         # every candidate document. Keep a short connection timeout while
         # allowing slow, evidence-complete responses from Raspberry Pi nodes.
-        with httpx.Client(timeout=httpx.Timeout(2_400.0, connect=10.0)) as client:
+        backend_timeout = (
+            AUDIT_BACKEND_TIMEOUT_SECONDS
+            if retrieval_intent == "exhaustive"
+            else FOCUSED_BACKEND_TIMEOUT_SECONDS
+        )
+        with httpx.Client(timeout=httpx.Timeout(backend_timeout, connect=10.0)) as client:
             response = client.post(
                 url,
                 headers=headers,

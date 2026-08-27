@@ -328,6 +328,7 @@ backend:
 
   # Timeouts
   langflowTimeout: 2400                   # seconds; total timeout for Langflow HTTP calls (default: 40 min)
+  langflowStreamTimeout: 21600            # seconds; complete chat/tool stream budget for exhaustive audits
   langflowConnectTimeout: 30              # seconds; connection timeout for Langflow HTTP calls
   ingestionTimeout: 3600                  # seconds; per-file processing timeout for ingestion tasks
 

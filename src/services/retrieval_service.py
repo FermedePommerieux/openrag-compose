@@ -40,6 +40,37 @@ _EXHAUSTIVE_INTENT_PATTERNS = (
     re.compile(r"\bevery\s+(?:document|email|mail|occurrence|source)\b"),
 )
 
+_AUDIT_TOPIC_MARKER = re.compile(
+    r"\b(?:th[eé]matique|sujet|topic)\b\s*(?:(?:de|du|des)\s+|[:\-]\s*)?",
+    re.IGNORECASE,
+)
+_AUDIT_TRAILING_INSTRUCTION = re.compile(
+    r"(?:[.!?;]\s*|\s+-\s+)"
+    r"(?:j?e\s+veux|je\s+souhaite|i\s+want|v[eé]rif\w*\s+tout)\b",
+    re.IGNORECASE,
+)
+_AUDIT_TOPIC_CONNECTORS = frozenset(
+    {
+        "a",
+        "au",
+        "aux",
+        "avec",
+        "de",
+        "des",
+        "du",
+        "en",
+        "et",
+        "la",
+        "le",
+        "les",
+        "lien",
+        "ou",
+        "the",
+        "to",
+        "with",
+    }
+)
+
 
 def exhaustive_retrieval_requested(prompt: str) -> bool:
     """Return whether the user explicitly requests exhaustive evidence work.
@@ -59,6 +90,43 @@ def exhaustive_retrieval_requested(prompt: str) -> bool:
     ):
         return False
     return any(pattern.search(normalized) for pattern in _EXHAUSTIVE_INTENT_PATTERNS)
+
+
+def audit_topic_query(prompt: str) -> str:
+    """Extract the topical predicate from explicit audit instructions.
+
+    OpenSearch must rank the subject, not conversational control words such as
+    ``recherche exhaustive`` or ``toute l'archive``.  Those words express the
+    required execution contract but have no evidentiary value and can match a
+    large fraction of email archives.  This deterministic extraction is used
+    only when a trusted caller has already selected audit mode; the complete
+    user request remains unchanged for evidence synthesis and final answering.
+
+    A marker such as ``thématique``/``sujet``/``topic`` is required before any
+    text is removed.  If extraction is ambiguous, the original query is
+    returned fail-open.  The deliberately tolerated ``e veux`` spelling covers
+    a real copied production request without weakening exhaustive-intent
+    detection.
+    """
+
+    original = re.sub(r"\s+", " ", str(prompt or "")).strip()
+    if not original:
+        return original
+    marker = _AUDIT_TOPIC_MARKER.search(original)
+    if marker is None:
+        return original
+    topic = original[marker.end() :].strip()
+    trailing = _AUDIT_TRAILING_INSTRUCTION.search(topic)
+    if trailing is not None:
+        topic = topic[: trailing.start()]
+    topic = topic.strip(" \t\r\n\"'“”‘’.,;:!?-")
+    terms = re.findall(r"[\w]+(?:[-'][\w]+)*", topic, flags=re.UNICODE)
+    topical_terms = [term for term in terms if term.casefold() not in _AUDIT_TOPIC_CONNECTORS]
+    if topical_terms:
+        topic = " ".join(topical_terms)
+    # A one-character extraction is more likely punctuation or a malformed
+    # instruction than a useful archive predicate.
+    return topic if len(topic) >= 2 else original
 
 
 @dataclass(frozen=True)

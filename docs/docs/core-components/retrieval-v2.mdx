@@ -211,36 +211,45 @@ returned in the audit metadata. An uncalibrated lane is explicitly labelled
 and excluded rather than treating thousands of weak neighbours as relevant;
 it never receives a semantic-completeness certificate.
 
-Archive audit discovery then performs three evidence-preserving stages:
+Retrieval flow version 17 refines that audit with deterministic topic
+extraction, evidence-grounded hint validation and adaptive expansion
+selectivity. Archive audit discovery then performs three evidence-preserving
+stages:
 
 1. The configured reasoning model receives only the high-precision lexical
-   seeds and returns structured alternate queries and named entities. Every
-   alternate BM25 predicate and exact entity predicate is consumed completely
-   through its own DLS-scoped scroll. Expansion concurrency is bounded to
-   protect OpenSearch, but every returned predicate and every matching result
-   is processed. Expansions must be grounded in visible seed text; generic
-   words and hypothetical answers are forbidden.
+   seeds and returns structured alternate queries and named entities. OpenRAG
+   independently rejects any hint that contributes no new term or whose new
+   terms are absent from the current visible seeds; semantically related cache
+   hints pass the same evidence-scope check. Before opening a scroll, OpenSearch
+   measures the distinct-document frequency of each alternate predicate. The
+   predicate is selected only when `df <= ceil(sqrt(N))`, with a floor of eight
+   documents for small archives, where `N` is the caller-visible document
+   count. This is an adaptive IDF requirement
+   (`log(N/df) >= 0.5 * log(N)`), not a fixed candidate cap. Every selected
+   predicate is then consumed completely. An over-broad alternative such as a
+   bare organization or `project` is rejected as a whole rather than turning
+   thousands of weak matches into paid model reads. The original topical
+   lexical predicate remains fully exhausted.
 2. Starting from the exhausted lexical lanes and calibrated semantic lanes,
    the visible W3C PROV-O graph is traversed to a fixpoint through
    `member_of`, `reply_to`, `references`, and `attachment_of`. Each newly found
    document carries the exact anchor, entity identifier, direction, and anchor
    excerpt that justified its inclusion. `contained_in` is deliberately not a
    thematic edge because a whole mailbox shares one archive source.
-3. Every candidate is contextually reviewed in transport batches. The reviewer
-   sees the candidate excerpt plus its PROV-O paths and labels it `relevant`,
-   `irrelevant`, or `uncertain`. These discovery labels never remove a
-   candidate before its complete read. Missing responses, malformed output and
-   provider failures become `uncertain` and remain in exhaustive scope.
-   Duplicate decisions and supporting document identifiers absent from the
-   candidate or its supplied relation paths are invalidated the same way.
+3. No language model excludes documents from a discovery excerpt. Every
+   document admitted by the original topical predicate, a selected high-IDF
+   expansion, calibrated semantic retrieval or PROV-O closure is read in full.
+   The hierarchical answer workers then decide relevance from the complete
+   pieces and the final claims are verified against their cited source chunks.
+   This keeps candidate generation inexpensive and makes the answer model judge
+   the evidence, rather than asking a model to judge unread documents first.
 
 Batch size and concurrency are transport controls, never result limits: all
-candidates are processed. The response reports expansion queries, entities,
-graph iterations, relation roles, model identity, failed batches, and all
-decision counts. A complete contextual review certifies only that every
-discovered candidate received a decision; it still does not prove semantic
-completeness for concepts absent from every lexical, vector and provenance
-path.
+admitted candidates are processed. The response reports the visible corpus
+cardinality, adaptive expansion threshold, selected/rejected predicates,
+queries, entities, graph iterations, relation roles and model identity. This
+still does not prove semantic completeness for concepts absent from every
+lexical, vector and provenance path.
 
 The tool then carries each transient relation path and relevance decision onto
 the mandatory full-document reads. These fields appear once per document in
@@ -318,6 +327,12 @@ process-local for the current single backend replica; missing progress can
 never weaken or strengthen the coverage certificate. A multi-replica backend
 must replace it with a shared TTL store before treating cross-pod progress as
 reliable.
+
+The backend's OpenAI-compatible Langflow client explicitly uses
+`LANGFLOW_TIMEOUT`. Without that binding the OpenAI Python SDK applies its own
+600-second read timeout, which can terminate a healthy detached audit while it
+is still inside the retrieval tool. Terminal timeout exceptions are normalized
+to a non-empty durable error and emitted as `openrag.audit.failed` events.
 
 This provides a fail-closed factual contract, not a mathematical guarantee that
 a probabilistic model can never err. `complete` certifies processing coverage;

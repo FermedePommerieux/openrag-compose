@@ -307,6 +307,7 @@ func TestEnvVarManager_NewEnvVarManagerDefaults(t *testing.T) {
 	assert.NotNil(t, manager.DefaultOpenRagBEEnvVars)
 	assert.Equal(t, "http://openrag-be:8000", manager.DefaultOpenRagBEEnvVars["OPENRAG_BACKEND_INTERNAL_URL"])
 	assert.Equal(t, "2400", manager.DefaultOpenRagBEEnvVars["LANGFLOW_TIMEOUT"])
+	assert.Equal(t, "21600", manager.DefaultOpenRagBEEnvVars["LANGFLOW_STREAM_TIMEOUT"])
 	assert.Equal(t, "/app/backend-data", manager.DefaultOpenRagBEEnvVars["OPENRAG_DATA_PATH"])
 	assert.Equal(t, "/app/openrag-documents", manager.DefaultOpenRagBEEnvVars["OPENRAG_DOCUMENTS_PATH"])
 	assert.Equal(t, "DEBUG", manager.DefaultOpenRagBEEnvVars["LOG_LEVEL"])

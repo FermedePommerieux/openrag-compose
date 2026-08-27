@@ -103,6 +103,7 @@ func NewEnvVarManager() *EnvVarManager {
 			"OPENRAG_BACKEND_ROUTER_ENABLE": "false",
 			"OPENRAG_BACKEND_ROUTER_PORT":   "8100",
 			"LANGFLOW_TIMEOUT":              "2400",
+			"LANGFLOW_STREAM_TIMEOUT":       "21600",
 			"LANGFLOW_CONNECT_TIMEOUT":      "30",
 			"LANGFLOW_AUTO_LOGIN":           "true",
 			"LANGFLOW_KEY_RETRIES":          "15",

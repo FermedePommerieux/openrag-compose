@@ -148,13 +148,9 @@ function ChatPage() {
       setWaitingTooLong(false);
       // Set chat error flag to trigger test_completion=true on health checks
       setChatError(true);
-      const errorMessage: Message = {
-        role: "assistant",
-        content:
-          "Sorry, I couldn't connect to the chat service. Please try again.",
-        timestamp: new Date(),
-      };
-      setMessages((prev) => [...prev, errorMessage]);
+      // useChatStreaming forwards one precise, persistent terminal message to
+      // onComplete. Adding a second generic message here hid the real audit
+      // failure and made the chat appear inconsistent.
     },
   });
 

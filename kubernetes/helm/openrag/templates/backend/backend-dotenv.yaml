@@ -39,6 +39,9 @@ stringData:
     {{- if .Values.backend.langflowTimeout }}
     LANGFLOW_TIMEOUT={{ .Values.backend.langflowTimeout }}
     {{- end }}
+    {{- if .Values.backend.langflowStreamTimeout }}
+    LANGFLOW_STREAM_TIMEOUT={{ .Values.backend.langflowStreamTimeout }}
+    {{- end }}
     {{- if .Values.backend.langflowConnectTimeout }}
     LANGFLOW_CONNECT_TIMEOUT={{ .Values.backend.langflowConnectTimeout }}
     {{- end }}
