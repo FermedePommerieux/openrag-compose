@@ -45,6 +45,13 @@ The native Langflow lock primitive retains system-flow protection outside the
 short, verified maintenance window. The full replacement graph prevents stale
 legacy embeddings or tool edges from surviving a partial node splice.
 
+The same versioned replacement policy applies to execution-contract repairs.
+Retrieval flow version 8 recognizes only the exact version 7 graph and replaces
+it with a graph where `OPENRAG_QUERY_FILTER` is loaded as a request-scoped
+global variable. Langflow's normalized HTTP alias uses hyphens
+(`X-Langflow-Global-Var-OPENRAG-QUERY-FILTER`); the backend and bundled graph
+are tested together so exhaustive intent cannot be lost at that boundary.
+
 ## Consequences
 
 An explicit system migration error requires operator review and blocks ASGI

@@ -35,7 +35,7 @@ _LEGACY_RETRIEVAL_COMPONENT = (
     "ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra"
 )
 _BACKEND_RETRIEVAL_COMPONENT = "ext:openrag:OpenRAGBackendRetrievalComponent@extra"
-_RETRIEVAL_FLOW_MIGRATION_VERSION = 7
+_RETRIEVAL_FLOW_MIGRATION_VERSION = 8
 _LEGACY_SYSTEM_FLOW_ID = "1098eea1-6649-4e1d-aed1-b77249fb8dd0"
 # SHA-256 of ``flows/openrag_agent.json`` at lifecycle baseline 156f3664,
 # calculated over canonical ``data`` JSON.  Flow IDs and a lock alone are not
@@ -78,6 +78,12 @@ _PREVIOUS_VERSIONED_FOCUSED_RETRIEVAL_GRAPH_SHA256 = (
 # iteration budget; only this repository-owned graph may be upgraded in place.
 _PREVIOUS_VERSIONED_DOCUMENTALIST_GRAPH_SHA256 = (
     "2cb308b935f01530af7598fb0489df7b52f715fc94c94530bedb65aefbb002c0"
+)
+# Exact fingerprint of the deployed Retrieval v2 version 7 graph. Version 8
+# fixes the request-scoped search-context binding; without ``load_from_db`` the
+# trusted exhaustive intent header was never resolved by the custom component.
+_PREVIOUS_VERSIONED_EXHAUSTIVE_EXECUTION_GRAPH_SHA256 = (
+    "b0d85950c458b541b7099447ebdc3127f05df37ee2b16dac3dd0248464fd87fd"
 )
 
 
@@ -1278,6 +1284,8 @@ class FlowsService:
             if marker == 5
             else {_PREVIOUS_VERSIONED_DOCUMENTALIST_GRAPH_SHA256}
             if marker == 6
+            else {_PREVIOUS_VERSIONED_EXHAUSTIVE_EXECUTION_GRAPH_SHA256}
+            if marker == 7
             else set()
         )
         return self._graph_fingerprint(flow_data) in expected

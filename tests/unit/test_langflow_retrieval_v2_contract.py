@@ -70,8 +70,13 @@ def test_backend_retrieval_tool_is_thin_and_embedded_verbatim():
         if node["data"].get("type") == "ext:openrag:OpenRAGBackendRetrievalComponent@extra"
     )
     code = COMPONENT_PATH.read_text(encoding="utf-8")
+    search_context = retrieval["data"]["node"]["template"]["filter_expression"]
 
     assert retrieval["data"]["node"]["template"]["code"]["value"] == code
+    assert search_context["value"] == "OPENRAG_QUERY_FILTER"
+    assert search_context["load_from_db"] is True
+    assert 'value="OPENRAG_QUERY_FILTER"' in code
+    assert "load_from_db=True" in code
     assert "client.post(" in code
     assert '"scoreThreshold": score_threshold' in code
     assert "from opensearch" not in code.lower()

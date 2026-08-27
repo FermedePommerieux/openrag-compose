@@ -184,7 +184,13 @@ class ChatService:
             limit=filter_expression["limit"],
             retrieval_intent=filter_expression["retrievalIntent"],
         )
-        extra_headers["X-Langflow-Global-Var-OPENRAG_QUERY_FILTER"] = json.dumps(filter_expression)
+        # Langflow normalizes ``OPENRAG_QUERY_FILTER`` to the HTTP alias
+        # ``x-langflow-global-var-openrag-query-filter``.  Header names must
+        # therefore use hyphens here; an underscore form is a different key
+        # and silently leaves the component on its focused default.
+        extra_headers["X-Langflow-Global-Var-OPENRAG-QUERY-FILTER"] = json.dumps(
+            filter_expression
+        )
         logger.info(
             "[CHAT] Langflow chat request", stream=stream, filters_applied=bool(filter_expression)
         )

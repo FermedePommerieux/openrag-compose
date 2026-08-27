@@ -72,8 +72,12 @@ class OpenRAGBackendRetrievalComponent(LCToolComponent):
             display_name="Search Context (JSON)",
             value="OPENRAG_QUERY_FILTER",
             required=False,
+            load_from_db=True,
             advanced=True,
-            info="Backend filters, result limit and score threshold supplied by OpenRAG.",
+            info=(
+                "Backend filters, result limit, score threshold and trusted retrieval intent "
+                "supplied by OpenRAG through a request-scoped Langflow global variable."
+            ),
         ),
         IntInput(
             name="number_of_results",

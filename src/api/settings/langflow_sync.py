@@ -38,7 +38,7 @@ LANGFLOW_GENERIC_GLOBAL_VARIABLES = frozenset(
         "FILESIZE",
         "MIMETYPE",
         "OLLAMA_BASE_URL",
-        "OPENRAG-QUERY-FILTER",
+        "OPENRAG_QUERY_FILTER",
         "OPENRAG_INGEST_RUN_ID",
         "OPENSEARCH_INDEX_NAME",
         "OPENSEARCH_URL",
@@ -80,7 +80,10 @@ def _required_generic_global_values(config) -> dict[str, str]:
         "FILESIZE": "0",
         "MIMETYPE": "None",
         "OLLAMA_BASE_URL": _string_value(getattr(ollama, "endpoint", None)),
-        "OPENRAG-QUERY-FILTER": "{}",
+        # Component fields refer to the canonical variable name with
+        # underscores. Langflow maps that name to a hyphenated HTTP header
+        # alias for request-scoped overrides.
+        "OPENRAG_QUERY_FILTER": "{}",
         # Correlation identifier overridden for every request. It is routing
         # metadata, not a credential, and Langflow rejects Credential globals
         # when they feed the component's ordinary StrInput.
