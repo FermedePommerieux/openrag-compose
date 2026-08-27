@@ -1,6 +1,6 @@
 # ADR 0008: Relevance-bounded archive audits
 
-Status: accepted
+Status: accepted, amended by ADR 0009
 
 ## Context
 
@@ -11,8 +11,10 @@ probability. Sending that tail through model-based classification, two
 independent readers, coordinators and validators made one audit economically
 unusable without proving better recall.
 
-The contextual reviewer also labelled documents `irrelevant` but retained them
-for full reading. That defeated the purpose of the relevance decision.
+The contextual reviewer initially labelled documents but retained them for full
+reading, then a cost optimization allowed a grounded `irrelevant` label to
+exclude them. That optimization reduced work but made an excerpt-level model
+decision an invisible recall gate; ADR 0009 removes it.
 
 ## Production calibration
 
@@ -41,9 +43,9 @@ lexical retrieval. The growth after 100 is predominantly unsupported noise.
 - Bound every semantic lane to K=100 and disclose the unsearched semantic tail.
 - Calibrate vector scores against independently lexical-supported documents;
   an uncalibrated vector lane remains excluded.
-- Review only this plausible union. A valid, grounded `irrelevant` decision is
-  excluded before full-document reading. Failed, missing, malformed and
-  `uncertain` decisions remain fail-open.
+- Keep the plausible union bounded at discovery, then retain every admitted
+  document for full reading. ADR 0009 removes the excerpt-level LLM exclusion
+  that this ADR originally allowed.
 - Allow `OPENRAG_AUDIT_REASONING_MODEL` to separate high-volume audit workers
   from the final chat model. Production uses GPT-5.6 Luna for workers and keeps
   GPT-5.6 Sol for the final answer.

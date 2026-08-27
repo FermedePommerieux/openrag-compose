@@ -52,7 +52,7 @@ async def test_audit_query_expansion_keeps_only_grounded_unique_variants():
 
 
 @pytest.mark.asyncio
-async def test_contextual_review_excludes_grounded_noise_but_retains_uncertainty():
+async def test_contextual_review_labels_noise_but_never_excludes_a_document():
     response = SimpleNamespace(
         output_text=json.dumps(
             {
@@ -96,6 +96,7 @@ async def test_contextual_review_excludes_grounded_noise_but_retains_uncertainty
 
     assert [hit["_source"]["document_id"] for hit in retained] == [
         "relevant",
+        "noise",
         "missing",
     ]
     assert missing["_source"]["retrieval_relevance_decision"] == "uncertain"
@@ -107,8 +108,11 @@ async def test_contextual_review_excludes_grounded_noise_but_retains_uncertainty
         "invalid_decisions": 0,
         "missing_decisions": 1,
         "reviewed_documents": 3,
-        "retained_documents": 2,
-        "excluded_documents": 1,
+        "retained_documents": 3,
+        "excluded_documents": 0,
+        "advisory_irrelevant_documents": 1,
+        "selection_policy": "all_discovered_candidates_read",
+        "pre_read_exclusion_applied": False,
         "relevant": 1,
         "uncertain": 1,
         "irrelevant": 1,
@@ -270,7 +274,32 @@ async def test_hierarchical_orchestrator_covers_every_chunk_and_finding(monkeypa
     assert coverage["leaf_workers_expected"] == coverage["leaf_workers_succeeded"] == 4
     assert coverage["final_claim_validators_expected"] == 2
     assert coverage["final_claim_validators_succeeded"] == 2
+    assert coverage["answer_claims_total"] == 2
+    assert coverage["answer_source_chunks_verified"] == 2
+    assert coverage["inverse_finding_coverage_complete"] is True
     assert coverage["reduce_levels"] == 1
+    assert synthesis["answer_contract"] == {
+        "claim_source": "findings",
+        "verification_direction": "answer_claims_against_cited_source_chunks",
+        "all_verified_findings_must_be_represented": True,
+        "unsupported_claims_forbidden": True,
+    }
+
+    final_verifier_calls = [
+        call.kwargs
+        for call in client.responses.create.await_args_list
+        if call.kwargs["text"]["format"]["name"] == "audit_claim_verdicts"
+        and "audit-final-finding" in call.kwargs["input"][1]["content"]
+    ]
+    assert len(final_verifier_calls) == 2
+    assert all(
+        "Evidence batch JSON" not in call["input"][1]["content"] for call in final_verifier_calls
+    )
+    assert all(
+        "La DDT confirme" in call["input"][1]["content"]
+        or "Réponse administrative" in call["input"][1]["content"]
+        for call in final_verifier_calls
+    )
 
 
 @pytest.mark.asyncio

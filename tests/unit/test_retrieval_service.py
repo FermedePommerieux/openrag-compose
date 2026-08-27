@@ -713,7 +713,7 @@ async def test_search_service_rrf_fuses_lanes_preserves_provenance_and_emits_deb
             )
         ),
         review_candidates=AsyncMock(
-                side_effect=lambda _query, hits, **_kwargs: (
+            side_effect=lambda _query, hits, **_kwargs: (
                 hits,
                 {
                     "available": True,
@@ -809,6 +809,19 @@ async def test_search_service_rrf_fuses_lanes_preserves_provenance_and_emits_deb
     assert audit_result["discovery"]["lanes"]["entity_expansion:1"]["query_rule"] == {
         "type": "grounded_entity_phrase"
     }
-    assert audit_result["discovery"]["contextual_review_complete"] is True
+    assert audit_result["discovery"]["contextual_review_complete"] is None
+    assert audit_result["discovery"]["candidate_selection_complete"] is True
+    assert audit_result["discovery"]["answer_verification_policy"] == (
+        "claims_against_cited_source_chunks"
+    )
+    assert audit_result["discovery"]["contextual_review"] == {
+        "available": False,
+        "reason": "disabled_pre_read_exclusion",
+        "selection_policy": "all_discovered_candidates_read",
+        "pre_read_exclusion_applied": False,
+        "reviewed_documents": 0,
+        "retained_documents": 3,
+        "excluded_documents": 0,
+    }
     assert audit_reasoner.expand_query.await_count == 1
-    assert audit_reasoner.review_candidates.await_count == 1
+    assert audit_reasoner.review_candidates.await_count == 0

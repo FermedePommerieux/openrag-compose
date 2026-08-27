@@ -1541,8 +1541,16 @@ class SearchService:
                 else "model_not_configured"
             ),
         }
+        # A discovery excerpt is sufficient for query expansion, never for a
+        # destructive relevance decision. Every document admitted by lexical,
+        # calibrated semantic or PROV-O discovery remains in the full-read
+        # scope. Relevance is decided later by validating answer claims against
+        # the cited source chunks.
         audit_contextual_review: dict[str, Any] = {
-            **audit_query_expansion,
+            "available": False,
+            "reason": ("not_requested" if not audit_discovery else "disabled_pre_read_exclusion"),
+            "selection_policy": "all_discovered_candidates_read",
+            "pre_read_exclusion_applied": False,
         }
         if audit_reasoner_error:
             audit_query_expansion["error"] = audit_reasoner_error
@@ -1700,19 +1708,20 @@ class SearchService:
                     1 if audit_discovery else retrieval_settings.adaptive_max_chunks_per_document
                 ),
             )
-            if audit_discovery and audit_reasoner is not None:
+            if audit_discovery:
+                candidate_documents = len(_hits_by_document(raw_hits))
+                audit_contextual_review.update(
+                    {
+                        "reviewed_documents": 0,
+                        "retained_documents": candidate_documents,
+                        "excluded_documents": 0,
+                    }
+                )
                 audit_progress_service.update(
                     audit_progress_id,
-                    phase="candidate_review",
-                    message="Reviewing plausible candidates and retaining uncertainty",
-                    counters={
-                        "candidate_documents": len(_hits_by_document(raw_hits)),
-                    },
-                )
-                raw_hits, audit_contextual_review = await audit_reasoner.review_candidates(
-                    query,
-                    raw_hits,
-                    audit_progress_id=audit_progress_id,
+                    phase="candidate_selection",
+                    message="Retaining every discovered candidate for full source reading",
+                    counters={"candidate_documents": candidate_documents},
                 )
             raw_hits = await HttpReranker(
                 retrieval_settings.reranker_url,
@@ -1829,11 +1838,18 @@ class SearchService:
                     and audit_lane_metadata.get("provenance", {}).get("exhausted") is True
                 ),
                 "contextual_review_complete": (
-                    audit_contextual_review.get("available") is True
+                    None
+                    if audit_contextual_review.get("pre_read_exclusion_applied") is False
+                    else audit_contextual_review.get("available") is True
                     and audit_contextual_review.get("failed_batches") == 0
                     and audit_contextual_review.get("missing_decisions", 0) == 0
                     and audit_contextual_review.get("invalid_decisions", 0) == 0
                 ),
+                "candidate_selection_complete": (
+                    audit_contextual_review.get("pre_read_exclusion_applied") is False
+                    and audit_contextual_review.get("excluded_documents") == 0
+                ),
+                "answer_verification_policy": "claims_against_cited_source_chunks",
                 "semantic_completeness_certified": False,
             }
         if failed_models:

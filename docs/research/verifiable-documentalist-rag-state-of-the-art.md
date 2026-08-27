@@ -125,3 +125,10 @@ probabilities. Archive audits therefore exhaust precise lexical predicates and
 verified provenance relations, but bound semantic discovery to the production-
 calibrated useful neighbourhood. See
 [ADR 0008](../adr/0008-relevance-bounded-archive-audits.md).
+
+Once OpenSearch admits a document to that neighbourhood, no excerpt-level LLM
+label may remove it. The audit reads the full candidate set, constructs a
+lossless answer-claim plan, and validates each final claim directly against
+only its cited original chunk segments. This preserves the correct burden of
+proof while bounding model context and tokens; see
+[ADR 0009](../adr/0009-answer-claims-verified-against-sources.md).

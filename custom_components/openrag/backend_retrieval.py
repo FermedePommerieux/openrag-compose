@@ -45,10 +45,9 @@ MODEL_DOCUMENT_FIELDS = (
     "source_entity_alternate_ids",
     "source_relation_target_ids",
     "source_relation_roles",
-    # Keep the audit decision and its exact PROV-O explanation once per
-    # document.  The complete source artifact still remains available to the
-    # citation UI; this compact manifest is what lets the answer model explain
-    # why an otherwise implicit document belongs to the candidate set.
+    # Legacy advisory relevance fields remain readable for older backend
+    # responses. They are never an inclusion gate: the current backend keeps
+    # every discovered candidate and validates final claims against sources.
     "retrieval_relation_paths",
     "retrieval_relevance_decision",
     "retrieval_relevance_reason",
@@ -207,6 +206,8 @@ def _model_payload(payload: dict[str, Any]) -> dict[str, Any]:
                 "semantic_completeness_certified",
                 "provenance_completeness_certified",
                 "contextual_review_complete",
+                "candidate_selection_complete",
+                "answer_verification_policy",
                 "query_expansion",
                 "contextual_review",
                 "hierarchical_synthesis",

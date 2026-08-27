@@ -1,9 +1,9 @@
-"""Structured query expansion and contextual relevance review for archive audits.
+"""Structured query expansion and source-grounded answer verification for audits.
 
 The ordinary retrieval path remains ranking-only.  Explicit archive audits use
-this service to review every discovered document without turning a transport
-batch size into a recall limit.  Documents are untrusted inputs: they can never
-change the decision schema or the inclusion policy.
+this service to expand grounded searches, read every discovered document and
+verify answer claims. Documents are untrusted inputs: they can never change the
+decision schema or the inclusion policy.
 """
 
 from __future__ import annotations
@@ -30,6 +30,8 @@ AUDIT_SYNTHESIS_BATCH_CHARACTERS = 80_000
 AUDIT_SYNTHESIS_SEGMENT_CHARACTERS = 60_000
 AUDIT_SYNTHESIS_COORDINATOR_INPUTS = 8
 AUDIT_SYNTHESIS_COORDINATOR_CHARACTERS = 120_000
+AUDIT_FINAL_VERIFICATION_FINDINGS = 24
+AUDIT_FINAL_VERIFICATION_CHARACTERS = 80_000
 
 
 class AuditQueryExpansion(BaseModel):
@@ -319,7 +321,12 @@ class AuditReasoningService:
         *,
         audit_progress_id: str | None = None,
     ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-        """Exclude grounded noise while retaining every uncertain candidate."""
+        """Attach advisory labels without ever excluding a discovered document.
+
+        This compatibility method is intentionally non-destructive. New audit
+        discovery does not call it because paying a model to label one excerpt
+        cannot prove that the unread remainder of a document is irrelevant.
+        """
         if not hits:
             return [], {
                 "available": True,
@@ -330,6 +337,10 @@ class AuditReasoningService:
                 "missing_decisions": 0,
                 "reviewed_documents": 0,
                 "retained_documents": 0,
+                "excluded_documents": 0,
+                "advisory_irrelevant_documents": 0,
+                "selection_policy": "all_discovered_candidates_read",
+                "pre_read_exclusion_applied": False,
                 "relevant": 0,
                 "uncertain": 0,
                 "irrelevant": 0,
@@ -366,9 +377,7 @@ class AuditReasoningService:
                         audit_progress_service.update(
                             audit_progress_id,
                             phase="candidate_review",
-                            message=(
-                                "Reviewing plausible candidates and retaining uncertainty"
-                            ),
+                            message=("Reviewing plausible candidates and retaining uncertainty"),
                             counters={
                                 "review_batches_total": len(batches),
                                 "review_batches_complete": reviewed_batches,
@@ -439,12 +448,9 @@ class AuditReasoningService:
             source["retrieval_relevance_decision"] = decision.decision
             source["retrieval_relevance_reason"] = decision.reason
             source["retrieval_supporting_document_ids"] = decision.supporting_document_ids
-            # A valid, evidence-grounded irrelevant decision is the point of
-            # this gate: do not pay two readers and several coordinators to
-            # process known noise. Missing, malformed, failed or uncertain
-            # decisions remain fail-open and are still read in full.
-            if decision.decision != "irrelevant":
-                retained.append(hit)
+            # Labels are diagnostics only. An excerpt-level classification can
+            # never remove a document from an exhaustive full-read scope.
+            retained.append(hit)
 
         return retained, {
             "available": failed_batches < len(batches),
@@ -455,7 +461,10 @@ class AuditReasoningService:
             "missing_decisions": missing_decisions,
             "reviewed_documents": len(hits),
             "retained_documents": len(retained),
-            "excluded_documents": counts["irrelevant"],
+            "excluded_documents": 0,
+            "advisory_irrelevant_documents": counts["irrelevant"],
+            "selection_policy": "all_discovered_candidates_read",
+            "pre_read_exclusion_applied": False,
             **counts,
         }
 
@@ -758,6 +767,15 @@ class AuditReasoningService:
             }
             for finding in findings
         }
+        if evidence_kind == "source_chunks":
+            supplied_chunk_ids = {
+                str(item.get("chunk_id")) for item in evidence if item.get("chunk_id")
+            }
+            if any(
+                not cited_chunk_ids.issubset(supplied_chunk_ids)
+                for cited_chunk_ids in chunks_by_finding.values()
+            ):
+                raise ValueError("source validator did not receive every cited source chunk")
         support_rule = (
             "'supported' requires direct textual support in the cited source chunks"
             if evidence_kind == "source_chunks"
@@ -874,6 +892,63 @@ class AuditReasoningService:
                 "validators_succeeded": len(valid_results),
             },
         )
+
+    @staticmethod
+    def _final_source_verification_groups(
+        findings: list[dict[str, Any]],
+        source_payloads: list[dict[str, Any]],
+    ) -> list[tuple[list[dict[str, Any]], list[dict[str, Any]]]]:
+        """Bound final answer-claim checks to only their cited source pieces.
+
+        The final answer plan must be judged directly against original chunks,
+        but resending the entire archive would recreate the context and cost
+        failure this hierarchy exists to prevent. Each group therefore carries
+        only the source segments cited by its claims; every cited identity is
+        still present and deterministic checks reject missing evidence.
+        """
+        payloads_by_chunk: dict[str, list[dict[str, Any]]] = {}
+        for payload in source_payloads:
+            chunk_id = str(payload.get("chunk_id") or "")
+            if chunk_id:
+                payloads_by_chunk.setdefault(chunk_id, []).append(payload)
+
+        groups: list[tuple[list[dict[str, Any]], list[dict[str, Any]]]] = []
+        current_findings: list[dict[str, Any]] = []
+        current_chunk_ids: set[str] = set()
+
+        def source_evidence(chunk_ids: set[str]) -> list[dict[str, Any]]:
+            return [
+                payload
+                for chunk_id in sorted(chunk_ids)
+                for payload in payloads_by_chunk.get(chunk_id, [])
+            ]
+
+        def group_characters(
+            grouped_findings: list[dict[str, Any]], grouped_chunk_ids: set[str]
+        ) -> int:
+            return len(json.dumps(grouped_findings, ensure_ascii=False)) + len(
+                json.dumps(source_evidence(grouped_chunk_ids), ensure_ascii=False)
+            )
+
+        for finding in findings:
+            finding_chunk_ids = {
+                str(chunk_id) for chunk_id in finding.get("chunk_ids", []) if chunk_id
+            }
+            candidate_findings = [*current_findings, finding]
+            candidate_chunk_ids = current_chunk_ids | finding_chunk_ids
+            if current_findings and (
+                len(candidate_findings) > AUDIT_FINAL_VERIFICATION_FINDINGS
+                or group_characters(candidate_findings, candidate_chunk_ids)
+                > AUDIT_FINAL_VERIFICATION_CHARACTERS
+            ):
+                groups.append((current_findings, source_evidence(current_chunk_ids)))
+                current_findings = []
+                current_chunk_ids = set()
+            current_findings.append(finding)
+            current_chunk_ids.update(finding_chunk_ids)
+        if current_findings:
+            groups.append((current_findings, source_evidence(current_chunk_ids)))
+        return groups
 
     async def synthesize_evidence(
         self,
@@ -1162,11 +1237,6 @@ class AuditReasoningService:
             for source_finding_id in finding.get("source_finding_ids", [])
             if source_finding_id
         }
-        source_finding_evidence = [
-            leaf_findings_by_id[source_finding_id]
-            for source_finding_id in sorted(referenced_leaf_ids)
-            if source_finding_id in leaf_findings_by_id
-        ]
         if referenced_leaf_ids != set(leaf_findings_by_id):
             coverage["final_claim_validation_error"] = "leaf_finding_identity_mismatch"
             return {
@@ -1181,27 +1251,63 @@ class AuditReasoningService:
         audit_progress_service.update(
             audit_progress_id,
             phase="final_verification",
-            message="Running independent final claim verification",
+            message="Judging final answer claims against their cited source chunks",
             counters={"final_findings_total": len(final_findings)},
         )
-        (
-            verified_final_findings,
-            withheld_final_findings,
-            final_verification,
-        ) = await self._dual_verify_findings(
-            query=query,
-            findings=final_findings,
-            evidence=source_finding_evidence,
-            semaphore=semaphore,
-            evidence_kind="verified_leaf_findings",
+        final_verification_groups = self._final_source_verification_groups(
+            final_findings,
+            payloads,
         )
-        coverage["final_claim_validators_expected"] = final_verification["validators_expected"]
-        coverage["final_claim_validators_succeeded"] = final_verification["validators_succeeded"]
-        if (
-            final_verification["validators_expected"]
-            and final_verification["validators_succeeded"]
-            != final_verification["validators_expected"]
-        ):
+
+        async def verify_final_group(
+            findings: list[dict[str, Any]],
+            evidence: list[dict[str, Any]],
+        ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], dict[str, Any]]:
+            return await self._dual_verify_findings(
+                query=query,
+                findings=findings,
+                evidence=evidence,
+                semaphore=semaphore,
+                evidence_kind="source_chunks",
+            )
+
+        final_verification_results = await asyncio.gather(
+            *[
+                verify_final_group(group_findings, group_evidence)
+                for group_findings, group_evidence in final_verification_groups
+            ]
+        )
+        verified_final_findings = [
+            finding
+            for verified, _withheld, _metadata in final_verification_results
+            for finding in verified
+        ]
+        withheld_final_findings = [
+            finding
+            for _verified, withheld, _metadata in final_verification_results
+            for finding in withheld
+        ]
+        final_validators_expected = sum(
+            metadata["validators_expected"]
+            for _verified, _withheld, metadata in final_verification_results
+        )
+        final_validators_succeeded = sum(
+            metadata["validators_succeeded"]
+            for _verified, _withheld, metadata in final_verification_results
+        )
+        final_source_chunk_ids = {
+            str(item.get("chunk_id"))
+            for _findings, evidence in final_verification_groups
+            for item in evidence
+            if item.get("chunk_id")
+        }
+        coverage["final_verification_batches"] = len(final_verification_groups)
+        coverage["final_claim_validators_expected"] = final_validators_expected
+        coverage["final_claim_validators_succeeded"] = final_validators_succeeded
+        coverage["answer_claims_total"] = len(final_findings)
+        coverage["answer_source_chunks_verified"] = len(final_source_chunk_ids)
+        coverage["inverse_finding_coverage_complete"] = True
+        if final_validators_expected and final_validators_succeeded != final_validators_expected:
             return {
                 "schema_version": "1.0",
                 "strategy": "hierarchical_verified_map_reduce",
@@ -1237,6 +1343,12 @@ class AuditReasoningService:
             "report_sha256": hashlib.sha256(stable_payload.encode("utf-8")).hexdigest(),
             "executive_summary": verified_summary,
             "findings": verified_final_findings,
+            "answer_contract": {
+                "claim_source": "findings",
+                "verification_direction": "answer_claims_against_cited_source_chunks",
+                "all_verified_findings_must_be_represented": True,
+                "unsupported_claims_forbidden": True,
+            },
             "unresolved_questions": final_report["unresolved_questions"],
             "withheld_findings": withheld_leaf_findings + withheld_final_findings,
             "coverage": coverage,
