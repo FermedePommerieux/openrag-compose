@@ -35,6 +35,15 @@ async def check_provider_health(
         503: Provider validation failed
     """
     check_provider = provider
+    # The banner calls the unscoped endpoint automatically and used to turn a
+    # chat failure into repeated paid completion/embedding probes every cache
+    # TTL. Automatic health polling must remain inference-free. A caller may
+    # still request one explicit full test by naming a provider and setting
+    # ``test_completion=true`` (onboarding uses the validation service
+    # directly and is unaffected).
+    effective_test_completion = bool(test_completion and check_provider)
+    if test_completion and not check_provider:
+        logger.info("Ignoring paid completion test on automatic provider-health poll")
     _health_leader_key: str | None = None  # set when this coroutine wins leader election
     try:
         # Get current config
@@ -113,7 +122,7 @@ async def check_provider_health(
             health_cache_key = provider_health_cache.cache_key(
                 provider=provider,
                 embedding_provider=embedding_provider,
-                test_completion=test_completion,
+                test_completion=effective_test_completion,
                 llm_model=llm_model,
                 embedding_model=embedding_model,
                 endpoint=endpoint,
@@ -156,7 +165,7 @@ async def check_provider_health(
                 llm_model=llm_model,
                 endpoint=endpoint,
                 project_id=project_id,
-                test_completion=test_completion,
+                test_completion=effective_test_completion,
             )
 
             return JSONResponse(
@@ -187,7 +196,7 @@ async def check_provider_health(
                     llm_model=llm_model,
                     endpoint=endpoint,
                     project_id=project_id,
-                    test_completion=test_completion,
+                    test_completion=effective_test_completion,
                 )
             except httpx.TimeoutException as e:
                 # Timeout means provider is busy, not misconfigured
@@ -204,7 +213,7 @@ async def check_provider_health(
             # Validate embedding provider
             # For WatsonX with test_completion=True, wait 2 seconds between completion and embedding tests
             if (
-                test_completion
+                effective_test_completion
                 and provider == "watsonx"
                 and embedding_provider == "watsonx"
                 and llm_error is None
@@ -221,7 +230,7 @@ async def check_provider_health(
                     embedding_model=embedding_model,
                     endpoint=embedding_endpoint,
                     project_id=embedding_project_id,
-                    test_completion=test_completion,
+                    test_completion=effective_test_completion,
                 )
             except httpx.TimeoutException as e:
                 # Timeout means provider is busy, not misconfigured

@@ -1,7 +1,9 @@
 """Provider validation utilities for testing API keys and models during onboarding."""
 
 import json
+
 import httpx
+
 from utils.container_utils import transform_localhost_url
 from utils.logging_config import get_logger
 
@@ -261,63 +263,88 @@ async def _test_openai_lightweight_health(api_key: str) -> None:
 
             logger.info("OpenAI lightweight health check passed")
 
-    except httpx.TimeoutException:
+    except httpx.TimeoutException as error:
         logger.error("OpenAI lightweight health check timed out")
-        raise Exception("OpenAI API request timed out")
+        raise Exception("OpenAI API request timed out") from error
     except Exception as e:
         logger.error(f"OpenAI lightweight health check failed: {str(e)}")
         raise
 
 
 async def _test_openai_completion_with_tools(api_key: str, llm_model: str) -> None:
-    """Test OpenAI completion with tool calling."""
+    """Test one explicit OpenAI model/tool request on its supported API.
+
+    GPT-5.6 reasoning models reject function tools plus reasoning effort on
+    ``/v1/chat/completions``. Their production Agent uses Responses, so the
+    explicit onboarding test must exercise that same contract. Automatic
+    provider-health polling never calls this paid function.
+    """
     try:
         headers = {
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
         }
 
-        # Simple tool calling test
-        base_payload = {
-            "model": llm_model,
-            "messages": [
-                {"role": "user", "content": "What tools do you have available?"}
-            ],
-            "tools": [
-                {
-                    "type": "function",
-                    "function": {
-                        "name": "get_weather",
-                        "description": "Get the current weather",
-                        "parameters": {
-                            "type": "object",
-                            "properties": {
-                                "location": {
-                                    "type": "string",
-                                    "description": "The city and state"
-                                }
-                            },
-                            "required": ["location"]
-                        }
-                    }
-                }
-            ],
-        }
-
         async with httpx.AsyncClient() as client:
-            # Try with max_tokens first
-            payload = {**base_payload, "max_tokens": 50}
-            response = await client.post(
-                "https://api.openai.com/v1/chat/completions",
-                headers=headers,
-                json=payload,
-                timeout=30.0,
-            )
-
-            # If max_tokens doesn't work, try with max_completion_tokens
-            if response.status_code != 200:
-                logger.warning("[API] max_tokens parameter failed, trying max_completion_tokens instead")
-                payload = {**base_payload, "max_completion_tokens": 50}
+            if str(llm_model or "").strip().casefold().startswith("gpt-5.6"):
+                payload = {
+                    "model": llm_model,
+                    "input": "Use get_weather for Paris.",
+                    "reasoning": {"effort": "low"},
+                    "tools": [
+                        {
+                            "type": "function",
+                            "name": "get_weather",
+                            "description": "Get the current weather",
+                            "parameters": {
+                                "type": "object",
+                                "properties": {
+                                    "location": {
+                                        "type": "string",
+                                        "description": "The city and state",
+                                    }
+                                },
+                                "required": ["location"],
+                                "additionalProperties": False,
+                            },
+                            "strict": True,
+                        }
+                    ],
+                    "tool_choice": "required",
+                    "max_output_tokens": 32,
+                }
+                response = await client.post(
+                    "https://api.openai.com/v1/responses",
+                    headers=headers,
+                    json=payload,
+                    timeout=30.0,
+                )
+            else:
+                payload = {
+                    "model": llm_model,
+                    "messages": [{"role": "user", "content": "Use get_weather for Paris."}],
+                    "tools": [
+                        {
+                            "type": "function",
+                            "function": {
+                                "name": "get_weather",
+                                "description": "Get the current weather",
+                                "parameters": {
+                                    "type": "object",
+                                    "properties": {
+                                        "location": {
+                                            "type": "string",
+                                            "description": "The city and state",
+                                        }
+                                    },
+                                    "required": ["location"],
+                                },
+                            },
+                        }
+                    ],
+                    "tool_choice": "required",
+                    "max_completion_tokens": 32,
+                }
                 response = await client.post(
                     "https://api.openai.com/v1/chat/completions",
                     headers=headers,
@@ -332,9 +359,9 @@ async def _test_openai_completion_with_tools(api_key: str, llm_model: str) -> No
 
             logger.info("OpenAI completion with tool calling test passed")
 
-    except httpx.TimeoutException:
+    except httpx.TimeoutException as error:
         logger.error("OpenAI completion test timed out")
-        raise Exception("Request timed out")
+        raise Exception("Request timed out") from error
     except Exception as e:
         logger.error(f"OpenAI completion test failed: {str(e)}")
         raise
@@ -372,9 +399,9 @@ async def _test_openai_embedding(api_key: str, embedding_model: str) -> None:
 
             logger.info("OpenAI embedding test passed")
 
-    except httpx.TimeoutException:
+    except httpx.TimeoutException as error:
         logger.error("OpenAI embedding test timed out")
-        raise Exception("Request timed out")
+        raise Exception("Request timed out") from error
     except Exception as e:
         logger.error(f"OpenAI embedding test failed: {str(e)}")
         raise
@@ -413,9 +440,9 @@ async def _test_watsonx_lightweight_health(
 
             logger.info("WatsonX lightweight health check passed - API key is valid")
 
-    except httpx.TimeoutException:
+    except httpx.TimeoutException as error:
         logger.error("WatsonX lightweight health check timed out")
-        raise Exception("WatsonX API request timed out")
+        raise Exception("WatsonX API request timed out") from error
     except Exception as e:
         logger.error(f"WatsonX lightweight health check failed: {str(e)}")
         raise
@@ -501,9 +528,9 @@ async def _test_watsonx_completion_with_tools(
 
             logger.info("IBM Watson completion with tool calling test passed")
 
-    except httpx.TimeoutException:
+    except httpx.TimeoutException as error:
         logger.error("IBM Watson completion test timed out")
-        raise Exception("Request timed out")
+        raise Exception("Request timed out") from error
     except Exception as e:
         logger.error(f"IBM Watson completion test failed: {str(e)}")
         # If the error message contains JSON, parse it to extract just the message
@@ -512,7 +539,7 @@ async def _test_watsonx_completion_with_tools(
             json_part = error_str.split("IBM Watson API error: ", 1)[1]
             parsed_message = _parse_json_error_message(json_part)
             if parsed_message != json_part:
-                raise Exception(f"IBM Watson API error: {parsed_message}")
+                raise Exception(f"IBM Watson API error: {parsed_message}") from e
         raise
 
 
@@ -578,9 +605,9 @@ async def _test_watsonx_embedding(
 
             logger.info("IBM Watson embedding test passed")
 
-    except httpx.TimeoutException:
+    except httpx.TimeoutException as error:
         logger.error("IBM Watson embedding test timed out")
-        raise Exception("Request timed out")
+        raise Exception("Request timed out") from error
     except Exception as e:
         logger.error(f"IBM Watson embedding test failed: {str(e)}")
         # If the error message contains JSON, parse it to extract just the message
@@ -589,7 +616,7 @@ async def _test_watsonx_embedding(
             json_part = error_str.split("IBM Watson API error: ", 1)[1]
             parsed_message = _parse_json_error_message(json_part)
             if parsed_message != json_part:
-                raise Exception(f"IBM Watson API error: {parsed_message}")
+                raise Exception(f"IBM Watson API error: {parsed_message}") from e
         raise
 
 
@@ -615,9 +642,9 @@ async def _test_ollama_lightweight_health(endpoint: str) -> None:
 
             logger.info("Ollama lightweight health check passed")
 
-    except httpx.TimeoutException:
+    except httpx.TimeoutException as error:
         logger.error("Ollama lightweight health check timed out")
-        raise Exception("Ollama endpoint timed out")
+        raise Exception("Ollama endpoint timed out") from error
     except Exception as e:
         logger.error(f"Ollama lightweight health check failed: {str(e)}")
         raise
@@ -670,9 +697,9 @@ async def _test_ollama_completion_with_tools(llm_model: str, endpoint: str) -> N
 
             logger.info("Ollama completion with tool calling test passed")
 
-    except httpx.TimeoutException:
+    except httpx.TimeoutException as error:
         logger.error("Ollama completion test timed out")
-        raise httpx.TimeoutException("Ollama is busy or model inference timed out")
+        raise httpx.TimeoutException("Ollama is busy or model inference timed out") from error
     except Exception as e:
         logger.error(f"Ollama completion test failed: {str(e)}")
         raise
@@ -707,9 +734,9 @@ async def _test_ollama_embedding(embedding_model: str, endpoint: str) -> None:
 
             logger.info("Ollama embedding test passed")
 
-    except httpx.TimeoutException:
+    except httpx.TimeoutException as error:
         logger.error("Ollama embedding test timed out")
-        raise httpx.TimeoutException("Ollama is busy or embedding generation timed out")
+        raise httpx.TimeoutException("Ollama is busy or embedding generation timed out") from error
     except Exception as e:
         logger.error(f"Ollama embedding test failed: {str(e)}")
         raise
@@ -743,9 +770,9 @@ async def _test_anthropic_lightweight_health(api_key: str) -> None:
 
             logger.info("Anthropic lightweight health check passed")
 
-    except httpx.TimeoutException:
+    except httpx.TimeoutException as error:
         logger.error("Anthropic lightweight health check timed out")
-        raise Exception("Anthropic API request timed out")
+        raise Exception("Anthropic API request timed out") from error
     except Exception as e:
         logger.error(f"Anthropic lightweight health check failed: {str(e)}")
         raise
@@ -800,9 +827,9 @@ async def _test_anthropic_completion_with_tools(api_key: str, llm_model: str) ->
 
             logger.info("Anthropic completion with tool calling test passed")
 
-    except httpx.TimeoutException:
+    except httpx.TimeoutException as error:
         logger.error("Anthropic completion test timed out")
-        raise Exception("Request timed out")
+        raise Exception("Request timed out") from error
     except Exception as e:
         logger.error(f"Anthropic completion test failed: {str(e)}")
         raise

@@ -23,6 +23,10 @@ tools and non-null reasoning effort are combined. Sending that contract to
    request when the explicit provider is OpenAI and the selected model name
    begins with `gpt-5.6`. Other providers and models retain their existing
    transport. We do not silence reasoning with `reasoning_effort=none`.
+   The automatic provider-health banner is inference-free even when a prior
+   chat error asks for a completion test; it validates credentials through the
+   Models endpoint. Only an explicitly named provider or onboarding action may
+   run one paid compatibility probe, and GPT-5.6 probes use Responses too.
 2. OpenRAG caches only Pydantic-validated structured audit responses. Final
    prose answers are never cached.
 3. A cache key is SHA-256 over a canonical contract containing:
