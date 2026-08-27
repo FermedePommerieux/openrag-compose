@@ -278,10 +278,10 @@ class OpenRAGBackendRetrievalComponent(LCToolComponent):
         )
     ]
 
-    def _request_context(self) -> tuple[dict[str, Any], int, float, str]:
+    def _request_context(self) -> tuple[dict[str, Any], int, float, str, str]:
         raw = _as_text(getattr(self, "filter_expression", ""))
         if not raw or raw == "OPENRAG_QUERY_FILTER":
-            return {}, max(1, int(self.number_of_results or 10)), 0.0, "focused"
+            return {}, max(1, int(self.number_of_results or 10)), 0.0, "focused", ""
         try:
             parsed = json.loads(raw)
         except json.JSONDecodeError as exc:
@@ -302,7 +302,12 @@ class OpenRAGBackendRetrievalComponent(LCToolComponent):
         retrieval_intent = _as_text(parsed.get("retrievalIntent", "focused")).lower()
         if retrieval_intent not in {"focused", "exhaustive"}:
             raise ValueError("OpenRAG retrieval intent must be focused or exhaustive")
-        return filters, limit, score_threshold, retrieval_intent
+        audit_progress_id = _as_text(parsed.get("auditProgressId", ""))
+        if len(audit_progress_id) > 64 or (
+            audit_progress_id and not audit_progress_id.replace("-", "").isalnum()
+        ):
+            raise ValueError("OpenRAG audit progress id is invalid")
+        return filters, limit, score_threshold, retrieval_intent, audit_progress_id
 
     @staticmethod
     def _validated_payload(response: httpx.Response) -> dict[str, Any]:
@@ -336,7 +341,7 @@ class OpenRAGBackendRetrievalComponent(LCToolComponent):
         discretionary sequence of extra tool calls left to the language model.
         """
         if isinstance(focused_payload.get("audit_synthesis"), dict):
-            # Retrieval v14 performs full reads and hierarchical synthesis in
+            # Retrieval v15 performs full reads and hierarchical synthesis in
             # the authenticated backend. Re-reading here would duplicate every
             # chunk and discard the backend's exact coverage snapshot.
             return focused_payload
@@ -472,7 +477,9 @@ class OpenRAGBackendRetrievalComponent(LCToolComponent):
         if jwt:
             headers["Authorization"] = jwt if jwt.lower().startswith("bearer ") else f"Bearer {jwt}"
 
-        filters, limit, score_threshold, retrieval_intent = self._request_context()
+        filters, limit, score_threshold, retrieval_intent, audit_progress_id = (
+            self._request_context()
+        )
         # Only trusted request context can enable the deeper archive-audit
         # discovery path. The public tool argument remains focused/exhaustive,
         # so a model cannot independently widen its authenticated search scope.
@@ -493,6 +500,7 @@ class OpenRAGBackendRetrievalComponent(LCToolComponent):
                     "documentId": resolved_document_id or None,
                     "cursor": _as_text(cursor),
                     "batchSize": min(50, max(1, int(batch_size))),
+                    "progressId": audit_progress_id or None,
                 },
             )
             payload = self._validated_payload(response)

@@ -151,6 +151,11 @@ maps should be added to the same evidence ledger as they become available.
 - A relevance view may reorder the certified complete set using a second
   focused search scoped to that document. Unscored chunks remain in source
   order after scored candidates; ranking never removes evidence.
+- Streaming exhaustive chat emits a separate, sanitized progress event with
+  real phase counters and periodic heartbeats. These events are operational
+  metadata, never factual evidence, never a fabricated percentage, and never
+  part of the persisted assistant answer. Their absence does not affect the
+  fail-closed audit certificate.
 - Explicit French and English exhaustive formulations are classified by a
   deterministic backend intent detector. This changes retrieval effort only;
   it never broadens ACLs or active filters.

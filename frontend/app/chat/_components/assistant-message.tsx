@@ -1,4 +1,4 @@
-import { GitBranch } from "lucide-react";
+import { GitBranch, Loader2 } from "lucide-react";
 import { motion } from "motion/react";
 import dynamic from "next/dynamic";
 import { useRef, useState } from "react";
@@ -28,6 +28,7 @@ import {
 } from "@/lib/source-url";
 import { cn } from "@/lib/utils";
 import type {
+  AuditProgress,
   FunctionCall,
   TokenUsage as TokenUsageType,
   ToolCallResult,
@@ -83,7 +84,45 @@ interface AssistantMessageProps {
   interactiveCitations?: boolean;
   showFunctionCalls?: boolean;
   unstyledMessageContent?: boolean;
+  progress?: AuditProgress;
 }
+
+const formatAuditProgressCounter = (progress: AuditProgress): string => {
+  const counters = progress.counters;
+  const pairByPhase: Record<string, [string, string, string]> = {
+    candidate_review: [
+      "review_batches_complete",
+      "review_batches_total",
+      "review batches",
+    ],
+    document_read: ["documents_read", "documents_total", "documents"],
+    evidence_analysis: [
+      "leaf_workers_complete",
+      "leaf_workers_total",
+      "evidence readers",
+    ],
+    source_verification: [
+      "verification_batches_complete",
+      "verification_batches_total",
+      "verification batches",
+    ],
+  };
+  const pair = pairByPhase[progress.phase];
+  if (
+    pair &&
+    counters[pair[0]] !== undefined &&
+    counters[pair[1]] !== undefined
+  ) {
+    return `${counters[pair[0]]}/${counters[pair[1]]} ${pair[2]}`;
+  }
+  if (counters.candidate_documents !== undefined) {
+    return `${counters.candidate_documents} candidate documents`;
+  }
+  if (counters.final_findings_total !== undefined) {
+    return `${counters.final_findings_total} final findings`;
+  }
+  return "";
+};
 
 export function AssistantMessage({
   content,
@@ -105,6 +144,7 @@ export function AssistantMessage({
   interactiveCitations = true,
   showFunctionCalls = true,
   unstyledMessageContent = false,
+  progress,
 }: AssistantMessageProps) {
   const [activeChunkIndex, setActiveChunkIndex] = useState<number | null>(null);
   const [sourcePreview, setSourcePreview] = useState<ChatSourcePreview | null>(
@@ -277,6 +317,17 @@ export function AssistantMessage({
             />
           )}
           <div className="relative">
+            {isStreaming && progress && (
+              <div className="mb-2 flex items-center gap-2 text-xs text-muted-foreground">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                <span>{progress.message}</span>
+                {formatAuditProgressCounter(progress) && (
+                  <span className="rounded bg-accent px-1.5 py-0.5 tabular-nums">
+                    {formatAuditProgressCounter(progress)}
+                  </span>
+                )}
+              </div>
+            )}
             {/* Slide animation for initial greeting */}
             <motion.div
               initial={isInitialGreeting ? { opacity: 0, x: -16 } : false}

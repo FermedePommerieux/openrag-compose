@@ -105,6 +105,49 @@ async def test_langflow_chat_marks_explicit_exhaustive_intent(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_streaming_exhaustive_chat_emits_sanitized_progress_event(monkeypatch):
+    fake_langflow_client = MagicMock()
+    monkeypatch.setattr(
+        "config.settings.clients.ensure_langflow_client",
+        AsyncMock(return_value=fake_langflow_client),
+    )
+    monkeypatch.setattr(
+        "utils.langflow_headers.add_provider_credentials_to_headers",
+        AsyncMock(),
+    )
+    monkeypatch.setattr(
+        "services.langflow_ingest_token_service.LangflowIngestTokenService.create_token",
+        lambda _self, _context: "fake-ingest-token",
+    )
+    captured: dict = {}
+
+    async def fake_stream(*_args, **kwargs):
+        captured["headers"] = kwargs["extra_headers"]
+        yield b'{"type":"response.output_text.delta","delta":"answer"}\n'
+
+    monkeypatch.setattr("agent.async_langflow_chat_stream", fake_stream)
+    set_search_filters({})
+
+    stream = await ChatService().langflow_chat(
+        prompt="Fais une recherche exhaustive sur toute l'archive",
+        jwt_token="user-jwt",
+        stream=True,
+    )
+    chunks = [json.loads(chunk) async for chunk in stream]
+
+    progress = next(item["progress"] for item in chunks if item.get("type") == "openrag.audit.progress")
+    context = json.loads(
+        captured["headers"]["X-Langflow-Global-Var-OPENRAG_QUERY_FILTER"]
+    )
+    assert context["retrievalIntent"] == "exhaustive"
+    assert context["auditProgressId"] == progress["audit_id"]
+    assert progress["phase"] == "preparing"
+    assert "query" not in progress
+    assert "prompt" not in progress
+    assert chunks[-1]["delta"] == "answer"
+
+
+@pytest.mark.asyncio
 async def test_non_streaming_chat_hydrates_complete_source_from_cited_chunk(monkeypatch):
     fake_langflow_client = MagicMock()
     monkeypatch.setattr(

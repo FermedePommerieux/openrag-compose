@@ -19,6 +19,18 @@ export interface Message {
   source?: "langflow" | "chat";
   error?: boolean;
   usage?: TokenUsage;
+  progress?: AuditProgress;
+}
+
+export interface AuditProgress {
+  audit_id: string;
+  phase: string;
+  message: string;
+  sequence: number;
+  counters: Record<string, number>;
+  complete: boolean;
+  failed: boolean;
+  updated_at: string;
 }
 
 export const INITIAL_ASSISTANT_MESSAGE: Message = {

@@ -947,6 +947,7 @@ function ChatPage() {
                   delay={0.4}
                   isStreaming
                   isCompleted={false}
+                  progress={streamingMessage.progress}
                 />
               )}
 

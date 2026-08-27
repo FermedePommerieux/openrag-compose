@@ -641,7 +641,7 @@ async def test_search_service_rrf_fuses_lanes_preserves_provenance_and_emits_deb
             )
         ),
         review_candidates=AsyncMock(
-            side_effect=lambda _query, hits: (
+                side_effect=lambda _query, hits, **_kwargs: (
                 hits,
                 {
                     "available": True,

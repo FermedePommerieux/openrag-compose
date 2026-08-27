@@ -11,6 +11,7 @@ from agentd.tool_decorator import tool
 from auth_context import get_auth_context
 from config.embedding_constants import get_declared_default_embedding_model
 from config.settings import clients, get_embedding_model, get_index_name, get_openrag_config
+from services.audit_progress_service import audit_progress_service
 from services.audit_reasoning_service import AuditReasoningService
 from services.retrieval_service import (
     EXHAUSTIVE_BATCH_MAX,
@@ -561,6 +562,7 @@ class SearchService:
         embedding_model: str = None,
         *,
         audit_discovery: bool = False,
+        audit_progress_id: str | None = None,
     ) -> dict[str, Any]:
         """
         Use this tool to search for documents relevant to the query.
@@ -577,6 +579,13 @@ class SearchService:
             dict (str, Any): {"results": [chunks]} on success
         """
         from utils.embedding_fields import get_embedding_field_name
+
+        if audit_discovery:
+            audit_progress_service.update(
+                audit_progress_id,
+                phase="discovery",
+                message="Searching lexical and semantic archive lanes",
+            )
 
         # Strategy: Use provided model, or default to the configured embedding
         # model. This assumes documents are embedded with that model by default.
@@ -1530,6 +1539,24 @@ class SearchService:
                     name: metadata
                     for name, (_result, metadata) in zip(lanes, audit_results, strict=True)
                 }
+                initial_documents = len(
+                    _hits_by_document(
+                        [
+                            hit
+                            for lane_result in lane_results
+                            for hit in lane_result.get("hits", {}).get("hits", [])
+                        ]
+                    )
+                )
+                audit_progress_service.update(
+                    audit_progress_id,
+                    phase="query_expansion",
+                    message="Deriving evidence-grounded query and entity expansions",
+                    counters={
+                        "search_lanes_complete": len(audit_results),
+                        "candidate_documents": initial_documents,
+                    },
+                )
             else:
                 lane_results = await asyncio.gather(
                     *[execute_search(body, name) for name, body in retrieval_bodies]
@@ -1573,6 +1600,16 @@ class SearchService:
                         ]
                         expansion_jobs.append((f"entity_expansion:{index}", entity_body, entity))
                     if expansion_jobs:
+                        audit_progress_service.update(
+                            audit_progress_id,
+                            phase="expanded_search",
+                            message="Running grounded query and entity searches",
+                            counters={
+                                "expanded_queries": len(expansion.queries),
+                                "expanded_entities": len(expansion.entities),
+                                "expanded_searches_total": len(expansion_jobs),
+                            },
+                        )
                         expansion_semaphore = asyncio.Semaphore(ARCHIVE_AUDIT_EXPANSION_CONCURRENCY)
 
                         async def execute_expansion(
@@ -1605,6 +1642,14 @@ class SearchService:
                     for result in retrieval_results.values()
                     for hit in result.get("hits", {}).get("hits", [])
                 ]
+                audit_progress_service.update(
+                    audit_progress_id,
+                    phase="provenance",
+                    message="Following verified document and thread relationships",
+                    counters={
+                        "candidate_documents": len(_hits_by_document(provenance_seed_hits)),
+                    },
+                )
                 provenance_result, provenance_metadata = await execute_provenance_audit(
                     provenance_seed_hits
                 )
@@ -1629,9 +1674,18 @@ class SearchService:
                 ),
             )
             if audit_discovery and audit_reasoner is not None:
+                audit_progress_service.update(
+                    audit_progress_id,
+                    phase="candidate_review",
+                    message="Reviewing every candidate without excluding uncertain documents",
+                    counters={
+                        "candidate_documents": len(_hits_by_document(raw_hits)),
+                    },
+                )
                 raw_hits, audit_contextual_review = await audit_reasoner.review_candidates(
                     query,
                     raw_hits,
+                    audit_progress_id=audit_progress_id,
                 )
             raw_hits = await HttpReranker(
                 retrieval_settings.reranker_url,
@@ -1785,6 +1839,18 @@ class SearchService:
                 ),
                 "reranker_enabled": bool(retrieval_settings.reranker_url),
             }
+        if audit_discovery:
+            audit_progress_service.update(
+                audit_progress_id,
+                phase="document_read",
+                message="Reading every chunk of every discovered document",
+                counters={
+                    "candidate_documents": len(
+                        {item.get("document_id") for item in chunks if item.get("document_id")}
+                    ),
+                    "discovery_chunks": len(chunks),
+                },
+            )
         return response
 
     async def read_document_chunks(
@@ -2008,6 +2074,7 @@ class SearchService:
         user_id: str,
         jwt_token: str | None,
         filters: dict[str, Any] | None,
+        audit_progress_id: str | None = None,
     ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
         """Read every candidate snapshot with bounded I/O concurrency.
 
@@ -2035,10 +2102,20 @@ class SearchService:
             )
 
         semaphore = asyncio.Semaphore(ARCHIVE_AUDIT_DOCUMENT_READ_CONCURRENCY)
+        progress_lock = asyncio.Lock()
+        documents_read = 0
+        chunks_read = 0
+        audit_progress_service.update(
+            audit_progress_id,
+            phase="document_read",
+            message="Reading every chunk of every discovered document",
+            counters={"documents_total": len(documents), "documents_read": 0},
+        )
 
         async def read_document(
             document: dict[str, Any],
         ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+            nonlocal documents_read, chunks_read
             async with semaphore:
                 chunks: list[dict[str, Any]] = []
                 cursor = ""
@@ -2084,6 +2161,19 @@ class SearchService:
                     seen_cursors.add(next_cursor)
                     cursor = next_cursor
                 final_coverage["filename"] = document.get("filename")
+                async with progress_lock:
+                    documents_read += 1
+                    chunks_read += len(chunks)
+                    audit_progress_service.update(
+                        audit_progress_id,
+                        phase="document_read",
+                        message="Reading every chunk of every discovered document",
+                        counters={
+                            "documents_total": len(documents),
+                            "documents_read": documents_read,
+                            "chunks_read": chunks_read,
+                        },
+                    )
                 return chunks, final_coverage
 
         document_reads = await asyncio.gather(*[read_document(document) for document in documents])
@@ -2101,6 +2191,7 @@ class SearchService:
         user_id: str,
         jwt_token: str | None,
         filters: dict[str, Any] | None,
+        audit_progress_id: str | None = None,
     ) -> dict[str, Any]:
         """Turn discovery into bounded, citation-preserving hierarchical evidence."""
         discovery_hits = [
@@ -2111,6 +2202,7 @@ class SearchService:
             user_id=user_id,
             jwt_token=jwt_token,
             filters=filters,
+            audit_progress_id=audit_progress_id,
         )
         documents_complete = sum(
             coverage.get("complete") is True for coverage in document_coverages
@@ -2145,7 +2237,20 @@ class SearchService:
                 "error": reasoner_error or "Audit reasoning model is not configured.",
             }
         else:
-            synthesis, synthesis_coverage = await reasoner.synthesize_evidence(query, chunks)
+            audit_progress_service.update(
+                audit_progress_id,
+                phase="evidence_analysis",
+                message="Analyzing all evidence in independent bounded batches",
+                counters={
+                    "documents_total": len(document_coverages),
+                    "chunks_read": len(chunks),
+                },
+            )
+            synthesis, synthesis_coverage = await reasoner.synthesize_evidence(
+                query,
+                chunks,
+                audit_progress_id=audit_progress_id,
+            )
             synthesis_coverage.update(
                 {
                     "documents_total": len(document_coverages),
@@ -2162,7 +2267,7 @@ class SearchService:
             "coverage": synthesis.get("coverage"),
             "error": synthesis.get("error"),
         }
-        return {
+        response = {
             **discovery_result,
             "results": chunks,
             "total": len(chunks),
@@ -2170,6 +2275,15 @@ class SearchService:
             "audit_synthesis": synthesis,
             "discovery": discovery,
         }
+        audit_progress_service.finish(
+            audit_progress_id,
+            verified=(
+                coverage.get("complete") is True
+                and synthesis.get("complete") is True
+                and synthesis.get("verified") is True
+            ),
+        )
+        return response
 
     async def search(
         self,
@@ -2184,6 +2298,7 @@ class SearchService:
         document_id: str | None = None,
         cursor: str = "",
         batch_size: int = 20,
+        audit_progress_id: str | None = None,
     ) -> dict[str, Any]:
         """Public search method for API endpoints
 
@@ -2229,6 +2344,7 @@ class SearchService:
             query,
             embedding_model=embedding_model,
             audit_discovery=evidence_mode == "audit",
+            audit_progress_id=audit_progress_id,
         )
         if evidence_mode == "audit" and user_id and not result.get("error"):
             return await self._orchestrate_archive_audit(
@@ -2237,5 +2353,6 @@ class SearchService:
                 user_id=user_id,
                 jwt_token=jwt_token,
                 filters=filters,
+                audit_progress_id=audit_progress_id,
             )
         return result

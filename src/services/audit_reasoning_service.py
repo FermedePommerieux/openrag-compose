@@ -16,6 +16,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from services.audit_progress_service import audit_progress_service
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -312,6 +313,8 @@ class AuditReasoningService:
         self,
         query: str,
         hits: list[dict[str, Any]],
+        *,
+        audit_progress_id: str | None = None,
     ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
         """Review every candidate in bounded transport batches, never a top-k."""
         if not hits:
@@ -333,14 +336,41 @@ class AuditReasoningService:
             for index in range(0, len(hits), AUDIT_REASONING_BATCH_DOCUMENTS)
         ]
         semaphore = asyncio.Semaphore(AUDIT_REASONING_CONCURRENCY)
+        progress_lock = asyncio.Lock()
+        reviewed_batches = 0
+
+        audit_progress_service.update(
+            audit_progress_id,
+            phase="candidate_review",
+            message="Reviewing every candidate without excluding uncertain documents",
+            counters={
+                "review_batches_total": len(batches),
+                "review_batches_complete": 0,
+            },
+        )
 
         async def review(batch: list[dict[str, Any]]) -> list[AuditCandidateDecision] | Exception:
+            nonlocal reviewed_batches
             async with semaphore:
                 try:
                     return await self._review_batch(query, batch)
                 except Exception as error:
                     logger.warning("Archive audit relevance review batch failed", error=str(error))
                     return error
+                finally:
+                    async with progress_lock:
+                        reviewed_batches += 1
+                        audit_progress_service.update(
+                            audit_progress_id,
+                            phase="candidate_review",
+                            message=(
+                                "Reviewing every candidate without excluding uncertain documents"
+                            ),
+                            counters={
+                                "review_batches_total": len(batches),
+                                "review_batches_complete": reviewed_batches,
+                            },
+                        )
 
         batch_results = await asyncio.gather(*[review(batch) for batch in batches])
         decisions_by_document: dict[str, AuditCandidateDecision] = {}
@@ -650,9 +680,8 @@ class AuditReasoningService:
         returned_finding_ids = [
             source_id for finding in report.findings for source_id in finding.source_finding_ids
         ]
-        if (
-            set(returned_finding_ids) != expected_finding_ids
-            or len(returned_finding_ids) != len(set(returned_finding_ids))
+        if set(returned_finding_ids) != expected_finding_ids or len(returned_finding_ids) != len(
+            set(returned_finding_ids)
         ):
             raise ValueError("audit coordinator omitted or invented a leaf finding identity")
         for finding in report.findings:
@@ -671,9 +700,7 @@ class AuditReasoningService:
                 for document_id in source_finding.get("document_ids", [])
                 if document_id
             }
-            if not set(finding.chunk_ids).issubset(
-                represented_chunk_ids & allowed_chunk_ids
-            ):
+            if not set(finding.chunk_ids).issubset(represented_chunk_ids & allowed_chunk_ids):
                 raise ValueError("audit coordinator invented a chunk citation")
             if not set(finding.document_ids).issubset(
                 represented_document_ids & allowed_document_ids
@@ -844,6 +871,8 @@ class AuditReasoningService:
         self,
         query: str,
         chunks: list[dict[str, Any]],
+        *,
+        audit_progress_id: str | None = None,
     ) -> tuple[dict[str, Any], dict[str, Any]]:
         """Run isolated redundant readers and a loss-checked reduce tree.
 
@@ -882,11 +911,25 @@ class AuditReasoningService:
             "skeptical_verifier",
         )
         semaphore = asyncio.Semaphore(AUDIT_REASONING_CONCURRENCY)
+        progress_lock = asyncio.Lock()
+        leaf_workers_complete = 0
+        leaf_workers_total = len(batches) * len(roles)
+        audit_progress_service.update(
+            audit_progress_id,
+            phase="evidence_analysis",
+            message="Analyzing all evidence in independent bounded batches",
+            counters={
+                "evidence_batches_total": len(batches),
+                "leaf_workers_total": leaf_workers_total,
+                "leaf_workers_complete": 0,
+            },
+        )
 
         async def run_leaf(
             batch: list[dict[str, Any]],
             role: Literal["evidence_extractor", "skeptical_verifier"],
         ) -> AuditEvidenceMemo | Exception:
+            nonlocal leaf_workers_complete
             async with semaphore:
                 try:
                     return await self._extract_evidence_batch(
@@ -897,6 +940,19 @@ class AuditReasoningService:
                 except Exception as error:
                     logger.warning("Archive audit leaf worker failed", role=role, error=str(error))
                     return error
+                finally:
+                    async with progress_lock:
+                        leaf_workers_complete += 1
+                        audit_progress_service.update(
+                            audit_progress_id,
+                            phase="evidence_analysis",
+                            message="Analyzing all evidence in independent bounded batches",
+                            counters={
+                                "evidence_batches_total": len(batches),
+                                "leaf_workers_total": leaf_workers_total,
+                                "leaf_workers_complete": leaf_workers_complete,
+                            },
+                        )
 
         leaf_results = await asyncio.gather(
             *[run_leaf(batch, role) for batch in batches for role in roles]
@@ -938,8 +994,39 @@ class AuditReasoningService:
                 evidence_kind="source_chunks",
             )
 
+        audit_progress_service.update(
+            audit_progress_id,
+            phase="source_verification",
+            message="Validating extracted findings against their exact source chunks",
+            counters={
+                "verification_batches_total": len(memo_batches),
+                "verification_batches_complete": 0,
+            },
+        )
+        verification_batches_complete = 0
+
+        async def verify_leaf_memo_with_progress(
+            memo: dict[str, Any],
+            batch: list[dict[str, Any]],
+        ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], dict[str, Any]]:
+            nonlocal verification_batches_complete
+            try:
+                return await verify_leaf_memo(memo, batch)
+            finally:
+                async with progress_lock:
+                    verification_batches_complete += 1
+                    audit_progress_service.update(
+                        audit_progress_id,
+                        phase="source_verification",
+                        message="Validating extracted findings against their exact source chunks",
+                        counters={
+                            "verification_batches_total": len(memo_batches),
+                            "verification_batches_complete": verification_batches_complete,
+                        },
+                    )
+
         leaf_verifications = await asyncio.gather(
-            *[verify_leaf_memo(memo, batch) for memo, batch in memo_batches]
+            *[verify_leaf_memo_with_progress(memo, batch) for memo, batch in memo_batches]
         )
         leaf_validation_failures = 0
         leaf_findings_by_id: dict[str, dict[str, Any]] = {}
@@ -977,9 +1064,7 @@ class AuditReasoningService:
             "leaf_findings_withheld": len(withheld_leaf_findings),
             "reduce_levels": 0,
         }
-        dual_verified = all(
-            memo["workers_succeeded"] == memo["workers_expected"] for memo in memos
-        )
+        dual_verified = all(memo["workers_succeeded"] == memo["workers_expected"] for memo in memos)
         coverage["leaf_dual_review_complete"] = dual_verified
         if (
             failed_batches
@@ -1004,6 +1089,15 @@ class AuditReasoningService:
         while len(layer) > 1:
             reduce_level += 1
             groups = self._coordinator_groups(layer)
+            audit_progress_service.update(
+                audit_progress_id,
+                phase="evidence_reduction",
+                message="Consolidating verified findings without losing source identities",
+                counters={
+                    "reduce_level": reduce_level,
+                    "reduce_groups_total": len(groups),
+                },
+            )
 
             async def coordinate(
                 group: list[dict[str, Any]],
@@ -1076,6 +1170,12 @@ class AuditReasoningService:
                 "error": "Final reduction did not preserve every source-verified leaf finding.",
                 "coverage": coverage,
             }, coverage
+        audit_progress_service.update(
+            audit_progress_id,
+            phase="final_verification",
+            message="Running independent final claim verification",
+            counters={"final_findings_total": len(final_findings)},
+        )
         (
             verified_final_findings,
             withheld_final_findings,

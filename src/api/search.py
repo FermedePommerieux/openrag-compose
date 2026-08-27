@@ -27,6 +27,7 @@ class SearchBody(BaseModel):
     documentId: str | None = Field(default=None, alias="documentId")
     cursor: str = ""
     batchSize: int = Field(default=20, ge=1, le=50, alias="batchSize")
+    progressId: str | None = Field(default=None, max_length=64, alias="progressId")
 
     model_config = {"populate_by_name": True}
 
@@ -71,13 +72,23 @@ async def search(
             document_id=body.documentId,
             cursor=body.cursor,
             batch_size=body.batchSize,
+            audit_progress_id=body.progressId,
         )
         return JSONResponse(result, status_code=200)
     except ValueError as e:
+        from services.audit_progress_service import audit_progress_service
+
+        audit_progress_service.fail(body.progressId)
         return JSONResponse({"error": str(e)}, status_code=400)
     except OpenSearchDiskSpaceError:
+        from services.audit_progress_service import audit_progress_service
+
+        audit_progress_service.fail(body.progressId)
         return JSONResponse({"error": DISK_SPACE_ERROR_MESSAGE}, status_code=507)
     except Exception as e:
+        from services.audit_progress_service import audit_progress_service
+
+        audit_progress_service.fail(body.progressId)
         error_msg = str(e)
         if "AuthenticationException" in error_msg or "access denied" in error_msg.lower():
             return JSONResponse({"error": error_msg}, status_code=403)

@@ -214,10 +214,11 @@ def test_backend_tool_forwards_request_and_preserves_provenance(monkeypatch):
             "scoreThreshold": 0.25,
             "evidenceMode": "focused",
             "documentId": None,
-            "cursor": "",
-            "batchSize": 20,
-        },
-    }
+                "cursor": "",
+                "batchSize": 20,
+                "progressId": None,
+            },
+        }
     assert "<<<UNTRUSTED_DOC_CHUNK>>>" in result[0].text
     citations = parse_knowledge_chunks({"artifact": [{"data": result[0].__dict__}]})
     assert citations[0]["chunk_id"] == "chunk-42"

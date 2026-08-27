@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import type {
+  AuditProgress,
   FunctionCall,
   Message,
   TokenUsage,
@@ -142,6 +143,9 @@ export function useChatStreaming({
       let newResponseId: string | null = null;
       let isError = false;
       const usage: { value: TokenUsage | undefined } = { value: undefined };
+      const progress: { value: AuditProgress | undefined } = {
+        value: undefined,
+      };
 
       if (!controller.signal.aborted && thisStreamId === streamIdRef.current) {
         setStreamingMessage({
@@ -180,6 +184,14 @@ export function useChatStreaming({
                   newResponseId = chunk.response_id;
                 }
 
+                if (
+                  chunk.type === "openrag.audit.progress" &&
+                  chunk.progress &&
+                  typeof chunk.progress === "object"
+                ) {
+                  progress.value = chunk.progress as AuditProgress;
+                }
+
                 parseOpenAIChatChunk(chunk, content, currentFunctionCalls) ||
                   parseRealtimeChunk(
                     chunk,
@@ -212,6 +224,7 @@ export function useChatStreaming({
                         : undefined,
                     timestamp: new Date(),
                     isStreaming: true,
+                    progress: progress.value,
                   });
                 }
               } catch (parseError) {

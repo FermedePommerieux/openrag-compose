@@ -166,7 +166,7 @@ archive. Corpus-wide thematic certification requires an immutable accessible
 corpus snapshot plus persisted, batch-level relevance decisions before final
 synthesis.
 
-Retrieval flow version 14 gives explicit exhaustive intent a separate
+Retrieval flow version 15 gives explicit exhaustive intent a separate
 archive-audit discovery profile. The lexical lane opens an immutable
 OpenSearch scroll snapshot and consumes it until every matching hit has been
 returned; 500 is only its transport page size, never a candidate limit. Scroll
@@ -238,7 +238,7 @@ the reason an implicit document entered the audit.
 ### Hierarchical audit synthesis
 
 An exhaustive candidate set is not injected into one model context. Retrieval
-v14 uses an orchestration pattern inspired by Hermes Agent while keeping the
+v15 uses an orchestration pattern inspired by Hermes Agent while keeping the
 authenticated operation inside the OpenRAG backend:
 
 1. Every candidate document is read to its immutable cursor certificate, with
@@ -273,6 +273,25 @@ coverage snapshot in one trust boundary. Its map/reduce contracts are isolated
 from HTTP transport so they can later move unchanged to a durable worker if
 audits must survive process restarts; that move must preserve the same identity,
 snapshot, loss checks and fail-closed result contract.
+
+### Factual chat progress
+
+An explicit exhaustive chat starts a random request-scoped progress id in the
+backend. The trusted Langflow search context forwards this id to Retrieval v15;
+it is not a model-controlled tool argument. While the retrieval tool is busy,
+the chat stream multiplexes `openrag.audit.progress` events with the ordinary
+Langflow events. The frontend displays the current phase and factual counters,
+for example documents read, leaf readers completed, or verification batches
+completed. It never estimates a percentage or completion time.
+
+Progress events contain no query, filename, document text, credential, model
+reasoning, or finding. They are excluded from the assistant answer and from
+conversation history. A 15-second repeat of the last snapshot acts as a
+transport heartbeat during long model calls. The registry is best-effort and
+process-local for the current single backend replica; missing progress can
+never weaken or strengthen the coverage certificate. A multi-replica backend
+must replace it with a shared TTL store before treating cross-pod progress as
+reliable.
 
 This provides a fail-closed factual contract, not a mathematical guarantee that
 a probabilistic model can never err. `complete` certifies processing coverage;

@@ -1,4 +1,7 @@
+import asyncio
 import json
+import time
+import uuid
 from typing import Any
 
 from agent import async_chat, async_chat_stream, async_langflow
@@ -9,6 +12,60 @@ from utils.langflow_utils import extract_source_citation_ids, parse_knowledge_ch
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
+
+
+async def _stream_with_audit_progress(stream, audit_id: str):
+    """Multiplex sanitized audit status with the ordinary Langflow stream.
+
+    Langflow does not emit model events while a retrieval tool is blocked on a
+    long audit.  Polling the backend-local progress registry lets us emit a
+    small status event (and a 15-second heartbeat) without inserting that text
+    into the assistant answer or conversation history.
+    """
+    from services.audit_progress_service import audit_progress_service
+
+    iterator = stream.__aiter__()
+    pending = asyncio.create_task(anext(iterator))
+    last_sequence = -1
+    last_emit = 0.0
+    try:
+        while True:
+            done, _pending = await asyncio.wait({pending}, timeout=5.0)
+            snapshot = audit_progress_service.snapshot(audit_id)
+            now = time.monotonic()
+            if snapshot is not None and (
+                snapshot["sequence"] != last_sequence or now - last_emit >= 15.0
+            ):
+                yield (
+                    json.dumps(
+                        {"type": "openrag.audit.progress", "progress": snapshot},
+                        ensure_ascii=False,
+                    )
+                    + "\n"
+                ).encode("utf-8")
+                last_sequence = int(snapshot["sequence"])
+                last_emit = now
+
+            if pending not in done:
+                continue
+            try:
+                chunk = pending.result()
+            except StopAsyncIteration:
+                break
+            yield chunk
+            pending = asyncio.create_task(anext(iterator))
+    except Exception:
+        snapshot = audit_progress_service.snapshot(audit_id)
+        if snapshot is None or snapshot.get("complete") is not True:
+            audit_progress_service.fail(audit_id)
+        raise
+    finally:
+        if not pending.done():
+            pending.cancel()
+            try:
+                await pending
+            except (asyncio.CancelledError, StopAsyncIteration):
+                pass
 
 
 class ChatService:
@@ -98,8 +155,6 @@ class ChatService:
         extra_headers["X-LANGFLOW-GLOBAL-VAR-SELECTED_EMBEDDING_MODEL"] = embedding_model
 
         # Configure ingest callback credentials/vars like ingestion does
-        import uuid
-
         from config.settings import (
             LANGFLOW_INGEST_CALLBACK_BATCH_SIZE,
             OPENRAG_BACKEND_INTERNAL_URL,
@@ -176,9 +231,15 @@ class ChatService:
         # first call is still a focused discovery query.
         from services.retrieval_service import exhaustive_retrieval_requested
 
-        filter_expression["retrievalIntent"] = (
-            "exhaustive" if exhaustive_retrieval_requested(prompt) else "focused"
-        )
+        retrieval_intent = "exhaustive" if exhaustive_retrieval_requested(prompt) else "focused"
+        filter_expression["retrievalIntent"] = retrieval_intent
+        audit_progress_id: str | None = None
+        if stream and retrieval_intent == "exhaustive":
+            from services.audit_progress_service import audit_progress_service
+
+            audit_progress_id = uuid.uuid4().hex
+            audit_progress_service.start(audit_progress_id)
+            filter_expression["auditProgressId"] = audit_progress_id
         logger.info(
             "Sending backend-owned retrieval context to Langflow",
             has_filters=bool(filters),
@@ -203,7 +264,7 @@ class ChatService:
         if stream:
             from agent import async_langflow_chat_stream
 
-            return async_langflow_chat_stream(
+            response_stream = async_langflow_chat_stream(
                 langflow_client,
                 LANGFLOW_CHAT_FLOW_ID,
                 prompt,
@@ -212,6 +273,9 @@ class ChatService:
                 previous_response_id=previous_response_id,
                 filter_id=filter_id,
             )
+            if audit_progress_id:
+                return _stream_with_audit_progress(response_stream, audit_progress_id)
+            return response_stream
         else:
             from agent import async_langflow_chat
 
