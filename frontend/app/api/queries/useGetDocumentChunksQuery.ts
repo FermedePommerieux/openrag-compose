@@ -1,6 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
 import type { ParsedQueryData } from "@/contexts/knowledge-filter-context";
-import { fetchAllDocumentChunks } from "@/lib/document-chunks";
+import {
+  fetchAllDocumentChunks,
+  type RankedDocumentChunk,
+  rankDocumentChunks,
+} from "@/lib/document-chunks";
 import { buildSearchPayloadFilters } from "@/lib/filter-normalization";
 import type { ChunkResult, File } from "./useGetSearchQuery";
 
@@ -8,6 +12,9 @@ interface DocumentChunksResult {
   chunks: ChunkResult[];
   documentId: string;
   file?: File;
+  rankedChunks: RankedDocumentChunk[];
+  relevanceError?: string;
+  relevanceQuery?: string;
 }
 
 async function resolveDocumentId(filename: string): Promise<string> {
@@ -91,10 +98,36 @@ export const useGetDocumentChunksQuery = (
         query: query || queryData?.query || "*",
         filters: buildSearchPayloadFilters(queryData?.filters),
       });
+      const sourceOrderedChunks = chunks.map((chunk, index) => ({
+        ...chunk,
+        index: index + 1,
+      }));
+      const relevanceQuery = (query || queryData?.query || "").trim();
+      let rankedChunks: RankedDocumentChunk[] = sourceOrderedChunks;
+      let relevanceError: string | undefined;
+      if (relevanceQuery && relevanceQuery !== "*") {
+        try {
+          rankedChunks = await rankDocumentChunks({
+            chunks: sourceOrderedChunks,
+            filename,
+            query: relevanceQuery,
+            filters: buildSearchPayloadFilters(queryData?.filters),
+          });
+        } catch (error) {
+          // Relevance is an optional view. A ranking failure must never hide
+          // the successfully certified exhaustive source-order evidence.
+          relevanceError =
+            error instanceof Error ? error.message : "Ranking failed";
+        }
+      }
       return {
-        chunks,
+        chunks: sourceOrderedChunks,
         documentId: resolvedDocumentId,
-        file: fileFromChunks(chunks),
+        file: fileFromChunks(sourceOrderedChunks),
+        rankedChunks,
+        relevanceError,
+        relevanceQuery:
+          relevanceQuery && relevanceQuery !== "*" ? relevanceQuery : undefined,
       };
     },
   });

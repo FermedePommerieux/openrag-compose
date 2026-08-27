@@ -2,9 +2,8 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 const documentChunksModule = "./document-chunks.ts";
-const { fetchAllDocumentChunks, formatDocumentChunkScore } = await import(
-  documentChunksModule
-);
+const { fetchAllDocumentChunks, formatDocumentChunkScore, rankDocumentChunks } =
+  await import(documentChunksModule);
 
 function response(body: unknown, status = 200) {
   return {
@@ -82,5 +81,55 @@ describe("formatDocumentChunkScore", () => {
     assert.equal(formatDocumentChunkScore(null), "Source order");
     assert.equal(formatDocumentChunkScore(undefined), "Source order");
     assert.equal(formatDocumentChunkScore(1.234), "1.23 score");
+  });
+});
+
+describe("rankDocumentChunks", () => {
+  it("puts scored candidates first without dropping unscored chunks", async () => {
+    let request: Record<string, unknown> | undefined;
+    const chunks = [
+      {
+        chunk_id: "chunk-1",
+        chunk_index: 0,
+        filename: "mail.eml",
+        mimetype: "message/rfc822",
+        page: 1,
+        score: null,
+        text: "first in source order",
+      },
+      {
+        chunk_id: "chunk-2",
+        chunk_index: 1,
+        filename: "mail.eml",
+        mimetype: "message/rfc822",
+        page: 1,
+        score: null,
+        text: "most relevant",
+      },
+    ];
+
+    const ranked = await rankDocumentChunks({
+      chunks,
+      filename: "mail.eml",
+      query: "relevant",
+      filters: { owners: ["OpenArchiver"] },
+      fetcher: async (_input: string, init?: RequestInit) => {
+        request = JSON.parse(String(init?.body));
+        return response({
+          results: [{ ...chunks[1], score: 0.75 }],
+        });
+      },
+    });
+
+    assert.deepEqual(
+      ranked.map((chunk: { chunk_id?: string }) => chunk.chunk_id),
+      ["chunk-2", "chunk-1"],
+    );
+    assert.equal(ranked[0].relevance_score, 0.75);
+    assert.equal(ranked[1].relevance_score, undefined);
+    assert.deepEqual(request?.filters, {
+      owners: ["OpenArchiver"],
+      data_sources: ["mail.eml"],
+    });
   });
 });

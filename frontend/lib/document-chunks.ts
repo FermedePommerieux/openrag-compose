@@ -29,11 +29,104 @@ export interface FetchDocumentChunksOptions {
   fetcher?: FetchLike;
 }
 
+export interface RankedDocumentChunk extends ChunkResult {
+  relevance_rank?: number;
+  relevance_score?: number;
+}
+
+export interface RankDocumentChunksOptions {
+  chunks: ChunkResult[];
+  filename: string;
+  query: string;
+  filters?: FilterInput;
+  fetcher?: FetchLike;
+}
+
 /** Exhaustive reads are source-ordered and legitimately have no relevance score. */
 export function formatDocumentChunkScore(score: unknown): string {
   return typeof score === "number" && Number.isFinite(score)
     ? `${score.toFixed(2)} score`
     : "Source order";
+}
+
+function chunkIdentity(chunk: ChunkResult): string {
+  return (
+    chunk.chunk_id?.trim() ||
+    `${chunk.document_id || ""}:${chunk.chunk_index ?? chunk.page}:${chunk.text}`
+  );
+}
+
+/**
+ * Rank an already exhaustive chunk set without removing unscored evidence.
+ *
+ * Focused hybrid retrieval supplies meaningful relevance scores for the query.
+ * Its candidates are merged back into the complete source-ordered set; chunks
+ * outside the candidate window remain visible after the scored candidates.
+ */
+export async function rankDocumentChunks({
+  chunks,
+  filename,
+  query,
+  filters,
+  fetcher = fetch,
+}: RankDocumentChunksOptions): Promise<RankedDocumentChunk[]> {
+  const normalizedQuery = query.trim();
+  if (!normalizedQuery || normalizedQuery === "*" || chunks.length === 0) {
+    return chunks;
+  }
+
+  const response = await fetcher("/api/search", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      query: normalizedQuery,
+      // Exact source scoping makes this a ranking of the open document, not a
+      // second corpus-wide retrieval. Existing ACL and filter dimensions stay.
+      filters: { ...(filters ?? {}), data_sources: [filename] },
+      limit: Math.max(50, chunks.length),
+      scoreThreshold: 0,
+      evidenceMode: "focused",
+    }),
+  });
+  const payload = (await response.json()) as {
+    results?: ChunkResult[];
+    error?: string;
+  };
+  if (!response.ok) {
+    throw new Error(
+      payload.error || `Failed to rank document chunks: ${response.status}`,
+    );
+  }
+
+  const rankedCandidates = Array.isArray(payload.results)
+    ? payload.results
+    : [];
+  const scores = new Map<string, { rank: number; score: number }>();
+  rankedCandidates.forEach((chunk, index) => {
+    if (typeof chunk.score === "number" && Number.isFinite(chunk.score)) {
+      scores.set(chunkIdentity(chunk), { rank: index + 1, score: chunk.score });
+    }
+  });
+
+  return chunks
+    .map((chunk): RankedDocumentChunk => {
+      const ranking = scores.get(chunkIdentity(chunk));
+      return ranking
+        ? {
+            ...chunk,
+            relevance_rank: ranking.rank,
+            relevance_score: ranking.score,
+          }
+        : { ...chunk };
+    })
+    .sort((left, right) => {
+      const leftRank = left.relevance_rank ?? Number.POSITIVE_INFINITY;
+      const rightRank = right.relevance_rank ?? Number.POSITIVE_INFINITY;
+      if (leftRank !== rightRank) return leftRank - rightRank;
+      return (
+        (left.chunk_index ?? left.page) - (right.chunk_index ?? right.page)
+      );
+    });
 }
 
 /**

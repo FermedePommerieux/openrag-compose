@@ -21,6 +21,7 @@ export interface SearchPayload {
 
 export interface ChunkResult {
   document_id?: string;
+  chunk_id?: string;
   filename: string;
   mimetype: string;
   page: number;

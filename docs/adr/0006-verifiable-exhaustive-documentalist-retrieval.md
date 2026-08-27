@@ -142,6 +142,9 @@ maps should be added to the same evidence ledger as they become available.
   resolves one stable `document_id`, follows every cursor, fails closed on an
   incomplete certificate, and exposes the stored `source_provenance`. A
   corpus-wide focused or wildcard search is never used as a document reader.
+- A relevance view may reorder the certified complete set using a second
+  focused search scoped to that document. Unscored chunks remain in source
+  order after scored candidates; ranking never removes evidence.
 - Explicit French and English exhaustive formulations are classified by a
   deterministic backend intent detector. This changes retrieval effort only;
   it never broadens ACLs or active filters.

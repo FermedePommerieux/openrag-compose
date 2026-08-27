@@ -149,3 +149,9 @@ every authenticated cursor before displaying chunks. It never derives a
 document detail from a bounded corpus-wide `*` result set. The Original
 document panel also renders the stored `source_provenance` JSON so entity and
 relation metadata remain directly inspectable.
+
+Inspectors may switch from source order to relevance after entering a query.
+This performs a second hybrid search scoped to the exact open filename and
+merges its scores into the already complete chunk set. Scored candidates appear
+first; unscored chunks remain visible afterward. Relevance therefore changes
+presentation only and never becomes a coverage filter.

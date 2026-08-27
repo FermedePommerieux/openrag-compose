@@ -29,10 +29,12 @@ import {
 } from "@/components/ui/tooltip";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
 import { trackButton } from "@/lib/analytics";
-import { formatDocumentChunkScore } from "@/lib/document-chunks";
+import {
+  formatDocumentChunkScore,
+  type RankedDocumentChunk,
+} from "@/lib/document-chunks";
 import { formatFileSize, getFileTypeLabel } from "@/lib/file-format";
 import { getDownloadSourceUrl, getSourcePreviewKind } from "@/lib/source-url";
-import type { ChunkResult } from "../../api/queries/useGetSearchQuery";
 
 function ChunksPageContent() {
   const router = useRouter();
@@ -41,6 +43,7 @@ function ChunksPageContent() {
   const filename = searchParams.get("filename");
   const documentId = searchParams.get("document_id");
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [sortMode, setSortMode] = useState<"source" | "relevance">("source");
   // const [chunksFilteredByQuery, setChunksFilteredByQuery] = useState<
   //   ChunkResult[]
   // >([]);
@@ -62,14 +65,17 @@ function ChunksPageContent() {
     queryOverride,
     parsedFilterData,
   );
-  const chunks = useMemo(
-    () =>
-      (documentData?.chunks ?? []).map((chunk: ChunkResult, index: number) => ({
-        ...chunk,
-        index: index + 1,
-      })),
-    [documentData?.chunks],
-  );
+  const chunks = documentData?.chunks ?? [];
+  const relevanceAvailable =
+    documentData?.rankedChunks.some(
+      (chunk) => typeof chunk.relevance_score === "number",
+    ) ?? false;
+  const effectiveSortMode =
+    sortMode === "relevance" && relevanceAvailable ? "relevance" : "source";
+  const displayedChunks: RankedDocumentChunk[] =
+    effectiveSortMode === "relevance"
+      ? (documentData?.rankedChunks ?? chunks)
+      : chunks;
   const fileData = documentData?.file;
   const averageChunkLength = useMemo(
     () =>
@@ -153,8 +159,38 @@ function ChunksPageContent() {
             {filename.replace(/\.[^/.]+$/, "")}
           </h1>
         </div>
-        <div className="flex flex-1">
+        <div className="flex flex-1 flex-wrap gap-2">
           <KnowledgeSearchInput />
+          <div
+            className="flex items-center gap-1"
+            role="group"
+            aria-label="Chunk ordering"
+          >
+            <Button
+              type="button"
+              size="sm"
+              variant={effectiveSortMode === "source" ? "default" : "outline"}
+              onClick={() => setSortMode("source")}
+            >
+              Source order
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant={
+                effectiveSortMode === "relevance" ? "default" : "outline"
+              }
+              disabled={!relevanceAvailable}
+              onClick={() => setSortMode("relevance")}
+              title={
+                documentData?.relevanceQuery
+                  ? "Rank the complete chunk set; unscored chunks remain visible"
+                  : "Enter a search query to calculate relevance"
+              }
+            >
+              Relevance
+            </Button>
+          </div>
           {/* <div className="flex items-center pl-4 gap-2">
               <Checkbox
                 id="selectAllChunks"
@@ -209,9 +245,12 @@ function ChunksPageContent() {
             </div>
           ) : (
             <div className="space-y-4 pb-6">
-              {chunks.map((chunk, index) => (
+              {displayedChunks.map((chunk, index) => (
                 <div
-                  key={`${chunk.filename}:${chunk.page}:${chunk.index ?? chunk.text.slice(0, 64)}`}
+                  key={
+                    chunk.chunk_id ??
+                    `${chunk.filename}:${chunk.page}:${chunk.index ?? chunk.text.slice(0, 64)}`
+                  }
                   className="bg-muted rounded-lg p-4 border border-border/50"
                 >
                   <div className="flex items-center justify-between mb-2">
@@ -225,6 +264,8 @@ function ChunksPageContent() {
                         />
                       </div> */}
                       <span className="text-sm font-bold">
+                        {effectiveSortMode === "relevance" &&
+                          `Rank ${index + 1} · `}
                         Chunk {chunk.index}
                       </span>
                       <Badge variant="secondary">
@@ -246,7 +287,11 @@ function ChunksPageContent() {
                     </div>
 
                     <Badge variant="secondary">
-                      {formatDocumentChunkScore(chunk.score)}
+                      {effectiveSortMode === "relevance"
+                        ? typeof chunk.relevance_score === "number"
+                          ? `${chunk.relevance_score.toFixed(4)} relevance`
+                          : "Not scored"
+                        : formatDocumentChunkScore(chunk.score)}
                     </Badge>
 
                     {/* TODO: Update to use active toggle */}
