@@ -284,6 +284,14 @@ Langflow events. The frontend displays the current phase and factual counters,
 for example documents read, leaf readers completed, or verification batches
 completed. It never estimates a percentage or completion time.
 
+The same contract covers a model call that directly requests
+`evidence_mode=exhaustive` for one known document. Retrieval reports the
+document-read phase and the exact covered/total chunk counters, then emits a
+verified terminal state only after the immutable snapshot digest, contiguous
+chunk order, and complete cursor chain have passed. This avoids leaving the UI
+at “preparing” when Langflow legitimately skips archive discovery for an
+already identified document.
+
 Progress events contain no query, filename, document text, credential, model
 reasoning, or finding. They are excluded from the assistant answer and from
 conversation history. A 15-second repeat of the last snapshot acts as a

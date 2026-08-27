@@ -221,6 +221,50 @@ async def test_archive_audit_orchestrator_reads_every_candidate_before_synthesis
     assert service.read_document_chunks.await_count == 2
 
 
+@pytest.mark.asyncio
+async def test_direct_exhaustive_document_read_reports_verified_progress():
+    from services.audit_progress_service import audit_progress_service
+
+    progress_id = "directdocumentprogress"
+    audit_progress_service.start(progress_id)
+    service = SearchService(session_manager=MagicMock())
+    service.read_document_chunks = AsyncMock(
+        return_value={
+            "results": [{"chunk_id": "chunk-1", "document_id": "document-1"}],
+            "coverage": {
+                "mode": "exhaustive",
+                "document_id": "document-1",
+                "covered_chunks": 1,
+                "total_chunks": 1,
+                "complete": True,
+                "next_cursor": None,
+            },
+        }
+    )
+
+    result = await service.search(
+        "document-1",
+        user_id="user-1",
+        jwt_token="jwt",
+        evidence_mode="exhaustive",
+        document_id="document-1",
+        audit_progress_id=progress_id,
+    )
+
+    assert result["coverage"]["complete"] is True
+    snapshot = audit_progress_service.snapshot(progress_id)
+    assert snapshot is not None
+    assert snapshot["phase"] == "complete"
+    assert snapshot["complete"] is True
+    assert snapshot["failed"] is False
+    assert snapshot["counters"] == {
+        "documents_total": 1,
+        "documents_read": 1,
+        "chunks_read": 1,
+        "chunks_total": 1,
+    }
+
+
 def test_rrf_rewards_hits_present_in_both_ranked_lists():
     lexical = [_hit("lexical-only", "a"), _hit("shared", "b")]
     vector = [_hit("shared", "b"), _hit("vector-only", "c")]

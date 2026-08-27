@@ -2326,7 +2326,13 @@ class SearchService:
         if evidence_mode == "exhaustive":
             if not user_id:
                 return {"results": [], "error": "Authentication required"}
-            return await self.read_document_chunks(
+            audit_progress_service.update(
+                audit_progress_id,
+                phase="document_read",
+                message="Reading every chunk of the requested document",
+                counters={"documents_total": 1, "documents_read": 0},
+            )
+            result = await self.read_document_chunks(
                 document_id or "",
                 user_id=user_id,
                 jwt_token=jwt_token,
@@ -2334,6 +2340,40 @@ class SearchService:
                 cursor=cursor,
                 batch_size=batch_size,
             )
+            coverage = result.get("coverage")
+            if isinstance(coverage, dict):
+                covered_chunks = coverage.get("covered_chunks")
+                total_chunks = coverage.get("total_chunks")
+                counters = {
+                    "documents_total": 1,
+                    "documents_read": 1 if coverage.get("complete") is True else 0,
+                }
+                if (
+                    isinstance(covered_chunks, int)
+                    and not isinstance(covered_chunks, bool)
+                    and covered_chunks >= 0
+                ):
+                    counters["chunks_read"] = covered_chunks
+                if (
+                    isinstance(total_chunks, int)
+                    and not isinstance(total_chunks, bool)
+                    and total_chunks >= 0
+                ):
+                    counters["chunks_total"] = total_chunks
+                audit_progress_service.update(
+                    audit_progress_id,
+                    phase="document_read",
+                    message="Reading every chunk of the requested document",
+                    counters=counters,
+                )
+                if coverage.get("complete") is True:
+                    # A complete per-document snapshot has already passed the
+                    # digest, ordering and contiguous-coverage checks in
+                    # read_document_chunks. It is therefore a verified terminal
+                    # state even though archive-wide audits additionally run
+                    # hierarchical reasoning over many documents.
+                    audit_progress_service.finish(audit_progress_id, verified=True)
+            return result
 
         from auth_context import set_score_threshold, set_search_limit
 
