@@ -178,28 +178,68 @@ class AuditReasoningService:
         *,
         cache_scope: str | None = None,
         cache_service: AIResponseCacheService | None = ai_response_cache_service,
+        query_embeddings: dict[str, Any] | None = None,
     ):
         self.client = client
         self.model = _normalize_query(model)
         self.cache_scope = _normalize_query(cache_scope or "") or None
         self.cache_service = cache_service
+        self.query_embeddings = dict(query_embeddings or {})
+        self._related_memory: dict[str, BaseModel] = {}
         self._cache_stats: dict[str, Any] = {
             "enabled": bool(self.cache_scope and self.cache_service is not None),
             "hits": 0,
+            "exact_hits": 0,
+            "semantic_hits": 0,
+            "related_hints": 0,
             "misses": 0,
-            "scope": "user_and_exact_evidence_request",
+            "scope": "user_evidence_contract_and_safe_query_equivalence",
         }
 
     def cache_metadata(self) -> dict[str, Any]:
         """Expose factual cache reuse without mixing it into provider usage."""
         return self._cache_stats
 
-    async def _structured(self, *, name: str, output_model: type[BaseModel], prompt: str) -> Any:
+    async def _structured(
+        self,
+        *,
+        name: str,
+        output_model: type[BaseModel],
+        prompt: str,
+        query: str | None = None,
+        allow_related_memory: bool = False,
+    ) -> Any:
         if not self.model:
             raise ValueError("audit reasoning model is not configured")
         schema = output_model.model_json_schema()
         cache_key: str | None = None
         scope_sha256: str | None = None
+        semantic_key: str | None = None
+        query_profile: dict[str, Any] | None = None
+
+        def parse_cached(cached: dict[str, Any], *, hit_kind: str) -> BaseModel | None:
+            try:
+                parsed = output_model.model_validate(cached.get("response"))
+            except Exception as error:
+                # A schema change should already alter the digest. Treat any
+                # remaining malformed row as a miss, never as evidence.
+                logger.warning(
+                    "Ignoring invalid structured AI cache entry",
+                    schema_name=name,
+                    hit_kind=hit_kind,
+                    error=str(error),
+                )
+                return None
+            self._cache_stats["hits"] += 1
+            self._cache_stats[f"{hit_kind}_hits"] += 1
+            from services.token_usage_service import token_usage_service
+
+            token_usage_service.record_application_cache_hit(
+                self.model,
+                cached.get("usage"),
+            )
+            return parsed
+
         if self.cache_scope and self.cache_service is not None:
             cache_key, scope_sha256 = self.cache_service.build_key(
                 scope=self.cache_scope,
@@ -210,25 +250,66 @@ class AuditReasoningService:
             )
             cached = await self.cache_service.get(cache_key)
             if cached is not None:
-                try:
-                    parsed = output_model.model_validate(cached.get("response"))
-                except Exception as error:
-                    # A schema change should already alter the digest. Treat any
-                    # remaining malformed row as a miss, never as evidence.
-                    logger.warning(
-                        "Ignoring invalid structured AI cache entry",
-                        schema_name=name,
-                        error=str(error),
-                    )
-                else:
-                    self._cache_stats["hits"] += 1
-                    from services.token_usage_service import token_usage_service
-
-                    token_usage_service.record_application_cache_hit(
-                        self.model,
-                        cached.get("usage"),
-                    )
+                parsed = parse_cached(cached, hit_kind="exact")
+                if parsed is not None:
                     return parsed
+
+            normalized_query = _normalize_query(query or "")
+            if normalized_query and self.query_embeddings:
+                query_profile = self.cache_service.build_query_profile(
+                    normalized_query,
+                    self.query_embeddings,
+                )
+                semantic_prompt = prompt
+                for label in ("Original query: ", "Audit query: "):
+                    query_slot = f"{label}{query}\n"
+                    if query_slot in semantic_prompt:
+                        semantic_prompt = semantic_prompt.replace(
+                            query_slot,
+                            f"{label}<AUDIT_QUERY>\n",
+                            1,
+                        )
+                        break
+                if query_profile is not None and semantic_prompt != prompt:
+                    semantic_key = self.cache_service.build_semantic_key(
+                        scope=self.cache_scope,
+                        model=self.model,
+                        schema_name=name,
+                        schema=schema,
+                        prompt_template=f"{AUDIT_REASONING_SYSTEM_PROMPT}\n\n{semantic_prompt}",
+                    )
+                    semantic_cached = await self.cache_service.get_semantic_equivalent(
+                        scope_sha256=scope_sha256,
+                        model=self.model,
+                        schema_name=name,
+                        semantic_key=semantic_key,
+                        query_profile=query_profile,
+                    )
+                    if semantic_cached is not None:
+                        parsed = parse_cached(semantic_cached, hit_kind="semantic")
+                        if parsed is not None:
+                            return parsed
+                    if allow_related_memory:
+                        related = await self.cache_service.get_related_research(
+                            scope_sha256=scope_sha256,
+                            model=self.model,
+                            schema_name=name,
+                            query_profile=query_profile,
+                        )
+                        if related is not None:
+                            try:
+                                related_parsed = output_model.model_validate(
+                                    related.get("response")
+                                )
+                            except Exception as error:
+                                logger.warning(
+                                    "Ignoring invalid related research memory",
+                                    schema_name=name,
+                                    error=str(error),
+                                )
+                            else:
+                                self._related_memory[name] = related_parsed
+                                self._cache_stats["related_hints"] += 1
             self._cache_stats["misses"] += 1
 
         response = await self.client.responses.create(
@@ -266,6 +347,8 @@ class AuditReasoningService:
                 schema_name=name,
                 response=output.model_dump(mode="json"),
                 usage=usage_summary,
+                semantic_key=semantic_key,
+                query_profile=query_profile,
             )
         return output
 
@@ -309,6 +392,8 @@ class AuditReasoningService:
                 name="audit_query_expansion",
                 output_model=AuditQueryExpansion,
                 prompt=prompt,
+                query=query,
+                allow_related_memory=True,
             )
         except Exception as error:
             logger.warning("Archive audit query expansion failed", error=str(error))
@@ -319,9 +404,16 @@ class AuditReasoningService:
                 "application_cache": self.cache_metadata(),
             }
 
+        related_memory = self._related_memory.pop("audit_query_expansion", None)
+        prior_queries = (
+            related_memory.queries if isinstance(related_memory, AuditQueryExpansion) else []
+        )
+        prior_entities = (
+            related_memory.entities if isinstance(related_memory, AuditQueryExpansion) else []
+        )
         original = _normalize_query(query).casefold()
         queries: list[str] = []
-        for candidate in expansion.queries:
+        for candidate in [*expansion.queries, *prior_queries]:
             normalized = _normalize_query(candidate)
             if not normalized or normalized.casefold() == original:
                 continue
@@ -330,17 +422,26 @@ class AuditReasoningService:
         entities = list(
             dict.fromkeys(
                 normalized
-                for value in expansion.entities
+                for value in [*expansion.entities, *prior_entities]
                 for normalized in [_normalize_query(value)]
                 if normalized
             )
         )
-        normalized_expansion = AuditQueryExpansion(queries=queries, entities=entities)
+        normalized_expansion = AuditQueryExpansion(
+            queries=queries[:12],
+            entities=entities[:32],
+        )
         return normalized_expansion, {
             "available": True,
             "model": self.model,
-            "queries": queries,
-            "entities": entities,
+            "queries": normalized_expansion.queries,
+            "entities": normalized_expansion.entities,
+            "related_research_memory": {
+                "used": bool(prior_queries or prior_entities),
+                "queries_added": len(prior_queries),
+                "entities_added": len(prior_entities),
+                "role": "additive_discovery_hint_only",
+            },
             "application_cache": self.cache_metadata(),
         }
 
@@ -385,6 +486,7 @@ class AuditReasoningService:
             name="audit_candidate_decisions",
             output_model=AuditCandidateDecisions,
             prompt=prompt,
+            query=query,
         )
         return parsed.decisions
 
@@ -628,6 +730,7 @@ class AuditReasoningService:
             name=f"audit_{role}_memo",
             output_model=AuditEvidenceMemo,
             prompt=prompt,
+            query=query,
         )
         if set(memo.covered_chunk_ids) != expected_chunk_ids:
             raise ValueError(f"{role} returned an incomplete chunk coverage certificate")
@@ -765,6 +868,7 @@ class AuditReasoningService:
             name="audit_coordinator_report",
             output_model=AuditCoordinatorReport,
             prompt=prompt,
+            query=query,
         )
         if set(report.covered_input_ids) != input_ids:
             raise ValueError("audit coordinator omitted an input memo or report")
@@ -872,6 +976,7 @@ class AuditReasoningService:
             name="audit_claim_verdicts",
             output_model=AuditClaimVerdicts,
             prompt=prompt,
+            query=query,
         )
         verdicts_by_id: dict[str, AuditClaimVerdict] = {}
         invalid_ids: set[str] = set()

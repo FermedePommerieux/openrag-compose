@@ -427,6 +427,7 @@ class SearchService:
         openrag_config: Any,
         *,
         cache_scope: str | None = None,
+        query_embeddings: dict[str, Any] | None = None,
     ) -> tuple[AuditReasoningService | None, str | None]:
         """Resolve the configured audit model without making retrieval fragile."""
         if self.audit_reasoning_service is not None:
@@ -449,6 +450,7 @@ class SearchService:
                     clients.patched_llm_client,
                     reasoning_model,
                     cache_scope=cache_scope,
+                    query_embeddings=query_embeddings,
                 ),
                 None,
             )
@@ -1152,6 +1154,7 @@ class SearchService:
             audit_reasoner, audit_reasoner_error = self._resolve_audit_reasoner(
                 openrag_config,
                 cache_scope=user_id,
+                query_embeddings=query_embeddings,
             )
 
         from opensearchpy.exceptions import RequestError

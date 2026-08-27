@@ -25,6 +25,14 @@ class AIResponseCache(SQLModel, table=True):
     namespace: str = Field(max_length=64, index=True)
     model: str = Field(max_length=128)
     schema_name: str = Field(max_length=128)
+    # ``semantic_key`` removes only the explicit audit-query slot from the
+    # exact contract. It therefore groups work over identical evidence while
+    # ``query_profile`` decides whether two phrasings are safely equivalent.
+    semantic_key: str | None = Field(default=None, max_length=64, index=True)
+    query_profile: dict[str, Any] | None = Field(
+        default=None,
+        sa_column=Column(JSON, nullable=True),
+    )
     response_payload: dict[str, Any] = Field(sa_column=Column(JSON, nullable=False))
     usage_payload: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON, nullable=False))
     hit_count: int = Field(default=0)

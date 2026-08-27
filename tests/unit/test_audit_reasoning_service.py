@@ -3,8 +3,12 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.pool import StaticPool
+from sqlmodel import SQLModel
 
 from services import audit_reasoning_service as audit_module
+from services.ai_response_cache_service import AIResponseCacheService
 from services.audit_reasoning_service import AuditReasoningService
 
 
@@ -96,8 +100,11 @@ async def test_identical_structured_audit_work_reuses_user_scoped_cache():
     assert second_metadata["application_cache"] == {
         "enabled": True,
         "hits": 1,
+        "exact_hits": 1,
+        "semantic_hits": 0,
+        "related_hints": 0,
         "misses": 1,
-        "scope": "user_and_exact_evidence_request",
+        "scope": "user_evidence_contract_and_safe_query_equivalence",
     }
 
 
@@ -120,6 +127,151 @@ async def test_changed_evidence_never_reuses_structured_audit_cache():
     assert client.responses.create.await_count == 2
     assert service.cache_metadata()["hits"] == 0
     assert service.cache_metadata()["misses"] == 2
+
+
+@pytest.mark.asyncio
+async def test_minor_query_variation_reuses_same_evidence_contract_semantically():
+    engine = create_async_engine(
+        "sqlite+aiosqlite:///:memory:",
+        poolclass=StaticPool,
+    )
+    async with engine.begin() as connection:
+        await connection.run_sync(SQLModel.metadata.create_all)
+    cache = AIResponseCacheService(
+        session_factory=async_sessionmaker(engine, expire_on_commit=False),
+        ttl_days=0,
+    )
+    response = SimpleNamespace(
+        output_text=json.dumps({"queries": ["ASP DDT"], "entities": ["DDT 41"]}),
+        usage=SimpleNamespace(input_tokens=500, output_tokens=25, total_tokens=525),
+    )
+    client = SimpleNamespace(responses=SimpleNamespace(create=AsyncMock(return_value=response)))
+    embeddings = {"text-embedding-3-large": [0.3, -0.4, 0.1, 0.8, -0.2]}
+    seeds = [_hit("seed", "Anciennes surfaces pastorales avec la DDT 41")]
+
+    first_service = AuditReasoningService(
+        client,
+        "gpt-5.6-luna",
+        cache_scope="user-42",
+        cache_service=cache,
+        query_embeddings=embeddings,
+    )
+    second_service = AuditReasoningService(
+        client,
+        "gpt-5.6-luna",
+        cache_scope="user-42",
+        cache_service=cache,
+        query_embeddings=embeddings,
+    )
+    first, _metadata = await first_service.expand_query(
+        "ancienne surface pastorale",
+        seeds,
+    )
+    second, metadata = await second_service.expand_query(
+        "anciennes surfaces pastorales",
+        seeds,
+    )
+
+    assert first == second
+    client.responses.create.assert_awaited_once()
+    assert metadata["application_cache"]["semantic_hits"] == 1
+    assert metadata["application_cache"]["exact_hits"] == 0
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_logic_change_never_reuses_semantic_cache_even_with_same_embedding():
+    engine = create_async_engine(
+        "sqlite+aiosqlite:///:memory:",
+        poolclass=StaticPool,
+    )
+    async with engine.begin() as connection:
+        await connection.run_sync(SQLModel.metadata.create_all)
+    cache = AIResponseCacheService(
+        session_factory=async_sessionmaker(engine, expire_on_commit=False),
+        ttl_days=0,
+    )
+    response = SimpleNamespace(
+        output_text=json.dumps({"queries": [], "entities": []}),
+    )
+    client = SimpleNamespace(responses=SimpleNamespace(create=AsyncMock(return_value=response)))
+    embeddings = {"text-embedding-3-large": [0.3, -0.4, 0.1, 0.8, -0.2]}
+    seeds = [_hit("seed", "Échanges administratifs datés de 2020")]
+
+    for query in ("échanges avant 2020", "échanges après 2020"):
+        service = AuditReasoningService(
+            client,
+            "gpt-5.6-luna",
+            cache_scope="user-42",
+            cache_service=cache,
+            query_embeddings=embeddings,
+        )
+        await service.expand_query(query, seeds)
+
+    assert client.responses.create.await_count == 2
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_related_query_reuses_prior_expansion_only_as_additive_discovery_memory():
+    engine = create_async_engine(
+        "sqlite+aiosqlite:///:memory:",
+        poolclass=StaticPool,
+    )
+    async with engine.begin() as connection:
+        await connection.run_sync(SQLModel.metadata.create_all)
+    cache = AIResponseCacheService(
+        session_factory=async_sessionmaker(engine, expire_on_commit=False),
+        ttl_days=0,
+    )
+    responses = [
+        SimpleNamespace(
+            output_text=json.dumps({"queries": ["ASP DDT"], "entities": ["DDT 41"]})
+        ),
+        SimpleNamespace(
+            output_text=json.dumps(
+                {
+                    "queries": ["sylvopastoralisme DDT"],
+                    "entities": ["Loir-et-Cher"],
+                }
+            )
+        ),
+    ]
+    client = SimpleNamespace(
+        responses=SimpleNamespace(create=AsyncMock(side_effect=responses))
+    )
+    embeddings = {"text-embedding-3-large": [0.3, -0.4, 0.1, 0.8, -0.2]}
+    seeds = [_hit("seed", "Anciennes surfaces pastorales avec la DDT 41")]
+
+    first_service = AuditReasoningService(
+        client,
+        "gpt-5.6-luna",
+        cache_scope="user-42",
+        cache_service=cache,
+        query_embeddings=embeddings,
+    )
+    await first_service.expand_query("surface pastorale DDT", seeds)
+    second_service = AuditReasoningService(
+        client,
+        "gpt-5.6-luna",
+        cache_scope="user-42",
+        cache_service=cache,
+        query_embeddings=embeddings,
+    )
+    expansion, metadata = await second_service.expand_query("projet pastoral DDT", seeds)
+
+    assert client.responses.create.await_count == 2
+    assert expansion.queries == ["sylvopastoralisme DDT", "ASP DDT"]
+    assert expansion.entities == ["Loir-et-Cher", "DDT 41"]
+    assert metadata["related_research_memory"] == {
+        "used": True,
+        "queries_added": 1,
+        "entities_added": 1,
+        "role": "additive_discovery_hint_only",
+    }
+    assert metadata["application_cache"]["semantic_hits"] == 0
+    assert metadata["application_cache"]["related_hints"] == 1
+    await engine.dispose()
 
 
 @pytest.mark.asyncio
