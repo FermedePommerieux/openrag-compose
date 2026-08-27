@@ -368,17 +368,26 @@ async def test_search_service_rrf_fuses_lanes_preserves_provenance_and_emits_deb
     )
     lexical_only = _hit("lexical", "document-a", "lexical text")
     lexical_only["_source"].update({"filename": "a.pdf", "chunk_index": 2})
+    lexical_second_page = _hit("lexical-page-2", "document-c", "lexical continuation")
     vector_same_document = _hit("vector-a", "document-a", "other text")
 
     class OpenSearchClient:
         bodies: list[dict] = []
+        deleted_pits: list[dict] = []
 
         class indices:
             @staticmethod
             async def get_mapping(*, index):
                 return {index: {"mappings": {"properties": {"chunk_id": {"type": "keyword"}}}}}
 
-        async def search(self, *, index, body, params):
+        async def create_pit(self, *, index, params):
+            return {"pit_id": "audit-pit"}
+
+        async def delete_pit(self, *, body):
+            self.deleted_pits.append(body)
+            return {"pits": [{"pit_id": "audit-pit", "successful": True}]}
+
+        async def search(self, *, body, params, index=None):
             self.bodies.append(body)
             if body.get("size") == 0:
                 return {
@@ -399,8 +408,26 @@ async def test_search_service_rrf_fuses_lanes_preserves_provenance_and_emits_deb
                     [shared, vector_same_document] if "test_model_a" in vector_field else [shared]
                 )
             else:
-                hits = [lexical_only, shared]
-            return {"hits": {"hits": hits}, "aggregations": {"data_sources": {"buckets": []}}}
+                if body.get("pit"):
+                    hits = (
+                        [lexical_second_page]
+                        if body.get("search_after")
+                        else [lexical_only, shared]
+                    )
+                    for rank, hit in enumerate(hits):
+                        hit["sort"] = [1.0, hit["_id"], rank]
+                else:
+                    hits = [lexical_only, shared]
+            return {
+                "hits": {
+                    "total": {
+                        "value": 3 if body.get("pit") else len(hits),
+                        "relation": "eq",
+                    },
+                    "hits": hits,
+                },
+                "aggregations": {"data_sources": {"buckets": []}},
+            }
 
     embedding_response = SimpleNamespace(data=[SimpleNamespace(embedding=[0.1, 0.2])])
     monkeypatch.setattr(
@@ -446,10 +473,19 @@ async def test_search_service_rrf_fuses_lanes_preserves_provenance_and_emits_deb
     opensearch_client.bodies.clear()
     audit_result = await service.search_tool("shared text", audit_discovery=True)
     audit_bodies = [body for body in opensearch_client.bodies if body.get("size") != 0]
-    assert len(audit_bodies) == 3
-    assert all(body["size"] == 500 for body in audit_bodies)
-    assert all(body["track_total_hits"] is True for body in audit_bodies)
+    assert len(audit_bodies) == 4
+    assert audit_bodies[0]["size"] == 500
+    assert audit_bodies[0]["pit"]["id"] == "audit-pit"
+    assert audit_bodies[0]["track_total_hits"] is True
+    assert audit_bodies[1]["size"] == 500
+    assert audit_bodies[1]["search_after"]
+    assert "aggs" not in audit_bodies[1]
+    assert [body["size"] for body in audit_bodies[2:]] == [2, 1]
+    assert opensearch_client.deleted_pits == [{"pit_id": ["audit-pit"]}]
     assert audit_result["discovery"]["mode"] == "archive_audit"
-    assert audit_result["discovery"]["candidate_depth_per_lane"] == 500
-    assert audit_result["discovery"]["documents_found"] == 2
+    assert audit_result["discovery"]["documents_found"] == 3
+    assert audit_result["discovery"]["lanes"]["lexical"]["pages"] == 2
+    assert audit_result["discovery"]["lanes"]["lexical"]["returned"] == 3
+    assert audit_result["discovery"]["lexical_completeness_certified"] is True
+    assert audit_result["discovery"]["truncated"] is False
     assert audit_result["discovery"]["semantic_completeness_certified"] is False

@@ -151,9 +151,10 @@ def _model_payload(payload: dict[str, Any]) -> dict[str, Any]:
             for key in (
                 "mode",
                 "documents_found",
-                "candidate_depth_per_lane",
                 "chunks_returned",
                 "lanes",
+                "truncated",
+                "lexical_completeness_certified",
                 "semantic_completeness_certified",
             )
             if key in discovery
@@ -411,7 +412,10 @@ class OpenRAGBackendRetrievalComponent(LCToolComponent):
         # discovery path. The public tool argument remains focused/exhaustive,
         # so a model cannot independently widen its authenticated search scope.
         backend_mode = "audit" if mode == "focused" and retrieval_intent == "exhaustive" else mode
-        with httpx.Client(timeout=30.0) as client:
+        # Archive audits may page an entire lexical result set and then read
+        # every candidate document. Keep a short connection timeout while
+        # allowing slow, evidence-complete responses from Raspberry Pi nodes.
+        with httpx.Client(timeout=httpx.Timeout(300.0, connect=10.0)) as client:
             response = client.post(
                 url,
                 headers=headers,

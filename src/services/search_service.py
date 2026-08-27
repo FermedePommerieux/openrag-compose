@@ -31,13 +31,15 @@ logger = get_logger(__name__)
 MAX_EMBED_RETRIES = 3
 EMBED_RETRY_INITIAL_DELAY = 1.0
 EMBED_RETRY_MAX_DELAY = 8.0
-# Explicit exhaustive intent needs document discovery rather than a chat-sized
-# top-k.  This is a candidate depth, not a completeness claim: every lane
-# still reports ranked evidence and the later coverage certificate names the
-# discovered-document scope. OpenSearch 3.x supports substantially deeper
-# hybrid pagination, but 500 keeps one interactive audit bounded while greatly
-# reducing domination by a handful of long PDFs.
-ARCHIVE_AUDIT_CANDIDATE_DEPTH = 500
+# Archive audit discovery must never turn a transport batch size into a silent
+# recall limit. Lexical hits are therefore read from one point-in-time snapshot
+# until OpenSearch reports that the result set is exhausted. Vector search is a
+# ranked nearest-neighbour operation and cannot prove semantic completeness;
+# its depth is expanded adaptively and any engine ceiling is disclosed.
+ARCHIVE_AUDIT_PAGE_SIZE = 500
+ARCHIVE_AUDIT_VECTOR_INITIAL_DEPTH = 100
+ARCHIVE_AUDIT_VECTOR_MAX_DEPTH = 10_000
+ARCHIVE_AUDIT_VECTOR_STABILITY_ROUNDS = 2
 
 
 # Variable used to store the active instance for the tool wrapper
@@ -380,22 +382,23 @@ class SearchService:
         limit = get_search_limit()
         score_threshold = get_score_threshold()
         lexical_candidate_depth = (
-            ARCHIVE_AUDIT_CANDIDATE_DEPTH
+            ARCHIVE_AUDIT_PAGE_SIZE
             if audit_discovery
             else retrieval_settings.lexical_candidates
         )
         vector_candidate_depth = (
-            ARCHIVE_AUDIT_CANDIDATE_DEPTH
+            max(retrieval_settings.vector_candidates, ARCHIVE_AUDIT_VECTOR_INITIAL_DEPTH)
             if audit_discovery
             else retrieval_settings.vector_candidates
         )
-        result_limit = max(limit, ARCHIVE_AUDIT_CANDIDATE_DEPTH) if audit_discovery else limit
+        result_limit = limit
         # Detect wildcard request ("*") to return global facets/stats without semantic search
         is_wildcard_match_all = isinstance(query, str) and query.strip() == "*"
 
         # Get available embedding models from corpus
         query_embeddings = {}
         available_models = []
+        available_model_counts: dict[str, int] = {}
         failed_models: list = []
 
         opensearch_client = self.session_manager.get_user_opensearch_client(user_id, jwt_token)
@@ -462,6 +465,11 @@ class SearchService:
                     .get("buckets", [])
                 )
                 available_models = [b["key"] for b in buckets if b["key"]]
+                available_model_counts = {
+                    str(bucket["key"]): int(bucket.get("doc_count", 0))
+                    for bucket in buckets
+                    if bucket.get("key")
+                }
 
                 if not available_models:
                     # Fallback to configured model if no documents indexed yet
@@ -604,6 +612,12 @@ class SearchService:
             for model_name, embedding_vector in query_embeddings.items():
                 field_name = get_embedding_field_name(model_name)
                 embedding_fields_to_check.append(field_name)
+                model_vector_depth = vector_candidate_depth
+                if audit_discovery and available_model_counts.get(model_name):
+                    model_vector_depth = min(
+                        model_vector_depth,
+                        available_model_counts[model_name],
+                    )
                 knn_queries.append(
                     (
                         model_name,
@@ -611,8 +625,8 @@ class SearchService:
                             "knn": {
                                 field_name: {
                                     "vector": embedding_vector,
-                                    "k": vector_candidate_depth,
-                                    "num_candidates": 1000,
+                                    "k": model_vector_depth,
+                                    "num_candidates": max(1000, model_vector_depth),
                                 }
                             }
                         },
@@ -815,7 +829,7 @@ class SearchService:
                         },
                         "aggs": _build_file_facet_aggregations(),
                         "_source": source_fields,
-                        "size": vector_candidate_depth,
+                        "size": next(iter(knn_query["knn"].values()))["k"],
                         "track_total_hits": audit_discovery,
                         "sort": [
                             {"_score": {"order": "desc"}},
@@ -876,12 +890,22 @@ class SearchService:
 
         async def execute_search(body: dict[str, Any], label: str) -> dict[str, Any]:
             fallback_body = without_num_candidates(body)
+
+            async def run(search_body: dict[str, Any]) -> dict[str, Any]:
+                kwargs: dict[str, Any] = {
+                    "body": search_body,
+                    "params": search_params,
+                }
+                # A PIT identifies its index and must not be combined with an
+                # index path. Ordinary focused requests keep the existing API.
+                if "pit" not in search_body:
+                    kwargs["index"] = get_index_name()
+                return await opensearch_client.search(**kwargs)
+
             try:
                 index_name = get_index_name()
                 logger.info("Sending query to index", retrieval_lane=label, index_name=index_name)
-                return await opensearch_client.search(
-                    index=index_name, body=body, params=search_params
-                )
+                return await run(body)
             except RequestError as error:
                 error_message = str(error)
                 if is_disk_space_error(error):
@@ -898,9 +922,7 @@ class SearchService:
                         retrieval_lane=label,
                     )
                     try:
-                        return await opensearch_client.search(
-                            index=get_index_name(), body=fallback_body, params=search_params
-                        )
+                        return await run(fallback_body)
                     except RequestError as retry_error:
                         if is_disk_space_error(retry_error):
                             logger.error(
@@ -933,12 +955,178 @@ class SearchService:
                 logger.error("OpenSearch query failed", error=str(error), retrieval_lane=label)
                 raise
 
+        async def execute_lexical_audit(
+            body: dict[str, Any], label: str
+        ) -> tuple[dict[str, Any], dict[str, Any]]:
+            """Read every lexical match from one immutable OpenSearch snapshot."""
+            pit_response = await opensearch_client.create_pit(
+                index=get_index_name(), params={"keep_alive": "5m"}
+            )
+            pit_id = pit_response.get("pit_id") or pit_response.get("id")
+            if not pit_id:
+                raise RuntimeError("OpenSearch did not return a point-in-time identifier")
+
+            hits: list[dict[str, Any]] = []
+            first_result: dict[str, Any] | None = None
+            pages = 0
+            exhausted = False
+            try:
+                search_after: list[Any] | None = None
+                while True:
+                    page_body = copy.deepcopy(body)
+                    page_body["size"] = ARCHIVE_AUDIT_PAGE_SIZE
+                    page_body["track_total_hits"] = True
+                    page_body["pit"] = {"id": pit_id, "keep_alive": "5m"}
+                    # PIT supplies a stable shard-local tiebreaker for otherwise
+                    # identical score/chunk_id values, including legacy chunks.
+                    page_body["sort"] = [*page_body.get("sort", []), {"_shard_doc": "asc"}]
+                    if search_after is not None:
+                        page_body["search_after"] = search_after
+                        page_body.pop("aggs", None)
+
+                    page_result = await execute_search(page_body, label)
+                    pages += 1
+                    if first_result is None:
+                        first_result = page_result
+                    page_hits = page_result.get("hits", {}).get("hits", [])
+                    hits.extend(page_hits)
+                    total = page_result.get("hits", {}).get("total", {})
+                    total_value = total.get("value") if isinstance(total, dict) else total
+                    if not page_hits or (
+                        isinstance(total_value, int) and len(hits) >= total_value
+                    ):
+                        exhausted = True
+                        break
+                    last_sort = page_hits[-1].get("sort")
+                    if not isinstance(last_sort, list) or not last_sort:
+                        raise RuntimeError(
+                            "OpenSearch lexical audit page omitted its search_after cursor"
+                        )
+                    search_after = last_sort
+            finally:
+                await opensearch_client.delete_pit(body={"pit_id": [pit_id]})
+
+            merged = dict(first_result or {})
+            merged["hits"] = {
+                **(merged.get("hits", {}) if isinstance(merged.get("hits"), dict) else {}),
+                "hits": hits,
+            }
+            return merged, {
+                "pages": pages,
+                "returned": len(hits),
+                "matching": merged.get("hits", {}).get("total"),
+                "exhausted": exhausted,
+                "snapshot": "point_in_time",
+                "truncated": not exhausted,
+            }
+
+        def _set_vector_depth(body: dict[str, Any], depth: int) -> None:
+            """Update the single k-NN clause in one model-specific lane."""
+            bool_query = body.get("query", {}).get("bool", {})
+            for clause in bool_query.get("must", []):
+                for spec in clause.get("knn", {}).values():
+                    spec["k"] = depth
+                    spec["num_candidates"] = max(1000, depth)
+                    body["size"] = depth
+
+        async def execute_vector_audit(
+            body: dict[str, Any], label: str
+        ) -> tuple[dict[str, Any], dict[str, Any]]:
+            """Deepen one semantic lane and disclose convergence or truncation."""
+            model_name = label.removeprefix("vector:")
+            corpus_depth = available_model_counts.get(model_name, ARCHIVE_AUDIT_VECTOR_MAX_DEPTH)
+            maximum_depth = min(max(1, corpus_depth), ARCHIVE_AUDIT_VECTOR_MAX_DEPTH)
+            depth = min(maximum_depth, max(1, body.get("size", 1)))
+            stable_rounds = 0
+            previous_documents: set[str] = set()
+            merged_by_id: dict[str, dict[str, Any]] = {}
+            deepest_result: dict[str, Any] = {}
+            attempts: list[dict[str, Any]] = []
+
+            while True:
+                request_body = copy.deepcopy(body)
+                _set_vector_depth(request_body, depth)
+                deepest_result = await execute_search(request_body, label)
+                lane_hits = deepest_result.get("hits", {}).get("hits", [])
+                current_documents = {
+                    str(hit.get("_source", {}).get("document_id"))
+                    for hit in lane_hits
+                    if hit.get("_source", {}).get("document_id")
+                }
+                new_documents = current_documents - previous_documents
+                stable_rounds = stable_rounds + 1 if not new_documents else 0
+                previous_documents.update(current_documents)
+                for hit in lane_hits:
+                    identity = str(hit.get("_source", {}).get("chunk_id") or hit.get("_id"))
+                    merged_by_id.setdefault(identity, hit)
+                attempts.append(
+                    {
+                        "depth": depth,
+                        "returned": len(lane_hits),
+                        "new_documents": len(new_documents),
+                    }
+                )
+
+                engine_exhausted = len(lane_hits) < depth or depth >= corpus_depth
+                converged = stable_rounds >= ARCHIVE_AUDIT_VECTOR_STABILITY_ROUNDS
+                if engine_exhausted or converged or depth >= maximum_depth:
+                    break
+                depth = min(maximum_depth, depth * 2)
+
+            deepest_hits = deepest_result.get("hits", {}).get("hits", [])
+            ranked_ids = {
+                str(hit.get("_source", {}).get("chunk_id") or hit.get("_id"))
+                for hit in deepest_hits
+            }
+            merged_hits = [*deepest_hits]
+            merged_hits.extend(hit for key, hit in merged_by_id.items() if key not in ranked_ids)
+            merged = dict(deepest_result)
+            merged["hits"] = {
+                **(
+                    merged.get("hits", {})
+                    if isinstance(merged.get("hits"), dict)
+                    else {}
+                ),
+                "hits": merged_hits,
+            }
+            engine_exhausted = len(deepest_hits) < depth or depth >= corpus_depth
+            converged = stable_rounds >= ARCHIVE_AUDIT_VECTOR_STABILITY_ROUNDS
+            return merged, {
+                "attempts": attempts,
+                "returned": len(merged_hits),
+                "documents_found": len(previous_documents),
+                "depth_reached": depth,
+                "corpus_vectors": corpus_depth,
+                "engine_exhausted": engine_exhausted,
+                "converged": converged,
+                "semantic_completeness_certified": False,
+                "truncated": not engine_exhausted and not converged,
+            }
+
         retrieval_results: dict[str, dict[str, Any]] = {}
+        audit_lane_metadata: dict[str, dict[str, Any]] = {}
         if retrieval_bodies:
             lanes = [name for name, _body in retrieval_bodies]
-            lane_results = await asyncio.gather(
-                *[execute_search(body, name) for name, body in retrieval_bodies]
-            )
+            if audit_discovery:
+                async def execute_audit_lane(
+                    name: str, body: dict[str, Any]
+                ) -> tuple[dict[str, Any], dict[str, Any]]:
+                    if name == "lexical":
+                        return await execute_lexical_audit(body, name)
+                    return await execute_vector_audit(body, name)
+
+                audit_results = await asyncio.gather(
+                    *[execute_audit_lane(name, body) for name, body in retrieval_bodies]
+                )
+                lane_results = [result for result, _metadata in audit_results]
+                audit_lane_metadata = {
+                    name: metadata
+                    for name, (_result, metadata) in zip(lanes, audit_results, strict=True)
+                }
+            else:
+                lane_results = await asyncio.gather(
+                    *[execute_search(body, name) for name, body in retrieval_bodies]
+                )
             retrieval_results = dict(zip(lanes, lane_results, strict=True))
             results = retrieval_results.get("lexical") or lane_results[0]
         else:
@@ -964,7 +1152,8 @@ class SearchService:
                 retrieval_settings.reranker_url,
                 retrieval_settings.reranker_timeout,
             ).rerank(query, raw_hits)
-            raw_hits = raw_hits[:result_limit]
+            if not audit_discovery:
+                raw_hits = raw_hits[:result_limit]
 
         # Transform results (keep for backward compatibility)
         chunks = []
@@ -1040,18 +1229,19 @@ class SearchService:
         if audit_discovery:
             response["discovery"] = {
                 "mode": "archive_audit",
-                "candidate_depth_per_lane": ARCHIVE_AUDIT_CANDIDATE_DEPTH,
                 "documents_found": len(
                     {item.get("document_id") for item in chunks if item.get("document_id")}
                 ),
                 "chunks_returned": len(chunks),
-                "lanes": {
-                    lane: {
-                        "returned": len(lane_result.get("hits", {}).get("hits", [])),
-                        "matching": lane_result.get("hits", {}).get("total"),
-                    }
-                    for lane, lane_result in retrieval_results.items()
-                },
+                "lanes": audit_lane_metadata,
+                "truncated": any(
+                    lane.get("truncated") is True for lane in audit_lane_metadata.values()
+                ),
+                "lexical_completeness_certified": (
+                    audit_lane_metadata.get("lexical", {}).get("exhausted") is True
+                    if "lexical" in audit_lane_metadata
+                    else None
+                ),
                 "semantic_completeness_certified": False,
             }
         if failed_models:

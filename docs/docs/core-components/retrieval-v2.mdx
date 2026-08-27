@@ -167,13 +167,20 @@ corpus snapshot plus persisted, batch-level relevance decisions before final
 synthesis.
 
 Retrieval flow version 13 gives explicit exhaustive intent a separate
-archive-audit discovery profile. Each lexical or embedding-model lane gathers
-up to 500 candidates, then a diversity pass keeps one discovery hit per
-document before complete source-order reads begin. Ordinary chat remains at
-the administrator-configured candidate depth. The resulting
+archive-audit discovery profile. The lexical lane opens an immutable
+OpenSearch point-in-time snapshot and follows `search_after` pages until every
+matching hit has been consumed; 500 is only its transport page size, never a
+candidate limit. Each embedding-model lane deepens independently until its
+filtered vector population is exhausted, document discovery stabilizes across
+successive expansions, or OpenSearch's declared k-NN ceiling is reached. The
+response exposes the attempts, reached depth and any truncation instead of
+silently treating a budget as truth. A diversity pass then keeps one discovery
+hit per document before complete source-order reads begin. Ordinary chat
+remains at the administrator-configured candidate depth. The resulting
 `archive_audit_candidates` certificate proves that every document in that
-multi-lane union was read; it explicitly sets semantic corpus completeness to
-false because ranked retrieval cannot prove that no unstated synonym exists.
+multi-lane union was read. Lexical completeness can be certified for the exact
+query and PIT snapshot; semantic corpus completeness remains false because a
+ranked nearest-neighbour search cannot prove that no unstated synonym exists.
 
 Each embedding model is an independent RRF lane. OpenRAG no longer compares
 scores from different vector spaces inside one `dis_max` query: BM25 and every

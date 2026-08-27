@@ -191,8 +191,10 @@ def test_backend_tool_forwards_request_and_preserves_provenance(monkeypatch):
 
     result = tool.search_documents("where is the archive?")
 
+    timeout = captured.pop("timeout")
+    assert timeout.connect == 10.0
+    assert timeout.read == timeout.write == timeout.pool == 300.0
     assert captured == {
-        "timeout": 30.0,
         "url": "http://openrag-backend:8000/search",
         "headers": {"Authorization": "Bearer user-jwt"},
         "payload": {
@@ -341,8 +343,9 @@ def test_explicit_exhaustive_intent_automatically_completes_document_reads(monke
                         ],
                         "discovery": {
                             "mode": "archive_audit",
-                            "candidate_depth_per_lane": 500,
                             "documents_found": 2,
+                            "lexical_completeness_certified": True,
+                            "truncated": False,
                             "semantic_completeness_certified": False,
                         },
                     }
@@ -427,7 +430,8 @@ def test_explicit_exhaustive_intent_automatically_completes_document_reads(monke
     assert all("ranked" not in item["text"] for item in artifact)
     assert payload["discovery"] == {
         "mode": "archive_audit",
-        "candidate_depth_per_lane": 500,
         "documents_found": 2,
+        "truncated": False,
+        "lexical_completeness_certified": True,
         "semantic_completeness_certified": False,
     }
