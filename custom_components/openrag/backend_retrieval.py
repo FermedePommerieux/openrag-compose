@@ -45,6 +45,14 @@ MODEL_DOCUMENT_FIELDS = (
     "source_entity_alternate_ids",
     "source_relation_target_ids",
     "source_relation_roles",
+    # Keep the audit decision and its exact PROV-O explanation once per
+    # document.  The complete source artifact still remains available to the
+    # citation UI; this compact manifest is what lets the answer model explain
+    # why an otherwise implicit document belongs to the candidate set.
+    "retrieval_relation_paths",
+    "retrieval_relevance_decision",
+    "retrieval_relevance_reason",
+    "retrieval_supporting_document_ids",
 )
 MODEL_COVERAGE_FIELDS = (
     "mode",
@@ -61,6 +69,21 @@ MODEL_COVERAGE_FIELDS = (
     "error",
     "filename",
 )
+# These fields are computed during audit discovery rather than persisted in
+# OpenSearch. Carry them onto the subsequent full-document reads so the final
+# model manifest and source artifact do not lose the proof that selected an
+# implicit document.
+AUDIT_DOCUMENT_CONTEXT_FIELDS = (
+    "retrieval_relation_paths",
+    "retrieval_relevance_decision",
+    "retrieval_relevance_reason",
+    "retrieval_supporting_document_ids",
+)
+# Compatibility guard for an older backend that has not produced a certified
+# hierarchical synthesis. At roughly three characters per token this leaves a
+# conservative margin below a 272k context once prompts and answer tokens are
+# included. New archive audits never rely on this fallback.
+MODEL_RAW_EVIDENCE_CHARACTER_BUDGET = 600_000
 
 
 def _as_text(value: Any) -> str:
@@ -106,12 +129,28 @@ def _model_payload(payload: dict[str, Any]) -> dict[str, Any]:
     modest chunks expanded to more than 512k input tokens.
     """
     results = [item for item in payload.get("results", []) if isinstance(item, dict)]
+    audit_synthesis = payload.get("audit_synthesis")
+    synthesis_certified = (
+        isinstance(audit_synthesis, dict)
+        and audit_synthesis.get("complete") is True
+        and audit_synthesis.get("verified") is True
+    )
+    synthesis_failed = (
+        isinstance(audit_synthesis, dict) and not synthesis_certified
+    )
+    raw_characters = sum(len(str(item.get("text") or "")) for item in results)
+    include_raw_evidence = (
+        not synthesis_certified
+        and not synthesis_failed
+        and raw_characters <= MODEL_RAW_EVIDENCE_CHARACTER_BUDGET
+    )
     documents: list[dict[str, Any]] = []
     documents_by_id: dict[str, dict[str, Any]] = {}
     evidence: list[dict[str, Any]] = []
 
     for item in results:
-        evidence.append(_present_fields(item, MODEL_EVIDENCE_FIELDS))
+        if include_raw_evidence:
+            evidence.append(_present_fields(item, MODEL_EVIDENCE_FIELDS))
         document_id = _as_text(item.get("document_id"))
         if not document_id:
             continue
@@ -130,7 +169,17 @@ def _model_payload(payload: dict[str, Any]) -> dict[str, Any]:
         "results": evidence,
         "total": len(evidence),
         "documents": documents,
+        "evidence_chunks_available": len(results),
     }
+    if isinstance(audit_synthesis, dict):
+        compact["audit_synthesis"] = audit_synthesis
+    if not include_raw_evidence and not synthesis_certified:
+        compact["error"] = (
+            "Hierarchical audit synthesis is incomplete; raw evidence was withheld to prevent "
+            "an uncertified or over-context answer."
+        )
+        compact["raw_evidence_omitted"] = True
+        compact["raw_evidence_characters"] = raw_characters
     coverage = payload.get("coverage")
     if isinstance(coverage, dict):
         compact_coverage = _present_fields(
@@ -156,6 +205,11 @@ def _model_payload(payload: dict[str, Any]) -> dict[str, Any]:
                 "truncated",
                 "lexical_completeness_certified",
                 "semantic_completeness_certified",
+                "provenance_completeness_certified",
+                "contextual_review_complete",
+                "query_expansion",
+                "contextual_review",
+                "hierarchical_synthesis",
             )
             if key in discovery
         }
@@ -281,7 +335,12 @@ class OpenRAGBackendRetrievalComponent(LCToolComponent):
         itself. Completeness is therefore an execution invariant rather than a
         discretionary sequence of extra tool calls left to the language model.
         """
-        discovered: list[dict[str, str]] = []
+        if isinstance(focused_payload.get("audit_synthesis"), dict):
+            # Retrieval v14 performs full reads and hierarchical synthesis in
+            # the authenticated backend. Re-reading here would duplicate every
+            # chunk and discard the backend's exact coverage snapshot.
+            return focused_payload
+        discovered: list[dict[str, Any]] = []
         seen: set[str] = set()
         for item in focused_payload.get("results", []):
             if not isinstance(item, dict):
@@ -294,6 +353,7 @@ class OpenRAGBackendRetrievalComponent(LCToolComponent):
                 {
                     "document_id": document_id,
                     "filename": _as_text(item.get("filename")),
+                    **_present_fields(item, AUDIT_DOCUMENT_CONTEXT_FIELDS),
                 }
             )
 
@@ -319,9 +379,14 @@ class OpenRAGBackendRetrievalComponent(LCToolComponent):
                     },
                 )
                 payload = self._validated_payload(response)
-                exhaustive_results.extend(
-                    item for item in payload.get("results", []) if isinstance(item, dict)
-                )
+                for item in payload.get("results", []):
+                    if not isinstance(item, dict):
+                        continue
+                    enriched = dict(item)
+                    for field in AUDIT_DOCUMENT_CONTEXT_FIELDS:
+                        if field in document:
+                            enriched[field] = document[field]
+                    exhaustive_results.append(enriched)
                 coverage = payload.get("coverage")
                 if not isinstance(coverage, dict):
                     final_coverage = {
@@ -415,7 +480,7 @@ class OpenRAGBackendRetrievalComponent(LCToolComponent):
         # Archive audits may page an entire lexical result set and then read
         # every candidate document. Keep a short connection timeout while
         # allowing slow, evidence-complete responses from Raspberry Pi nodes.
-        with httpx.Client(timeout=httpx.Timeout(300.0, connect=10.0)) as client:
+        with httpx.Client(timeout=httpx.Timeout(2_400.0, connect=10.0)) as client:
             response = client.post(
                 url,
                 headers=headers,

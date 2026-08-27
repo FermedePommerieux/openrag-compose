@@ -14,7 +14,12 @@ from services.retrieval_service import (
     limit_chunks_per_document,
     reciprocal_rank_fusion,
 )
-from services.search_service import SearchService, _calibrate_audit_vector_lanes
+from services.search_service import (
+    SearchService,
+    _calibrate_audit_vector_lanes,
+    _propagate_provenance_paths,
+    _provenance_relation_paths,
+)
 
 
 @pytest.mark.parametrize(
@@ -67,6 +72,153 @@ def test_uncalibrated_audit_vector_lane_is_excluded_and_disclosed():
         "raw_candidates": 1,
         "selected_candidates": 0,
     }
+
+
+def test_provenance_path_resolves_implicit_reply_to_explicit_anchor():
+    anchor = _hit("anchor-chunk", "anchor", "Anciennes surfaces pastorales")
+    anchor["_source"].update(
+        {
+            "filename": "explicit-request.eml",
+            "source_entity_id": "urn:mail:anchor",
+        }
+    )
+    reply = _hit("reply-chunk", "reply", "Nous soutenons votre projet")
+    reply["_source"].update(
+        {
+            "source_entity_id": "urn:mail:implicit-reply",
+            "source_provenance": {
+                "relations": [
+                    {
+                        "role": "reply_to",
+                        "target": {"id": "urn:mail:anchor"},
+                    }
+                ]
+            },
+        }
+    )
+
+    paths = _provenance_relation_paths({"anchor": anchor}, reply)
+
+    assert paths == [
+        {
+            "from_document_id": "anchor",
+            "from_filename": "explicit-request.eml",
+            "to_document_id": "reply",
+            "relation_role": "reply_to",
+            "direction": "candidate_to_anchor",
+            "via_entity_id": "urn:mail:anchor",
+            "anchor_excerpt": "Anciennes surfaces pastorales",
+        }
+    ]
+
+
+def test_provenance_path_survives_when_rrf_keeps_a_vector_copy():
+    vector_hit = _hit("vector-chunk", "related", "Nous soutenons votre projet")
+    provenance_hit = _hit("provenance-chunk", "related", "Nous soutenons votre projet")
+    provenance_hit["_source"]["retrieval_relation_paths"] = [
+        {
+            "from_document_id": "anchor",
+            "to_document_id": "related",
+            "relation_role": "reply_to",
+        }
+    ]
+    retrieval_results = {
+        "vector:model": {"hits": {"hits": [vector_hit]}},
+        "provenance": {"hits": {"hits": [provenance_hit]}},
+    }
+
+    _propagate_provenance_paths(retrieval_results, [provenance_hit])
+
+    assert (
+        vector_hit["_source"]["retrieval_relation_paths"]
+        == provenance_hit["_source"]["retrieval_relation_paths"]
+    )
+
+
+@pytest.mark.asyncio
+async def test_archive_audit_orchestrator_reads_every_candidate_before_synthesis(monkeypatch):
+    from services import search_service
+
+    monkeypatch.setattr(search_service, "get_auth_context", lambda: ("user-1", "jwt"))
+    synthesis = {
+        "strategy": "hierarchical_verified_map_reduce",
+        "complete": True,
+        "verified": True,
+        "model": "test-reasoner",
+        "findings": [
+            {
+                "statement": "Verified exchange.",
+                "chunk_ids": ["chunk-a", "chunk-b"],
+            }
+        ],
+        "coverage": {},
+    }
+    reasoner = SimpleNamespace(
+        synthesize_evidence=AsyncMock(return_value=(synthesis, synthesis["coverage"]))
+    )
+    service = SearchService(
+        session_manager=MagicMock(),
+        audit_reasoning_service=reasoner,
+    )
+    service.search_tool = AsyncMock(
+        return_value={
+            "results": [
+                {
+                    "document_id": "document-a",
+                    "filename": "a.eml",
+                    "retrieval_relation_paths": [
+                        {
+                            "from_document_id": "document-b",
+                            "relation_role": "reply_to",
+                        }
+                    ],
+                },
+                {"document_id": "document-b", "filename": "b.eml"},
+            ],
+            "discovery": {"mode": "archive_audit"},
+            "aggregations": {},
+        }
+    )
+
+    async def read_document(document_id, **_kwargs):
+        chunk_id = "chunk-a" if document_id == "document-a" else "chunk-b"
+        return {
+            "results": [
+                {
+                    "document_id": document_id,
+                    "chunk_id": chunk_id,
+                    "filename": f"{document_id}.eml",
+                    "text": f"Evidence from {document_id}",
+                }
+            ],
+            "coverage": {
+                "mode": "exhaustive",
+                "document_id": document_id,
+                "covered_chunks": 1,
+                "total_chunks": 1,
+                "complete": True,
+                "next_cursor": None,
+            },
+        }
+
+    service.read_document_chunks = AsyncMock(side_effect=read_document)
+
+    result = await service.search(
+        "projet DDT",
+        user_id="user-1",
+        jwt_token="jwt",
+        evidence_mode="audit",
+    )
+
+    assert {item["chunk_id"] for item in result["results"]} == {"chunk-a", "chunk-b"}
+    chunk_a = next(item for item in result["results"] if item["chunk_id"] == "chunk-a")
+    assert chunk_a["retrieval_relation_paths"][0]["relation_role"] == "reply_to"
+    assert result["coverage"]["complete"] is True
+    assert result["coverage"]["documents_total"] == 2
+    assert result["audit_synthesis"]["complete"] is True
+    assert result["discovery"]["hierarchical_synthesis"]["verified"] is True
+    assert reasoner.synthesize_evidence.await_count == 1
+    assert service.read_document_chunks.await_count == 2
 
 
 def test_rrf_rewards_hits_present_in_both_ranked_lists():
@@ -473,7 +625,41 @@ async def test_search_service_rrf_fuses_lanes_preserves_provenance_and_emits_deb
     session_manager = MagicMock()
     opensearch_client = OpenSearchClient()
     session_manager.get_user_opensearch_client.return_value = opensearch_client
-    service = SearchService(session_manager=session_manager)
+    audit_reasoner = SimpleNamespace(
+        expand_query=AsyncMock(
+            return_value=(
+                SimpleNamespace(
+                    queries=["surface pastorale ASP"],
+                    entities=["DDT 41"],
+                ),
+                {
+                    "available": True,
+                    "model": "test-reasoner",
+                    "queries": ["surface pastorale ASP"],
+                    "entities": ["DDT 41"],
+                },
+            )
+        ),
+        review_candidates=AsyncMock(
+            side_effect=lambda _query, hits: (
+                hits,
+                {
+                    "available": True,
+                    "model": "test-reasoner",
+                    "reviewed_documents": len(hits),
+                    "retained_documents": len(hits),
+                    "relevant": len(hits),
+                    "uncertain": 0,
+                    "irrelevant": 0,
+                    "failed_batches": 0,
+                },
+            )
+        ),
+    )
+    service = SearchService(
+        session_manager=session_manager,
+        audit_reasoning_service=audit_reasoner,
+    )
 
     result = await service.search_tool("shared text")
 
@@ -504,20 +690,26 @@ async def test_search_service_rrf_fuses_lanes_preserves_provenance_and_emits_deb
     opensearch_client.bodies.clear()
     audit_result = await service.search_tool("shared text", audit_discovery=True)
     audit_bodies = [body for body in opensearch_client.bodies if body.get("size") != 0]
-    assert len(audit_bodies) == 3
-    lexical_audit_body = next(body for body in audit_bodies if body["size"] == 500)
+    assert len(audit_bodies) == 5
+    lexical_audit_bodies = [body for body in audit_bodies if body["size"] == 500]
+    assert len(lexical_audit_bodies) == 3
+    lexical_audit_body = lexical_audit_bodies[0]
     assert lexical_audit_body["track_total_hits"] is True
     assert (
-        lexical_audit_body["query"]["bool"]["should"][0]["multi_match"][
-            "minimum_should_match"
-        ]
+        lexical_audit_body["query"]["bool"]["should"][0]["multi_match"]["minimum_should_match"]
         == "2<50%"
     )
-    assert sorted(body["size"] for body in audit_bodies if body is not lexical_audit_body) == [1, 2]
+    assert sorted(body["size"] for body in audit_bodies if body["size"] != 500) == [1, 2]
     assert opensearch_client.scroll_bodies == [
-        {"scroll_id": "audit-scroll-1", "scroll": "5m"}
+        {"scroll_id": "audit-scroll-1", "scroll": "5m"},
+        {"scroll_id": "audit-scroll-1", "scroll": "5m"},
+        {"scroll_id": "audit-scroll-1", "scroll": "5m"},
     ]
-    assert opensearch_client.cleared_scrolls == [{"scroll_id": ["audit-scroll-2"]}]
+    assert opensearch_client.cleared_scrolls == [
+        {"scroll_id": ["audit-scroll-2"]},
+        {"scroll_id": ["audit-scroll-2"]},
+        {"scroll_id": ["audit-scroll-2"]},
+    ]
     assert audit_result["discovery"]["mode"] == "archive_audit"
     assert audit_result["discovery"]["documents_found"] == 3
     assert audit_result["discovery"]["lanes"]["lexical"]["pages"] == 2
@@ -537,3 +729,14 @@ async def test_search_service_rrf_fuses_lanes_preserves_provenance_and_emits_deb
     assert audit_result["discovery"]["lexical_completeness_certified"] is True
     assert audit_result["discovery"]["truncated"] is False
     assert audit_result["discovery"]["semantic_completeness_certified"] is False
+    assert audit_result["discovery"]["query_expansion"]["model"] == "test-reasoner"
+    assert audit_result["discovery"]["lanes"]["lexical_expansion:1"]["query"] == (
+        "surface pastorale ASP"
+    )
+    assert audit_result["discovery"]["lanes"]["entity_expansion:1"]["query"] == "DDT 41"
+    assert audit_result["discovery"]["lanes"]["entity_expansion:1"]["query_rule"] == {
+        "type": "grounded_entity_phrase"
+    }
+    assert audit_result["discovery"]["contextual_review_complete"] is True
+    assert audit_reasoner.expand_query.await_count == 1
+    assert audit_reasoner.review_candidates.await_count == 1

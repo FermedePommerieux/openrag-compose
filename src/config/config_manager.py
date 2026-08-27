@@ -369,12 +369,11 @@ _RETRIEVAL_V11_EXECUTION_RULE = (
 )
 _RETRIEVAL_V13_EXECUTION_RULE = (
     "Explicit exhaustive, complete, all-items, audit, or verify-everything requests are "
-    "binding. The backend performs deep document-diverse audit discovery, then reads every "
-    "cursor for its candidate documents. Never answer from ordinary focused results, repeat "
-    "completed reads, defer, or stop because the work is long. `coverage.complete=true` "
-    "certifies complete reading of the named scope. `scope=archive_audit_candidates` "
-    "certifies the candidate union, not whole-corpus semantic completeness; state that "
-    "distinction."
+    "binding. The backend performs document-diverse audit discovery and reads every cursor "
+    "of every candidate. Never answer from ordinary focused results, repeat completed reads, "
+    "defer, or stop because work is long. `coverage.complete=true` certifies only the named "
+    "scope. `scope=archive_audit_candidates` certifies the candidate union, not whole-corpus "
+    "semantic completeness; say so."
 )
 _RETRIEVAL_V12_DOCUMENTALIST_SYSTEM_PROMPT = DEFAULT_SYSTEM_PROMPT.replace(
     _RETRIEVAL_V13_EXECUTION_RULE,

@@ -166,7 +166,7 @@ archive. Corpus-wide thematic certification requires an immutable accessible
 corpus snapshot plus persisted, batch-level relevance decisions before final
 synthesis.
 
-Retrieval flow version 13 gives explicit exhaustive intent a separate
+Retrieval flow version 14 gives explicit exhaustive intent a separate
 archive-audit discovery profile. The lexical lane opens an immutable
 OpenSearch scroll snapshot and consumes it until every matching hit has been
 returned; 500 is only its transport page size, never a candidate limit. Scroll
@@ -197,6 +197,89 @@ threshold, calibration population, raw candidate count and selected count are
 returned in the audit metadata. An uncalibrated lane is explicitly labelled
 and excluded rather than treating thousands of weak neighbours as relevant;
 it never receives a semantic-completeness certificate.
+
+Archive audit discovery then performs three evidence-preserving stages:
+
+1. The configured reasoning model receives only the high-precision lexical
+   seeds and returns structured alternate queries and named entities. Every
+   alternate BM25 predicate and exact entity predicate is consumed completely
+   through its own DLS-scoped scroll. Expansion concurrency is bounded to
+   protect OpenSearch, but every returned predicate and every matching result
+   is processed. Expansions must be grounded in visible seed text; generic
+   words and hypothetical answers are forbidden.
+2. Starting from the exhausted lexical lanes and calibrated semantic lanes,
+   the visible W3C PROV-O graph is traversed to a fixpoint through
+   `member_of`, `reply_to`, `references`, and `attachment_of`. Each newly found
+   document carries the exact anchor, entity identifier, direction, and anchor
+   excerpt that justified its inclusion. `contained_in` is deliberately not a
+   thematic edge because a whole mailbox shares one archive source.
+3. Every candidate is contextually reviewed in transport batches. The reviewer
+   sees the candidate excerpt plus its PROV-O paths and labels it `relevant`,
+   `irrelevant`, or `uncertain`. These discovery labels never remove a
+   candidate before its complete read. Missing responses, malformed output and
+   provider failures become `uncertain` and remain in exhaustive scope.
+   Duplicate decisions and supporting document identifiers absent from the
+   candidate or its supplied relation paths are invalidated the same way.
+
+Batch size and concurrency are transport controls, never result limits: all
+candidates are processed. The response reports expansion queries, entities,
+graph iterations, relation roles, model identity, failed batches, and all
+decision counts. A complete contextual review certifies only that every
+discovered candidate received a decision; it still does not prove semantic
+completeness for concepts absent from every lexical, vector and provenance
+path.
+
+The tool then carries each transient relation path and relevance decision onto
+the mandatory full-document reads. These fields appear once per document in
+the compact model manifest and remain present in the complete source artifact;
+replacing discovery excerpts with exhaustive evidence therefore cannot erase
+the reason an implicit document entered the audit.
+
+### Hierarchical audit synthesis
+
+An exhaustive candidate set is not injected into one model context. Retrieval
+v14 uses an orchestration pattern inspired by Hermes Agent while keeping the
+authenticated operation inside the OpenRAG backend:
+
+1. Every candidate document is read to its immutable cursor certificate, with
+   four concurrent document readers but no document or chunk cap.
+2. Source chunks are partitioned into isolated leaf contexts of at most 24
+   segments and 80,000 serialized characters. A single oversized chunk is
+   segmented without changing its immutable `chunk_id`.
+3. Two independent roles inspect every leaf context: an evidence extractor and
+   a skeptical omission/contradiction reader. Batch size and concurrency bound
+   transport only; every chunk enters both readings.
+4. Every proposed finding is then checked by two different validator roles
+   against the exact supplied source evidence. Only unanimous `supported`
+   verdicts can become factual findings. Contradicted, uncertain, malformed or
+   incomplete verdicts are withheld rather than silently accepted.
+5. Coordinator levels consume at most eight bounded memos or 120,000 serialized
+   characters at a time. A coordinator output is rejected unless it covers
+   every direct input id and the exact union of all leaf finding ids. Final
+   coordinator statements undergo the same dual validation against their
+   already source-validated leaf findings.
+
+The final chat model receives only this validated dossier, its coverage
+certificate and leaf `chunk_id` citations. Complete raw chunks stay in the tool
+artifact used by the source UI, so context compression does not remove source
+inspectability. A compatibility guard refuses to place more than 600,000 raw
+characters into a legacy, unsynthesized model context. If hierarchical
+synthesis is incomplete, raw evidence is withheld and the chat must report the
+failure instead of improvising an answer.
+
+The orchestrator currently runs inside the authenticated backend request, not
+in a separate Hermes pod. This keeps the user's DLS/ACL identity and the exact
+coverage snapshot in one trust boundary. Its map/reduce contracts are isolated
+from HTTP transport so they can later move unchanged to a durable worker if
+audits must survive process restarts; that move must preserve the same identity,
+snapshot, loss checks and fail-closed result contract.
+
+This provides a fail-closed factual contract, not a mathematical guarantee that
+a probabilistic model can never err. `complete` certifies processing coverage;
+`verified` certifies redundant leaf reading. The chat may state findings only
+when both are true, and those findings additionally carry unanimous
+source-verdicts and exact chunk citations. Corpus-wide semantic completeness
+remains false unless a separate semantic certificate exists.
 
 Each embedding model is an independent RRF lane. OpenRAG no longer compares
 scores from different vector spaces inside one `dis_max` query: BM25 and every

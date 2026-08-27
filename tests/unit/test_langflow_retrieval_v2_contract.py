@@ -152,6 +152,16 @@ def test_backend_tool_forwards_request_and_preserves_provenance(monkeypatch):
         "source_entity_id": "urn:openrag:document:42",
         "source_relation_target_ids": ["mail-42"],
         "source_relation_roles": ["attached_to"],
+        "retrieval_relation_paths": [
+            {
+                "role": "reply_to",
+                "from_document_id": "document-42",
+                "to_document_id": "document-41",
+            }
+        ],
+        "retrieval_relevance_decision": "relevant",
+        "retrieval_relevance_reason": "The reply path resolves the implicit reference.",
+        "retrieval_supporting_document_ids": ["document-41"],
         "filename": "archive.pdf",
         "page": 3,
         "chunk_index": 7,
@@ -193,7 +203,7 @@ def test_backend_tool_forwards_request_and_preserves_provenance(monkeypatch):
 
     timeout = captured.pop("timeout")
     assert timeout.connect == 10.0
-    assert timeout.read == timeout.write == timeout.pool == 300.0
+    assert timeout.read == timeout.write == timeout.pool == 2_400.0
     assert captured == {
         "url": "http://openrag-backend:8000/search",
         "headers": {"Authorization": "Bearer user-jwt"},
@@ -229,6 +239,16 @@ def test_backend_tool_forwards_request_and_preserves_provenance(monkeypatch):
             "source_entity_id": "urn:openrag:document:42",
             "source_relation_target_ids": ["mail-42"],
             "source_relation_roles": ["attached_to"],
+            "retrieval_relation_paths": [
+                {
+                    "role": "reply_to",
+                    "from_document_id": "document-42",
+                    "to_document_id": "document-41",
+                }
+            ],
+            "retrieval_relevance_decision": "relevant",
+            "retrieval_relevance_reason": "The reply path resolves the implicit reference.",
+            "retrieval_supporting_document_ids": ["document-41"],
         }
     ]
     assert artifact == [
@@ -306,6 +326,86 @@ def test_backend_tool_forwards_exhaustive_cursor_and_coverage(monkeypatch):
     assert artifact[0]["chunk_id"] == "chunk-42"
 
 
+def test_hierarchical_synthesis_replaces_raw_model_evidence_but_not_artifact(monkeypatch):
+    module = _load_component_with_langflow_stubs(monkeypatch)
+    payload = {
+        "results": [
+            {
+                "document_id": "document-42",
+                "chunk_id": "chunk-42",
+                "filename": "mail.eml",
+                "text": "raw source text that must stay out of the final model context",
+            }
+        ],
+        "audit_synthesis": {
+            "strategy": "hierarchical_verified_map_reduce",
+            "complete": True,
+            "verified": True,
+            "findings": [
+                {
+                    "finding_id": "audit-final-finding-1",
+                    "statement": "A source-validated administrative exchange occurred.",
+                    "chunk_ids": ["chunk-42"],
+                    "document_ids": ["document-42"],
+                }
+            ],
+            "coverage": {"chunks_total": 1, "chunks_covered": 1},
+        },
+    }
+
+    compact = module._model_payload(payload)
+
+    assert compact["results"] == []
+    assert compact["evidence_chunks_available"] == 1
+    assert compact["audit_synthesis"]["complete"] is True
+    assert compact["audit_synthesis"]["findings"][0]["chunk_ids"] == ["chunk-42"]
+    assert "raw source text" not in json.dumps(compact)
+    assert payload["results"][0]["text"].startswith("raw source text")
+
+
+def test_oversized_uncertified_raw_evidence_is_withheld(monkeypatch):
+    module = _load_component_with_langflow_stubs(monkeypatch)
+    payload = {
+        "results": [
+            {
+                "document_id": "document-42",
+                "chunk_id": "chunk-42",
+                "text": "x" * (module.MODEL_RAW_EVIDENCE_CHARACTER_BUDGET + 1),
+            }
+        ]
+    }
+
+    compact = module._model_payload(payload)
+
+    assert compact["results"] == []
+    assert compact["raw_evidence_omitted"] is True
+    assert "incomplete" in compact["error"]
+
+
+def test_complete_but_unverified_synthesis_is_withheld(monkeypatch):
+    module = _load_component_with_langflow_stubs(monkeypatch)
+    payload = {
+        "results": [
+            {
+                "document_id": "document-42",
+                "chunk_id": "chunk-42",
+                "text": "raw evidence",
+            }
+        ],
+        "audit_synthesis": {
+            "complete": True,
+            "verified": False,
+            "findings": [],
+        },
+    }
+
+    compact = module._model_payload(payload)
+
+    assert compact["results"] == []
+    assert compact["raw_evidence_omitted"] is True
+    assert "incomplete" in compact["error"]
+
+
 def test_explicit_exhaustive_intent_automatically_completes_document_reads(monkeypatch):
     """A model cannot silently downgrade an explicit exhaustive request."""
     module = _load_component_with_langflow_stubs(monkeypatch)
@@ -339,7 +439,21 @@ def test_explicit_exhaustive_intent_automatically_completes_document_reads(monke
                         "results": [
                             {"document_id": "doc-a", "filename": "a.eml", "text": "ranked"},
                             {"document_id": "doc-a", "filename": "a.eml", "text": "duplicate"},
-                            {"document_id": "doc-b", "filename": "b.pdf", "text": "ranked"},
+                            {
+                                "document_id": "doc-b",
+                                "filename": "b.pdf",
+                                "text": "ranked",
+                                "retrieval_relation_paths": [
+                                    {
+                                        "from_document_id": "doc-a",
+                                        "to_document_id": "doc-b",
+                                        "relation_role": "reply_to",
+                                    }
+                                ],
+                                "retrieval_relevance_decision": "relevant",
+                                "retrieval_relevance_reason": "The reply resolves your project.",
+                                "retrieval_supporting_document_ids": ["doc-a"],
+                            },
                         ],
                         "discovery": {
                             "mode": "archive_audit",
@@ -428,6 +542,11 @@ def test_explicit_exhaustive_intent_automatically_completes_document_reads(monke
         "doc-b-chunk-2",
     }
     assert all("ranked" not in item["text"] for item in artifact)
+    doc_b_artifacts = [item for item in artifact if item["document_id"] == "doc-b"]
+    assert all(item["retrieval_relevance_decision"] == "relevant" for item in doc_b_artifacts)
+    doc_b_manifest = next(item for item in payload["documents"] if item["document_id"] == "doc-b")
+    assert doc_b_manifest["retrieval_relation_paths"][0]["relation_role"] == "reply_to"
+    assert doc_b_manifest["retrieval_supporting_document_ids"] == ["doc-a"]
     assert payload["discovery"] == {
         "mode": "archive_audit",
         "documents_found": 2,

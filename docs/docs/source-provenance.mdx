@@ -120,6 +120,20 @@ duplicates quoted content, weakens citations, and becomes stale when a message
 arrives later. Retrieval should expand the relation graph and report how many
 messages and attachments were actually read.
 
+Explicit archive audits use these edges as retrieval evidence, not decorative
+metadata. High-precision matching may identify a request that names a project;
+the graph then retrieves a reply containing only wording such as "we support
+your project" and supplies the originating message as its contextual anchor.
+Traversal continues until no new visible document is found. Every inclusion
+records its relation path. Contextual review labels likely noise but never
+removes a candidate before its complete read; hierarchical synthesis removes
+noise from the answer only when dual source validation finds no supported
+claim in it.
+
+`contained_in` remains useful for lineage and inspection but is not followed
+as a thematic expansion edge. Following it would connect every unrelated
+message imported from the same mailbox or archive.
+
 ## Access control
 
 A relation never transfers permissions. OpenRAG applies the current user's ACL

@@ -11,6 +11,7 @@ from agentd.tool_decorator import tool
 from auth_context import get_auth_context
 from config.embedding_constants import get_declared_default_embedding_model
 from config.settings import clients, get_embedding_model, get_index_name, get_openrag_config
+from services.audit_reasoning_service import AuditReasoningService
 from services.retrieval_service import (
     EXHAUSTIVE_BATCH_MAX,
     EXHAUSTIVE_PROFILE_VERSION,
@@ -42,12 +43,21 @@ ARCHIVE_AUDIT_PAGE_SIZE = 500
 ARCHIVE_AUDIT_VECTOR_INITIAL_DEPTH = 100
 ARCHIVE_AUDIT_VECTOR_MAX_DEPTH = 10_000
 ARCHIVE_AUDIT_VECTOR_STABILITY_ROUNDS = 2
+ARCHIVE_AUDIT_EXPANSION_CONCURRENCY = 4
+ARCHIVE_AUDIT_DOCUMENT_READ_CONCURRENCY = 4
 # Audit discovery is fed a topical query, not a bag of independent trigger
 # words. Requiring all terms for one- and two-token queries, then half for
 # longer queries, prevents generic request words from matching most of an
 # archive while preserving multi-concept evidence. Vector lanes cover wording
 # variation independently. This is an adaptive relevance rule, not a result cap.
 ARCHIVE_AUDIT_LEXICAL_MINIMUM_SHOULD_MATCH = "2<50%"
+ARCHIVE_AUDIT_PROVENANCE_ROLES = frozenset({"attachment_of", "member_of", "references", "reply_to"})
+ARCHIVE_AUDIT_TRANSIENT_FIELDS = (
+    "retrieval_relation_paths",
+    "retrieval_relevance_decision",
+    "retrieval_relevance_reason",
+    "retrieval_supporting_document_ids",
+)
 
 
 # Variable used to store the active instance for the tool wrapper
@@ -78,10 +88,11 @@ def _calibrate_audit_vector_lanes(
     of purportedly relevant documents; metadata makes that loss of semantic
     evidence explicit and semantic completeness remains false.
     """
-    lexical_result = retrieval_results.get("lexical", {})
     lexical_document_ids = {
         str(hit.get("_source", {}).get("document_id"))
-        for hit in lexical_result.get("hits", {}).get("hits", [])
+        for lane, result in retrieval_results.items()
+        if _is_audit_lexical_lane(lane)
+        for hit in result.get("hits", {}).get("hits", [])
         if hit.get("_source", {}).get("document_id")
     }
     for lane, lane_result in retrieval_results.items():
@@ -129,6 +140,125 @@ def _calibrate_audit_vector_lanes(
             "raw_candidates": len(vector_hits),
             "selected_candidates": len(selected_hits),
         }
+
+
+def _hits_by_document(hits: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    """Keep the first ranked hit for every stable document identity."""
+    documents: dict[str, dict[str, Any]] = {}
+    for hit in hits:
+        document_id = str(hit.get("_source", {}).get("document_id") or "")
+        if document_id:
+            documents.setdefault(document_id, hit)
+    return documents
+
+
+def _is_audit_lexical_lane(lane: str) -> bool:
+    """Return whether a lane is an exhaustively consumed lexical predicate."""
+    return lane == "lexical" or lane.startswith(("lexical_expansion:", "entity_expansion:"))
+
+
+def _provenance_relations(hit: dict[str, Any]) -> list[tuple[str, str]]:
+    """Return role/target pairs from the canonical nested provenance object."""
+    provenance = hit.get("_source", {}).get("source_provenance")
+    if not isinstance(provenance, dict) or not isinstance(provenance.get("relations"), list):
+        return []
+    pairs: list[tuple[str, str]] = []
+    for relation in provenance["relations"]:
+        if not isinstance(relation, dict):
+            continue
+        role = str(relation.get("role") or "")
+        target = relation.get("target")
+        target_id = str(target.get("id") or "") if isinstance(target, dict) else ""
+        if role in ARCHIVE_AUDIT_PROVENANCE_ROLES and target_id:
+            pairs.append((role, target_id))
+    return pairs
+
+
+def _provenance_identity_sets(hit: dict[str, Any]) -> tuple[set[str], set[str]]:
+    """Return entity identities and high-signal relation targets for one hit."""
+    source = hit.get("_source", {})
+    entity_ids = {
+        str(value)
+        for value in [
+            source.get("source_entity_id"),
+            *(source.get("source_entity_alternate_ids") or []),
+        ]
+        if value
+    }
+    relation_targets = {target_id for _role, target_id in _provenance_relations(hit)}
+    return entity_ids, relation_targets
+
+
+def _provenance_relation_paths(
+    frontier: dict[str, dict[str, Any]],
+    candidate: dict[str, Any],
+) -> list[dict[str, str]]:
+    """Explain graph expansion with observable entity identifiers and anchors."""
+    candidate_entities, _candidate_targets = _provenance_identity_sets(candidate)
+    candidate_source = candidate.get("_source", {})
+    candidate_id = str(candidate_source.get("document_id") or "")
+    paths: list[dict[str, str]] = []
+    seen: set[tuple[str, str, str]] = set()
+    for anchor_id, anchor in frontier.items():
+        anchor_entities, _anchor_targets = _provenance_identity_sets(anchor)
+        anchor_relations = _provenance_relations(anchor)
+        candidate_relations = _provenance_relations(candidate)
+        connections: list[tuple[str, str, str, str]] = []
+        connections.extend(
+            (role, "anchor_to_candidate", target_id, "")
+            for role, target_id in anchor_relations
+            if target_id in candidate_entities
+        )
+        connections.extend(
+            (role, "candidate_to_anchor", target_id, "")
+            for role, target_id in candidate_relations
+            if target_id in anchor_entities
+        )
+        connections.extend(
+            (candidate_role, "shared_target", target_id, anchor_role)
+            for anchor_role, target_id in anchor_relations
+            for candidate_role, candidate_target_id in candidate_relations
+            if target_id == candidate_target_id
+        )
+        for relation_role, direction, identifier, anchor_role in connections:
+            identity = (anchor_id, f"{direction}:{relation_role}:{anchor_role}", identifier)
+            if identity in seen:
+                continue
+            seen.add(identity)
+            anchor_source = anchor.get("_source", {})
+            path = {
+                "from_document_id": anchor_id,
+                "from_filename": str(anchor_source.get("filename") or ""),
+                "to_document_id": candidate_id,
+                "relation_role": relation_role,
+                "direction": direction,
+                "via_entity_id": identifier,
+                "anchor_excerpt": str(anchor_source.get("text") or "")[:1200],
+            }
+            if anchor_role:
+                path["anchor_relation_role"] = anchor_role
+            paths.append(path)
+    return paths
+
+
+def _propagate_provenance_paths(
+    retrieval_results: dict[str, dict[str, Any]],
+    provenance_hits: list[dict[str, Any]],
+) -> None:
+    """Attach a graph proof even when RRF keeps another lane's chunk copy."""
+    paths_by_document = {
+        str(hit.get("_source", {}).get("document_id")): hit.get("_source", {}).get(
+            "retrieval_relation_paths", []
+        )
+        for hit in provenance_hits
+        if hit.get("_source", {}).get("document_id")
+    }
+    for result in retrieval_results.values():
+        for hit in result.get("hits", {}).get("hits", []):
+            source = hit.get("_source", {})
+            paths = paths_by_document.get(str(source.get("document_id") or ""))
+            if paths:
+                source["retrieval_relation_paths"] = paths
 
 
 def _is_exact_token_query(query: str) -> bool:
@@ -274,10 +404,37 @@ async def search_tool(query: str, embedding_model: str = None) -> dict[str, Any]
 
 
 class SearchService:
-    def __init__(self, session_manager=None, models_service=None):
+    def __init__(
+        self,
+        session_manager=None,
+        models_service=None,
+        audit_reasoning_service: AuditReasoningService | None = None,
+    ):
         self.session_manager = session_manager
         self.models_service = models_service
+        self.audit_reasoning_service = audit_reasoning_service
         self._configure_provider_env()
+
+    def _resolve_audit_reasoner(
+        self,
+        openrag_config: Any,
+    ) -> tuple[AuditReasoningService | None, str | None]:
+        """Resolve the configured audit model without making retrieval fragile."""
+        if self.audit_reasoning_service is not None:
+            return self.audit_reasoning_service, None
+        agent_config = getattr(openrag_config, "agent", None)
+        reasoning_model = str(getattr(agent_config, "llm_model", "") or "").strip()
+        if not reasoning_model:
+            return None, "model_not_configured"
+        try:
+            return AuditReasoningService(clients.patched_llm_client, reasoning_model), None
+        except Exception as error:
+            logger.warning(
+                "Archive audit reasoning client is unavailable",
+                model=reasoning_model,
+                error=str(error),
+            )
+            return None, str(error)
 
     def _configure_provider_env(self):
         """Set provider env vars once at init time."""
@@ -456,9 +613,7 @@ class SearchService:
         limit = get_search_limit()
         score_threshold = get_score_threshold()
         lexical_candidate_depth = (
-            ARCHIVE_AUDIT_PAGE_SIZE
-            if audit_discovery
-            else retrieval_settings.lexical_candidates
+            ARCHIVE_AUDIT_PAGE_SIZE if audit_discovery else retrieval_settings.lexical_candidates
         )
         vector_candidate_depth = (
             max(retrieval_settings.vector_candidates, ARCHIVE_AUDIT_VECTOR_INITIAL_DEPTH)
@@ -887,9 +1042,7 @@ class SearchService:
             }
             if audit_discovery:
                 multi_match = lexical_body["query"]["bool"]["should"][0]["multi_match"]
-                multi_match[
-                    "minimum_should_match"
-                ] = ARCHIVE_AUDIT_LEXICAL_MINIMUM_SHOULD_MATCH
+                multi_match["minimum_should_match"] = ARCHIVE_AUDIT_LEXICAL_MINIMUM_SHOULD_MATCH
             if score_threshold > 0:
                 lexical_body["min_score"] = score_threshold
             if retrieval_settings.mode in {"hybrid", "lexical"}:
@@ -956,6 +1109,10 @@ class SearchService:
 
         # Get user's OpenSearch client with JWT for OIDC auth through session manager
         opensearch_client = self.session_manager.get_user_opensearch_client(user_id, jwt_token)
+        audit_reasoner: AuditReasoningService | None = None
+        audit_reasoner_error: str | None = None
+        if audit_discovery:
+            audit_reasoner, audit_reasoner_error = self._resolve_audit_reasoner(openrag_config)
 
         from opensearchpy.exceptions import RequestError
 
@@ -1037,10 +1194,10 @@ class SearchService:
                 logger.error("OpenSearch query failed", error=str(error), retrieval_lane=label)
                 raise
 
-        async def execute_lexical_audit(
+        async def execute_scroll_audit(
             body: dict[str, Any], label: str
         ) -> tuple[dict[str, Any], dict[str, Any]]:
-            """Read every lexical match from one DLS-compatible scroll snapshot."""
+            """Read every match from one DLS-compatible scroll snapshot."""
             hits: list[dict[str, Any]] = []
             first_result: dict[str, Any] | None = None
             pages = 0
@@ -1060,7 +1217,7 @@ class SearchService:
                     else:
                         if not scroll_id:
                             raise RuntimeError(
-                                "OpenSearch lexical audit omitted its scroll identifier"
+                                f"OpenSearch {label} audit omitted its scroll identifier"
                             )
                         page_result = await opensearch_client.scroll(
                             body={"scroll_id": scroll_id, "scroll": "5m"}
@@ -1075,9 +1232,7 @@ class SearchService:
                     hits.extend(page_hits)
                     total = page_result.get("hits", {}).get("total", {})
                     total_value = total.get("value") if isinstance(total, dict) else total
-                    if not page_hits or (
-                        isinstance(total_value, int) and len(hits) >= total_value
-                    ):
+                    if not page_hits or (isinstance(total_value, int) and len(hits) >= total_value):
                         exhausted = True
                         break
             finally:
@@ -1095,12 +1250,23 @@ class SearchService:
                 "matching": merged.get("hits", {}).get("total"),
                 "exhausted": exhausted,
                 "snapshot": "scroll",
-                "query_rule": {
-                    "type": "adaptive_minimum_should_match",
-                    "minimum_should_match": ARCHIVE_AUDIT_LEXICAL_MINIMUM_SHOULD_MATCH,
-                },
                 "truncated": not exhausted,
             }
+
+        async def execute_lexical_audit(
+            body: dict[str, Any], label: str
+        ) -> tuple[dict[str, Any], dict[str, Any]]:
+            """Read every lexical match and disclose its exact predicate."""
+            result, metadata = await execute_scroll_audit(body, label)
+            metadata.update(
+                {
+                    "query_rule": {
+                        "type": "adaptive_minimum_should_match",
+                        "minimum_should_match": ARCHIVE_AUDIT_LEXICAL_MINIMUM_SHOULD_MATCH,
+                    },
+                }
+            )
+            return result, metadata
 
         def _set_vector_depth(body: dict[str, Any], depth: int) -> None:
             """Update the single k-NN clause in one model-specific lane."""
@@ -1164,11 +1330,7 @@ class SearchService:
             merged_hits.extend(hit for key, hit in merged_by_id.items() if key not in ranked_ids)
             merged = dict(deepest_result)
             merged["hits"] = {
-                **(
-                    merged.get("hits", {})
-                    if isinstance(merged.get("hits"), dict)
-                    else {}
-                ),
+                **(merged.get("hits", {}) if isinstance(merged.get("hits"), dict) else {}),
                 "hits": merged_hits,
             }
             engine_exhausted = len(deepest_hits) < depth or depth >= corpus_depth
@@ -1185,11 +1347,174 @@ class SearchService:
                 "truncated": not engine_exhausted and not converged,
             }
 
+        async def execute_provenance_audit(
+            seed_hits: list[dict[str, Any]],
+        ) -> tuple[dict[str, Any], dict[str, Any]]:
+            """Traverse the visible high-signal PROV-O graph to a fixpoint.
+
+            ``contained_in`` is intentionally absent: it identifies the source
+            archive and would connect unrelated mail. Thread membership,
+            replies, RFC references and attachments are contextual relations
+            capable of resolving phrases such as "your project".
+            """
+            discovered = _hits_by_document(seed_hits)
+            frontier = dict(discovered)
+            expanded_hits: list[dict[str, Any]] = []
+            iterations: list[dict[str, Any]] = []
+            while frontier:
+                entity_ids: set[str] = set()
+                relation_targets: set[str] = set()
+                for hit in frontier.values():
+                    hit_entities, hit_targets = _provenance_identity_sets(hit)
+                    entity_ids.update(hit_entities)
+                    relation_targets.update(hit_targets)
+                if not entity_ids and not relation_targets:
+                    frontier = {}
+                    break
+
+                should: list[dict[str, Any]] = []
+                if relation_targets:
+                    should.extend(
+                        [
+                            {"terms": {"source_entity_id": sorted(relation_targets)}},
+                            {"terms": {"source_entity_alternate_ids": sorted(relation_targets)}},
+                            {
+                                "nested": {
+                                    "path": "source_provenance.relations",
+                                    "query": {
+                                        "bool": {
+                                            "filter": [
+                                                {
+                                                    "terms": {
+                                                        "source_provenance.relations.role": sorted(
+                                                            ARCHIVE_AUDIT_PROVENANCE_ROLES
+                                                        )
+                                                    }
+                                                },
+                                                {
+                                                    "terms": {
+                                                        "source_provenance.relations.target.id": sorted(
+                                                            relation_targets
+                                                        )
+                                                    }
+                                                },
+                                            ]
+                                        }
+                                    },
+                                }
+                            },
+                        ]
+                    )
+                if entity_ids:
+                    should.append(
+                        {
+                            "nested": {
+                                "path": "source_provenance.relations",
+                                "query": {
+                                    "bool": {
+                                        "filter": [
+                                            {
+                                                "terms": {
+                                                    "source_provenance.relations.role": sorted(
+                                                        ARCHIVE_AUDIT_PROVENANCE_ROLES
+                                                    )
+                                                }
+                                            },
+                                            {
+                                                "terms": {
+                                                    "source_provenance.relations.target.id": sorted(
+                                                        entity_ids
+                                                    )
+                                                }
+                                            },
+                                        ]
+                                    }
+                                },
+                            }
+                        }
+                    )
+
+                relation_body = {
+                    "query": {
+                        "bool": {
+                            "should": should,
+                            "minimum_should_match": 1,
+                            "filter": filter_clauses,
+                        }
+                    },
+                    "_source": source_fields,
+                    "size": ARCHIVE_AUDIT_PAGE_SIZE,
+                    "track_total_hits": True,
+                    "sort": [
+                        {"_score": {"order": "desc"}},
+                        {"chunk_id": {"order": "asc", "missing": "_last"}},
+                    ],
+                }
+                relation_result, page_metadata = await execute_scroll_audit(
+                    relation_body,
+                    f"provenance:{len(iterations) + 1}",
+                )
+                related = _hits_by_document(relation_result.get("hits", {}).get("hits", []))
+                new_documents = {
+                    document_id: hit
+                    for document_id, hit in related.items()
+                    if document_id not in discovered
+                }
+                for hit in new_documents.values():
+                    source = hit.get("_source", {})
+                    source["retrieval_relation_paths"] = _provenance_relation_paths(frontier, hit)
+                    expanded_hits.append(hit)
+                iterations.append(
+                    {
+                        "frontier_documents": len(frontier),
+                        "entity_ids": len(entity_ids),
+                        "relation_targets": len(relation_targets),
+                        "matched_documents": len(related),
+                        "new_documents": len(new_documents),
+                        "pages": page_metadata["pages"],
+                        "exhausted": page_metadata["exhausted"],
+                    }
+                )
+                discovered.update(new_documents)
+                frontier = new_documents
+
+            return {"hits": {"hits": expanded_hits}}, {
+                "seed_documents": len(_hits_by_document(seed_hits)),
+                "documents_found": len(expanded_hits),
+                "closure_documents": len(discovered),
+                "iterations": iterations,
+                "roles": sorted(ARCHIVE_AUDIT_PROVENANCE_ROLES),
+                "ignored_roles": ["contained_in"],
+                "fixpoint_reached": not frontier,
+                "exhausted": all(item["exhausted"] for item in iterations),
+                "snapshot": "scroll_per_frontier",
+                "truncated": False,
+            }
+
         retrieval_results: dict[str, dict[str, Any]] = {}
         audit_lane_metadata: dict[str, dict[str, Any]] = {}
+        audit_query_expansion: dict[str, Any] = {
+            "available": False,
+            "reason": (
+                "not_requested"
+                if not audit_discovery
+                else audit_reasoner_error
+                if audit_reasoner_error in {"model_not_configured"}
+                else "model_client_unavailable"
+                if audit_reasoner_error is not None
+                else "model_not_configured"
+            ),
+        }
+        audit_contextual_review: dict[str, Any] = {
+            **audit_query_expansion,
+        }
+        if audit_reasoner_error:
+            audit_query_expansion["error"] = audit_reasoner_error
+            audit_contextual_review["error"] = audit_reasoner_error
         if retrieval_bodies:
             lanes = [name for name, _body in retrieval_bodies]
             if audit_discovery:
+
                 async def execute_audit_lane(
                     name: str, body: dict[str, Any]
                 ) -> tuple[dict[str, Any], dict[str, Any]]:
@@ -1217,7 +1542,78 @@ class SearchService:
         raw_hits = results.get("hits", {}).get("hits", [])
         if retrieval_results:
             if audit_discovery and "lexical" in retrieval_results:
+                if audit_reasoner is not None:
+                    expansion, audit_query_expansion = await audit_reasoner.expand_query(
+                        query,
+                        retrieval_results["lexical"].get("hits", {}).get("hits", []),
+                    )
+                    expansion_jobs: list[tuple[str, dict[str, Any], str]] = []
+                    for index, expanded_query in enumerate(expansion.queries, start=1):
+                        expansion_body = copy.deepcopy(lexical_body)
+                        expansion_bool = expansion_body["query"]["bool"]
+                        expansion_bool["should"][0]["multi_match"]["query"] = expanded_query
+                        expansion_bool["should"][1]["match_phrase_prefix"]["text"]["query"] = (
+                            expanded_query
+                        )
+                        expansion_jobs.append(
+                            (f"lexical_expansion:{index}", expansion_body, expanded_query)
+                        )
+                    for index, entity in enumerate(expansion.entities, start=1):
+                        entity_body = copy.deepcopy(lexical_body)
+                        entity_body["query"]["bool"]["should"] = [
+                            {
+                                "multi_match": {
+                                    "query": entity,
+                                    "fields": ["text^2", "filename^1.5"],
+                                    "type": "best_fields",
+                                    "operator": "and",
+                                }
+                            },
+                            {"match_phrase": {"text": {"query": entity}}},
+                        ]
+                        expansion_jobs.append((f"entity_expansion:{index}", entity_body, entity))
+                    if expansion_jobs:
+                        expansion_semaphore = asyncio.Semaphore(ARCHIVE_AUDIT_EXPANSION_CONCURRENCY)
+
+                        async def execute_expansion(
+                            lane: str, body: dict[str, Any]
+                        ) -> tuple[dict[str, Any], dict[str, Any]]:
+                            async with expansion_semaphore:
+                                if lane.startswith("entity_expansion:"):
+                                    result, metadata = await execute_scroll_audit(body, lane)
+                                    metadata["query_rule"] = {"type": "grounded_entity_phrase"}
+                                    return result, metadata
+                                return await execute_lexical_audit(body, lane)
+
+                        expansion_results = await asyncio.gather(
+                            *[
+                                execute_expansion(lane, body)
+                                for lane, body, _query in expansion_jobs
+                            ]
+                        )
+                        for (lane, _body, lane_query), (
+                            expansion_result,
+                            expansion_metadata,
+                        ) in zip(expansion_jobs, expansion_results, strict=True):
+                            expansion_metadata["query"] = lane_query
+                            retrieval_results[lane] = expansion_result
+                            audit_lane_metadata[lane] = expansion_metadata
+
                 _calibrate_audit_vector_lanes(retrieval_results, audit_lane_metadata)
+                provenance_seed_hits = [
+                    hit
+                    for result in retrieval_results.values()
+                    for hit in result.get("hits", {}).get("hits", [])
+                ]
+                provenance_result, provenance_metadata = await execute_provenance_audit(
+                    provenance_seed_hits
+                )
+                retrieval_results["provenance"] = provenance_result
+                audit_lane_metadata["provenance"] = provenance_metadata
+                _propagate_provenance_paths(
+                    retrieval_results,
+                    provenance_result.get("hits", {}).get("hits", []),
+                )
             ranked_lists = [
                 lane_result.get("hits", {}).get("hits", [])
                 for lane_result in retrieval_results.values()
@@ -1232,6 +1628,11 @@ class SearchService:
                     1 if audit_discovery else retrieval_settings.adaptive_max_chunks_per_document
                 ),
             )
+            if audit_discovery and audit_reasoner is not None:
+                raw_hits, audit_contextual_review = await audit_reasoner.review_candidates(
+                    query,
+                    raw_hits,
+                )
             raw_hits = await HttpReranker(
                 retrieval_settings.reranker_url,
                 retrieval_settings.reranker_timeout,
@@ -1266,6 +1667,12 @@ class SearchService:
                     "source_entity_alternate_ids": source.get("source_entity_alternate_ids", []),
                     "source_relation_target_ids": source.get("source_relation_target_ids", []),
                     "source_relation_roles": source.get("source_relation_roles", []),
+                    "retrieval_relation_paths": source.get("retrieval_relation_paths", []),
+                    "retrieval_relevance_decision": source.get("retrieval_relevance_decision"),
+                    "retrieval_relevance_reason": source.get("retrieval_relevance_reason"),
+                    "retrieval_supporting_document_ids": source.get(
+                        "retrieval_supporting_document_ids", []
+                    ),
                     "owner": source.get("owner"),
                     "owner_name": source.get("owner_name"),
                     "owner_email": source.get("owner_email"),
@@ -1311,6 +1718,11 @@ class SearchService:
             "total": len(chunks),
         }
         if audit_discovery:
+            lexical_lanes = {
+                lane: metadata
+                for lane, metadata in audit_lane_metadata.items()
+                if _is_audit_lexical_lane(lane)
+            }
             response["discovery"] = {
                 "mode": "archive_audit",
                 "documents_found": len(
@@ -1318,13 +1730,28 @@ class SearchService:
                 ),
                 "chunks_returned": len(chunks),
                 "lanes": audit_lane_metadata,
+                "query_expansion": audit_query_expansion,
+                "contextual_review": audit_contextual_review,
                 "truncated": any(
                     lane.get("truncated") is True for lane in audit_lane_metadata.values()
                 ),
                 "lexical_completeness_certified": (
-                    audit_lane_metadata.get("lexical", {}).get("exhausted") is True
-                    if "lexical" in audit_lane_metadata
+                    bool(lexical_lanes)
+                    and all(
+                        metadata.get("exhausted") is True for metadata in lexical_lanes.values()
+                    )
+                    if lexical_lanes
                     else None
+                ),
+                "provenance_completeness_certified": (
+                    audit_lane_metadata.get("provenance", {}).get("fixpoint_reached") is True
+                    and audit_lane_metadata.get("provenance", {}).get("exhausted") is True
+                ),
+                "contextual_review_complete": (
+                    audit_contextual_review.get("available") is True
+                    and audit_contextual_review.get("failed_batches") == 0
+                    and audit_contextual_review.get("missing_decisions", 0) == 0
+                    and audit_contextual_review.get("invalid_decisions", 0) == 0
                 ),
                 "semantic_completeness_certified": False,
             }
@@ -1574,6 +2001,176 @@ class SearchService:
         }
         return {"results": chunks, "total": len(chunks), "coverage": coverage}
 
+    async def _read_archive_audit_documents(
+        self,
+        discovery_results: list[dict[str, Any]],
+        *,
+        user_id: str,
+        jwt_token: str | None,
+        filters: dict[str, Any] | None,
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        """Read every candidate snapshot with bounded I/O concurrency.
+
+        Concurrency limits transport pressure only. There is deliberately no
+        document or chunk limit, and each document's continuation chain remains
+        sequential so its snapshot certificate cannot be reordered.
+        """
+        documents: list[dict[str, Any]] = []
+        seen_document_ids: set[str] = set()
+        for result in discovery_results:
+            document_id = str(result.get("document_id") or "").strip()
+            if not document_id or document_id in seen_document_ids:
+                continue
+            seen_document_ids.add(document_id)
+            documents.append(
+                {
+                    "document_id": document_id,
+                    "filename": result.get("filename"),
+                    **{
+                        field: result[field]
+                        for field in ARCHIVE_AUDIT_TRANSIENT_FIELDS
+                        if field in result and result[field] not in (None, "", [], {})
+                    },
+                }
+            )
+
+        semaphore = asyncio.Semaphore(ARCHIVE_AUDIT_DOCUMENT_READ_CONCURRENCY)
+
+        async def read_document(
+            document: dict[str, Any],
+        ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+            async with semaphore:
+                chunks: list[dict[str, Any]] = []
+                cursor = ""
+                seen_cursors: set[str] = set()
+                final_coverage: dict[str, Any] = {}
+                while True:
+                    payload = await self.read_document_chunks(
+                        document["document_id"],
+                        user_id=user_id,
+                        jwt_token=jwt_token,
+                        filters=filters,
+                        cursor=cursor,
+                        batch_size=EXHAUSTIVE_BATCH_MAX,
+                    )
+                    for chunk in payload.get("results", []):
+                        if not isinstance(chunk, dict):
+                            continue
+                        enriched = dict(chunk)
+                        for field in ARCHIVE_AUDIT_TRANSIENT_FIELDS:
+                            if field in document:
+                                enriched[field] = document[field]
+                        chunks.append(enriched)
+                    coverage = payload.get("coverage")
+                    if not isinstance(coverage, dict):
+                        final_coverage = {
+                            "mode": "exhaustive",
+                            "document_id": document["document_id"],
+                            "complete": False,
+                            "error": payload.get("error") or "missing coverage certificate",
+                        }
+                        break
+                    final_coverage = dict(coverage)
+                    if coverage.get("complete") is True:
+                        break
+                    next_cursor = str(coverage.get("next_cursor") or "").strip()
+                    if not next_cursor or next_cursor in seen_cursors:
+                        final_coverage["complete"] = False
+                        final_coverage["error"] = (
+                            payload.get("error")
+                            or "incomplete coverage returned no fresh continuation cursor"
+                        )
+                        break
+                    seen_cursors.add(next_cursor)
+                    cursor = next_cursor
+                final_coverage["filename"] = document.get("filename")
+                return chunks, final_coverage
+
+        document_reads = await asyncio.gather(*[read_document(document) for document in documents])
+        chunks = [
+            chunk for document_chunks, _coverage in document_reads for chunk in document_chunks
+        ]
+        coverages = [coverage for _chunks, coverage in document_reads]
+        return chunks, coverages
+
+    async def _orchestrate_archive_audit(
+        self,
+        query: str,
+        discovery_result: dict[str, Any],
+        *,
+        user_id: str,
+        jwt_token: str | None,
+        filters: dict[str, Any] | None,
+    ) -> dict[str, Any]:
+        """Turn discovery into bounded, citation-preserving hierarchical evidence."""
+        discovery_hits = [
+            item for item in discovery_result.get("results", []) if isinstance(item, dict)
+        ]
+        chunks, document_coverages = await self._read_archive_audit_documents(
+            discovery_hits,
+            user_id=user_id,
+            jwt_token=jwt_token,
+            filters=filters,
+        )
+        documents_complete = sum(
+            coverage.get("complete") is True for coverage in document_coverages
+        )
+        read_complete = documents_complete == len(document_coverages)
+        coverage = {
+            "mode": "exhaustive",
+            "requested": True,
+            "scope": "archive_audit_candidates",
+            "complete": read_complete,
+            "documents_complete": documents_complete,
+            "documents_total": len(document_coverages),
+            "documents": document_coverages,
+        }
+
+        openrag_config = get_openrag_config()
+        reasoner, reasoner_error = self._resolve_audit_reasoner(openrag_config)
+        if not read_complete:
+            synthesis: dict[str, Any] = {
+                "schema_version": "1.0",
+                "strategy": "hierarchical_verified_map_reduce",
+                "complete": False,
+                "verified": False,
+                "error": "Full-document evidence coverage is incomplete.",
+            }
+        elif reasoner is None:
+            synthesis = {
+                "schema_version": "1.0",
+                "strategy": "hierarchical_verified_map_reduce",
+                "complete": False,
+                "verified": False,
+                "error": reasoner_error or "Audit reasoning model is not configured.",
+            }
+        else:
+            synthesis, synthesis_coverage = await reasoner.synthesize_evidence(query, chunks)
+            synthesis_coverage.update(
+                {
+                    "documents_total": len(document_coverages),
+                    "documents_complete": documents_complete,
+                }
+            )
+
+        discovery = dict(discovery_result.get("discovery") or {})
+        discovery["hierarchical_synthesis"] = {
+            "strategy": synthesis.get("strategy"),
+            "complete": synthesis.get("complete") is True,
+            "verified": synthesis.get("verified") is True,
+            "model": synthesis.get("model"),
+            "coverage": synthesis.get("coverage"),
+            "error": synthesis.get("error"),
+        }
+        return {
+            **discovery_result,
+            "results": chunks,
+            "total": len(chunks),
+            "coverage": coverage,
+            "audit_synthesis": synthesis,
+            "discovery": discovery,
+        }
+
     async def search(
         self,
         query: str,
@@ -1628,8 +2225,17 @@ class SearchService:
         set_search_limit(limit)
         set_score_threshold(score_threshold)
 
-        return await self.search_tool(
+        result = await self.search_tool(
             query,
             embedding_model=embedding_model,
             audit_discovery=evidence_mode == "audit",
         )
+        if evidence_mode == "audit" and user_id and not result.get("error"):
+            return await self._orchestrate_archive_audit(
+                query,
+                result,
+                user_id=user_id,
+                jwt_token=jwt_token,
+                filters=filters,
+            )
+        return result

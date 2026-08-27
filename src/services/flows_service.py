@@ -35,7 +35,7 @@ _LEGACY_RETRIEVAL_COMPONENT = (
     "ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra"
 )
 _BACKEND_RETRIEVAL_COMPONENT = "ext:openrag:OpenRAGBackendRetrievalComponent@extra"
-_RETRIEVAL_FLOW_MIGRATION_VERSION = 13
+_RETRIEVAL_FLOW_MIGRATION_VERSION = 14
 _LEGACY_SYSTEM_FLOW_ID = "1098eea1-6649-4e1d-aed1-b77249fb8dd0"
 # SHA-256 of ``flows/openrag_agent.json`` at lifecycle baseline 156f3664,
 # calculated over canonical ``data`` JSON.  Flow IDs and a lock alone are not
@@ -126,6 +126,13 @@ _PREVIOUS_VERSIONED_UNPROJECTED_EVIDENCE_GRAPH_SHA256 = (
 # a deep, one-candidate-per-document OpenSearch audit union.
 _PREVIOUS_VERSIONED_FOCUSED_AUDIT_GRAPH_SHA256 = (
     "380cc0f0fc2c32271a195968d5ea1998364ca3216bcfe9c7d466c2c016673541"
+)
+# Exact v13 graph before evidence-grounded query expansion, PROV-O closure and
+# contextual review could make audit discovery exceed the old five-minute
+# component timeout. Version 14 carries those audit explanations into the
+# compact model manifest and allows the truth-first operation to finish.
+_PREVIOUS_VERSIONED_ARCHIVE_AUDIT_GRAPH_SHA256 = (
+    "8e232f986363e143668a47111e4e68f2bfb3c33e730e78a88782ad2e7b431d99"
 )
 
 
@@ -1344,6 +1351,8 @@ class FlowsService:
             if marker == 11
             else {_PREVIOUS_VERSIONED_FOCUSED_AUDIT_GRAPH_SHA256}
             if marker == 12
+            else {_PREVIOUS_VERSIONED_ARCHIVE_AUDIT_GRAPH_SHA256}
+            if marker == 13
             else set()
         )
         return self._graph_fingerprint(flow_data) in expected
