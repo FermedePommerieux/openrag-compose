@@ -31,6 +31,7 @@ class FileService:
         mimetype: str | None = None,
         owner: str | None = None,
         search: str | None = None,
+        data_sources: list[str] | None = None,
     ) -> dict[str, Any]:
         """
         List ingested files with server-side pagination, filtering, and sorting.
@@ -40,7 +41,14 @@ class FileService:
         """
         opensearch_client = self.session_manager.get_user_opensearch_client(user_id, jwt_token)
 
-        query = self._build_filter_query(user_id, connector_type, mimetype, owner, search)
+        query = self._build_filter_query(
+            user_id,
+            connector_type,
+            mimetype,
+            owner,
+            search,
+            data_sources,
+        )
         agg_body = self._build_file_aggregation(query)
 
         try:
@@ -110,10 +118,11 @@ class FileService:
         mimetype: str | None = None,
         owner: str | None = None,
         search: str | None = None,
+        data_sources: list[str] | None = None,
     ) -> dict[str, Any]:
         """Build the bool query with optional filters + filename search."""
-        must = []
-        filter_clauses = []
+        must: list[dict[str, Any]] = []
+        filter_clauses: list[dict[str, Any]] = []
 
         if connector_type:
             filter_clauses.append({"term": {"connector_type": connector_type}})
@@ -121,6 +130,13 @@ class FileService:
             filter_clauses.append({"term": {"mimetype": mimetype}})
         if owner:
             filter_clauses.append({"term": {"owner": owner}})
+        if data_sources:
+            # This is a proof-oriented filter, not fuzzy search: callers such
+            # as archival connectors must verify the exact submitted filename
+            # and deterministic document_id before declaring ingestion valid.
+            filter_clauses.append(
+                {"terms": {"filename": list(dict.fromkeys(data_sources))}}
+            )
 
         if search:
             # Combine wildcard (partial), prefix, and fuzzy for flexible matching

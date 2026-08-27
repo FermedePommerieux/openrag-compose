@@ -104,6 +104,34 @@ async def test_security_setup_skipped_when_flag_true(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_request_time_index_check_never_reconfigures_security(monkeypatch):
+    """Concurrent ingestion requests leave lifecycle security mappings alone."""
+    import utils.opensearch_init as init_mod
+
+    monkeypatch.setattr(init_mod, "OPENRAG_SKIP_OS_SECURITY_SETUP", False)
+    _patch_config(monkeypatch, init_mod)
+    os_client = _fake_os_client()
+    setup_mock = AsyncMock()
+
+    with (
+        patch("utils.opensearch_utils.setup_opensearch_security", setup_mock),
+        patch.object(init_mod, "wait_for_opensearch", AsyncMock()),
+        patch.object(
+            init_mod,
+            "create_index_body",
+            AsyncMock(return_value={"settings": {}, "mappings": {}}),
+        ),
+        patch.object(init_mod, "get_index_name", return_value="documents"),
+    ):
+        await init_mod.init_index(
+            opensearch_client=os_client,
+            configure_security=False,
+        )
+
+    setup_mock.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_index_creation_still_runs_when_flag_true(monkeypatch):
     """Skipping security setup must NOT skip index creation."""
     import utils.opensearch_init as init_mod

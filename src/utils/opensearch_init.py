@@ -252,8 +252,19 @@ async def _ensure_opensearch_index():
         )
 
 
-async def init_index(opensearch_client=None, admin_username: str = None):
-    """Initialize OpenSearch index and security roles"""
+async def init_index(
+    opensearch_client=None,
+    admin_username: str = None,
+    *,
+    configure_security: bool = True,
+):
+    """Initialize OpenSearch indexes and, when requested, security roles.
+
+    Security role mappings are lifecycle configuration. Request handlers call
+    this function concurrently only to ensure indexes and mappings exist, so
+    they must set ``configure_security=False`` instead of racing non-atomic
+    security-plugin read/modify/write operations.
+    """
     os_client = opensearch_client or clients.opensearch
     # Tracks the most recent OpenSearch operation so the except block can name
     # the failing step (TransportError stringifies to just "TransportError(500, '')").
@@ -265,7 +276,12 @@ async def init_index(opensearch_client=None, admin_username: str = None):
         # (SaaS / CPD). Index creation below still runs — SaaS / CPD
         # deployments still need indices, they just don't want OpenRAG
         # touching roles or role mappings.
-        if OPENRAG_SKIP_OS_SECURITY_SETUP:
+        if not configure_security:
+            logger.debug(
+                "Skipping request-time OpenSearch security reconfiguration",
+                admin_username=admin_username,
+            )
+        elif OPENRAG_SKIP_OS_SECURITY_SETUP:
             logger.info(
                 "Skipping OpenSearch security setup during init_index "
                 "(OPENRAG_SKIP_OS_SECURITY_SETUP=true)",

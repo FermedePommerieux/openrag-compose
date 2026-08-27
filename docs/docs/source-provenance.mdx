@@ -84,6 +84,20 @@ responses. The canonical object preserves relation pairing; flattened fields
 such as `source_entity_id`, `source_relation_target_ids`, and
 `source_relation_roles` support filtering and reverse traversal.
 
+## Durable ingestion proof
+
+A completed task is not by itself proof that a durable document is searchable.
+Connectors can call `GET /files` with one or more repeated `data_sources`
+parameters. This filter performs exact filename matching; it is intentionally
+separate from the fuzzy `search` parameter. The response exposes each
+document's deterministic `document_id`, chunk count, source URL, and provenance,
+so a connector can compare the identifier derived from the submitted SHA-256
+before marking its local work item as validated.
+
+OpenSearch security roles are lifecycle configuration and are initialized at
+application startup. Concurrent ingestion requests ensure indexes and mappings
+only; they do not rewrite role mappings while documents are being submitted.
+
 OpenRAG rejects malformed JSON, unknown keys, unsupported schema versions,
 unknown roles, duplicate role/target pairs, and a `prov_predicate` inconsistent
 with its role. The maximum serialized multipart value is 256 KiB; a document

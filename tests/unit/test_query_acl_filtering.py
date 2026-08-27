@@ -10,6 +10,7 @@ def test_file_service_query_omits_application_acl_filter():
         mimetype="application/pdf",
         owner="owner@example.com",
         search="roadmap",
+        data_sources=["Evidence.PDF", "Evidence.PDF", "Mail.eml"],
     )
 
     filters = query["bool"]["filter"]
@@ -18,6 +19,7 @@ def test_file_service_query_omits_application_acl_filter():
         {"term": {"connector_type": "google_drive"}},
         {"term": {"mimetype": "application/pdf"}},
         {"term": {"owner": "owner@example.com"}},
+        {"terms": {"filename": ["Evidence.PDF", "Mail.eml"]}},
     ]
     assert query["bool"]["must"] == [
         {
