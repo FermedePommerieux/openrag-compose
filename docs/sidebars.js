@@ -67,6 +67,11 @@ const sidebars = {
         "core-components/knowledge-filters",
         "core-components/retrieval-v2",
         "core-components/knowledge-connectors",
+        {
+          type: "doc",
+          id: "source-provenance",
+          label: "Source provenance",
+        },
       ],
     },
     {

@@ -9,6 +9,7 @@ import type {
   IngestResponse,
   IngestTaskStatus,
   NotFoundError,
+  SourceProvenance,
 } from "./types";
 
 export interface IngestOptions {
@@ -20,6 +21,8 @@ export interface IngestOptions {
   filename?: string;
   /** Absolute HTTP(S) URL for the authoritative source file. */
   sourceUrl?: string;
+  /** Versioned W3C PROV-O source identity and directed relations. */
+  sourceProvenance?: SourceProvenance;
   /** Override local retention. When omitted, the workspace setting applies. */
   archiveSource?: boolean;
   /** If true, poll until ingestion completes. Default: true. */
@@ -70,6 +73,9 @@ export class DocumentsClient {
 
     if (options.sourceUrl) {
       formData.append("source_url", options.sourceUrl);
+    }
+    if (options.sourceProvenance) {
+      formData.append("source_provenance", JSON.stringify(options.sourceProvenance));
     }
     if (options.archiveSource !== undefined) {
       formData.append("archive_source", String(options.archiveSource));

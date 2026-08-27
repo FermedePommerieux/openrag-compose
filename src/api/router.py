@@ -17,6 +17,7 @@ from dependencies import (
     get_session_manager,
     get_task_service,
 )
+from models.source_provenance import SourceProvenance, parse_source_provenance
 from session_manager import User
 from utils.ingest_preview_flag import is_ingest_preview_enabled
 from utils.logging_config import get_logger
@@ -61,6 +62,40 @@ def _normalize_source_urls(
     return normalized
 
 
+def _normalize_source_provenances(
+    upload_files: list[UploadFile], source_provenances: list[str] | None
+) -> list[SourceProvenance | None]:
+    """Validate optional per-file PROV-O envelopes at the public boundary.
+
+    The API mirrors ``source_url`` cardinality: callers either omit provenance
+    or send exactly one JSON object for every uploaded file. Unknown fields,
+    roles, predicates, and schema versions are rejected by the strict model.
+    """
+    if not source_provenances:
+        return [None] * len(upload_files)
+    if len(source_provenances) != len(upload_files):
+        raise ValueError(
+            "source_provenance must be omitted or provided once for each uploaded file"
+        )
+
+    normalized: list[SourceProvenance | None] = []
+    for value in source_provenances:
+        if not isinstance(value, str) or not value.strip():
+            normalized.append(None)
+            continue
+        if len(value) > 262_144:
+            raise ValueError("source_provenance must not exceed 256 KiB")
+        try:
+            decoded = json.loads(value)
+        except json.JSONDecodeError as error:
+            raise ValueError(f"source_provenance must be valid JSON: {error.msg}") from error
+        try:
+            normalized.append(parse_source_provenance(decoded))
+        except ValueError as error:
+            raise ValueError(f"invalid source_provenance: {error}") from error
+    return normalized
+
+
 def _resolve_archive_source(value: str | None) -> bool:
     """Resolve an archive form value or fall back to the workspace setting."""
     from services.local_source_service import is_source_archiving_enabled
@@ -84,6 +119,7 @@ async def upload_ingest_router(
     create_filter: str = Form("false"),
     preview: str = Form("false"),
     source_url: list[str] | None = Form(None),
+    source_provenance: list[str] | None = Form(None),
     archive_source: str | None = Form(None),
     document_service=Depends(get_document_service),
     langflow_file_service=Depends(get_langflow_file_service),
@@ -115,6 +151,7 @@ async def upload_ingest_router(
     # request data. Treat it as absent, matching the handling required by the
     # public v1 wrapper for its other Form-defaulted parameters.
     source_urls = source_url if isinstance(source_url, list) else None
+    source_provenances = source_provenance if isinstance(source_provenance, list) else None
     from config.settings import is_no_auth_mode
 
     if not is_no_auth_mode():
@@ -146,6 +183,7 @@ async def upload_ingest_router(
             create_filter=create_filter.lower() == "true",
             preview_mode=preview_mode,
             source_urls=source_urls,
+            source_provenances=source_provenances,
             archive_sources=archive_sources,
             session_manager=session_manager,
             task_service=task_service,
@@ -163,6 +201,7 @@ async def upload_ingest_router(
         create_filter=create_filter.lower() == "true",
         preview_mode=preview_mode,
         source_urls=source_urls,
+        source_provenances=source_provenances,
         archive_sources=archive_sources,
         langflow_file_service=langflow_file_service,
         session_manager=session_manager,
@@ -181,6 +220,7 @@ async def _traditional_upload_ingest_task(
     user: User,
     settings_json: str | None = None,
     source_urls: list[str] | None = None,
+    source_provenances: list[str] | None = None,
     archive_sources: bool = False,
 ):
     """Task-based traditional upload and ingest for single/multiple files"""
@@ -190,6 +230,9 @@ async def _traditional_upload_ingest_task(
 
         try:
             normalized_source_urls = _normalize_source_urls(upload_files, source_urls)
+            normalized_source_provenances = _normalize_source_provenances(
+                upload_files, source_provenances
+            )
         except ValueError as e:
             return JSONResponse({"error": str(e)}, status_code=400)
 
@@ -237,6 +280,13 @@ async def _traditional_upload_ingest_task(
                 for path, url in zip(temp_file_paths, normalized_source_urls, strict=True)
                 if url is not None
             }
+            source_provenances_by_path = {
+                path: provenance
+                for path, provenance in zip(
+                    temp_file_paths, normalized_source_provenances, strict=True
+                )
+                if provenance is not None
+            }
 
             # Ensure the search index exists before creating the upload task
             from api.documents import _ensure_index_exists
@@ -254,6 +304,7 @@ async def _traditional_upload_ingest_task(
                 settings=settings,
                 preview_mode=preview_mode,
                 source_urls=source_urls_by_path,
+                source_provenances=source_provenances_by_path,
                 archive_sources=archive_sources,
             )
 
@@ -300,6 +351,7 @@ async def _langflow_upload_ingest_task(
     task_service,
     user: User,
     source_urls: list[str] | None = None,
+    source_provenances: list[str] | None = None,
     archive_sources: bool = False,
 ):
     """Task-based langflow upload and ingest for single/multiple files"""
@@ -309,6 +361,9 @@ async def _langflow_upload_ingest_task(
 
         try:
             normalized_source_urls = _normalize_source_urls(upload_files, source_urls)
+            normalized_source_provenances = _normalize_source_provenances(
+                upload_files, source_provenances
+            )
         except ValueError as e:
             return JSONResponse({"error": str(e)}, status_code=400)
 
@@ -364,6 +419,13 @@ async def _langflow_upload_ingest_task(
                 for path, url in zip(temp_file_paths, normalized_source_urls, strict=True)
                 if url is not None
             }
+            source_provenances_by_path = {
+                path: provenance
+                for path, provenance in zip(
+                    temp_file_paths, normalized_source_provenances, strict=True
+                )
+                if provenance is not None
+            }
 
             task_id = await task_service.create_langflow_upload_task(
                 user_id=user_id,
@@ -380,6 +442,7 @@ async def _langflow_upload_ingest_task(
                 replace_duplicates=replace_duplicates,
                 preview_mode=preview_mode,
                 source_urls=source_urls_by_path,
+                source_provenances=source_provenances_by_path,
                 archive_sources=archive_sources,
             )
 

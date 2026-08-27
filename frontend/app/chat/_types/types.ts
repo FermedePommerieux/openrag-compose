@@ -75,6 +75,13 @@ export interface ToolCallResult {
   page?: number | string;
   score?: number | string;
   source_url?: string | null;
+  source_provenance?: Record<string, unknown> | null;
+  source_entity_id?: string;
+  source_entity_type?: string;
+  source_entity_system?: string;
+  source_entity_alternate_ids?: string[];
+  source_relation_target_ids?: string[];
+  source_relation_roles?: string[];
   text?: string;
   embedding_model?: string;
   parser?: string;

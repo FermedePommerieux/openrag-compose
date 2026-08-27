@@ -14,6 +14,7 @@ import json
 from dataclasses import dataclass, field
 from typing import Any
 
+from models.source_provenance import SourceProvenance, source_provenance_mapping
 from utils.embedding_fields import ensure_embedding_field_exists
 from utils.embeddings import create_index_body
 from utils.group_acl import unique_acl_principal_labels, unique_acl_principals
@@ -42,6 +43,9 @@ class DocumentIndexContext:
     file_size: int | None = None
     connector_type: str | None = None
     source_url: str | None = None
+    # Provenance is trusted document context, not arbitrary per-chunk metadata.
+    # This prevents a Langflow chunk callback from changing source identity.
+    source_provenance: SourceProvenance | None = None
     connector_file_id: str | None = None
     allowed_users: list[str] = field(default_factory=list)
     allowed_groups: list[str] = field(default_factory=list)
@@ -137,6 +141,7 @@ class DocumentIndexWriter:
             index_name=index_name,
             embedding_model=context.embedding_model,
             dimensions=dimensions,
+            ensure_source_provenance=context.source_provenance is not None,
         )
 
         now = datetime.datetime.now(datetime.UTC).isoformat()
@@ -548,6 +553,7 @@ class DocumentIndexWriter:
         index_name: str,
         embedding_model: str,
         dimensions: int,
+        ensure_source_provenance: bool = False,
     ) -> str:
         if not await client.indices.exists(index=index_name):
             await client.indices.create(
@@ -555,6 +561,11 @@ class DocumentIndexWriter:
                 body=await create_index_body(embedding_model, dimensions),
             )
         await self._ensure_retrieval_metadata_fields(client, index_name)
+        # Existing legacy indexes only need the additive mapping when a caller
+        # actually supplies the optional provenance object. Newly created
+        # indexes already receive it through ``create_index_body``.
+        if ensure_source_provenance:
+            await self._ensure_source_provenance_mapping(client, index_name)
         return await ensure_embedding_field_exists(
             client,
             embedding_model,
@@ -632,6 +643,62 @@ class DocumentIndexWriter:
                 "Unable to ensure retrieval provenance mapping fields",
                 index_name=index_name,
                 error=str(exc),
+            )
+
+    @staticmethod
+    async def _ensure_source_provenance_mapping(client: Any, index_name: str) -> None:
+        """Add the PROV-O profile to lifecycle-era indexes without reindexing.
+
+        OpenSearch mappings are additive. An existing incompatible dynamic
+        mapping cannot be repaired in place, so the writer fails explicitly:
+        silently storing an unqueryable provenance object would violate the
+        verification contract.
+        """
+        required: dict[str, dict[str, Any]] = {
+            "source_provenance": source_provenance_mapping(),
+            "source_entity_id": {"type": "keyword"},
+            "source_entity_type": {"type": "keyword"},
+            "source_entity_system": {"type": "keyword"},
+            "source_entity_alternate_ids": {"type": "keyword"},
+            "source_relation_target_ids": {"type": "keyword"},
+            "source_relation_roles": {"type": "keyword"},
+        }
+        mappings = await client.indices.get_mapping(index=index_name)
+        properties: dict[str, Any] = {}
+        for mapping in mappings.values():
+            candidate = mapping.get("mappings", {}).get("properties", {})
+            if isinstance(candidate, dict):
+                properties.update(candidate)
+
+        existing_provenance = properties.get("source_provenance")
+        if existing_provenance is not None:
+            relations = existing_provenance.get("properties", {}).get("relations", {})
+            if relations.get("type") != "nested":
+                raise RuntimeError(
+                    "Existing source_provenance mapping is incompatible; "
+                    "relations must be nested and the index must be reindexed"
+                )
+
+        incompatible = {
+            name: properties[name].get("type")
+            for name, definition in required.items()
+            if name != "source_provenance"
+            and name in properties
+            and properties[name].get("type") != definition.get("type")
+        }
+        if incompatible:
+            raise RuntimeError(
+                "Existing source provenance keyword mappings are incompatible; "
+                f"reindex required for {sorted(incompatible)}"
+            )
+
+        missing = {name: value for name, value in required.items() if name not in properties}
+        if missing:
+            await client.indices.put_mapping(index=index_name, body={"properties": missing})
+            logger.info(
+                "Added W3C PROV-O source provenance mapping",
+                index_name=index_name,
+                fields=sorted(missing),
             )
 
     def _build_chunk_document(
@@ -712,6 +779,11 @@ class DocumentIndexWriter:
             doc["connector_file_id"] = metadata["connector_file_id"]
         if context.is_sample_data:
             doc["is_sample_data"] = "true"
+        if context.source_provenance is not None:
+            # Repeat canonical provenance on every chunk. Search hits then
+            # remain independently verifiable, even outside a join-capable
+            # database, while the flattened fields support reverse traversal.
+            doc.update(context.source_provenance.index_fields())
         for time_field in ("created_time", "modified_time"):
             if metadata.get(time_field):
                 doc[time_field] = metadata[time_field]

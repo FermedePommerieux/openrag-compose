@@ -1,5 +1,6 @@
-"""Tests that preview=true is threaded through the upload router."""
+"""Tests that upload options are threaded through the upload router."""
 
+import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -7,6 +8,7 @@ from fastapi import UploadFile
 
 from api.router import (
     _langflow_upload_ingest_task,
+    _normalize_source_provenances,
     _normalize_source_urls,
     _resolve_archive_source,
     upload_ingest_router,
@@ -44,6 +46,17 @@ async def test_langflow_upload_passes_preview_mode_to_task_service():
             create_filter=False,
             preview_mode=True,
             source_urls=["https://files.example.com/sample.pdf"],
+            source_provenances=[
+                json.dumps(
+                    {
+                        "schema_version": "1.0",
+                        "entity": {
+                            "id": "urn:openrag:document:sample",
+                            "type": "http://www.w3.org/ns/prov#Entity",
+                        },
+                    }
+                )
+            ],
             archive_sources=True,
             langflow_file_service=MagicMock(),
             session_manager=MagicMock(),
@@ -55,9 +68,10 @@ async def test_langflow_upload_passes_preview_mode_to_task_service():
     call_kwargs = mock_task_service.create_langflow_upload_task.await_args.kwargs
     assert call_kwargs["preview_mode"] is True
     assert call_kwargs["source_urls"] == {"/tmp/sample.pdf": "https://files.example.com/sample.pdf"}
+    assert call_kwargs["source_provenances"]["/tmp/sample.pdf"].entity.id == (
+        "urn:openrag:document:sample"
+    )
     assert call_kwargs["archive_sources"] is True
-
-    import json
 
     body = json.loads(response.body.decode())
     assert body["preview_mode"] is True
@@ -229,6 +243,41 @@ def test_source_urls_must_be_http_and_match_uploaded_files():
 
     with pytest.raises(ValueError, match="control characters"):
         _normalize_source_urls(files[:1], ["https://example.com/file\x7f.pdf"])
+
+
+def test_source_provenance_is_optional_and_validated_as_json_per_file():
+    files = [MagicMock(spec=UploadFile), MagicMock(spec=UploadFile)]
+    payload = {
+        "schema_version": "1.0",
+        "entity": {
+            "id": "urn:openrag:email:message-1",
+            "type": "http://www.w3.org/ns/prov#Entity",
+        },
+    }
+
+    assert _normalize_source_provenances(files, None) == [None, None]
+    parsed = _normalize_source_provenances(files[:1], [json.dumps(payload)])
+    assert parsed[0].entity.id == "urn:openrag:email:message-1"
+
+    with pytest.raises(ValueError, match="once for each"):
+        _normalize_source_provenances(files, [json.dumps(payload)])
+    with pytest.raises(ValueError, match="valid JSON"):
+        _normalize_source_provenances(files[:1], ["{not-json"])
+
+
+def test_source_provenance_rejects_unknown_json_fields():
+    files = [MagicMock(spec=UploadFile)]
+    payload = {
+        "schema_version": "1.0",
+        "entity": {
+            "id": "urn:openrag:email:message-1",
+            "type": "http://www.w3.org/ns/prov#Entity",
+        },
+        "unexpected": "not part of the bounded contract",
+    }
+
+    with pytest.raises(ValueError, match="invalid source_provenance"):
+        _normalize_source_provenances(files, [json.dumps(payload)])
 
 
 def test_manual_upload_uses_global_archiving_setting_when_form_field_is_absent(

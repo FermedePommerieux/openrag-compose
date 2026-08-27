@@ -30,6 +30,13 @@ export interface ChunkResult {
   score: number;
   source_url?: string;
   connector_file_id?: string;
+  source_provenance?: Record<string, unknown>;
+  source_entity_id?: string;
+  source_entity_type?: string;
+  source_entity_system?: string;
+  source_entity_alternate_ids?: string[];
+  source_relation_target_ids?: string[];
+  source_relation_roles?: string[];
   owner?: string;
   owner_name?: string;
   owner_email?: string;
@@ -51,6 +58,13 @@ export interface File {
   chunkCount?: number;
   avgScore?: number;
   source_url: string;
+  source_provenance?: Record<string, unknown>;
+  source_entity_id?: string;
+  source_entity_type?: string;
+  source_entity_system?: string;
+  source_entity_alternate_ids?: string[];
+  source_relation_target_ids?: string[];
+  source_relation_roles?: string[];
   owner?: string;
   owner_name?: string;
   owner_email?: string;
@@ -91,6 +105,12 @@ const EMPTY_SEARCH_RESULT: SearchResult = { files: [], warnings: [] };
 export { EMPTY_SEARCH_RESULT };
 
 const getFileIdentity = (chunk: ChunkResult): string => {
+  // A PROV Entity is stable across filename and URL changes. Legacy chunks
+  // fall back to their lifecycle-era identity fields.
+  const sourceEntityId = chunk.source_entity_id?.trim();
+  if (sourceEntityId) {
+    return sourceEntityId;
+  }
   const normalizedFilename = chunk.filename?.trim();
   if (normalizedFilename) {
     return normalizedFilename;
@@ -176,6 +196,13 @@ export const useGetSearchQuery = (
           chunks: ChunkResult[];
           totalScore: number;
           source_url?: string;
+          source_provenance?: Record<string, unknown>;
+          source_entity_id?: string;
+          source_entity_type?: string;
+          source_entity_system?: string;
+          source_entity_alternate_ids?: string[];
+          source_relation_target_ids?: string[];
+          source_relation_roles?: string[];
           owner?: string;
           owner_name?: string;
           owner_email?: string;
@@ -205,11 +232,21 @@ export const useGetSearchQuery = (
           }
         } else {
           fileMap.set(fileIdentity, {
-            filename: fileIdentity,
+            filename:
+              chunk.filename?.trim() ||
+              chunk.source_url?.trim() ||
+              "Untitled source",
             mimetype: chunk.mimetype,
             chunks: [chunk],
             totalScore: chunk.score,
             source_url: chunk.source_url,
+            source_provenance: chunk.source_provenance,
+            source_entity_id: chunk.source_entity_id,
+            source_entity_type: chunk.source_entity_type,
+            source_entity_system: chunk.source_entity_system,
+            source_entity_alternate_ids: chunk.source_entity_alternate_ids,
+            source_relation_target_ids: chunk.source_relation_target_ids,
+            source_relation_roles: chunk.source_relation_roles,
             owner: chunk.owner,
             owner_name: chunk.owner_name,
             owner_email: chunk.owner_email,
@@ -229,6 +266,13 @@ export const useGetSearchQuery = (
         chunkCount: file.chunks.length,
         avgScore: file.totalScore / file.chunks.length,
         source_url: file.source_url || "",
+        source_provenance: file.source_provenance,
+        source_entity_id: file.source_entity_id,
+        source_entity_type: file.source_entity_type,
+        source_entity_system: file.source_entity_system,
+        source_entity_alternate_ids: file.source_entity_alternate_ids || [],
+        source_relation_target_ids: file.source_relation_target_ids || [],
+        source_relation_roles: file.source_relation_roles || [],
         owner: file.owner || "",
         owner_name: file.owner_name || "",
         owner_email: file.owner_email || "",

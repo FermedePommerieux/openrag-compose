@@ -124,6 +124,89 @@ async def test_internal_upload_path_is_also_confined_to_shared_documents(tmp_pat
 
 
 @pytest.mark.asyncio
+async def test_upload_path_passes_structured_optional_provenance(tmp_path, monkeypatch):
+    """Keep path API provenance as a typed JSON object, not a string field."""
+    monkeypatch.setattr("config.settings.is_no_auth_mode", lambda: True)
+    documents = tmp_path / "documents"
+    documents.mkdir()
+    source = documents / "message.eml"
+    source.write_text("Message-ID: <message-1@example.test>\n\nHello")
+    monkeypatch.setenv("OPENRAG_DOCUMENTS_PATH", str(documents))
+    monkeypatch.setattr("api.documents._ensure_index_exists", AsyncMock())
+    task_service = MagicMock()
+    task_service.create_upload_task = AsyncMock(return_value="task-prov")
+    user = User(
+        user_id="user-1",
+        email="user@example.com",
+        name="User",
+        jwt_token="Bearer token",
+    )
+
+    body = UploadPathBody.model_validate(
+        {
+            "path": str(source),
+            "source_provenance": {
+                "schema_version": "1.0",
+                "entity": {
+                    "id": "urn:openrag:email:message-1",
+                    "type": "http://www.w3.org/ns/prov#Entity",
+                },
+            },
+        }
+    )
+    response = await upload_path(
+        body,
+        task_service=task_service,
+        session_manager=MagicMock(),
+        user=user,
+    )
+
+    assert response.status_code == 201
+    provenances = task_service.create_upload_task.await_args.kwargs["source_provenances"]
+    assert provenances[str(source.resolve())].entity.id == "urn:openrag:email:message-1"
+
+
+@pytest.mark.asyncio
+async def test_upload_path_rejects_one_provenance_for_a_directory(tmp_path, monkeypatch):
+    monkeypatch.setattr("config.settings.is_no_auth_mode", lambda: True)
+    documents = tmp_path / "documents"
+    documents.mkdir()
+    (documents / "one.txt").write_text("one")
+    (documents / "two.txt").write_text("two")
+    monkeypatch.setenv("OPENRAG_DOCUMENTS_PATH", str(documents))
+    monkeypatch.setattr("api.documents._ensure_index_exists", AsyncMock())
+    task_service = MagicMock()
+    task_service.create_upload_task = AsyncMock(return_value="unexpected")
+
+    response = await upload_path(
+        UploadPathBody.model_validate(
+            {
+                "path": str(documents),
+                "source_provenance": {
+                    "schema_version": "1.0",
+                    "entity": {
+                        "id": "urn:openrag:collection:wrong-scope",
+                        "type": "http://www.w3.org/ns/prov#Collection",
+                    },
+                },
+            }
+        ),
+        task_service=task_service,
+        session_manager=MagicMock(),
+        user=User(
+            user_id="user-1",
+            email="user@example.com",
+            name="User",
+            jwt_token="Bearer token",
+        ),
+    )
+
+    assert response.status_code == 400
+    assert "exactly one file" in json.loads(response.body)["error"]
+    task_service.create_upload_task.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_local_path_ingestion_is_disabled_in_multi_user_mode(tmp_path, monkeypatch):
     """Disable every local path ingestion surface in multi-user mode."""
     documents = tmp_path / "documents"

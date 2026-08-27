@@ -24,6 +24,7 @@ from dependencies import (
     require_api_key_any_permission,
     require_api_key_permission,
 )
+from models.source_provenance import SourceProvenance
 from session_manager import User
 from utils.logging_config import get_logger
 
@@ -45,6 +46,10 @@ class IngestPathV1Body(BaseModel):
     path: str | None = None
     replace_duplicates: bool = False
     archive_source: bool | None = None
+    # One path request may describe one source entity. Directory ingestion is
+    # intentionally rejected when provenance is supplied because one envelope
+    # cannot truthfully identify several files.
+    source_provenance: SourceProvenance | None = None
 
 
 async def ingest_endpoint(
@@ -55,6 +60,7 @@ async def ingest_endpoint(
     replace_duplicates: str = Form("true"),
     create_filter: str = Form("false"),
     source_url: list[str] | None = Form(None),
+    source_provenance: list[str] | None = Form(None),
     archive_source: str | None = Form(None),
     document_service=Depends(get_document_service),
     langflow_file_service=Depends(get_langflow_file_service),
@@ -85,6 +91,7 @@ async def ingest_endpoint(
         # forwarded when this function is called directly (not via form parsing).
         preview="false",
         source_url=source_url if isinstance(source_url, list) else None,
+        source_provenance=(source_provenance if isinstance(source_provenance, list) else None),
         archive_source=archive_source if isinstance(archive_source, str) else None,
         document_service=document_service,
         langflow_file_service=langflow_file_service,
@@ -106,6 +113,7 @@ async def ingest_path_endpoint(
             path=body.path,
             replace_duplicates=body.replace_duplicates,
             archive_sources=body.archive_source,
+            source_provenance=body.source_provenance,
         ),
         task_service=task_service,
         session_manager=session_manager,

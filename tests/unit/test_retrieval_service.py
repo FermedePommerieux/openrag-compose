@@ -215,6 +215,15 @@ async def test_exhaustive_read_paginates_one_immutable_snapshot(monkeypatch):
                 "page": index + 1,
                 "chunk_index": index,
                 "text": text,
+                "source_provenance": {
+                    "schema_version": "1.0",
+                    "entity": {
+                        "id": "urn:openrag:document:large",
+                        "type": "document",
+                    },
+                },
+                "source_entity_id": "urn:openrag:document:large",
+                "source_relation_roles": ["contained_in"],
             },
         }
 
@@ -246,6 +255,9 @@ async def test_exhaustive_read_paginates_one_immutable_snapshot(monkeypatch):
     assert first["coverage"]["covered_chunks"] == 2
     assert first["coverage"]["total_chunks"] == 3
     assert [item["evidence_order"] for item in first["results"]] == [1, 2]
+    assert first["results"][0]["source_entity_id"] == "urn:openrag:document:large"
+    assert first["results"][0]["source_relation_roles"] == ["contained_in"]
+    assert "source_provenance" in client.bodies[0]["_source"]
 
     second = await service.read_document_chunks(
         "document-1",

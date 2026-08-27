@@ -62,6 +62,13 @@ def _extract_sources(item: dict) -> list[dict]:
                 "connector_file_id",
                 "chunk_index",
                 "chunking_strategy",
+                "source_provenance",
+                "source_entity_id",
+                "source_entity_type",
+                "source_entity_system",
+                "source_entity_alternate_ids",
+                "source_relation_target_ids",
+                "source_relation_roles",
             ):
                 if field in result:
                     source[field] = result[field]

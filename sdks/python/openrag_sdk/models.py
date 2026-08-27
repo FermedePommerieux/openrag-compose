@@ -23,6 +23,13 @@ class Source(BaseModel):
     chunk_content_sha256: str | None = None
     document_content_sha256: str | None = None
     evidence_order: int | None = None
+    source_provenance: dict | None = None
+    source_entity_id: str | None = None
+    source_entity_type: str | None = None
+    source_entity_system: str | None = None
+    source_entity_alternate_ids: list[str] = Field(default_factory=list)
+    source_relation_target_ids: list[str] = Field(default_factory=list)
+    source_relation_roles: list[str] = Field(default_factory=list)
 
 
 class EvidenceCoverage(BaseModel):
@@ -91,6 +98,13 @@ class SearchResult(BaseModel):
     chunk_content_sha256: str | None = None
     document_content_sha256: str | None = None
     evidence_order: int | None = None
+    source_provenance: dict | None = None
+    source_entity_id: str | None = None
+    source_entity_type: str | None = None
+    source_entity_system: str | None = None
+    source_entity_alternate_ids: list[str] = Field(default_factory=list)
+    source_relation_target_ids: list[str] = Field(default_factory=list)
+    source_relation_roles: list[str] = Field(default_factory=list)
 
 
 class SearchResponse(BaseModel):

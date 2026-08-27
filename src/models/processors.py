@@ -39,6 +39,7 @@ DUPLICATE_FILENAME_WARNING = "A file with this name already exists."
 
 if TYPE_CHECKING:
     from connectors.base import DocumentACL
+    from models.source_provenance import SourceProvenance
 
 
 def _require_chunking_strategy(config: Any) -> Literal["character", "hybrid"]:
@@ -438,11 +439,11 @@ class TaskProcessor:
         old_hits: dict[str, dict[str, Any]] = {}
         for query in queries:
             for hit in await collect_visible_document_hits(
-                    opensearch_client,
-                    index=get_index_name(),
-                    query=query,
-                    source=True,
-                ):
+                opensearch_client,
+                index=get_index_name(),
+                query=query,
+                source=True,
+            ):
                 old_hits[hit["_id"]] = hit
         stale_ids = set(old_hits) - new_storage_ids
         if stale_ids:
@@ -530,7 +531,9 @@ class TaskProcessor:
                 continue
             item_id = action.get("_id")
             if action.get("error") or int(action.get("status", 500)) not in {200, 201}:
-                failures.append({"id": item_id, "status": action.get("status"), "error": action.get("error")})
+                failures.append(
+                    {"id": item_id, "status": action.get("status"), "error": action.get("error")}
+                )
                 continue
             if item_id:
                 restored_ids.add(str(item_id))
@@ -571,7 +574,9 @@ class TaskProcessor:
             return "skip"
 
         if _require_chunking_strategy(get_openrag_config()) == "hybrid":
-            logger.info("Deferring duplicate deletion until hybrid generation promotion", filename=filename)
+            logger.info(
+                "Deferring duplicate deletion until hybrid generation promotion", filename=filename
+            )
             return "replace_pending"
 
         logger.info(f"Replacing existing document: {filename}")
@@ -734,6 +739,7 @@ class TaskProcessor:
         picture_descriptions: bool | None = None,
         shared: bool = False,
         source_url: str | None = None,
+        source_provenance: "SourceProvenance | None" = None,
         replace_existing_filename: bool = False,
         replace_connector_file_id: bool = False,
         force_reprocess: bool = False,
@@ -751,6 +757,8 @@ class TaskProcessor:
             acl: DocumentACL instance with access control information
             ocr: Per-request OCR override (None = use global config).
             picture_descriptions: Per-request picture descriptions override.
+            source_provenance: Validated W3C PROV-O identity and relations.
+                It is document context and is repeated on every indexed chunk.
         """
         from services.document_service import chunk_texts_for_embeddings
 
@@ -965,6 +973,7 @@ class TaskProcessor:
             file_size=file_size,
             connector_type=connector_type,
             source_url=source_url,
+            source_provenance=source_provenance,
             allowed_users=allowed_users,
             allowed_groups=allowed_groups,
             allowed_principals=allowed_principals,
@@ -1094,6 +1103,7 @@ class DocumentFileProcessor(TaskProcessor):
         session_manager=None,
         settings: dict | None = None,
         source_urls: dict[str, str] | None = None,
+        source_provenances: dict[str, "SourceProvenance"] | None = None,
         archive_sources: bool = False,
         delete_source_after_success: bool = False,
     ):
@@ -1115,6 +1125,7 @@ class DocumentFileProcessor(TaskProcessor):
         )
         self.settings = settings
         self.source_urls = source_urls or {}
+        self.source_provenances = source_provenances or {}
         self.archive_sources = archive_sources
         self.delete_source_after_success = delete_source_after_success
         if self.session_manager is None:
@@ -1162,6 +1173,7 @@ class DocumentFileProcessor(TaskProcessor):
             file_task.document_id = file_hash
 
             source_url = self.source_urls.get(str(item))
+            source_provenance = self.source_provenances.get(str(item))
             processing_path = item
             if self.archive_sources:
                 from services.local_source_service import local_source_url, stage_local_source
@@ -1225,6 +1237,7 @@ class DocumentFileProcessor(TaskProcessor):
                 is_sample_data=self.is_sample_data,
                 acl=acl,
                 source_url=source_url,
+                source_provenance=source_provenance,
                 replace_existing_filename=duplicate_action == "replace_pending",
                 **standard_kwargs,
             )
@@ -1952,6 +1965,7 @@ class LangflowFileProcessor(TaskProcessor):
         connector_type: str = "local",
         docling_polling_service=None,
         source_urls: dict[str, str] | None = None,
+        source_provenances: dict[str, "SourceProvenance"] | None = None,
         archive_sources: bool = False,
     ):
         super().__init__()
@@ -1968,6 +1982,7 @@ class LangflowFileProcessor(TaskProcessor):
         self.connector_type = connector_type
         self.docling_polling_service = docling_polling_service
         self.source_urls = source_urls or {}
+        self.source_provenances = source_provenances or {}
         self.archive_sources = archive_sources
 
     async def process_item(self, upload_task: UploadTask, item: str, file_task: FileTask) -> None:
@@ -2028,6 +2043,7 @@ class LangflowFileProcessor(TaskProcessor):
             file_task.document_id = file_hash
 
             source_url = self.source_urls.get(str(item))
+            source_provenance = self.source_provenances.get(str(item))
             if self.archive_sources:
                 from services.local_source_service import local_source_url, stage_local_source
 
@@ -2059,6 +2075,7 @@ class LangflowFileProcessor(TaskProcessor):
                 file_task=file_task,
                 document_id=file_hash,
                 source_url=source_url,
+                source_provenance=source_provenance,
                 original_filename=original_filename,
                 original_mimetype=original_mimetype,
             )
