@@ -17,6 +17,7 @@ from config.settings import (
     clients,
     get_ingest_callback_url,
 )
+from models.source_provenance import SourceProvenance
 from services.document_index_writer import DocumentIndexContext
 from utils.hash_utils import hash_id
 from utils.logging_config import get_logger
@@ -196,6 +197,7 @@ class LangflowFileService:
         owner_email: str | None,
         connector_type: str | None,
         source_url: str | None,
+        source_provenance: SourceProvenance | None,
         allowed_users: list[str] | None,
         allowed_groups: list[str] | None,
         allowed_principals: list[str] | None,
@@ -229,6 +231,7 @@ class LangflowFileService:
             file_size=file_size,
             connector_type=connector_type,
             source_url=source_url,
+            source_provenance=source_provenance,
             allowed_users=allowed_users or [],
             allowed_groups=allowed_groups or [],
             allowed_principals=allowed_principals or [],
@@ -380,6 +383,7 @@ class LangflowFileService:
         document_id: str | None = None,
         connector_file_id: str | None = None,
         source_url: str | None = None,
+        source_provenance: SourceProvenance | None = None,
         allowed_users: list[str] | None = None,
         allowed_groups: list[str] | None = None,
         allowed_principals: list[str] | None = None,
@@ -501,6 +505,7 @@ class LangflowFileService:
             owner_email=owner_email,
             connector_type=connector_type,
             source_url=source_url,
+            source_provenance=source_provenance,
             allowed_users=allowed_users,
             allowed_groups=allowed_groups,
             allowed_principals=allowed_principals,
@@ -673,6 +678,7 @@ class LangflowFileService:
             owner_email=owner_email,
             connector_type=connector_type,
             source_url=docs_url,
+            source_provenance=None,
             allowed_users=[],
             allowed_groups=[],
             allowed_principals=[],
@@ -922,6 +928,7 @@ class LangflowFileService:
         document_id: str | None = None,
         connector_file_id: str | None = None,
         source_url: str | None = None,
+        source_provenance: SourceProvenance | None = None,
         allowed_users: list[str] | None = None,
         allowed_groups: list[str] | None = None,
         allowed_principals: list[str] | None = None,
@@ -1067,6 +1074,7 @@ class LangflowFileService:
                 document_id=document_id,
                 connector_file_id=connector_file_id,
                 source_url=source_url,
+                source_provenance=source_provenance,
                 selected_embedding_model=selected_embedding,
                 allowed_users=allowed_users,
                 allowed_groups=allowed_groups,

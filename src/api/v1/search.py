@@ -90,6 +90,13 @@ async def search_endpoint(
                 "page": item.get("page"),
                 "mimetype": item.get("mimetype"),
                 "source_url": item.get("source_url"),
+                "source_provenance": item.get("source_provenance"),
+                "source_entity_id": item.get("source_entity_id"),
+                "source_entity_type": item.get("source_entity_type"),
+                "source_entity_system": item.get("source_entity_system"),
+                "source_entity_alternate_ids": item.get("source_entity_alternate_ids", []),
+                "source_relation_target_ids": item.get("source_relation_target_ids", []),
+                "source_relation_roles": item.get("source_relation_roles", []),
             }
             for item in result.get("results", [])
         ]

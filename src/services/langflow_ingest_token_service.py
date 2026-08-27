@@ -12,6 +12,7 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ec, ed448, ed25519, rsa
 
 from config.settings import LANGFLOW_INGEST_CALLBACK_TTL_SECONDS
+from models.source_provenance import parse_source_provenance
 from services.document_index_writer import DocumentIndexContext
 from utils.logging_config import get_logger
 
@@ -157,6 +158,13 @@ class LangflowIngestTokenService:
             "file_size": context.file_size,
             "connector_type": context.connector_type,
             "source_url": context.source_url,
+            # The signed callback context makes provenance backend-authorized;
+            # Langflow cannot replace it with arbitrary chunk metadata.
+            "source_provenance": context.source_provenance.model_dump(
+                mode="json", exclude_none=True
+            )
+            if context.source_provenance is not None
+            else None,
             "allowed_users": list(context.allowed_users),
             "allowed_groups": list(context.allowed_groups),
             "allowed_principals": list(context.allowed_principals),
@@ -189,6 +197,7 @@ class LangflowIngestTokenService:
             file_size=file_size,
             connector_type=payload.get("connector_type"),
             source_url=payload.get("source_url"),
+            source_provenance=parse_source_provenance(payload.get("source_provenance")),
             allowed_users=list(payload.get("allowed_users") or []),
             allowed_groups=list(payload.get("allowed_groups") or []),
             allowed_principals=list(payload.get("allowed_principals") or []),

@@ -32,6 +32,7 @@ TEXT_PARSER_LABEL = "Text Parser"
 
 if TYPE_CHECKING:
     from connectors.base import DocumentACL
+    from models.source_provenance import SourceProvenance
 
 
 def _verification_client(fallback_client):
@@ -446,6 +447,7 @@ class TaskProcessor:
         picture_descriptions: bool | None = None,
         shared: bool = False,
         source_url: str | None = None,
+        source_provenance: "SourceProvenance | None" = None,
     ):
         """
         Standard processing pipeline for non-Langflow processors:
@@ -460,6 +462,8 @@ class TaskProcessor:
             acl: DocumentACL instance with access control information
             ocr: Per-request OCR override (None = use global config).
             picture_descriptions: Per-request picture descriptions override.
+            source_provenance: Validated W3C PROV-O identity and relations.
+                It is document context and is repeated on every indexed chunk.
         """
         from services.document_service import chunk_texts_for_embeddings
 
@@ -663,6 +667,7 @@ class TaskProcessor:
             file_size=file_size,
             connector_type=connector_type,
             source_url=source_url,
+            source_provenance=source_provenance,
             allowed_users=allowed_users,
             allowed_groups=allowed_groups,
             allowed_principals=allowed_principals,
@@ -734,6 +739,7 @@ class DocumentFileProcessor(TaskProcessor):
         session_manager=None,
         settings: dict | None = None,
         source_urls: dict[str, str] | None = None,
+        source_provenances: dict[str, "SourceProvenance"] | None = None,
         archive_sources: bool = False,
         delete_source_after_success: bool = False,
     ):
@@ -755,6 +761,7 @@ class DocumentFileProcessor(TaskProcessor):
         )
         self.settings = settings
         self.source_urls = source_urls or {}
+        self.source_provenances = source_provenances or {}
         self.archive_sources = archive_sources
         self.delete_source_after_success = delete_source_after_success
         if self.session_manager is None:
@@ -819,6 +826,7 @@ class DocumentFileProcessor(TaskProcessor):
             file_task.document_id = file_hash
 
             source_url = self.source_urls.get(str(item))
+            source_provenance = self.source_provenances.get(str(item))
             processing_path = item
             if self.archive_sources:
                 from services.local_source_service import local_source_url, stage_local_source
@@ -882,6 +890,7 @@ class DocumentFileProcessor(TaskProcessor):
                 is_sample_data=self.is_sample_data,
                 acl=acl,
                 source_url=source_url,
+                source_provenance=source_provenance,
                 **standard_kwargs,
             )
 
@@ -1561,6 +1570,7 @@ class LangflowFileProcessor(TaskProcessor):
         docling_polling_service=None,
         preview_mode: bool = False,
         source_urls: dict[str, str] | None = None,
+        source_provenances: dict[str, "SourceProvenance"] | None = None,
         archive_sources: bool = False,
     ):
         super().__init__()
@@ -1578,6 +1588,7 @@ class LangflowFileProcessor(TaskProcessor):
         self.docling_polling_service = docling_polling_service
         self.preview_mode = preview_mode
         self.source_urls = source_urls or {}
+        self.source_provenances = source_provenances or {}
         self.archive_sources = archive_sources
 
     async def process_item(self, upload_task: UploadTask, item: str, file_task: FileTask) -> None:
@@ -1656,6 +1667,7 @@ class LangflowFileProcessor(TaskProcessor):
             file_task.document_id = file_hash
 
             source_url = self.source_urls.get(str(item))
+            source_provenance = self.source_provenances.get(str(item))
             if self.archive_sources:
                 from services.local_source_service import local_source_url, stage_local_source
 
@@ -1687,6 +1699,7 @@ class LangflowFileProcessor(TaskProcessor):
                 file_task=file_task,
                 document_id=file_hash,
                 source_url=source_url,
+                source_provenance=source_provenance,
                 original_filename=original_filename,
                 original_mimetype=original_mimetype,
             )

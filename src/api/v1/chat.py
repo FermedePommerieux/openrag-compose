@@ -46,16 +46,28 @@ def _extract_sources(item: dict) -> list[dict]:
     sources = []
     for result in item.get("results", []):
         if isinstance(result, dict) and "text" in result:
-            sources.append(
-                {
-                    "filename": result.get("filename", ""),
-                    "text": result.get("text", ""),
-                    "score": result.get("score", 0),
-                    "page": result.get("page"),
-                    "mimetype": result.get("mimetype"),
-                    "source_url": result.get("source_url"),
-                }
-            )
+            source = {
+                "filename": result.get("filename", ""),
+                "text": result.get("text", ""),
+                "score": result.get("score", 0),
+                "page": result.get("page"),
+                "mimetype": result.get("mimetype"),
+                "source_url": result.get("source_url"),
+            }
+            # Preserve the exact legacy response shape when provenance was not
+            # supplied. This is an optional extension, not a payload migration.
+            for field_name in (
+                "source_provenance",
+                "source_entity_id",
+                "source_entity_type",
+                "source_entity_system",
+                "source_entity_alternate_ids",
+                "source_relation_target_ids",
+                "source_relation_roles",
+            ):
+                if field_name in result:
+                    source[field_name] = result[field_name]
+            sources.append(source)
     return sources
 
 

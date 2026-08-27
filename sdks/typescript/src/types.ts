@@ -2,8 +2,51 @@
  * OpenRAG SDK types.
  */
 
+// Source provenance follows OpenRAG's bounded W3C PROV-O profile. The role is
+// the application meaning; prov_predicate is the corresponding full PROV URI.
+export type SourceRelationRole =
+  | "attachment_of"
+  | "member_of"
+  | "reply_to"
+  | "references"
+  | "contained_in"
+  | "occurrence_of"
+  | "derived_from"
+  | "primary_source";
+
+export interface SourceEntity {
+  id: string;
+  type: string;
+  source_system?: string | null;
+  label?: string | null;
+  alternate_ids?: string[];
+  generated_at_time?: string | null;
+}
+
+export interface SourceRelation {
+  role: SourceRelationRole;
+  target: SourceEntity;
+  prov_predicate?: string | null;
+}
+
+export interface SourceProvenance {
+  schema_version?: "1.0";
+  entity: SourceEntity;
+  relations?: SourceRelation[];
+}
+
+export interface SourceProvenanceFields {
+  source_provenance?: SourceProvenance | null;
+  source_entity_id?: string | null;
+  source_entity_type?: string | null;
+  source_entity_system?: string | null;
+  source_entity_alternate_ids?: string[];
+  source_relation_target_ids?: string[];
+  source_relation_roles?: string[];
+}
+
 // Chat types
-export interface Source {
+export interface Source extends SourceProvenanceFields {
   filename: string;
   text: string;
   score: number;
@@ -38,7 +81,7 @@ export interface DoneEvent {
 export type StreamEvent = ContentEvent | SourcesEvent | DoneEvent;
 
 // Search types
-export interface SearchResult {
+export interface SearchResult extends SourceProvenanceFields {
   filename: string;
   text: string;
   score: number;

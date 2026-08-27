@@ -23,6 +23,10 @@ from utils.telemetry import Category, MessageId, TelemetryClient
 
 logger = get_logger(__name__)
 
+# Distinguish "no expected value supplied" from an explicitly expected
+# ``None`` in flow migration guards.
+_UNSET = object()
+
 
 class FlowsService:
     def __init__(self) -> None:

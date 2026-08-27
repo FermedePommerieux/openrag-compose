@@ -18,6 +18,7 @@ from dependencies import (
     require_all_permissions,
     require_permission,
 )
+from models.source_provenance import SourceProvenance
 from session_manager import User
 from utils.logging_config import get_logger
 
@@ -28,6 +29,7 @@ class UploadPathBody(BaseModel):
     path: str | None = None
     replace_duplicates: bool = False
     archive_sources: bool | None = None
+    source_provenance: SourceProvenance | None = None
 
 
 class UploadBucketBody(BaseModel):
@@ -118,6 +120,27 @@ async def upload_path(
         body.archive_sources if body.archive_sources is not None else is_source_archiving_enabled()
     )
 
+    source_provenances: dict[str, SourceProvenance] = {}
+    if body.source_provenance is not None:
+        if len(file_paths) != 1:
+            return JSONResponse(
+                {
+                    "error": (
+                        "source_provenance can only be supplied when path resolves "
+                        "to exactly one file"
+                    )
+                },
+                status_code=400,
+            )
+        from models.source_provenance import parse_source_provenance
+
+        try:
+            provenance = parse_source_provenance(body.source_provenance)
+        except ValueError as error:
+            return JSONResponse({"error": f"invalid source_provenance: {error}"}, status_code=400)
+        if provenance is not None:
+            source_provenances[file_paths[0]] = provenance
+
     task_id = await task_service.create_upload_task(
         owner_user_id,
         file_paths,
@@ -126,6 +149,7 @@ async def upload_path(
         owner_email=owner_email,
         replace_duplicates=body.replace_duplicates,
         archive_sources=archive_sources,
+        source_provenances=source_provenances,
         cleanup_files=False,
         delete_source_after_success=True,
     )

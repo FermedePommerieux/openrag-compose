@@ -1,8 +1,9 @@
 """OpenRAG SDK documents client."""
 
 import asyncio
+import json
 from pathlib import Path
-from typing import TYPE_CHECKING, BinaryIO
+from typing import TYPE_CHECKING, Any, BinaryIO
 
 from .exceptions import NotFoundError
 from .models import DeleteDocumentResponse, IngestResponse, IngestTaskStatus
@@ -24,6 +25,7 @@ class DocumentsClient:
         file: BinaryIO | None = None,
         filename: str | None = None,
         source_url: str | None = None,
+        source_provenance: dict[str, Any] | None = None,
         archive_source: bool | None = None,
         wait: bool = True,
         poll_interval: float = 1.0,
@@ -37,6 +39,8 @@ class DocumentsClient:
             file: File-like object to ingest (alternative to file_path).
             filename: Filename to use when providing file object.
             source_url: Optional absolute HTTP(S) URL for the authoritative file.
+            source_provenance: Optional versioned W3C PROV-O profile identifying
+                the source entity and its directed relations.
             archive_source: Override source retention for this upload. When omitted,
                 the workspace Archiving setting applies. Use False with source_url
                 for an authoritative remote source.
@@ -52,16 +56,22 @@ class DocumentsClient:
             ValueError: If neither file_path nor file is provided.
             TimeoutError: If ingestion doesn't complete within timeout.
         """
-        request_data = {}
+        request_data: dict[str, str] = {}
         if source_url:
             request_data["source_url"] = source_url
+        if source_provenance is not None:
+            # Multipart form fields are strings. Compact deterministic JSON is
+            # easier to audit and is validated strictly by the backend.
+            request_data["source_provenance"] = json.dumps(
+                source_provenance, ensure_ascii=False, separators=(",", ":")
+            )
         if archive_source is not None:
             request_data["archive_source"] = str(archive_source).lower()
 
         if file_path is not None:
             path = Path(file_path)
             with open(path, "rb") as f:
-                files = {"file": (path.name, f)}
+                files: dict[str, tuple[str, BinaryIO]] = {"file": (path.name, f)}
                 response = await self._client._request(
                     "POST",
                     "/api/v1/documents/ingest",

@@ -1,0 +1,114 @@
+---
+title: Source provenance
+description: Preserve source identity and document relationships with OpenRAG's W3C PROV-O profile.
+---
+
+# Source provenance
+
+OpenRAG distinguishes a source's location from its provenance:
+
+- `source_url` is the optional URL used to open or download the source;
+- `source_provenance.entity` is its stable identity;
+- `source_provenance.relations` connects it to emails, discussion threads,
+  attachments, archives, or primary sources.
+
+The contract is a strict, versioned subset of
+[W3C PROV-O](https://www.w3.org/TR/prov-o/). It rejects arbitrary predicates
+and unknown fields so provenance remains queryable and safe to index.
+
+The field name is English and its value is always a JSON object:
+`source_provenance`. It is optional on every ingestion endpoint. Omitting it
+preserves the legacy request and response shapes.
+
+```json
+{
+  "schema_version": "1.0",
+  "entity": {
+    "id": "urn:openrag:openarchiver:attachment:attachment-42",
+    "type": "email_attachment",
+    "source_system": "openarchiver",
+    "label": "invoice.pdf"
+  },
+  "relations": [
+    {
+      "role": "attachment_of",
+      "target": {
+        "id": "urn:openrag:openarchiver:email:email-17",
+        "type": "email_message",
+        "source_system": "openarchiver"
+      },
+      "prov_predicate": "http://www.w3.org/ns/prov#wasMemberOf"
+    }
+  ]
+}
+```
+
+## API ingestion
+
+For `POST /api/v1/documents/ingest`, the request is multipart. Multipart fields
+cannot carry a native object, so `source_provenance` contains one compact JSON
+string for each uploaded `file`. Its cardinality follows `source_url`: omit the
+field entirely or provide exactly one value per file.
+
+```bash
+curl -X POST "$OPENRAG_URL/api/v1/documents/ingest" \
+  -H "X-API-Key: $OPENRAG_API_KEY" \
+  -F "file=@invoice.pdf" \
+  -F 'source_provenance={"schema_version":"1.0","entity":{"id":"urn:example:invoice:42","type":"document"}}'
+```
+
+For `POST /api/v1/documents/ingest-path`, the request body is JSON and the
+field remains a native JSON object:
+
+```json
+{
+  "path": "openarchiver/invoice.pdf",
+  "source_provenance": {
+    "schema_version": "1.0",
+    "entity": {
+      "id": "urn:example:invoice:42",
+      "type": "document"
+    }
+  }
+}
+```
+
+A path request containing provenance must resolve to exactly one file. A
+single entity envelope cannot truthfully identify every member of a directory.
+The Python and TypeScript SDKs expose the same optional `source_provenance` /
+`sourceProvenance` argument and perform the multipart serialization.
+
+Validated provenance is signed into the Langflow callback context, copied to
+every indexed chunk, and returned by search, chat-source, and file-listing
+responses. The canonical object preserves relation pairing; flattened fields
+such as `source_entity_id`, `source_relation_target_ids`, and
+`source_relation_roles` support filtering and reverse traversal.
+
+OpenRAG rejects malformed JSON, unknown keys, unsupported schema versions,
+unknown roles, duplicate role/target pairs, and a `prov_predicate` inconsistent
+with its role. The maximum serialized multipart value is 256 KiB; a document
+may contain at most 256 relations and an entity at most 64 alternate IDs.
+
+## Email conversations
+
+Emails remain separate documents so every fact can cite the exact original
+message. A message links to its thread with `member_of`, to its parent messages
+with `reply_to`, preserves its ancestry with `references`, and links to its
+archive source with `contained_in`. Attachments link
+to every originating email with `attachment_of`.
+
+RFC 5322 message identifiers should be included in `alternate_ids`. Connector
+thread identifiers must be namespaced by source because they are not globally
+unique.
+
+Do not build a synthetic document by concatenating an entire discussion. It
+duplicates quoted content, weakens citations, and becomes stale when a message
+arrives later. Retrieval should expand the relation graph and report how many
+messages and attachments were actually read.
+
+## Access control
+
+A relation never transfers permissions. OpenRAG applies the current user's ACL
+or DLS filter independently to every related entity. The absence of a related
+message therefore means "not visible or not indexed", not permission to bypass
+the source boundary.

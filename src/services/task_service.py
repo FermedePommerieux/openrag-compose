@@ -5,7 +5,7 @@ import time
 import traceback
 import uuid
 from collections.abc import Coroutine
-from typing import Any, TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar
 
 from models.tasks import DoclingPhaseStatus, FileTask, IngestionPhase, TaskStatus, UploadTask
 from session_manager import AnonymousUser
@@ -14,6 +14,9 @@ from utils.logging_config import get_logger
 from utils.telemetry import Category, MessageId, TelemetryClient
 
 T = TypeVar("T")
+
+if TYPE_CHECKING:
+    from models.source_provenance import SourceProvenance
 
 logger = get_logger(__name__)
 
@@ -255,6 +258,7 @@ class TaskService:
         settings: dict | None = None,
         preview_mode: bool = False,
         source_urls: dict[str, str] | None = None,
+        source_provenances: dict[str, "SourceProvenance"] | None = None,
         archive_sources: bool = False,
         cleanup_files: bool = True,
         delete_source_after_success: bool = False,
@@ -275,6 +279,7 @@ class TaskService:
             session_manager=self.session_manager,
             settings=settings,
             source_urls=source_urls,
+            source_provenances=source_provenances,
             archive_sources=archive_sources,
             delete_source_after_success=delete_source_after_success,
         )
@@ -306,6 +311,7 @@ class TaskService:
         temp_file_paths: list | None = None,
         preview_mode: bool = False,
         source_urls: dict[str, str] | None = None,
+        source_provenances: dict[str, "SourceProvenance"] | None = None,
         archive_sources: bool = False,
     ) -> str:
         """Create a new upload task for Langflow file processing with upload and ingest"""
@@ -327,6 +333,7 @@ class TaskService:
             docling_polling_service=self.docling_polling_service,
             preview_mode=preview_mode,
             source_urls=source_urls,
+            source_provenances=source_provenances,
             archive_sources=archive_sources,
         )
         return await self.create_custom_task(

@@ -28,6 +28,8 @@ async def create_index_body(
         or OPENAI_DEFAULT_EMBEDDING_MODEL
     )
 
+    from models.source_provenance import source_provenance_mapping
+
     properties = {
         "document_id": {"type": "keyword"},
         "filename": {"type": "keyword"},
@@ -41,6 +43,15 @@ async def create_index_body(
         "embedding_model": {"type": "keyword"},
         "embedding_dimensions": {"type": "integer"},
         "source_url": {"type": "keyword"},
+        # W3C PROV-O source identity and relations. ``source_url`` remains a
+        # mutable access locator and is intentionally not used as identity.
+        "source_provenance": source_provenance_mapping(),
+        "source_entity_id": {"type": "keyword"},
+        "source_entity_type": {"type": "keyword"},
+        "source_entity_system": {"type": "keyword"},
+        "source_entity_alternate_ids": {"type": "keyword"},
+        "source_relation_target_ids": {"type": "keyword"},
+        "source_relation_roles": {"type": "keyword"},
         "connector_type": {"type": "keyword"},
         "ingest_run_id": {"type": "keyword"},
         "owner": {"type": "keyword"},
