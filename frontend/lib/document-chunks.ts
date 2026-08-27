@@ -29,6 +29,13 @@ export interface FetchDocumentChunksOptions {
   fetcher?: FetchLike;
 }
 
+/** Exhaustive reads are source-ordered and legitimately have no relevance score. */
+export function formatDocumentChunkScore(score: unknown): string {
+  return typeof score === "number" && Number.isFinite(score)
+    ? `${score.toFixed(2)} score`
+    : "Source order";
+}
+
 /**
  * Read one immutable document snapshot to completion.
  *

@@ -29,6 +29,7 @@ import {
 } from "@/components/ui/tooltip";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
 import { trackButton } from "@/lib/analytics";
+import { formatDocumentChunkScore } from "@/lib/document-chunks";
 import { formatFileSize, getFileTypeLabel } from "@/lib/file-format";
 import { getDownloadSourceUrl, getSourcePreviewKind } from "@/lib/source-url";
 import type { ChunkResult } from "../../api/queries/useGetSearchQuery";
@@ -245,7 +246,7 @@ function ChunksPageContent() {
                     </div>
 
                     <Badge variant="secondary">
-                      {chunk.score.toFixed(2)} score
+                      {formatDocumentChunkScore(chunk.score)}
                     </Badge>
 
                     {/* TODO: Update to use active toggle */}

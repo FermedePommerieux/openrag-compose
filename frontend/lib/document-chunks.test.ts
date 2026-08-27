@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 const documentChunksModule = "./document-chunks.ts";
-const { fetchAllDocumentChunks } = await import(documentChunksModule);
+const { fetchAllDocumentChunks, formatDocumentChunkScore } = await import(
+  documentChunksModule
+);
 
 function response(body: unknown, status = 200) {
   return {
@@ -72,5 +74,13 @@ describe("fetchAllDocumentChunks", () => {
       }),
       /repeated cursor/,
     );
+  });
+});
+
+describe("formatDocumentChunkScore", () => {
+  it("labels source-ordered exhaustive chunks without a relevance score", () => {
+    assert.equal(formatDocumentChunkScore(null), "Source order");
+    assert.equal(formatDocumentChunkScore(undefined), "Source order");
+    assert.equal(formatDocumentChunkScore(1.234), "1.23 score");
   });
 });
