@@ -138,6 +138,10 @@ maps should be added to the same evidence ledger as they become available.
 - The database retains every leaf chunk. No summary replaces source evidence.
 - Langflow remains an orchestration client. The backend owns pagination,
   snapshot validation, ACL-scoped access and coverage accounting.
+- Human document inspection uses that same contract: the Knowledge detail view
+  resolves one stable `document_id`, follows every cursor, fails closed on an
+  incomplete certificate, and exposes the stored `source_provenance`. A
+  corpus-wide focused or wildcard search is never used as a document reader.
 - Explicit French and English exhaustive formulations are classified by a
   deterministic backend intent detector. This changes retrieval effort only;
   it never broadens ACLs or active filters.

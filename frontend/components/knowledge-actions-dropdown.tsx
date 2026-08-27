@@ -40,6 +40,7 @@ import { SyncConfirmDialog } from "./sync-confirm-dialog";
 import { Button } from "./ui/button";
 
 interface KnowledgeActionsDropdownProps {
+  documentId?: string;
   filename: string;
   mimetype?: string;
   onPreviewSource: () => void;
@@ -55,6 +56,7 @@ const CLOUD_CONNECTOR_TYPES = new Set([
 ]);
 
 export const KnowledgeActionsDropdown = ({
+  documentId,
   filename,
   mimetype,
   onPreviewSource,
@@ -164,7 +166,7 @@ export const KnowledgeActionsDropdown = ({
                 namespace: "knowledge",
               });
               router.push(
-                `/knowledge/chunks?filename=${encodeURIComponent(filename)}`,
+                `/knowledge/chunks?filename=${encodeURIComponent(filename)}${documentId ? `&document_id=${encodeURIComponent(documentId)}` : ""}`,
               );
             }}
           >

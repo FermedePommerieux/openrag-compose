@@ -141,3 +141,11 @@ exhaustive page for every distinct discovered document; the agent follows all
 remaining cursors before claiming completeness. This proves the selected
 document scope only. Whole-archive thematic completeness requires a future
 corpus-snapshot job and is never inferred from ranked discovery.
+
+The Knowledge document-detail page uses the same exhaustive contract. The
+table passes the stable `document_id`; legacy filename-only links first resolve
+that identity through an exact `data_sources` lookup. The frontend then follows
+every authenticated cursor before displaying chunks. It never derives a
+document detail from a bounded corpus-wide `*` result set. The Original
+document panel also renders the stored `source_provenance` JSON so entity and
+relation metadata remain directly inspectable.

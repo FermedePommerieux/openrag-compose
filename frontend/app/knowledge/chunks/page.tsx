@@ -11,7 +11,8 @@ import {
   X,
 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useMemo, useState } from "react";
+import { useGetDocumentChunksQuery } from "@/app/api/queries/useGetDocumentChunksQuery";
 // import { Label } from "@/components/ui/label";
 // import { Checkbox } from "@/components/ui/checkbox";
 import { KnowledgeSearchInput } from "@/components/knowledge-search-input";
@@ -30,21 +31,15 @@ import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
 import { trackButton } from "@/lib/analytics";
 import { formatFileSize, getFileTypeLabel } from "@/lib/file-format";
 import { getDownloadSourceUrl, getSourcePreviewKind } from "@/lib/source-url";
-import {
-  type ChunkResult,
-  EMPTY_SEARCH_RESULT,
-  type File,
-  type SearchResult,
-  useGetSearchQuery,
-} from "../../api/queries/useGetSearchQuery";
+import type { ChunkResult } from "../../api/queries/useGetSearchQuery";
 
 function ChunksPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { parsedFilterData, queryOverride } = useKnowledgeFilter();
   const filename = searchParams.get("filename");
+  const documentId = searchParams.get("document_id");
   const [previewOpen, setPreviewOpen] = useState(false);
-  const [chunks, setChunks] = useState<ChunkResult[]>([]);
   // const [chunksFilteredByQuery, setChunksFilteredByQuery] = useState<
   //   ChunkResult[]
   // >([]);
@@ -53,22 +48,34 @@ function ChunksPageContent() {
     number | null
   >(null);
 
-  // Calculate average chunk length
+  // const [selectAll, setSelectAll] = useState(false);
+
+  const {
+    data: documentData,
+    error: documentError,
+    isError: isDocumentError,
+    isFetching,
+  } = useGetDocumentChunksQuery(
+    filename,
+    documentId,
+    queryOverride,
+    parsedFilterData,
+  );
+  const chunks = useMemo(
+    () =>
+      (documentData?.chunks ?? []).map((chunk: ChunkResult, index: number) => ({
+        ...chunk,
+        index: index + 1,
+      })),
+    [documentData?.chunks],
+  );
+  const fileData = documentData?.file;
   const averageChunkLength = useMemo(
     () =>
       chunks.reduce((acc, chunk) => acc + chunk.text.length, 0) /
         chunks.length || 0,
     [chunks],
   );
-
-  // const [selectAll, setSelectAll] = useState(false);
-
-  // Use the same search query as the knowledge page, but we'll filter for the specific file
-  const { data = EMPTY_SEARCH_RESULT, isFetching } = useGetSearchQuery(
-    queryOverride,
-    parsedFilterData,
-  );
-  const searchFiles = (data as SearchResult).files;
 
   const handleCopy = useCallback((text: string, index: number) => {
     trackButton({
@@ -81,23 +88,10 @@ function ChunksPageContent() {
     setTimeout(() => setActiveCopiedChunkIndex(null), 10 * 1000); // 10 seconds
   }, []);
 
-  const fileData = searchFiles.find((file: File) => file.filename === filename);
   const downloadSourceUrl = getDownloadSourceUrl(fileData?.source_url);
   const previewKind = filename
     ? getSourcePreviewKind(filename, fileData?.mimetype)
     : undefined;
-
-  // Extract chunks for the specific file
-  useEffect(() => {
-    if (!filename || !searchFiles.length) {
-      setChunks([]);
-      return;
-    }
-
-    setChunks(
-      fileData?.chunks?.map((chunk, i) => ({ ...chunk, index: i + 1 })) || [],
-    );
-  }, [searchFiles, filename, fileData?.chunks]);
 
   // Set selected state for all checkboxes when selectAll changes
   // useEffect(() => {
@@ -187,6 +181,19 @@ function ChunksPageContent() {
                 <Loader2 className="h-12 w-12 mx-auto mb-4 text-muted-foreground/50 animate-spin" />
                 <p className="text-lg text-muted-foreground">
                   Loading chunks...
+                </p>
+              </div>
+            </div>
+          ) : isDocumentError ? (
+            <div className="flex items-center justify-center h-64">
+              <div className="text-center max-w-lg">
+                <p className="text-xl font-semibold mb-2">
+                  Unable to load knowledge
+                </p>
+                <p className="text-sm text-secondary-foreground break-words">
+                  {documentError instanceof Error
+                    ? documentError.message
+                    : "Document coverage could not be verified"}
                 </p>
               </div>
             </div>
@@ -316,6 +323,27 @@ function ChunksPageContent() {
                     {fileData?.size ? formatFileSize(fileData.size) : "Unknown"}
                   </dd>
                 </div>
+                <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:px-0 mb-2.5">
+                  <dt className="text-sm/6 text-muted-foreground">
+                    Document ID
+                  </dt>
+                  <dd className="mt-1 text-sm/6 text-gray-800 dark:text-gray-100 sm:col-span-2 sm:mt-0 break-all">
+                    {documentData?.documentId || "Unknown"}
+                  </dd>
+                </div>
+                {fileData?.source_provenance &&
+                  Object.keys(fileData.source_provenance).length > 0 && (
+                    <div className="mt-4">
+                      <dt className="text-sm/6 text-muted-foreground mb-1">
+                        Source provenance
+                      </dt>
+                      <dd>
+                        <pre className="max-h-80 overflow-auto rounded-md border border-border/50 bg-muted p-3 text-xs whitespace-pre-wrap break-all">
+                          {JSON.stringify(fileData.source_provenance, null, 2)}
+                        </pre>
+                      </dd>
+                    </div>
+                  )}
                 {/* <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:px-0 mb-2.5">
               <dt className="text-sm/6 text-muted-foreground">Uploaded</dt>
               <dd className="mt-1 text-sm/6 text-gray-800 dark:text-gray-100 sm:col-span-2 sm:mt-0">

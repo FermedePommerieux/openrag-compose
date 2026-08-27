@@ -41,7 +41,6 @@ export const useListFiles = (
     if (params.mimetype) searchParams.set("mimetype", params.mimetype);
     if (params.owner) searchParams.set("owner", params.owner);
     if (params.search) searchParams.set("search", params.search);
-
     const url = `/api/files?${searchParams.toString()}`;
     const response = await fetch(url);
 
@@ -59,6 +58,7 @@ export const useListFiles = (
     // Map server response to File interface
     const files: File[] = (data.files || []).map(
       (f: Record<string, unknown>) => ({
+        document_id: (f.document_id as string) || undefined,
         filename: (f.filename as string) || "",
         mimetype: (f.mimetype as string) || "",
         chunkCount: (f.chunk_count as number) || 0,

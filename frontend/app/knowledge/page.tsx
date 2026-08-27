@@ -571,7 +571,7 @@ function SearchPage() {
                 router.push(
                   `/knowledge/chunks?filename=${encodeURIComponent(
                     data?.filename ?? "",
-                  )}`,
+                  )}${data?.document_id ? `&document_id=${encodeURIComponent(data.document_id)}` : ""}`,
                 );
               }}
             >
@@ -778,6 +778,7 @@ function SearchPage() {
         if (status !== "active") return null;
         return (
           <KnowledgeActionsDropdown
+            documentId={data?.document_id}
             filename={data?.filename || ""}
             mimetype={data?.mimetype}
             onPreviewSource={() => setPreviewFile(data ?? null)}

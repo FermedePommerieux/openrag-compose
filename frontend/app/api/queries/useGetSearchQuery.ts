@@ -53,6 +53,7 @@ export interface ChunkResult {
 }
 
 export interface File {
+  document_id?: string;
   filename: string;
   mimetype: string;
   chunkCount?: number;
@@ -191,6 +192,7 @@ export const useGetSearchQuery = (
       const fileMap = new Map<
         string,
         {
+          document_id?: string;
           filename: string;
           mimetype: string;
           chunks: ChunkResult[];
@@ -232,6 +234,7 @@ export const useGetSearchQuery = (
           }
         } else {
           fileMap.set(fileIdentity, {
+            document_id: chunk.document_id,
             filename:
               chunk.filename?.trim() ||
               chunk.source_url?.trim() ||
@@ -261,6 +264,7 @@ export const useGetSearchQuery = (
       });
 
       const files: File[] = Array.from(fileMap.values()).map((file) => ({
+        document_id: file.document_id,
         filename: file.filename,
         mimetype: file.mimetype,
         chunkCount: file.chunks.length,
