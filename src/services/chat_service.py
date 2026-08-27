@@ -4,6 +4,7 @@ from typing import Any
 from agent import async_chat, async_chat_stream, async_langflow
 from auth_context import set_auth_context
 from config.settings import LANGFLOW_CHAT_FLOW_ID, LANGFLOW_URL, NUDGES_FLOW_ID, clients
+from utils.langflow_headers import LANGFLOW_QUERY_FILTER_HEADER
 from utils.langflow_utils import extract_source_citation_ids, parse_knowledge_chunks
 from utils.logging_config import get_logger
 
@@ -184,13 +185,11 @@ class ChatService:
             limit=filter_expression["limit"],
             retrieval_intent=filter_expression["retrievalIntent"],
         )
-        # Langflow normalizes ``OPENRAG_QUERY_FILTER`` to the HTTP alias
-        # ``x-langflow-global-var-openrag-query-filter``.  Header names must
-        # therefore use hyphens here; an underscore form is a different key
-        # and silently leaves the component on its focused default.
-        extra_headers["X-Langflow-Global-Var-OPENRAG-QUERY-FILTER"] = json.dumps(
-            filter_expression
-        )
+        # Langflow strips the HTTP prefix and preserves the variable-name
+        # suffix verbatim. Keep this header derived from the exact component
+        # variable name: replacing its underscores with hyphens would create a
+        # different request-scoped variable and silently lose trusted intent.
+        extra_headers[LANGFLOW_QUERY_FILTER_HEADER] = json.dumps(filter_expression)
         logger.info(
             "[CHAT] Langflow chat request", stream=stream, filters_applied=bool(filter_expression)
         )

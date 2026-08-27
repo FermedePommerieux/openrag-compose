@@ -20,6 +20,7 @@ from api.settings.helpers import (
 )
 from config.settings import clients, get_openrag_config
 from services.docling_service import get_docling_preset_configs
+from utils.langflow_headers import LANGFLOW_QUERY_FILTER_VARIABLE
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -38,7 +39,7 @@ LANGFLOW_GENERIC_GLOBAL_VARIABLES = frozenset(
         "FILESIZE",
         "MIMETYPE",
         "OLLAMA_BASE_URL",
-        "OPENRAG_QUERY_FILTER",
+        LANGFLOW_QUERY_FILTER_VARIABLE,
         "OPENRAG_INGEST_RUN_ID",
         "OPENSEARCH_INDEX_NAME",
         "OPENSEARCH_URL",
@@ -80,10 +81,9 @@ def _required_generic_global_values(config) -> dict[str, str]:
         "FILESIZE": "0",
         "MIMETYPE": "None",
         "OLLAMA_BASE_URL": _string_value(getattr(ollama, "endpoint", None)),
-        # Component fields refer to the canonical variable name with
-        # underscores. Langflow maps that name to a hyphenated HTTP header
-        # alias for request-scoped overrides.
-        "OPENRAG_QUERY_FILTER": "{}",
+        # Component fields and the request-scoped HTTP-header suffix use this
+        # exact canonical name. Langflow does not normalize the suffix.
+        LANGFLOW_QUERY_FILTER_VARIABLE: "{}",
         # Correlation identifier overridden for every request. It is routing
         # metadata, not a credential, and Langflow rejects Credential globals
         # when they feed the component's ordinary StrInput.

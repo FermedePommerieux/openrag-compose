@@ -144,12 +144,13 @@ corpus-snapshot job and is never inferred from ranked discovery.
 
 The search context field is a request-scoped Langflow global variable and must
 be configured with `load_from_db: true`. Its canonical component name is
-`OPENRAG_QUERY_FILTER`; Langflow normalizes that name to the HTTP alias
-`X-Langflow-Global-Var-OPENRAG-QUERY-FILTER`. The hyphenated alias is part of
-the execution contract: an underscore-bearing HTTP header is a distinct key
-and would silently lose the trusted exhaustive intent. Retrieval flow version
-8 migrates the exact repository-owned version 7 graph to this corrected
-binding, with the usual backup, verification, and re-lock sequence.
+`OPENRAG_QUERY_FILTER`, so its exact HTTP alias is
+`X-Langflow-Global-Var-OPENRAG_QUERY_FILTER`. Langflow strips the prefix but
+preserves the suffix; a hyphenated suffix is a different variable and silently
+loses the trusted exhaustive intent. Retrieval flow version 8 migrates the
+exact repository-owned version 7 graph to the required `load_from_db` binding.
+The shared header-name constant prevents the backend transport from drifting
+from the component name.
 
 The Knowledge document-detail page uses the same exhaustive contract. The
 table passes the stable `document_id`; legacy filename-only links first resolve

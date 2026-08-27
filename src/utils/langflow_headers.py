@@ -4,6 +4,12 @@ from urllib.parse import quote
 
 from utils.container_utils import transform_localhost_url
 
+LANGFLOW_GLOBAL_VAR_HEADER_PREFIX = "X-Langflow-Global-Var-"
+LANGFLOW_QUERY_FILTER_VARIABLE = "OPENRAG_QUERY_FILTER"
+LANGFLOW_QUERY_FILTER_HEADER = (
+    f"{LANGFLOW_GLOBAL_VAR_HEADER_PREFIX}{LANGFLOW_QUERY_FILTER_VARIABLE}"
+)
+
 
 def ascii_safe_header_value(value) -> str:
     """Return an ASCII-only HTTP header value.

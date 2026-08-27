@@ -69,7 +69,7 @@ async def test_langflow_chat_passes_owner_metadata(monkeypatch):
     headers = mock_langflow_chat.call_args.kwargs["extra_headers"]
     assert headers["X-LANGFLOW-GLOBAL-VAR-JWT"] == "user-jwt"
     assert headers["X-Langflow-Global-Var-OPENRAG_RETRIEVAL_URL"].endswith("/search")
-    assert headers["X-Langflow-Global-Var-OPENRAG-QUERY-FILTER"] == (
+    assert headers["X-Langflow-Global-Var-OPENRAG_QUERY_FILTER"] == (
         '{"filters": {"data_sources": ["archive.pdf"]}, "limit": 4, '
         '"scoreThreshold": 0.25, "retrievalIntent": "focused"}'
     )
@@ -100,7 +100,7 @@ async def test_langflow_chat_marks_explicit_exhaustive_intent(monkeypatch):
     )
 
     headers = mock_langflow_chat.call_args.kwargs["extra_headers"]
-    context = json.loads(headers["X-Langflow-Global-Var-OPENRAG-QUERY-FILTER"])
+    context = json.loads(headers["X-Langflow-Global-Var-OPENRAG_QUERY_FILTER"])
     assert context["retrievalIntent"] == "exhaustive"
 
 

@@ -6,12 +6,19 @@ from api.settings.langflow_sync import (
     _langflow_global_variable_type,
     _required_generic_global_values,
 )
+from utils.langflow_headers import (
+    LANGFLOW_QUERY_FILTER_HEADER,
+    LANGFLOW_QUERY_FILTER_VARIABLE,
+)
 
 
 def test_ingest_run_id_is_generic_routing_metadata():
     assert _langflow_global_variable_type("OPENRAG_INGEST_RUN_ID") == "Generic"
     assert _langflow_global_variable_type("OPENRAG_INGEST_TOKEN") == "Credential"
     assert _langflow_global_variable_type("OPENRAG_QUERY_FILTER") == "Generic"
+    assert LANGFLOW_QUERY_FILTER_HEADER == (
+        f"X-Langflow-Global-Var-{LANGFLOW_QUERY_FILTER_VARIABLE}"
+    )
 
 
 def test_startup_migrates_ingest_run_id_even_before_first_request(monkeypatch):
