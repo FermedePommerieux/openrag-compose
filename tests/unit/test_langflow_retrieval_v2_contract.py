@@ -58,7 +58,8 @@ def test_default_agent_uses_versioned_documentalist_prompt():
     assert "coverage.complete=true" in prompt
     assert "never prove" in prompt
     assert "Explicit exhaustive" in prompt
-    assert "Never answer from focused results" in prompt
+    assert "Never answer from ordinary focused results" in prompt
+    assert "scope=archive_audit_candidates" in prompt
     assert agent["data"]["node"]["template"]["max_iterations"]["value"] == 128
 
 
@@ -330,14 +331,20 @@ def test_explicit_exhaustive_intent_automatically_completes_document_reads(monke
 
         def post(self, _url, *, headers, json):
             calls.append(json)
-            if json["evidenceMode"] == "focused":
+            if json["evidenceMode"] == "audit":
                 return _Response(
                     {
                         "results": [
                             {"document_id": "doc-a", "filename": "a.eml", "text": "ranked"},
                             {"document_id": "doc-a", "filename": "a.eml", "text": "duplicate"},
                             {"document_id": "doc-b", "filename": "b.pdf", "text": "ranked"},
-                        ]
+                        ],
+                        "discovery": {
+                            "mode": "archive_audit",
+                            "candidate_depth_per_lane": 500,
+                            "documents_found": 2,
+                            "semantic_completeness_certified": False,
+                        },
                     }
                 )
             document_id = json["documentId"]
@@ -376,7 +383,7 @@ def test_explicit_exhaustive_intent_automatically_completes_document_reads(monke
     payload = json.loads(content)
 
     assert [call["evidenceMode"] for call in calls] == [
-        "focused",
+        "audit",
         "exhaustive",
         "exhaustive",
         "exhaustive",
@@ -387,7 +394,7 @@ def test_explicit_exhaustive_intent_automatically_completes_document_reads(monke
     assert payload["coverage"] == {
         "mode": "exhaustive",
         "requested": True,
-        "scope": "focused_discovery_documents",
+        "scope": "archive_audit_candidates",
         "complete": True,
         "documents_complete": 2,
         "documents_total": 2,
@@ -418,3 +425,9 @@ def test_explicit_exhaustive_intent_automatically_completes_document_reads(monke
         "doc-b-chunk-2",
     }
     assert all("ranked" not in item["text"] for item in artifact)
+    assert payload["discovery"] == {
+        "mode": "archive_audit",
+        "candidate_depth_per_lane": 500,
+        "documents_found": 2,
+        "semantic_completeness_certified": False,
+    }

@@ -377,8 +377,7 @@ def _versioned_retrieval_v8_flow(*, langflow_normalized: bool = False) -> dict:
     retrieval_node = next(
         node
         for node in flow["data"]["nodes"]
-        if node.get("data", {}).get("node", {}).get("display_name")
-        == "OpenRAG Retrieval v2"
+        if node.get("data", {}).get("node", {}).get("display_name") == "OpenRAG Retrieval v2"
     )
     template = retrieval_node["data"]["node"]["template"]
     template["code"]["value"] = component_code
@@ -432,6 +431,22 @@ def _versioned_retrieval_v11_flow() -> dict:
     )
     flow = json.loads(raw)
     flow["data"]["openrag_retrieval_version"] = 11
+    return flow
+
+
+def _versioned_retrieval_v12_flow() -> dict:
+    """Load the exact compact graph before deep archive-audit discovery."""
+    raw = subprocess.check_output(
+        [
+            "git",
+            "show",
+            "6858763b44f025f583aa2c310016777ebf9ca24b:flows/openrag_agent.json",
+        ],
+        cwd=ROOT,
+        text=True,
+    )
+    flow = json.loads(raw)
+    flow["data"]["openrag_retrieval_version"] = 12
     return flow
 
 
@@ -568,7 +583,7 @@ async def test_migrate_unversioned_retrieval_v2_flow_synchronized_by_gitops():
     assert result["status"] == "migrated"
     assert result["backup_path"] == "/tmp/flow.json"
     assert transport.flow["locked"] is True
-    assert transport.flow["data"]["openrag_retrieval_version"] == 12
+    assert transport.flow["data"]["openrag_retrieval_version"] == 13
     agent_node = next(
         node
         for node in transport.flow["data"]["nodes"]
@@ -603,7 +618,7 @@ async def test_migrate_exact_deployed_v5_graph_to_current_documentalist():
         result = await service.migrate_persisted_retrieval_flow()
 
     assert result["status"] == "migrated"
-    assert transport.flow["data"]["openrag_retrieval_version"] == 12
+    assert transport.flow["data"]["openrag_retrieval_version"] == 13
     assert transport.flow["locked"] is True
 
 
@@ -629,7 +644,7 @@ async def test_migrate_exact_deployed_v6_graph_to_forced_exhaustive_execution():
         result = await service.migrate_persisted_retrieval_flow()
 
     assert result["status"] == "migrated"
-    assert transport.flow["data"]["openrag_retrieval_version"] == 12
+    assert transport.flow["data"]["openrag_retrieval_version"] == 13
     agent_node = next(
         node
         for node in transport.flow["data"]["nodes"]
@@ -661,16 +676,13 @@ async def test_migrate_exact_deployed_v7_graph_to_request_bound_context():
         result = await service.migrate_persisted_retrieval_flow()
 
     assert result["status"] == "migrated"
-    assert transport.flow["data"]["openrag_retrieval_version"] == 12
+    assert transport.flow["data"]["openrag_retrieval_version"] == 13
     retrieval_node = next(
         node
         for node in transport.flow["data"]["nodes"]
         if node.get("data", {}).get("node", {}).get("display_name") == "OpenRAG Retrieval v2"
     )
-    assert (
-        retrieval_node["data"]["node"]["template"]["filter_expression"]["load_from_db"]
-        is True
-    )
+    assert retrieval_node["data"]["node"]["template"]["filter_expression"]["load_from_db"] is True
     assert transport.flow["locked"] is True
 
 
@@ -682,9 +694,7 @@ async def test_migrate_exact_deployed_v8_graph_to_stable_request_binding(
     """Both known v8 states receive the StrInput binding without widening authority."""
     service = FlowsService()
     transport = _RetrievalMigrationTransport()
-    transport.flow = _versioned_retrieval_v8_flow(
-        langflow_normalized=langflow_normalized
-    )
+    transport.flow = _versioned_retrieval_v8_flow(langflow_normalized=langflow_normalized)
 
     with (
         patch(
@@ -701,12 +711,11 @@ async def test_migrate_exact_deployed_v8_graph_to_stable_request_binding(
         result = await service.migrate_persisted_retrieval_flow()
 
     assert result["status"] == "migrated"
-    assert transport.flow["data"]["openrag_retrieval_version"] == 12
+    assert transport.flow["data"]["openrag_retrieval_version"] == 13
     retrieval_node = next(
         node
         for node in transport.flow["data"]["nodes"]
-        if node.get("data", {}).get("node", {}).get("display_name")
-        == "OpenRAG Retrieval v2"
+        if node.get("data", {}).get("node", {}).get("display_name") == "OpenRAG Retrieval v2"
     )
     context_field = retrieval_node["data"]["node"]["template"]["filter_expression"]
     assert context_field["_input_type"] == "StrInput"
@@ -724,9 +733,7 @@ async def test_migrate_exact_deployed_v9_graph_after_shared_source_alignment(
     """Version 10 repairs only the two known v9 states after GitOps alignment."""
     service = FlowsService()
     transport = _RetrievalMigrationTransport()
-    transport.flow = _versioned_retrieval_v9_flow(
-        stale_shared_source=stale_shared_source
-    )
+    transport.flow = _versioned_retrieval_v9_flow(stale_shared_source=stale_shared_source)
 
     with (
         patch(
@@ -743,12 +750,11 @@ async def test_migrate_exact_deployed_v9_graph_after_shared_source_alignment(
         result = await service.migrate_persisted_retrieval_flow()
 
     assert result["status"] == "migrated"
-    assert transport.flow["data"]["openrag_retrieval_version"] == 12
+    assert transport.flow["data"]["openrag_retrieval_version"] == 13
     retrieval_node = next(
         node
         for node in transport.flow["data"]["nodes"]
-        if node.get("data", {}).get("node", {}).get("display_name")
-        == "OpenRAG Retrieval v2"
+        if node.get("data", {}).get("node", {}).get("display_name") == "OpenRAG Retrieval v2"
     )
     context_field = retrieval_node["data"]["node"]["template"]["filter_expression"]
     assert context_field["_input_type"] == "StrInput"
@@ -778,12 +784,11 @@ async def test_migrate_exact_deployed_v10_graph_to_tool_enforced_pagination():
         result = await service.migrate_persisted_retrieval_flow()
 
     assert result["status"] == "migrated"
-    assert transport.flow["data"]["openrag_retrieval_version"] == 12
+    assert transport.flow["data"]["openrag_retrieval_version"] == 13
     retrieval_node = next(
         node
         for node in transport.flow["data"]["nodes"]
-        if node.get("data", {}).get("node", {}).get("display_name")
-        == "OpenRAG Retrieval v2"
+        if node.get("data", {}).get("node", {}).get("display_name") == "OpenRAG Retrieval v2"
     )
     code = retrieval_node["data"]["node"]["template"]["code"]["value"]
     assert "while True:" in code
@@ -813,16 +818,50 @@ async def test_migrate_exact_deployed_v11_graph_to_compact_model_evidence():
         result = await service.migrate_persisted_retrieval_flow()
 
     assert result["status"] == "migrated"
-    assert transport.flow["data"]["openrag_retrieval_version"] == 12
+    assert transport.flow["data"]["openrag_retrieval_version"] == 13
     retrieval_node = next(
         node
         for node in transport.flow["data"]["nodes"]
-        if node.get("data", {}).get("node", {}).get("display_name")
-        == "OpenRAG Retrieval v2"
+        if node.get("data", {}).get("node", {}).get("display_name") == "OpenRAG Retrieval v2"
     )
     code = retrieval_node["data"]["node"]["template"]["code"]["value"]
     assert "def _model_payload" in code
     assert "json.dumps(_model_payload(payload)" in code
+    assert transport.flow["locked"] is True
+
+
+@pytest.mark.asyncio
+async def test_migrate_exact_deployed_v12_graph_to_archive_audit_discovery():
+    """The known v12 graph widens only trusted explicit exhaustive requests."""
+    service = FlowsService()
+    transport = _RetrievalMigrationTransport()
+    transport.flow = _versioned_retrieval_v12_flow()
+
+    with (
+        patch(
+            "services.flows_service.clients.langflow_request",
+            side_effect=transport.__call__,
+        ),
+        patch.object(
+            service,
+            "_backup_flow",
+            new_callable=AsyncMock,
+            return_value="/tmp/flow.json",
+        ),
+    ):
+        result = await service.migrate_persisted_retrieval_flow()
+
+    assert result["status"] == "migrated"
+    assert transport.flow["data"]["openrag_retrieval_version"] == 13
+    retrieval_node = next(
+        node
+        for node in transport.flow["data"]["nodes"]
+        if node.get("data", {}).get("node", {}).get("display_name") == "OpenRAG Retrieval v2"
+    )
+    code = retrieval_node["data"]["node"]["template"]["code"]["value"]
+    assert 'backend_mode = "audit" if' in code
+    assert '"audit"' in code
+    assert '"archive_audit_candidates"' in code
     assert transport.flow["locked"] is True
 
 
@@ -885,7 +924,7 @@ async def test_migrate_role_evidence_prompt_revision():
         result = await service.migrate_persisted_retrieval_flow()
 
     assert result["status"] == "migrated"
-    assert transport.flow["data"]["openrag_retrieval_version"] == 12
+    assert transport.flow["data"]["openrag_retrieval_version"] == 13
 
 
 @pytest.mark.asyncio
@@ -916,7 +955,7 @@ async def test_migrate_evidence_first_prompt_revision():
         result = await service.migrate_persisted_retrieval_flow()
 
     assert result["status"] == "migrated"
-    assert transport.flow["data"]["openrag_retrieval_version"] == 12
+    assert transport.flow["data"]["openrag_retrieval_version"] == 13
 
 
 @pytest.mark.asyncio
@@ -1078,7 +1117,7 @@ async def test_migrate_retrieval_flow_fails_closed_when_lock_cannot_be_restored(
     assert result["error"]
     assert result["lock_error"]
     assert result["flow_id"]
-    assert result["version"] == 12
+    assert result["version"] == 13
     assert result["flow_state"]["known_state"] in {"unlocked", "missing"}
 
 

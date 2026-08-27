@@ -367,6 +367,20 @@ _RETRIEVAL_V11_EXECUTION_RULE = (
     "offer to do it later, or stop because the work is long. Multi-document work is complete "
     "only when every selected document reports `coverage.complete=true`."
 )
+_RETRIEVAL_V13_EXECUTION_RULE = (
+    "Explicit exhaustive, complete, all-items, audit, or verify-everything requests are "
+    "binding. The backend performs deep document-diverse audit discovery, then reads every "
+    "cursor for its candidate documents. Never answer from ordinary focused results, repeat "
+    "completed reads, defer, or stop because the work is long. `coverage.complete=true` "
+    "certifies complete reading of the named scope. `scope=archive_audit_candidates` "
+    "certifies the candidate union, not whole-corpus semantic completeness; state that "
+    "distinction."
+)
+_RETRIEVAL_V12_DOCUMENTALIST_SYSTEM_PROMPT = DEFAULT_SYSTEM_PROMPT.replace(
+    _RETRIEVAL_V13_EXECUTION_RULE,
+    _RETRIEVAL_V11_EXECUTION_RULE,
+    1,
+)
 _RETRIEVAL_V7_EXECUTION_RULE = (
     "Explicit exhaustive, complete, all-items, audit, or verify-everything requests are "
     "binding. Use focused discovery only to find `document_id` values; the backend starts "
@@ -375,7 +389,7 @@ _RETRIEVAL_V7_EXECUTION_RULE = (
     "focused results, ask permission, offer to do it later, or stop because the work is "
     "long. Multi-document work is complete only when every selected document is complete."
 )
-_RETRIEVAL_V7_DOCUMENTALIST_SYSTEM_PROMPT = DEFAULT_SYSTEM_PROMPT.replace(
+_RETRIEVAL_V7_DOCUMENTALIST_SYSTEM_PROMPT = _RETRIEVAL_V12_DOCUMENTALIST_SYSTEM_PROMPT.replace(
     _RETRIEVAL_V11_EXECUTION_RULE,
     _RETRIEVAL_V7_EXECUTION_RULE,
     1,
@@ -395,6 +409,7 @@ _RETRIEVAL_V6_DOCUMENTALIST_SYSTEM_PROMPT = _RETRIEVAL_V7_DOCUMENTALIST_SYSTEM_P
 # Recognize every shipped default so an in-place upgrade can safely synchronize
 # security, query-neutrality, role-evidence, and document-reference rules.
 LEGACY_SYSTEM_PROMPTS = (
+    _RETRIEVAL_V12_DOCUMENTALIST_SYSTEM_PROMPT,
     _RETRIEVAL_V7_DOCUMENTALIST_SYSTEM_PROMPT,
     _RETRIEVAL_V6_DOCUMENTALIST_SYSTEM_PROMPT,
     AgentConfig._v060_system_prompt,

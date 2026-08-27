@@ -31,6 +31,13 @@ logger = get_logger(__name__)
 MAX_EMBED_RETRIES = 3
 EMBED_RETRY_INITIAL_DELAY = 1.0
 EMBED_RETRY_MAX_DELAY = 8.0
+# Explicit exhaustive intent needs document discovery rather than a chat-sized
+# top-k.  This is a candidate depth, not a completeness claim: every lane
+# still reports ranked evidence and the later coverage certificate names the
+# discovered-document scope. OpenSearch 3.x supports substantially deeper
+# hybrid pagination, but 500 keeps one interactive audit bounded while greatly
+# reducing domination by a handful of long PDFs.
+ARCHIVE_AUDIT_CANDIDATE_DEPTH = 500
 
 
 # Variable used to store the active instance for the tool wrapper
@@ -315,7 +322,13 @@ class SearchService:
 
         return [by_cited_identity[item] for item in ordered_ids if item in by_cited_identity]
 
-    async def search_tool(self, query: str, embedding_model: str = None) -> dict[str, Any]:
+    async def search_tool(
+        self,
+        query: str,
+        embedding_model: str = None,
+        *,
+        audit_discovery: bool = False,
+    ) -> dict[str, Any]:
         """
         Use this tool to search for documents relevant to the query.
 
@@ -324,6 +337,8 @@ class SearchService:
             embedding_model (str): Optional override for embedding model.
                                   If not provided, uses the current embedding
                                   model from configuration.
+            audit_discovery: Gather a deep, document-diverse candidate union
+                for a trusted explicit exhaustive request.
 
         Returns:
             dict (str, Any): {"results": [chunks]} on success
@@ -364,6 +379,17 @@ class SearchService:
         filters = get_search_filters() or {}
         limit = get_search_limit()
         score_threshold = get_score_threshold()
+        lexical_candidate_depth = (
+            ARCHIVE_AUDIT_CANDIDATE_DEPTH
+            if audit_discovery
+            else retrieval_settings.lexical_candidates
+        )
+        vector_candidate_depth = (
+            ARCHIVE_AUDIT_CANDIDATE_DEPTH
+            if audit_discovery
+            else retrieval_settings.vector_candidates
+        )
+        result_limit = max(limit, ARCHIVE_AUDIT_CANDIDATE_DEPTH) if audit_discovery else limit
         # Detect wildcard request ("*") to return global facets/stats without semantic search
         is_wildcard_match_all = isinstance(query, str) and query.strip() == "*"
 
@@ -572,22 +598,25 @@ class SearchService:
         else:
             # Build multi-model KNN queries (only for models that successfully
             # produced query embeddings)
-            knn_queries = []
+            knn_queries: list[tuple[str, dict[str, Any]]] = []
             embedding_fields_to_check = []
 
             for model_name, embedding_vector in query_embeddings.items():
                 field_name = get_embedding_field_name(model_name)
                 embedding_fields_to_check.append(field_name)
                 knn_queries.append(
-                    {
-                        "knn": {
-                            field_name: {
-                                "vector": embedding_vector,
-                                "k": 50,
-                                "num_candidates": 1000,
+                    (
+                        model_name,
+                        {
+                            "knn": {
+                                field_name: {
+                                    "vector": embedding_vector,
+                                    "k": vector_candidate_depth,
+                                    "num_candidates": 1000,
+                                }
                             }
-                        }
-                    }
+                        },
+                    )
                 )
 
             # Only require an embedding field when we actually have embeddings
@@ -630,7 +659,7 @@ class SearchService:
                         "dis_max": {
                             "tie_breaker": 0.0,  # Take only the best match, no blending
                             "boost": 0.7,  # 70% weight for semantic search
-                            "queries": knn_queries,
+                            "queries": [knn_query for _model, knn_query in knn_queries],
                         }
                     }
                 )
@@ -713,7 +742,7 @@ class SearchService:
             "query": query_block,
             "aggs": _build_file_facet_aggregations(),
             "_source": source_fields,
-            "size": limit,
+            "size": result_limit,
             # OpenSearch does not guarantee the order of equal-score hits.
             # Keep a persistent chunk identity as the secondary sort so RRF
             # receives stable ranked lanes across equivalent executions.
@@ -761,23 +790,8 @@ class SearchService:
                 },
                 "aggs": _build_file_facet_aggregations(),
                 "_source": source_fields,
-                "size": retrieval_settings.lexical_candidates,
-                "sort": [
-                    {"_score": {"order": "desc"}},
-                    {"chunk_id": {"order": "asc", "missing": "_last"}},
-                ],
-            }
-            vector_body: dict[str, Any] = {
-                "query": {
-                    "bool": {
-                        "should": [{"dis_max": {"tie_breaker": 0.0, "queries": knn_queries}}],
-                        "minimum_should_match": 1,
-                        "filter": all_filters,
-                    }
-                },
-                "aggs": _build_file_facet_aggregations(),
-                "_source": source_fields,
-                "size": retrieval_settings.vector_candidates,
+                "size": lexical_candidate_depth,
+                "track_total_hits": audit_discovery,
                 "sort": [
                     {"_score": {"order": "desc"}},
                     {"chunk_id": {"order": "asc", "missing": "_last"}},
@@ -785,11 +799,32 @@ class SearchService:
             }
             if score_threshold > 0:
                 lexical_body["min_score"] = score_threshold
-                vector_body["min_score"] = score_threshold
             if retrieval_settings.mode in {"hybrid", "lexical"}:
                 retrieval_bodies.append(("lexical", lexical_body))
             if retrieval_settings.mode in {"hybrid", "vector"} and knn_queries:
-                retrieval_bodies.append(("vector", vector_body))
+                # Scores from distinct embedding spaces are not calibrated.
+                # Preserve one ranked lane per model and let RRF converge ranks
+                # instead of comparing them inside a ``dis_max`` query.
+                for model_name, knn_query in knn_queries:
+                    vector_body: dict[str, Any] = {
+                        "query": {
+                            "bool": {
+                                "must": [knn_query],
+                                "filter": all_filters,
+                            }
+                        },
+                        "aggs": _build_file_facet_aggregations(),
+                        "_source": source_fields,
+                        "size": vector_candidate_depth,
+                        "track_total_hits": audit_discovery,
+                        "sort": [
+                            {"_score": {"order": "desc"}},
+                            {"chunk_id": {"order": "asc", "missing": "_last"}},
+                        ],
+                    }
+                    if score_threshold > 0:
+                        vector_body["min_score"] = score_threshold
+                    retrieval_bodies.append((f"vector:{model_name}", vector_body))
             # Vector-only cannot run if every embedding provider is unavailable.
             if not retrieval_bodies:
                 retrieval_bodies.append(("lexical", lexical_body))
@@ -918,16 +953,18 @@ class SearchService:
             raw_hits = reciprocal_rank_fusion(ranked_lists, k=retrieval_settings.rrf_k)
             raw_hits = limit_chunks_per_document(
                 raw_hits,
-                max_chunks_per_document=retrieval_settings.max_chunks_per_document,
+                max_chunks_per_document=(
+                    1 if audit_discovery else retrieval_settings.max_chunks_per_document
+                ),
                 adaptive_max_chunks_per_document=(
-                    retrieval_settings.adaptive_max_chunks_per_document
+                    1 if audit_discovery else retrieval_settings.adaptive_max_chunks_per_document
                 ),
             )
             raw_hits = await HttpReranker(
                 retrieval_settings.reranker_url,
                 retrieval_settings.reranker_timeout,
             ).rerank(query, raw_hits)
-            raw_hits = raw_hits[:limit]
+            raw_hits = raw_hits[:result_limit]
 
         # Transform results (keep for backward compatibility)
         chunks = []
@@ -1000,6 +1037,23 @@ class SearchService:
             "aggregations": aggregations,
             "total": len(chunks),
         }
+        if audit_discovery:
+            response["discovery"] = {
+                "mode": "archive_audit",
+                "candidate_depth_per_lane": ARCHIVE_AUDIT_CANDIDATE_DEPTH,
+                "documents_found": len(
+                    {item.get("document_id") for item in chunks if item.get("document_id")}
+                ),
+                "chunks_returned": len(chunks),
+                "lanes": {
+                    lane: {
+                        "returned": len(lane_result.get("hits", {}).get("hits", [])),
+                        "matching": lane_result.get("hits", {}).get("total"),
+                    }
+                    for lane, lane_result in retrieval_results.items()
+                },
+                "semantic_completeness_certified": False,
+            }
         if failed_models:
             response["warnings"] = [
                 {
@@ -1266,8 +1320,8 @@ class SearchService:
             embedding_model: Embedding model to use for search (defaults to the
                 currently configured embedding model)
         """
-        if evidence_mode not in {"focused", "exhaustive"}:
-            raise ValueError("evidence_mode must be 'focused' or 'exhaustive'")
+        if evidence_mode not in {"focused", "audit", "exhaustive"}:
+            raise ValueError("evidence_mode must be 'focused', 'audit' or 'exhaustive'")
 
         # Set auth context if provided (for direct API calls)
         from config.settings import is_no_auth_mode
@@ -1300,4 +1354,8 @@ class SearchService:
         set_search_limit(limit)
         set_score_threshold(score_threshold)
 
-        return await self.search_tool(query, embedding_model=embedding_model)
+        return await self.search_tool(
+            query,
+            embedding_model=embedding_model,
+            audit_discovery=evidence_mode == "audit",
+        )

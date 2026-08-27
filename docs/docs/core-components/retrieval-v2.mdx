@@ -166,6 +166,23 @@ archive. Corpus-wide thematic certification requires an immutable accessible
 corpus snapshot plus persisted, batch-level relevance decisions before final
 synthesis.
 
+Retrieval flow version 13 gives explicit exhaustive intent a separate
+archive-audit discovery profile. Each lexical or embedding-model lane gathers
+up to 500 candidates, then a diversity pass keeps one discovery hit per
+document before complete source-order reads begin. Ordinary chat remains at
+the administrator-configured candidate depth. The resulting
+`archive_audit_candidates` certificate proves that every document in that
+multi-lane union was read; it explicitly sets semantic corpus completeness to
+false because ranked retrieval cannot prove that no unstated synonym exists.
+
+Each embedding model is an independent RRF lane. OpenRAG no longer compares
+scores from different vector spaces inside one `dis_max` query: BM25 and every
+dense model contribute ranks to the candidate union separately. This permits
+measured multi-model ensembles without duplicating OpenSearch clusters. A
+three-node OpenSearch cluster can improve availability and throughput, but it
+does not by itself change candidate recall, so horizontal scaling must not be
+presented as an exhaustiveness feature.
+
 The search context field is a request-scoped Langflow global variable and must
 be configured with `load_from_db: true`. Its canonical component name is
 `OPENRAG_QUERY_FILTER`, so its exact HTTP alias is

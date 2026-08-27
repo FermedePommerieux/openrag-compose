@@ -351,7 +351,7 @@ async def test_search_service_rrf_fuses_lanes_preserves_provenance_and_emits_deb
         providers=SimpleNamespace(ollama=SimpleNamespace(endpoint="")),
     )
     monkeypatch.setattr(search_service, "get_openrag_config", lambda: config)
-    monkeypatch.setattr(search_service, "get_embedding_model", lambda: "test-model")
+    monkeypatch.setattr(search_service, "get_embedding_model", lambda: "test-model-a")
     monkeypatch.setattr(search_service, "get_index_name", lambda: "documents")
     monkeypatch.setattr(search_service, "get_auth_context", lambda: ("user-1", "jwt"))
 
@@ -383,12 +383,23 @@ async def test_search_service_rrf_fuses_lanes_preserves_provenance_and_emits_deb
             if body.get("size") == 0:
                 return {
                     "aggregations": {
-                        "embedding_models": {"buckets": [{"key": "test-model", "doc_count": 3}]}
+                        "embedding_models": {
+                            "buckets": [
+                                {"key": "test-model-a", "doc_count": 2},
+                                {"key": "test-model-b", "doc_count": 1},
+                            ]
+                        }
                     }
                 }
-            should = body.get("query", {}).get("bool", {}).get("should", [])
-            is_vector = bool(should and "dis_max" in should[0])
-            hits = [shared, vector_same_document] if is_vector else [lexical_only, shared]
+            bool_query = body.get("query", {}).get("bool", {})
+            must = bool_query.get("must", [])
+            if must and "knn" in must[0]:
+                vector_field = next(iter(must[0]["knn"]))
+                hits = (
+                    [shared, vector_same_document] if "test_model_a" in vector_field else [shared]
+                )
+            else:
+                hits = [lexical_only, shared]
             return {"hits": {"hits": hits}, "aggregations": {"data_sources": {"buckets": []}}}
 
     embedding_response = SimpleNamespace(data=[SimpleNamespace(embedding=[0.1, 0.2])])
@@ -402,9 +413,11 @@ async def test_search_service_rrf_fuses_lanes_preserves_provenance_and_emits_deb
         ),
     )
     session_manager = MagicMock()
-    session_manager.get_user_opensearch_client.return_value = OpenSearchClient()
+    opensearch_client = OpenSearchClient()
+    session_manager.get_user_opensearch_client.return_value = opensearch_client
+    service = SearchService(session_manager=session_manager)
 
-    result = await SearchService(session_manager=session_manager).search_tool("shared text")
+    result = await service.search_tool("shared text")
 
     assert [item["chunk_id"] for item in result["results"]] == ["shared", "lexical"]
     assert result["results"][0]["source_url"] == "https://example.test/b"
@@ -414,9 +427,13 @@ async def test_search_service_rrf_fuses_lanes_preserves_provenance_and_emits_deb
     assert result["results"][0]["page"] == 3
     assert result["results"][0]["chunk_index"] == 0
     assert result["results"][0]["chunking_strategy"] == "hybrid"
-    assert result["retrieval_debug"]["lanes"] == {"lexical": 2, "vector": 2}
+    assert result["retrieval_debug"]["lanes"] == {
+        "lexical": 2,
+        "vector:test-model-a": 2,
+        "vector:test-model-b": 1,
+    }
     lane_bodies = [body for body in OpenSearchClient.bodies if body.get("size") != 0]
-    assert len(lane_bodies) == 2
+    assert len(lane_bodies) == 3
     assert all(
         body["sort"]
         == [
@@ -425,3 +442,14 @@ async def test_search_service_rrf_fuses_lanes_preserves_provenance_and_emits_deb
         ]
         for body in lane_bodies
     )
+
+    opensearch_client.bodies.clear()
+    audit_result = await service.search_tool("shared text", audit_discovery=True)
+    audit_bodies = [body for body in opensearch_client.bodies if body.get("size") != 0]
+    assert len(audit_bodies) == 3
+    assert all(body["size"] == 500 for body in audit_bodies)
+    assert all(body["track_total_hits"] is True for body in audit_bodies)
+    assert audit_result["discovery"]["mode"] == "archive_audit"
+    assert audit_result["discovery"]["candidate_depth_per_lane"] == 500
+    assert audit_result["discovery"]["documents_found"] == 2
+    assert audit_result["discovery"]["semantic_completeness_certified"] is False

@@ -65,7 +65,7 @@ def test_default_agent_prompt_requires_document_wide_role_evidence():
     assert "expose that limitation" in DEFAULT_SYSTEM_PROMPT
     assert "never guess" in DEFAULT_SYSTEM_PROMPT
     assert len(DEFAULT_SYSTEM_PROMPT) <= 5000
-    assert len(LEGACY_SYSTEM_PROMPTS) == 8
+    assert len(LEGACY_SYSTEM_PROMPTS) == 9
     previous_documentalist = next(
         prompt for prompt in LEGACY_SYSTEM_PROMPTS if "For exhaustive work" in prompt
     )

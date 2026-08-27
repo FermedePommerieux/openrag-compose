@@ -148,7 +148,14 @@ def _model_payload(payload: dict[str, Any]) -> dict[str, Any]:
     if isinstance(discovery, dict):
         compact["discovery"] = {
             key: discovery[key]
-            for key in ("mode", "documents_found")
+            for key in (
+                "mode",
+                "documents_found",
+                "candidate_depth_per_lane",
+                "chunks_returned",
+                "lanes",
+                "semantic_completeness_certified",
+            )
             if key in discovery
         }
     for field in ("error", "warning", "retrieval_strategy", "retrieval_mode"):
@@ -335,18 +342,21 @@ class OpenRAGBackendRetrievalComponent(LCToolComponent):
                     break
                 seen_cursors.add(next_cursor)
                 cursor = next_cursor
-            document_coverages.append(
-                {**final_coverage, "filename": document["filename"]}
-            )
+            document_coverages.append({**final_coverage, "filename": document["filename"]})
 
         documents_complete = sum(
             coverage.get("complete") is True for coverage in document_coverages
         )
+        backend_discovery = focused_payload.get("discovery")
+        if not isinstance(backend_discovery, dict):
+            backend_discovery = {"mode": "focused"}
+        discovery_mode = _as_text(backend_discovery.get("mode")) or "focused"
         return {
             "results": exhaustive_results,
             "total": len(exhaustive_results),
             "discovery": {
-                "mode": "focused",
+                **backend_discovery,
+                "mode": discovery_mode,
                 "document_ids": [document["document_id"] for document in discovered],
                 "documents_found": len(discovered),
             },
@@ -355,7 +365,11 @@ class OpenRAGBackendRetrievalComponent(LCToolComponent):
                 "requested": True,
                 # This certificate deliberately names the actual candidate
                 # scope. It must never be presented as whole-corpus coverage.
-                "scope": "focused_discovery_documents",
+                "scope": (
+                    "archive_audit_candidates"
+                    if discovery_mode == "archive_audit"
+                    else "focused_discovery_documents"
+                ),
                 "complete": bool(document_coverages)
                 and documents_complete == len(document_coverages),
                 "documents_complete": documents_complete,
@@ -393,6 +407,10 @@ class OpenRAGBackendRetrievalComponent(LCToolComponent):
             headers["Authorization"] = jwt if jwt.lower().startswith("bearer ") else f"Bearer {jwt}"
 
         filters, limit, score_threshold, retrieval_intent = self._request_context()
+        # Only trusted request context can enable the deeper archive-audit
+        # discovery path. The public tool argument remains focused/exhaustive,
+        # so a model cannot independently widen its authenticated search scope.
+        backend_mode = "audit" if mode == "focused" and retrieval_intent == "exhaustive" else mode
         with httpx.Client(timeout=30.0) as client:
             response = client.post(
                 url,
@@ -402,7 +420,7 @@ class OpenRAGBackendRetrievalComponent(LCToolComponent):
                     "filters": filters,
                     "limit": limit,
                     "scoreThreshold": score_threshold,
-                    "evidenceMode": mode,
+                    "evidenceMode": backend_mode,
                     "documentId": resolved_document_id or None,
                     "cursor": _as_text(cursor),
                     "batchSize": min(50, max(1, int(batch_size))),
@@ -466,11 +484,13 @@ class OpenRAGBackendRetrievalComponent(LCToolComponent):
                 "add a candidate answer for the attribute being looked up. Use returned "
                 "chunk_id values for inline citations. Use evidence_mode='focused' for "
                 "ranked discovery. Explicit exhaustive/list-all/compare/audit intent is "
-                "marked by the backend: a focused call then automatically follows every "
-                "authenticated cursor for every discovered document. Do not repeat those "
+                "marked by the backend: a deep document-diverse OpenSearch audit discovery "
+                "then automatically follows every authenticated cursor for every discovered "
+                "document. Do not repeat those "
                 "reads when coverage.complete=true. Never answer an "
-                "explicit exhaustive request from focused results alone and never claim "
-                "whole-corpus coverage for scope='focused_discovery_documents'."
+                "explicit exhaustive request from focused results alone. Neither "
+                "scope='focused_discovery_documents' nor scope='archive_audit_candidates' "
+                "proves semantic completeness for the whole corpus."
             ),
             response_format="content_and_artifact",
         )
