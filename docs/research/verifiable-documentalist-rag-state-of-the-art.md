@@ -118,3 +118,10 @@ sum all constituent calls—query embeddings, bounded evidence readers,
 coordinators, validators and the final agent response. Unknown pricing is
 reported as unknown; it is never inferred. See
 [ADR 0007](../adr/0007-durable-chat-audits-and-cost-ledger.md).
+
+Semantic exhaustiveness is not claimed from a nearest-neighbour engine. A weak
+vector tail is always available and its scores are similarities, not calibrated
+probabilities. Archive audits therefore exhaust precise lexical predicates and
+verified provenance relations, but bound semantic discovery to the production-
+calibrated useful neighbourhood. See
+[ADR 0008](../adr/0008-relevance-bounded-archive-audits.md).

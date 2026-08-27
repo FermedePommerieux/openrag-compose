@@ -38,11 +38,17 @@ EMBED_RETRY_MAX_DELAY = 8.0
 # snapshot until the result set is exhausted. Scroll is required here because
 # the OpenSearch Security plugin rejects PIT creation under document-level
 # security. Vector search is a ranked nearest-neighbour operation and cannot
-# prove semantic completeness; its depth is expanded adaptively and any engine
-# ceiling is disclosed.
+# prove semantic completeness. Its empirically bounded depth and the resulting
+# unsearched tail are disclosed rather than mislabelled as exhaustive.
 ARCHIVE_AUDIT_PAGE_SIZE = 500
 ARCHIVE_AUDIT_VECTOR_INITIAL_DEPTH = 100
-ARCHIVE_AUDIT_VECTOR_MAX_DEPTH = 10_000
+# Empirical calibration on the production archive (75,393 chunks) showed that
+# k=25 and k=50 contributed respectively zero and one semantic-only document,
+# while k=100 contributed eight. Beyond k=100 the curve became mostly noise:
+# k=250 returned 101 documents but only 12 overlapped the independently
+# exhausted lexical set. Exhaustive truth means exhausting plausible evidence,
+# not paying an LLM to read the long tail of nearest-neighbour noise.
+ARCHIVE_AUDIT_VECTOR_MAX_DEPTH = 100
 ARCHIVE_AUDIT_VECTOR_STABILITY_ROUNDS = 2
 ARCHIVE_AUDIT_EXPANSION_CONCURRENCY = 4
 ARCHIVE_AUDIT_DOCUMENT_READ_CONCURRENCY = 4
@@ -424,7 +430,15 @@ class SearchService:
         if self.audit_reasoning_service is not None:
             return self.audit_reasoning_service, None
         agent_config = getattr(openrag_config, "agent", None)
-        reasoning_model = str(getattr(agent_config, "llm_model", "") or "").strip()
+        # High-volume audit classification and map/reduce should not inherit an
+        # expensive flagship merely because the final chat uses one. Operators
+        # can use Luna for the bounded evidence workers while preserving Sol
+        # for the final user-facing synthesis.
+        reasoning_model = str(
+            os.getenv("OPENRAG_AUDIT_REASONING_MODEL")
+            or getattr(agent_config, "llm_model", "")
+            or ""
+        ).strip()
         if not reasoning_model:
             return None, "model_not_configured"
         try:
@@ -1294,7 +1308,14 @@ class SearchService:
         async def execute_vector_audit(
             body: dict[str, Any], label: str
         ) -> tuple[dict[str, Any], dict[str, Any]]:
-            """Deepen one semantic lane and disclose convergence or truncation."""
+            """Search the empirically useful semantic neighbourhood only.
+
+            Vector scores are similarities, not calibrated probabilities. The
+            bounded k-NN lane is therefore treated as candidate generation and
+            later calibrated against independently supported lexical matches.
+            Returning the entire weak-neighbour tail would be expensive without
+            making the audit more truthful.
+            """
             model_name = label.removeprefix("vector:")
             corpus_depth = available_model_counts.get(model_name, ARCHIVE_AUDIT_VECTOR_MAX_DEPTH)
             maximum_depth = min(max(1, corpus_depth), ARCHIVE_AUDIT_VECTOR_MAX_DEPTH)
@@ -1358,7 +1379,8 @@ class SearchService:
                 "engine_exhausted": engine_exhausted,
                 "converged": converged,
                 "semantic_completeness_certified": False,
-                "truncated": not engine_exhausted and not converged,
+                "truncated": not engine_exhausted,
+                "selection_scope": "bounded_plausible_neighbourhood",
             }
 
         async def execute_provenance_audit(
@@ -1682,7 +1704,7 @@ class SearchService:
                 audit_progress_service.update(
                     audit_progress_id,
                     phase="candidate_review",
-                    message="Reviewing every candidate without excluding uncertain documents",
+                    message="Reviewing plausible candidates and retaining uncertainty",
                     counters={
                         "candidate_documents": len(_hits_by_document(raw_hits)),
                     },

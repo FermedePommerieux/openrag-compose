@@ -150,6 +150,9 @@ stringData:
     {{- if .Values.appConfig.agent.llmModel }}
     LLM_MODEL={{ .Values.appConfig.agent.llmModel | quote }}
     {{- end }}
+    {{- if .Values.appConfig.agent.auditReasoningModel }}
+    OPENRAG_AUDIT_REASONING_MODEL={{ .Values.appConfig.agent.auditReasoningModel | quote }}
+    {{- end }}
     {{- if .Values.appConfig.knowledge.embeddingProvider }}
     EMBEDDING_PROVIDER={{ .Values.appConfig.knowledge.embeddingProvider | quote }}
     {{- end }}

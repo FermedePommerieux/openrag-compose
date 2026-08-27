@@ -61,6 +61,19 @@ until URL validation is hardened against unsafe network destinations.
 `retrieval_debug` also remains out of the public UI while its response and
 logging contract is kept internal.
 
+Explicit archive audits exhaust lexical predicates and verified PROV-O graph
+links, but semantic k-NN is deliberately bounded to the empirically useful
+`k=100` neighbourhood. Vector similarity is not a probability and weak nearest
+neighbours exist even for unrelated documents. The response therefore reports
+the semantic tail as unsearched rather than paying an LLM to read it or
+claiming semantic completeness. Grounded `irrelevant` decisions are excluded;
+failed, malformed, missing and `uncertain` decisions remain fail-open.
+
+Set `OPENRAG_AUDIT_REASONING_MODEL` to use a lower-cost model for candidate
+classification and hierarchical evidence work without changing the final chat
+model. Production evaluation should compare recall and citation validity on a
+fixed audit set before promoting a cheaper model.
+
 Equal-score candidates are secondarily sorted by the persisted keyword
 `chunk_id`, rather than OpenSearch metadata `_id`, which is not sortable. New
 chunks have this field with doc values. Older chunks without it remain

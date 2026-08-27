@@ -15,11 +15,39 @@ from services.retrieval_service import (
     reciprocal_rank_fusion,
 )
 from services.search_service import (
+    ARCHIVE_AUDIT_VECTOR_INITIAL_DEPTH,
+    ARCHIVE_AUDIT_VECTOR_MAX_DEPTH,
     SearchService,
     _calibrate_audit_vector_lanes,
     _propagate_provenance_paths,
     _provenance_relation_paths,
 )
+
+
+def test_archive_audit_vector_depth_is_bounded_to_empirical_neighbourhood():
+    assert ARCHIVE_AUDIT_VECTOR_INITIAL_DEPTH == 100
+    assert ARCHIVE_AUDIT_VECTOR_MAX_DEPTH == 100
+
+
+def test_archive_audit_reasoner_can_be_cheaper_than_final_agent(monkeypatch):
+    from services import search_service
+
+    monkeypatch.setenv("OPENRAG_AUDIT_REASONING_MODEL", "gpt-5.6-luna")
+    monkeypatch.setattr(
+        search_service,
+        "clients",
+        SimpleNamespace(patched_llm_client=SimpleNamespace()),
+    )
+    service = object.__new__(SearchService)
+    service.audit_reasoning_service = None
+
+    reasoner, error = service._resolve_audit_reasoner(
+        SimpleNamespace(agent=SimpleNamespace(llm_model="gpt-5.6-sol"))
+    )
+
+    assert error is None
+    assert reasoner is not None
+    assert reasoner.model == "gpt-5.6-luna"
 
 
 @pytest.mark.parametrize(
@@ -622,8 +650,8 @@ async def test_search_service_rrf_fuses_lanes_preserves_provenance_and_emits_deb
                     "aggregations": {
                         "embedding_models": {
                             "buckets": [
-                                {"key": "test-model-a", "doc_count": 2},
-                                {"key": "test-model-b", "doc_count": 1},
+                                {"key": "test-model-a", "doc_count": 1_000},
+                                {"key": "test-model-b", "doc_count": 1_000},
                             ]
                         }
                     }
@@ -743,7 +771,7 @@ async def test_search_service_rrf_fuses_lanes_preserves_provenance_and_emits_deb
         lexical_audit_body["query"]["bool"]["should"][0]["multi_match"]["minimum_should_match"]
         == "2<50%"
     )
-    assert sorted(body["size"] for body in audit_bodies if body["size"] != 500) == [1, 2]
+    assert sorted(body["size"] for body in audit_bodies if body["size"] != 500) == [100, 100]
     assert opensearch_client.scroll_bodies == [
         {"scroll_id": "audit-scroll-1", "scroll": "5m"},
         {"scroll_id": "audit-scroll-1", "scroll": "5m"},

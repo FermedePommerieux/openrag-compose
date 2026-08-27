@@ -597,6 +597,8 @@ appConfig:
   agent:
     llmModel: "claude-sonnet-4-5-20250929"
     llmProvider: "anthropic"
+    # Optional cheaper model for bounded audit workers; final chat stays on llmModel.
+    auditReasoningModel: ""
     # System prompt can be customized here
     systemPrompt: ""                      # Leave empty to use default
   knowledge:

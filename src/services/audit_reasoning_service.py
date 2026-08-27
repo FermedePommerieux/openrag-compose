@@ -319,7 +319,7 @@ class AuditReasoningService:
         *,
         audit_progress_id: str | None = None,
     ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-        """Review every candidate in bounded transport batches, never a top-k."""
+        """Exclude grounded noise while retaining every uncertain candidate."""
         if not hits:
             return [], {
                 "available": True,
@@ -345,7 +345,7 @@ class AuditReasoningService:
         audit_progress_service.update(
             audit_progress_id,
             phase="candidate_review",
-            message="Reviewing every candidate without excluding uncertain documents",
+            message="Reviewing plausible candidates and retaining uncertainty",
             counters={
                 "review_batches_total": len(batches),
                 "review_batches_complete": 0,
@@ -367,7 +367,7 @@ class AuditReasoningService:
                             audit_progress_id,
                             phase="candidate_review",
                             message=(
-                                "Reviewing every candidate without excluding uncertain documents"
+                                "Reviewing plausible candidates and retaining uncertainty"
                             ),
                             counters={
                                 "review_batches_total": len(batches),
@@ -439,7 +439,12 @@ class AuditReasoningService:
             source["retrieval_relevance_decision"] = decision.decision
             source["retrieval_relevance_reason"] = decision.reason
             source["retrieval_supporting_document_ids"] = decision.supporting_document_ids
-            retained.append(hit)
+            # A valid, evidence-grounded irrelevant decision is the point of
+            # this gate: do not pay two readers and several coordinators to
+            # process known noise. Missing, malformed, failed or uncertain
+            # decisions remain fail-open and are still read in full.
+            if decision.decision != "irrelevant":
+                retained.append(hit)
 
         return retained, {
             "available": failed_batches < len(batches),
@@ -450,7 +455,7 @@ class AuditReasoningService:
             "missing_decisions": missing_decisions,
             "reviewed_documents": len(hits),
             "retained_documents": len(retained),
-            "excluded_documents": 0,
+            "excluded_documents": counts["irrelevant"],
             **counts,
         }
 

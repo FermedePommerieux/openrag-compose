@@ -52,7 +52,7 @@ async def test_audit_query_expansion_keeps_only_grounded_unique_variants():
 
 
 @pytest.mark.asyncio
-async def test_contextual_review_labels_noise_but_retains_it_for_full_read():
+async def test_contextual_review_excludes_grounded_noise_but_retains_uncertainty():
     response = SimpleNamespace(
         output_text=json.dumps(
             {
@@ -96,7 +96,6 @@ async def test_contextual_review_labels_noise_but_retains_it_for_full_read():
 
     assert [hit["_source"]["document_id"] for hit in retained] == [
         "relevant",
-        "noise",
         "missing",
     ]
     assert missing["_source"]["retrieval_relevance_decision"] == "uncertain"
@@ -108,8 +107,8 @@ async def test_contextual_review_labels_noise_but_retains_it_for_full_read():
         "invalid_decisions": 0,
         "missing_decisions": 1,
         "reviewed_documents": 3,
-        "retained_documents": 3,
-        "excluded_documents": 0,
+        "retained_documents": 2,
+        "excluded_documents": 1,
         "relevant": 1,
         "uncertain": 1,
         "irrelevant": 1,
