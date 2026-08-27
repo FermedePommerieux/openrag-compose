@@ -74,7 +74,51 @@ class TokenUsageService:
                 "pricing_basis": "OpenAI public API rates verified 2026-08-27",
                 "models": {},
                 "calls": 0,
+                "application_cache": {
+                    "hits": 0,
+                    "avoided_provider_calls": 0,
+                    "avoided_input_tokens": 0,
+                    "avoided_output_tokens": 0,
+                    "avoided_total_tokens": 0,
+                    "avoided_cost_usd": 0.0,
+                },
             }
+
+    def record_application_cache_hit(
+        self,
+        model: str,
+        cached_usage: Any,
+        *,
+        audit_id: str | None = None,
+    ) -> None:
+        """Report a provider call avoided by OpenRAG's exact response cache.
+
+        Avoided usage is kept separate from billed usage: actual request cost
+        remains zero for the hit, while the UI can still explain the saving.
+        """
+        effective_id = str(audit_id or _audit_id.get() or "").strip()
+        if not effective_id:
+            return
+        usage = cached_usage or {}
+        input_tokens = int(_value(usage, "input_tokens", 0) or 0)
+        output_tokens = int(_value(usage, "output_tokens", 0) or 0)
+        total_tokens = int(_value(usage, "total_tokens", input_tokens + output_tokens) or 0)
+        avoided_cost = _value(usage, "cost_usd", 0.0)
+
+        with self._lock:
+            if effective_id not in self._items:
+                self.reset(effective_id)
+            cache = self._items[effective_id]["application_cache"]
+            cache["hits"] += 1
+            cache["avoided_provider_calls"] += 1
+            cache["avoided_input_tokens"] += input_tokens
+            cache["avoided_output_tokens"] += output_tokens
+            cache["avoided_total_tokens"] += total_tokens
+            if isinstance(avoided_cost, (int, float)):
+                cache["avoided_cost_usd"] = round(
+                    float(cache["avoided_cost_usd"]) + float(avoided_cost),
+                    8,
+                )
 
     def record_response(self, model: str, response: Any, *, audit_id: str | None = None) -> None:
         usage = _usage_from_response(response)

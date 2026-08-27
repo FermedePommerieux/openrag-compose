@@ -4,6 +4,7 @@ Importing this package registers every model on SQLModel.metadata so
 Alembic autogenerate can see them.
 """
 
+from db.models.ai_response_cache import AIResponseCache
 from db.models.api_key import ApiKey
 from db.models.audit_log import AuditLog
 from db.models.chat_audit_job import ChatAuditJob
@@ -20,6 +21,7 @@ from db.models.workspace_config import WorkspaceConfig
 
 __all__ = [
     "ApiKey",
+    "AIResponseCache",
     "AuditLog",
     "ChatAuditJob",
     "Conversation",

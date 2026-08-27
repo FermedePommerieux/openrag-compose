@@ -12,6 +12,14 @@ export interface TokenUsage {
   cost_complete?: boolean;
   pricing_basis?: string;
   calls?: number;
+  application_cache?: {
+    hits: number;
+    avoided_provider_calls: number;
+    avoided_input_tokens: number;
+    avoided_output_tokens: number;
+    avoided_total_tokens: number;
+    avoided_cost_usd: number;
+  };
   models?: Record<
     string,
     {

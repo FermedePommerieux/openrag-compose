@@ -425,6 +425,8 @@ class SearchService:
     def _resolve_audit_reasoner(
         self,
         openrag_config: Any,
+        *,
+        cache_scope: str | None = None,
     ) -> tuple[AuditReasoningService | None, str | None]:
         """Resolve the configured audit model without making retrieval fragile."""
         if self.audit_reasoning_service is not None:
@@ -442,7 +444,14 @@ class SearchService:
         if not reasoning_model:
             return None, "model_not_configured"
         try:
-            return AuditReasoningService(clients.patched_llm_client, reasoning_model), None
+            return (
+                AuditReasoningService(
+                    clients.patched_llm_client,
+                    reasoning_model,
+                    cache_scope=cache_scope,
+                ),
+                None,
+            )
         except Exception as error:
             logger.warning(
                 "Archive audit reasoning client is unavailable",
@@ -1140,7 +1149,10 @@ class SearchService:
         audit_reasoner: AuditReasoningService | None = None
         audit_reasoner_error: str | None = None
         if audit_discovery:
-            audit_reasoner, audit_reasoner_error = self._resolve_audit_reasoner(openrag_config)
+            audit_reasoner, audit_reasoner_error = self._resolve_audit_reasoner(
+                openrag_config,
+                cache_scope=user_id,
+            )
 
         from opensearchpy.exceptions import RequestError
 
@@ -2262,7 +2274,10 @@ class SearchService:
         }
 
         openrag_config = get_openrag_config()
-        reasoner, reasoner_error = self._resolve_audit_reasoner(openrag_config)
+        reasoner, reasoner_error = self._resolve_audit_reasoner(
+            openrag_config,
+            cache_scope=user_id,
+        )
         if not read_complete:
             synthesis: dict[str, Any] = {
                 "schema_version": "1.0",

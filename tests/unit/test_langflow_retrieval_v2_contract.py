@@ -63,6 +63,26 @@ def test_default_agent_uses_versioned_documentalist_prompt():
     assert agent["data"]["node"]["template"]["max_iterations"]["value"] == 128
 
 
+def test_gpt_56_tool_agent_uses_openai_responses_transport():
+    """GPT-5.6 reasoning plus function tools must not use Chat Completions."""
+    flow = json.loads(FLOW_PATH.read_text(encoding="utf-8"))
+    agent = next(
+        node
+        for node in flow["data"]["nodes"]
+        if node["data"]["node"].get("display_name") == "Agent"
+    )
+    embedded = agent["data"]["node"]["template"]["code"]["value"]
+    source = (ROOT / "flows" / "components" / "openrag_agent.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert embedded == source
+    assert 'provider == "openai"' in source
+    assert 'model_name.startswith("gpt-5.6")' in source
+    assert 'overrides["use_responses_api"] = True' in source
+    assert "reasoning_effort\"] = \"none\"" not in source
+
+
 def test_backend_retrieval_tool_is_thin_and_embedded_verbatim():
     flow = json.loads(FLOW_PATH.read_text(encoding="utf-8"))
     retrieval = next(

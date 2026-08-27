@@ -8,6 +8,26 @@ from services import audit_reasoning_service as audit_module
 from services.audit_reasoning_service import AuditReasoningService
 
 
+class _MemoryStructuredCache:
+    def __init__(self):
+        self.items: dict[str, dict] = {}
+
+    def build_key(self, *, scope, model, schema_name, schema, prompt, namespace=None):
+        import hashlib
+
+        value = json.dumps(
+            [scope, model, schema_name, schema, prompt, namespace],
+            sort_keys=True,
+        )
+        return hashlib.sha256(value.encode()).hexdigest(), hashlib.sha256(scope.encode()).hexdigest()
+
+    async def get(self, cache_key):
+        return self.items.get(cache_key)
+
+    async def put(self, *, cache_key, response, usage, **_kwargs):
+        self.items[cache_key] = {"response": response, "usage": usage or {}}
+
+
 def _hit(document_id: str, text: str) -> dict:
     return {
         "_id": document_id,
@@ -49,6 +69,57 @@ async def test_audit_query_expansion_keeps_only_grounded_unique_variants():
     assert request["text"]["format"]["type"] == "json_schema"
     assert request["text"]["format"]["strict"] is True
     assert request["timeout"] == 1_200.0
+
+
+@pytest.mark.asyncio
+async def test_identical_structured_audit_work_reuses_user_scoped_cache():
+    response = SimpleNamespace(
+        output_text=json.dumps({"queries": ["ASP DDT"], "entities": ["DDT 41"]}),
+        usage=SimpleNamespace(input_tokens=500, output_tokens=25, total_tokens=525),
+    )
+    client = SimpleNamespace(responses=SimpleNamespace(create=AsyncMock(return_value=response)))
+    cache = _MemoryStructuredCache()
+    service = AuditReasoningService(
+        client,
+        "gpt-5.6-luna",
+        cache_scope="user-42",
+        cache_service=cache,
+    )
+    seeds = [_hit("seed", "Anciennes surfaces pastorales avec la DDT 41")]
+
+    first, first_metadata = await service.expand_query("surface pastorale", seeds)
+    second, second_metadata = await service.expand_query("surface pastorale", seeds)
+
+    assert first == second
+    client.responses.create.assert_awaited_once()
+    assert first_metadata["application_cache"]["misses"] == 1
+    assert second_metadata["application_cache"] == {
+        "enabled": True,
+        "hits": 1,
+        "misses": 1,
+        "scope": "user_and_exact_evidence_request",
+    }
+
+
+@pytest.mark.asyncio
+async def test_changed_evidence_never_reuses_structured_audit_cache():
+    response = SimpleNamespace(
+        output_text=json.dumps({"queries": [], "entities": []}),
+    )
+    client = SimpleNamespace(responses=SimpleNamespace(create=AsyncMock(return_value=response)))
+    service = AuditReasoningService(
+        client,
+        "gpt-5.6-luna",
+        cache_scope="user-42",
+        cache_service=_MemoryStructuredCache(),
+    )
+
+    await service.expand_query("surface pastorale", [_hit("seed", "Version A")])
+    await service.expand_query("surface pastorale", [_hit("seed", "Version B")])
+
+    assert client.responses.create.await_count == 2
+    assert service.cache_metadata()["hits"] == 0
+    assert service.cache_metadata()["misses"] == 2
 
 
 @pytest.mark.asyncio

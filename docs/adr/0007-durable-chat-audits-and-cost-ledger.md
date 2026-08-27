@@ -49,3 +49,8 @@ Displayed USD cost is an audit-friendly estimate based on public standard API
 rates, not an invoice. Regional processing uplifts, negotiated pricing, cache
 writes or provider-specific surcharges may differ. Token counts themselves are
 the authoritative usage values returned by the provider.
+
+Application-level structured-response reuse is specified separately in
+[ADR 0010](0010-content-addressed-ai-research-cache.md). Its avoided calls and
+estimated savings are reported apart from actual billed tokens so a cache hit
+can never be mistaken for provider usage.

@@ -35,7 +35,7 @@ _LEGACY_RETRIEVAL_COMPONENT = (
     "ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra"
 )
 _BACKEND_RETRIEVAL_COMPONENT = "ext:openrag:OpenRAGBackendRetrievalComponent@extra"
-_RETRIEVAL_FLOW_MIGRATION_VERSION = 15
+_RETRIEVAL_FLOW_MIGRATION_VERSION = 16
 _LEGACY_SYSTEM_FLOW_ID = "1098eea1-6649-4e1d-aed1-b77249fb8dd0"
 # SHA-256 of ``flows/openrag_agent.json`` at lifecycle baseline 156f3664,
 # calculated over canonical ``data`` JSON.  Flow IDs and a lock alone are not
@@ -133,6 +133,12 @@ _PREVIOUS_VERSIONED_FOCUSED_AUDIT_GRAPH_SHA256 = (
 # compact model manifest and allows the truth-first operation to finish.
 _PREVIOUS_VERSIONED_ARCHIVE_AUDIT_GRAPH_SHA256 = (
     "8e232f986363e143668a47111e4e68f2bfb3c33e730e78a88782ad2e7b431d99"
+)
+# Exact v15 graph before the OpenAI Agent transport selected the Responses API
+# for GPT-5.6 reasoning models with tools. Version 16 prevents Langflow from
+# sending that unsupported combination to ``/v1/chat/completions``.
+_PREVIOUS_VERSIONED_CHAT_COMPLETIONS_AGENT_GRAPH_SHA256 = (
+    "962a3aa2a15c9cab327600d805afd65c659ca5ca23c1872f20b13818be59dd71"
 )
 
 
@@ -1353,6 +1359,8 @@ class FlowsService:
             if marker == 12
             else {_PREVIOUS_VERSIONED_ARCHIVE_AUDIT_GRAPH_SHA256}
             if marker == 13
+            else {_PREVIOUS_VERSIONED_CHAT_COMPLETIONS_AGENT_GRAPH_SHA256}
+            if marker == 15
             else set()
         )
         return self._graph_fingerprint(flow_data) in expected

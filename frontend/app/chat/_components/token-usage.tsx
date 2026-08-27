@@ -38,6 +38,19 @@ export function TokenUsage({ usage }: TokenUsageProps) {
         ) : usage.cost_complete === false ? (
           <span className="ml-1">· cost unavailable for one model</span>
         ) : null}
+        {usage.application_cache?.hits ? (
+          <span className="text-green-500 ml-1">
+            · {usage.application_cache.avoided_provider_calls.toLocaleString()}{" "}
+            AI
+            {usage.application_cache.avoided_provider_calls === 1
+              ? " call"
+              : " calls"}{" "}
+            reused
+            {usage.application_cache.avoided_cost_usd > 0
+              ? ` ($${usage.application_cache.avoided_cost_usd.toFixed(4)} avoided)`
+              : ""}
+          </span>
+        ) : null}
       </span>
     </div>
   );

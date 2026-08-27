@@ -1,5 +1,6 @@
 """Async data-access wrappers for the RBAC layer."""
 
+from db.repositories.ai_response_cache_repo import AIResponseCacheRepo
 from db.repositories.api_key_repo import ApiKeyRepo
 from db.repositories.audit_repo import AuditRepo
 from db.repositories.conversation_repo import ConversationRepo
@@ -10,11 +11,14 @@ from db.repositories.session_ownership_repo import SessionOwnershipRepo
 from db.repositories.user_repo import UserRepo
 from db.repositories.workspace_config_repo import (
     SECTIONS as WORKSPACE_CONFIG_SECTIONS,
+)
+from db.repositories.workspace_config_repo import (
     WorkspaceConfigRepo,
 )
 
 __all__ = [
     "ApiKeyRepo",
+    "AIResponseCacheRepo",
     "AuditRepo",
     "ConversationRepo",
     "PermissionRepo",

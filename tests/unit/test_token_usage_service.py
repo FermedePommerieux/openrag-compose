@@ -48,3 +48,32 @@ def test_unknown_model_keeps_tokens_but_refuses_to_invent_cost() -> None:
     assert result["total_tokens"] == 15
     assert result["cost_usd"] is None
     assert result["cost_complete"] is False
+
+
+def test_application_cache_reports_avoided_usage_without_billing_it() -> None:
+    service = TokenUsageService()
+    service.reset("audit-cache")
+
+    service.record_application_cache_hit(
+        "gpt-5.6-luna",
+        {
+            "input_tokens": 10_000,
+            "output_tokens": 500,
+            "total_tokens": 10_500,
+            "cost_usd": 0.0008,
+        },
+        audit_id="audit-cache",
+    )
+
+    result = service.snapshot("audit-cache")
+    assert result["calls"] == 0
+    assert result["total_tokens"] == 0
+    assert result["cost_usd"] == 0.0
+    assert result["application_cache"] == {
+        "hits": 1,
+        "avoided_provider_calls": 1,
+        "avoided_input_tokens": 10_000,
+        "avoided_output_tokens": 500,
+        "avoided_total_tokens": 10_500,
+        "avoided_cost_usd": 0.0008,
+    }
