@@ -13,7 +13,7 @@ from typing import Any
 import httpx
 from langchain_core.tools import StructuredTool
 from lfx.base.langchain_utilities.model import LCToolComponent
-from lfx.io import IntInput, MultilineInput, Output, SecretStrInput, StrInput
+from lfx.io import IntInput, Output, SecretStrInput, StrInput
 from lfx.schema.data import Data
 
 UNTRUSTED_CHUNK_FENCE_START = "<<<UNTRUSTED_DOC_CHUNK>>>"
@@ -67,7 +67,7 @@ class OpenRAGBackendRetrievalComponent(LCToolComponent):
             load_from_db=True,
             info="User JWT supplied by OpenRAG; never log this value.",
         ),
-        MultilineInput(
+        StrInput(
             name="filter_expression",
             display_name="Search Context (JSON)",
             value="OPENRAG_QUERY_FILTER",

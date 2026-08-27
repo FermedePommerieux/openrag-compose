@@ -35,7 +35,7 @@ _LEGACY_RETRIEVAL_COMPONENT = (
     "ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra"
 )
 _BACKEND_RETRIEVAL_COMPONENT = "ext:openrag:OpenRAGBackendRetrievalComponent@extra"
-_RETRIEVAL_FLOW_MIGRATION_VERSION = 8
+_RETRIEVAL_FLOW_MIGRATION_VERSION = 9
 _LEGACY_SYSTEM_FLOW_ID = "1098eea1-6649-4e1d-aed1-b77249fb8dd0"
 # SHA-256 of ``flows/openrag_agent.json`` at lifecycle baseline 156f3664,
 # calculated over canonical ``data`` JSON.  Flow IDs and a lock alone are not
@@ -84,6 +84,18 @@ _PREVIOUS_VERSIONED_DOCUMENTALIST_GRAPH_SHA256 = (
 # trusted exhaustive intent header was never resolved by the custom component.
 _PREVIOUS_VERSIONED_EXHAUSTIVE_EXECUTION_GRAPH_SHA256 = (
     "b0d85950c458b541b7099447ebdc3127f05df37ee2b16dac3dd0248464fd87fd"
+)
+# Exact fingerprints of Retrieval v2 version 8 as bundled and as persisted by
+# Langflow after it rebuilt the custom component. ``MultilineInput`` calls
+# ``set_input_value`` during that rebuild, which clears ``load_from_db`` and
+# prevents the request-scoped retrieval intent from reaching the tool. Version
+# 9 replaces that context field with ``StrInput``; both known graphs are safe to
+# migrate, while any other version-8 edit remains protected.
+_PREVIOUS_VERSIONED_REQUEST_BOUND_GRAPH_SHA256 = (
+    "6c245076391797bb5748f1d1e86ff52be4b066056a1622b2e996e9b884d7b45f"
+)
+_PREVIOUS_VERSIONED_LANGFLOW_NORMALIZED_GRAPH_SHA256 = (
+    "d62f6aedf721ce4093add756b0675940a99b18905f25edaed430f8d1974c78eb"
 )
 
 
@@ -1286,6 +1298,11 @@ class FlowsService:
             if marker == 6
             else {_PREVIOUS_VERSIONED_EXHAUSTIVE_EXECUTION_GRAPH_SHA256}
             if marker == 7
+            else {
+                _PREVIOUS_VERSIONED_REQUEST_BOUND_GRAPH_SHA256,
+                _PREVIOUS_VERSIONED_LANGFLOW_NORMALIZED_GRAPH_SHA256,
+            }
+            if marker == 8
             else set()
         )
         return self._graph_fingerprint(flow_data) in expected

@@ -53,6 +53,15 @@ global variable. Langflow preserves the variable-name suffix in the HTTP alias
 from the shared canonical name so exhaustive intent cannot be lost at that
 boundary.
 
+Retrieval flow version 9 repairs a Langflow normalization edge case observed
+after version 8. A custom `MultilineInput` is passed through
+`set_input_value`, which clears its `load_from_db` flag while rebuilding the
+component. The search context is JSON text, not a Langflow `Message`, so the
+authoritative graph now declares it as `StrInput`. Version 9 recognizes only
+the two exact version 8 graphs seen before and after that normalization. This
+keeps `load_from_db: true` stable across restarts without broadening migration
+authority to operator-edited flows.
+
 ## Consequences
 
 An explicit system migration error requires operator review and blocks ASGI

@@ -152,6 +152,13 @@ exact repository-owned version 7 graph to the required `load_from_db` binding.
 The shared header-name constant prevents the backend transport from drifting
 from the component name.
 
+The field is deliberately a `StrInput`, not a `MultilineInput`. Langflow's
+custom-component rebuild path clears `load_from_db` after assigning a
+multiline value, which would downgrade every request back to focused retrieval
+after startup. Retrieval flow version 9 migrates both exact repository-owned
+version 8 states (before and after that normalization) to the stable string
+binding; edited graphs still fail closed.
+
 The Knowledge document-detail page uses the same exhaustive contract. The
 table passes the stable `document_id`; legacy filename-only links first resolve
 that identity through an exact `data_sources` lookup. The frontend then follows

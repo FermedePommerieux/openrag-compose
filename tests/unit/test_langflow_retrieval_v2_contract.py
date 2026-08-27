@@ -74,9 +74,13 @@ def test_backend_retrieval_tool_is_thin_and_embedded_verbatim():
 
     assert retrieval["data"]["node"]["template"]["code"]["value"] == code
     assert search_context["value"] == "OPENRAG_QUERY_FILTER"
+    assert search_context["_input_type"] == "StrInput"
+    assert search_context["input_types"] == []
+    assert search_context["multiline"] is False
     assert search_context["load_from_db"] is True
     assert 'value="OPENRAG_QUERY_FILTER"' in code
     assert "load_from_db=True" in code
+    assert "MultilineInput" not in code
     assert "client.post(" in code
     assert '"scoreThreshold": score_threshold' in code
     assert "from opensearch" not in code.lower()
