@@ -2,8 +2,8 @@
 
 The producer task consumes Langflow independently of any browser subscriber.
 Disconnecting an SSE response therefore stops only that subscriber. Progress,
-the final answer and complete model usage are checkpointed in PostgreSQL and
-can be polled by the owning user.
+the final answer and complete model usage are checkpointed in OpenRAG's
+persistent backend database and can be polled by the owning user.
 """
 
 from __future__ import annotations

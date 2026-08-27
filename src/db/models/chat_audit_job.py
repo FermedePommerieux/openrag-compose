@@ -2,7 +2,9 @@
 
 The HTTP/SSE connection is only a viewer.  The audit producer owns the
 Langflow stream and writes its terminal answer, progress certificate and
-metered model usage here so a browser can reconnect without restarting work.
+metered model usage to OpenRAG's persistent backend database so a browser can
+reconnect without restarting work. The database is SQLite by default and can
+be configured as PostgreSQL through ``DATABASE_URL``.
 Raw prompts, JWTs, provider keys and document text are deliberately excluded.
 """
 

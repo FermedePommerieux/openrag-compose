@@ -20,9 +20,11 @@ materially misleading.
 - Explicit exhaustive chat requests create a UUID audit job owned by the
   authenticated storage user.
 - A detached backend task, not the HTTP response, consumes the Langflow stream.
-- PostgreSQL stores the sanitized progress certificate, terminal answer,
-  response identifier, accumulated usage and error state. It never stores JWTs,
-  provider credentials, raw prompts or additional document text.
+- OpenRAG's persistent backend database stores the sanitized progress
+  certificate, terminal answer, response identifier, accumulated usage and
+  error state. It is SQLite by default and can be configured as PostgreSQL. It
+  never stores JWTs, provider credentials, raw prompts or additional document
+  text.
 - The initial stream emits `openrag.audit.created`. If that stream ends before
   the terminal usage event, the frontend polls `GET /chat/audits/{audit_id}`
   and continues showing progress rather than starting duplicate work.

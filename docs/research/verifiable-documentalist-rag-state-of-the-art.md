@@ -109,8 +109,8 @@ retrieval into a reported success.
 Truth-oriented retrieval cannot bind a long audit's lifetime to an HTTP
 subscriber. The archive audit therefore runs as an owner-scoped durable job:
 the live stream is only one viewer, progress and the terminal result are stored
-in PostgreSQL, and a disconnected chat recovers the same job rather than
-silently launching a second paid search.
+in OpenRAG's persistent backend database, and a disconnected chat recovers the
+same job rather than silently launching a second paid search.
 
 Economic claims follow the same evidence principle. The UI reports provider
 token counts and a dated price-derived cost for every answer. Exhaustive audits
