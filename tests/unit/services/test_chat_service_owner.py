@@ -1,3 +1,4 @@
+import json
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -69,8 +70,38 @@ async def test_langflow_chat_passes_owner_metadata(monkeypatch):
     assert headers["X-LANGFLOW-GLOBAL-VAR-JWT"] == "user-jwt"
     assert headers["X-Langflow-Global-Var-OPENRAG_RETRIEVAL_URL"].endswith("/search")
     assert headers["X-Langflow-Global-Var-OPENRAG_QUERY_FILTER"] == (
-        '{"filters": {"data_sources": ["archive.pdf"]}, "limit": 4, "scoreThreshold": 0.25}'
+        '{"filters": {"data_sources": ["archive.pdf"]}, "limit": 4, '
+        '"scoreThreshold": 0.25, "retrievalIntent": "focused"}'
     )
+
+
+@pytest.mark.asyncio
+async def test_langflow_chat_marks_explicit_exhaustive_intent(monkeypatch):
+    fake_langflow_client = MagicMock()
+    monkeypatch.setattr(
+        "config.settings.clients.ensure_langflow_client",
+        AsyncMock(return_value=fake_langflow_client),
+    )
+    monkeypatch.setattr(
+        "utils.langflow_headers.add_provider_credentials_to_headers",
+        AsyncMock(),
+    )
+    mock_langflow_chat = AsyncMock(return_value=("response", "response-id", []))
+    monkeypatch.setattr("agent.async_langflow_chat", mock_langflow_chat)
+    monkeypatch.setattr(
+        "services.langflow_ingest_token_service.LangflowIngestTokenService.create_token",
+        lambda _self, _context: "fake-ingest-token",
+    )
+    set_search_filters({})
+
+    await ChatService().langflow_chat(
+        prompt="Je veux tous les mails : fais une recherche exhaustive",
+        jwt_token="user-jwt",
+    )
+
+    headers = mock_langflow_chat.call_args.kwargs["extra_headers"]
+    context = json.loads(headers["X-Langflow-Global-Var-OPENRAG_QUERY_FILTER"])
+    assert context["retrievalIntent"] == "exhaustive"
 
 
 @pytest.mark.asyncio
@@ -105,9 +136,7 @@ async def test_non_streaming_chat_hydrates_complete_source_from_cited_chunk(monk
         "chunk_index": 2,
         "chunking_strategy": "hybrid",
     }
-    search_service = SimpleNamespace(
-        resolve_cited_chunks=AsyncMock(return_value=[hydrated_source])
-    )
+    search_service = SimpleNamespace(resolve_cited_chunks=AsyncMock(return_value=[hydrated_source]))
     set_search_filters({})
     chat_svc = ChatService(search_service=search_service)
 

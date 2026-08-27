@@ -32,9 +32,9 @@ def _as_text(value: Any) -> str:
 
 
 def _fence_untrusted_text(text: str) -> str:
-    escaped = text.replace(
-        UNTRUSTED_CHUNK_FENCE_START, "\\" + UNTRUSTED_CHUNK_FENCE_START
-    ).replace(UNTRUSTED_CHUNK_FENCE_END, "\\" + UNTRUSTED_CHUNK_FENCE_END)
+    escaped = text.replace(UNTRUSTED_CHUNK_FENCE_START, "\\" + UNTRUSTED_CHUNK_FENCE_START).replace(
+        UNTRUSTED_CHUNK_FENCE_END, "\\" + UNTRUSTED_CHUNK_FENCE_END
+    )
     return f"{UNTRUSTED_CHUNK_FENCE_START}\n{escaped}\n{UNTRUSTED_CHUNK_FENCE_END}"
 
 
@@ -93,10 +93,10 @@ class OpenRAGBackendRetrievalComponent(LCToolComponent):
         )
     ]
 
-    def _request_context(self) -> tuple[dict[str, Any], int, float]:
+    def _request_context(self) -> tuple[dict[str, Any], int, float, str]:
         raw = _as_text(getattr(self, "filter_expression", ""))
         if not raw or raw == "OPENRAG_QUERY_FILTER":
-            return {}, max(1, int(self.number_of_results or 10)), 0.0
+            return {}, max(1, int(self.number_of_results or 10)), 0.0, "focused"
         try:
             parsed = json.loads(raw)
         except json.JSONDecodeError as exc:
@@ -114,7 +114,113 @@ class OpenRAGBackendRetrievalComponent(LCToolComponent):
             score_threshold = float(score_threshold)
         except (TypeError, ValueError) as exc:
             raise ValueError("OpenRAG retrieval limit or score threshold is invalid") from exc
-        return filters, limit, score_threshold
+        retrieval_intent = _as_text(parsed.get("retrievalIntent", "focused")).lower()
+        if retrieval_intent not in {"focused", "exhaustive"}:
+            raise ValueError("OpenRAG retrieval intent must be focused or exhaustive")
+        return filters, limit, score_threshold, retrieval_intent
+
+    @staticmethod
+    def _validated_payload(response: httpx.Response) -> dict[str, Any]:
+        """Validate one backend response before it enters the agent context."""
+        response.raise_for_status()
+        payload = response.json()
+        if not isinstance(payload, dict):
+            raise ValueError("OpenRAG retrieval response must be a JSON object")
+        if not isinstance(payload.get("results", []), list):
+            raise ValueError("OpenRAG retrieval response has an invalid results field")
+        return payload
+
+    def _start_required_exhaustive_reads(
+        self,
+        client: httpx.Client,
+        *,
+        url: str,
+        headers: dict[str, str],
+        query: str,
+        filters: dict[str, Any],
+        limit: int,
+        score_threshold: float,
+        focused_payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Turn explicit exhaustive intent into real document evidence reads.
+
+        Focused discovery is allowed to identify candidate documents, but its
+        chunks are never returned as if they were exhaustive evidence.  The
+        tool immediately reads the first maximum-sized page of every discovered
+        document.  Remaining authenticated cursors are returned to the agent,
+        which must follow them before it can claim complete coverage.
+        """
+        discovered: list[dict[str, str]] = []
+        seen: set[str] = set()
+        for item in focused_payload.get("results", []):
+            if not isinstance(item, dict):
+                continue
+            document_id = _as_text(item.get("document_id"))
+            if not document_id or document_id in seen:
+                continue
+            seen.add(document_id)
+            discovered.append(
+                {
+                    "document_id": document_id,
+                    "filename": _as_text(item.get("filename")),
+                }
+            )
+
+        exhaustive_results: list[dict[str, Any]] = []
+        document_coverages: list[dict[str, Any]] = []
+        for document in discovered:
+            response = client.post(
+                url,
+                headers=headers,
+                json={
+                    "query": query,
+                    "filters": filters,
+                    "limit": limit,
+                    "scoreThreshold": score_threshold,
+                    "evidenceMode": "exhaustive",
+                    "documentId": document["document_id"],
+                    "cursor": "",
+                    "batchSize": 50,
+                },
+            )
+            payload = self._validated_payload(response)
+            exhaustive_results.extend(
+                item for item in payload.get("results", []) if isinstance(item, dict)
+            )
+            coverage = payload.get("coverage")
+            if not isinstance(coverage, dict):
+                coverage = {
+                    "mode": "exhaustive",
+                    "document_id": document["document_id"],
+                    "complete": False,
+                    "error": payload.get("error") or "missing coverage certificate",
+                }
+            document_coverages.append({**coverage, "filename": document["filename"]})
+
+        documents_complete = sum(
+            coverage.get("complete") is True for coverage in document_coverages
+        )
+        return {
+            "results": exhaustive_results,
+            "total": len(exhaustive_results),
+            "discovery": {
+                "mode": "focused",
+                "document_ids": [document["document_id"] for document in discovered],
+                "documents_found": len(discovered),
+            },
+            "coverage": {
+                "mode": "exhaustive",
+                "requested": True,
+                # This certificate deliberately names the actual candidate
+                # scope. It must never be presented as whole-corpus coverage.
+                "scope": "focused_discovery_documents",
+                "complete": bool(document_coverages)
+                and documents_complete == len(document_coverages),
+                "documents_complete": documents_complete,
+                "documents_total": len(document_coverages),
+                "documents": document_coverages,
+            },
+        }
 
     def _retrieve_payload(
         self,
@@ -144,7 +250,7 @@ class OpenRAGBackendRetrievalComponent(LCToolComponent):
         if jwt:
             headers["Authorization"] = jwt if jwt.lower().startswith("bearer ") else f"Bearer {jwt}"
 
-        filters, limit, score_threshold = self._request_context()
+        filters, limit, score_threshold, retrieval_intent = self._request_context()
         with httpx.Client(timeout=30.0) as client:
             response = client.post(
                 url,
@@ -160,17 +266,21 @@ class OpenRAGBackendRetrievalComponent(LCToolComponent):
                     "batchSize": min(50, max(1, int(batch_size))),
                 },
             )
-            response.raise_for_status()
-            payload = response.json()
-
-        if not isinstance(payload, dict):
-            raise ValueError("OpenRAG retrieval response must be a JSON object")
-        results = payload.get("results", [])
-        if not isinstance(results, list):
-            raise ValueError("OpenRAG retrieval response has an invalid results field")
+            payload = self._validated_payload(response)
+            if mode == "focused" and retrieval_intent == "exhaustive":
+                payload = self._start_required_exhaustive_reads(
+                    client,
+                    url=url,
+                    headers=headers,
+                    query=query,
+                    filters=filters,
+                    limit=limit,
+                    score_threshold=score_threshold,
+                    focused_payload=payload,
+                )
 
         fenced_results: list[dict[str, Any]] = []
-        for item in results:
+        for item in payload.get("results", []):
             if not isinstance(item, dict):
                 continue
             item = dict(item)
@@ -213,10 +323,12 @@ class OpenRAGBackendRetrievalComponent(LCToolComponent):
                 "Build queries from stable identifiers and established context only; never "
                 "add a candidate answer for the attribute being looked up. Use returned "
                 "chunk_id values for inline citations. Use evidence_mode='focused' for "
-                "ranked discovery. For exhaustive/list-all/compare/audit requests, first "
-                "discover document_id values, then call evidence_mode='exhaustive' once "
-                "per document and keep following coverage.next_cursor until complete=true. "
-                "Never claim exhaustive coverage while complete is false."
+                "ranked discovery. Explicit exhaustive/list-all/compare/audit intent is "
+                "marked by the backend: a focused call then automatically starts a real "
+                "exhaustive read for every discovered document. Follow every cursor in "
+                "coverage.documents until each document has complete=true. Never answer an "
+                "explicit exhaustive request from focused results alone and never claim "
+                "whole-corpus coverage for scope='focused_discovery_documents'."
             ),
             response_format="content_and_artifact",
         )

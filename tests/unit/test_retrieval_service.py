@@ -9,11 +9,39 @@ from services.retrieval_service import (
     adaptive_chunk_limit,
     decode_exhaustive_cursor,
     encode_exhaustive_cursor,
+    exhaustive_retrieval_requested,
     exhaustive_scope_sha256,
     limit_chunks_per_document,
     reciprocal_rank_fusion,
 )
 from services.search_service import SearchService
+
+
+@pytest.mark.parametrize(
+    "prompt",
+    [
+        "Fais une recherche exhaustive sur toute l'archive",
+        "Je veux tous les mails liés à ce projet",
+        "Vérifiez tout avant de répondre",
+        "I need complete coverage of the corpus",
+        "Find all emails mentioning this person",
+    ],
+)
+def test_explicit_exhaustive_intent_is_detected(prompt):
+    assert exhaustive_retrieval_requested(prompt) is True
+
+
+@pytest.mark.parametrize(
+    "prompt",
+    [
+        "Quels sont les mails les plus pertinents ?",
+        "Une recherche ciblée suffit",
+        "Je ne demande pas une recherche exhaustive",
+        "Answer briefly from the best sources",
+    ],
+)
+def test_focused_or_negated_intent_is_not_promoted(prompt):
+    assert exhaustive_retrieval_requested(prompt) is False
 
 
 def _hit(identifier: str, document_id: str, text: str = "text") -> dict:

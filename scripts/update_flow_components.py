@@ -2,9 +2,9 @@
 """
 Utility to sync embedded component code inside Langflow JSON files.
 
-Given a Python source file (e.g. the OpenSearch component implementation) and
-a target selector, this script updates every flow definition in ``./flows`` so
-that the component's ``template.code.value`` matches the supplied file.
+Given a source file and a target selector, this script updates every flow
+definition in ``./flows`` so that the selected ``template.<field>.value``
+matches the supplied file. The default field remains ``code``.
 
 Example:
     python scripts/update_flow_components.py \\
@@ -16,8 +16,8 @@ from __future__ import annotations
 
 import argparse
 import json
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable
 
 
 def load_code(source_path: Path) -> str:
@@ -27,7 +27,13 @@ def load_code(source_path: Path) -> str:
         raise SystemExit(f"[error] code file not found: {source_path}") from exc
 
 
-def should_update_component(node: dict, *, display_name: str | None, metadata_module: str | None) -> bool:
+def should_update_component(
+    node: dict,
+    *,
+    display_name: str | None,
+    metadata_module: str | None,
+    template_field: str,
+) -> bool:
     node_data = node.get("data", {})
     component = node_data.get("node", {})
 
@@ -41,11 +47,19 @@ def should_update_component(node: dict, *, display_name: str | None, metadata_mo
             return False
 
     template = component.get("template", {})
-    code_entry = template.get("code")
-    return isinstance(code_entry, dict) and "value" in code_entry
+    value_entry = template.get(template_field)
+    return isinstance(value_entry, dict) and "value" in value_entry
 
 
-def update_flow(flow_path: Path, code: str, *, display_name: str | None, metadata_module: str | None, dry_run: bool) -> bool:
+def update_flow(
+    flow_path: Path,
+    value: str,
+    *,
+    display_name: str | None,
+    metadata_module: str | None,
+    template_field: str,
+    dry_run: bool,
+) -> bool:
     with flow_path.open(encoding="utf-8") as fh:
         try:
             data = json.load(fh)
@@ -55,15 +69,20 @@ def update_flow(flow_path: Path, code: str, *, display_name: str | None, metadat
     changed = False
 
     for node in data.get("data", {}).get("nodes", []):
-        if not should_update_component(node, display_name=display_name, metadata_module=metadata_module):
+        if not should_update_component(
+            node,
+            display_name=display_name,
+            metadata_module=metadata_module,
+            template_field=template_field,
+        ):
             continue
 
         template = node["data"]["node"]["template"]
-        if template["code"]["value"] != code:
+        if template[template_field]["value"] != value:
             if dry_run:
                 changed = True
             else:
-                template["code"]["value"] = code
+                template[template_field]["value"] = value
                 changed = True
 
     if changed and not dry_run:
@@ -82,12 +101,40 @@ def iter_flow_files(flows_dir: Path) -> Iterable[Path]:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Update embedded component code in Langflow JSON files.")
-    parser.add_argument("--code-file", required=True, type=Path, help="Path to the Python file containing the component code.")
-    parser.add_argument("--flows-dir", type=Path, default=Path("flows"), help="Directory containing Langflow JSON files.")
-    parser.add_argument("--display-name", help="Component display_name to match (e.g. 'OpenSearch (Multi-Model)').")
+    parser = argparse.ArgumentParser(
+        description="Update embedded component code in Langflow JSON files."
+    )
+    parser.add_argument(
+        "--code-file",
+        required=True,
+        type=Path,
+        help="Path to the Python file containing the component code.",
+    )
+    parser.add_argument(
+        "--flows-dir",
+        type=Path,
+        default=Path("flows"),
+        help="Directory containing Langflow JSON files.",
+    )
+    parser.add_argument(
+        "--display-name", help="Component display_name to match (e.g. 'OpenSearch (Multi-Model)')."
+    )
     parser.add_argument("--metadata-module", help="Component metadata.module value to match.")
-    parser.add_argument("--dry-run", action="store_true", help="Report which files would change without modifying them.")
+    parser.add_argument(
+        "--template-field",
+        default="code",
+        help="Template value field to synchronize (default: code).",
+    )
+    parser.add_argument(
+        "--strip-trailing-newline",
+        action="store_true",
+        help="Remove trailing newlines from the supplied value (useful for prompts).",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Report which files would change without modifying them.",
+    )
 
     args = parser.parse_args()
 
@@ -105,6 +152,8 @@ def main() -> None:
         raise SystemExit(f"[error] flows directory not found: {flows_dir}")
 
     code = load_code(args.code_file)
+    if args.strip_trailing_newline:
+        code = code.rstrip("\n")
 
     updated_files = []
     for flow_path in iter_flow_files(flows_dir):
@@ -113,6 +162,7 @@ def main() -> None:
             code,
             display_name=args.display_name,
             metadata_module=args.metadata_module,
+            template_field=args.template_field,
             dry_run=args.dry_run,
         )
         if changed:

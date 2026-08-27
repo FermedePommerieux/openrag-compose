@@ -168,10 +168,21 @@ class ChatService:
             "limit": limit or 10,
             "scoreThreshold": score_threshold or 0,
         }
+        # Natural-language model compliance is not a sufficient execution
+        # boundary for a truth-oriented exhaustive request.  Mark explicit
+        # intent in the trusted backend context so the retrieval tool can
+        # automatically start document-wide evidence reads even if the model's
+        # first call is still a focused discovery query.
+        from services.retrieval_service import exhaustive_retrieval_requested
+
+        filter_expression["retrievalIntent"] = (
+            "exhaustive" if exhaustive_retrieval_requested(prompt) else "focused"
+        )
         logger.info(
             "Sending backend-owned retrieval context to Langflow",
             has_filters=bool(filters),
             limit=filter_expression["limit"],
+            retrieval_intent=filter_expression["retrievalIntent"],
         )
         extra_headers["X-Langflow-Global-Var-OPENRAG_QUERY_FILTER"] = json.dumps(filter_expression)
         logger.info(

@@ -50,6 +50,20 @@ If any read is incomplete, inaccessible, changes version, or contains an
 unverifiable legacy chunk, the answer must disclose incomplete coverage and
 must not use universal claims such as “all”, “none” or “exhaustive”.
 
+Explicit exhaustive intent is also an execution constraint, not merely prompt
+wording. The backend marks the request as `retrievalIntent=exhaustive`. If the
+agent begins with focused discovery, the retrieval tool automatically starts a
+real exhaustive read (batch size 50) for every distinct discovered
+`document_id` and returns each document's authenticated continuation cursor.
+The agent must follow those cursors and has a larger iteration budget for that
+work. Focused result chunks are not substituted for the exhaustive evidence.
+
+This automatic expansion certifies only the named
+`focused_discovery_documents` scope. It intentionally does not mislabel a
+ranked candidate set as whole-corpus coverage. A future corpus-snapshot job is
+still required to certify that every document in an entire archive was tested
+for thematic relevance.
+
 ## Ingestion analysis and snapshot identity
 
 The final ingestion callback performs a deterministic analysis pass after all
@@ -124,6 +138,9 @@ maps should be added to the same evidence ledger as they become available.
 - The database retains every leaf chunk. No summary replaces source evidence.
 - Langflow remains an orchestration client. The backend owns pagination,
   snapshot validation, ACL-scoped access and coverage accounting.
+- Explicit French and English exhaustive formulations are classified by a
+  deterministic backend intent detector. This changes retrieval effort only;
+  it never broadens ACLs or active filters.
 - All backend replicas must share the same production `SESSION_SECRET`; it
   authenticates continuation cursors. A secret rotation invalidates active
   cursors and forces a safe restart of the evidence read.

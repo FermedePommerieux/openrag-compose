@@ -12,6 +12,8 @@ import hashlib
 import hmac
 import json
 import math
+import re
+import unicodedata
 from base64 import urlsafe_b64decode, urlsafe_b64encode
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -25,6 +27,38 @@ logger = get_logger(__name__)
 
 EXHAUSTIVE_PROFILE_VERSION = 1
 EXHAUSTIVE_BATCH_MAX = 50
+
+_EXHAUSTIVE_INTENT_PATTERNS = (
+    re.compile(r"\bexhausti\w*\b"),
+    re.compile(r"\bcouverture\s+(?:exhaustive|complete)\b"),
+    re.compile(r"\brecherche\s+(?:exhaustive|complete)\b"),
+    re.compile(r"\bverifi\w*\s+tout\b"),
+    re.compile(r"\b(?:tous|toutes)\s+les\b"),
+    re.compile(r"\btoute\s+l[' ]archive\b"),
+    re.compile(r"\b(?:find|list|read|check)\s+all\b"),
+    re.compile(r"\b(?:complete|full)\s+(?:coverage|archive|corpus)\b"),
+    re.compile(r"\bevery\s+(?:document|email|mail|occurrence|source)\b"),
+)
+
+
+def exhaustive_retrieval_requested(prompt: str) -> bool:
+    """Return whether the user explicitly requests exhaustive evidence work.
+
+    This detector is deliberately limited to explicit French and English
+    formulations.  It does not decide relevance and it never broadens the
+    caller's ACL/filter scope; it only prevents an explicit completeness
+    request from being silently downgraded to ranked focused retrieval.
+    """
+    normalized = unicodedata.normalize("NFKD", str(prompt or "").casefold())
+    normalized = "".join(char for char in normalized if not unicodedata.combining(char))
+    normalized = re.sub(r"\s+", " ", normalized).strip()
+    if not normalized:
+        return False
+    if re.search(r"\bne\b.{0,80}\bpas\b.{0,80}\bexhausti\w*\b", normalized) or re.search(
+        r"\b(?:pas|non|sans)\s+(?:de\s+)?(?:recherche\s+)?exhausti\w*\b", normalized
+    ):
+        return False
+    return any(pattern.search(normalized) for pattern in _EXHAUSTIVE_INTENT_PATTERNS)
 
 
 @dataclass(frozen=True)

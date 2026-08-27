@@ -65,7 +65,12 @@ def test_default_agent_prompt_requires_document_wide_role_evidence():
     assert "expose that limitation" in DEFAULT_SYSTEM_PROMPT
     assert "never guess" in DEFAULT_SYSTEM_PROMPT
     assert len(DEFAULT_SYSTEM_PROMPT) <= 5000
-    assert len(LEGACY_SYSTEM_PROMPTS) == 6
+    assert len(LEGACY_SYSTEM_PROMPTS) == 7
+    previous_documentalist = next(
+        prompt for prompt in LEGACY_SYSTEM_PROMPTS if "For exhaustive work" in prompt
+    )
+    assert previous_documentalist != DEFAULT_SYSTEM_PROMPT
+    assert "Explicit exhaustive" not in previous_documentalist
     for legacy_prompt in LEGACY_SYSTEM_PROMPTS:
         assert AgentConfig(system_prompt=legacy_prompt).system_prompt == DEFAULT_SYSTEM_PROMPT
 
@@ -85,9 +90,7 @@ async def test_update_chat_flow_system_prompt_updates_agent_node(monkeypatch):
     get_response.json.return_value = _load_flow("flows/openrag_agent.json")
     patch_response = MagicMock(status_code=200)
 
-    request = AsyncMock(
-        side_effect=[get_response, patch_response, patch_response, patch_response]
-    )
+    request = AsyncMock(side_effect=[get_response, patch_response, patch_response, patch_response])
     monkeypatch.setattr("services.flows_service.LANGFLOW_CHAT_FLOW_ID", "test-flow-id")
     monkeypatch.setattr("services.flows_service.clients.langflow_request", request)
 

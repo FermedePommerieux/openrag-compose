@@ -130,5 +130,14 @@ the other owner's chunks. After a partial delete, restoration checks the global
 bulk response and every item. An incomplete restore is a fatal error with the
 affected chunk IDs preserved for recovery.
 
-Deep retrieval, Exhaustive retrieval, query expansion, and a new reranker are
-not implemented in this baseline.
+Focused retrieval uses lexical/vector RRF and adaptive per-document diversity.
+Exhaustive retrieval reads one verified immutable document snapshot in source
+order and returns authenticated continuation cursors plus exact coverage.
+
+When a chat request explicitly asks for exhaustive, complete, all-items,
+audit, or verify-everything work, the backend marks that intent in the trusted
+Langflow context. A focused discovery call then automatically starts the first
+exhaustive page for every distinct discovered document; the agent follows all
+remaining cursors before claiming completeness. This proves the selected
+document scope only. Whole-archive thematic completeness requires a future
+corpus-snapshot job and is never inferred from ranked discovery.

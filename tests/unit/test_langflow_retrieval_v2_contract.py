@@ -57,6 +57,9 @@ def test_default_agent_uses_versioned_documentalist_prompt():
     assert DEFAULT_SYSTEM_PROMPT == prompt
     assert "coverage.complete=true" in prompt
     assert "never prove" in prompt
+    assert "Explicit exhaustive" in prompt
+    assert "Never answer from focused results" in prompt
+    assert agent["data"]["node"]["template"]["max_iterations"]["value"] == 128
 
 
 def test_backend_retrieval_tool_is_thin_and_embedded_verbatim():
@@ -266,3 +269,116 @@ def test_backend_tool_forwards_exhaustive_cursor_and_coverage(monkeypatch):
     assert captured["payload"]["cursor"] == "cursor-1"
     assert json.loads(content)["coverage"]["complete"] is False
     assert artifact[0]["chunk_id"] == "chunk-42"
+
+
+def test_explicit_exhaustive_intent_automatically_starts_document_reads(monkeypatch):
+    """A model cannot silently downgrade an explicit exhaustive request."""
+    module = _load_component_with_langflow_stubs(monkeypatch)
+    calls: list[dict] = []
+
+    class _Response:
+        def __init__(self, payload):
+            self.payload = payload
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return self.payload
+
+    class _Client:
+        def __init__(self, **_kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def post(self, _url, *, headers, json):
+            calls.append(json)
+            if json["evidenceMode"] == "focused":
+                return _Response(
+                    {
+                        "results": [
+                            {"document_id": "doc-a", "filename": "a.eml", "text": "ranked"},
+                            {"document_id": "doc-a", "filename": "a.eml", "text": "duplicate"},
+                            {"document_id": "doc-b", "filename": "b.pdf", "text": "ranked"},
+                        ]
+                    }
+                )
+            document_id = json["documentId"]
+            complete = document_id == "doc-a"
+            return _Response(
+                {
+                    "results": [
+                        {
+                            "document_id": document_id,
+                            "chunk_id": f"{document_id}-chunk-1",
+                            "text": f"evidence for {document_id}",
+                        }
+                    ],
+                    "coverage": {
+                        "mode": "exhaustive",
+                        "document_id": document_id,
+                        "complete": complete,
+                        "covered_chunks": 1,
+                        "total_chunks": 1 if complete else 80,
+                        "next_cursor": None if complete else "doc-b-next",
+                    },
+                }
+            )
+
+    monkeypatch.setattr(module.httpx, "Client", _Client)
+    tool = module.OpenRAGBackendRetrievalComponent.__new__(module.OpenRAGBackendRetrievalComponent)
+    tool.openrag_retrieval_url = "http://openrag-backend:8000/search"
+    tool.jwt_token = "user-jwt"
+    tool.filter_expression = json.dumps(
+        {"filters": {}, "limit": 10, "retrievalIntent": "exhaustive"}
+    )
+    tool.number_of_results = 10
+
+    content, artifact = tool.build_tool()["func"]("surface pastorale DDT")
+    payload = json.loads(content)
+
+    assert [call["evidenceMode"] for call in calls] == [
+        "focused",
+        "exhaustive",
+        "exhaustive",
+    ]
+    assert [call["documentId"] for call in calls[1:]] == ["doc-a", "doc-b"]
+    assert all(call["batchSize"] == 50 for call in calls[1:])
+    assert payload["coverage"] == {
+        "mode": "exhaustive",
+        "requested": True,
+        "scope": "focused_discovery_documents",
+        "complete": False,
+        "documents_complete": 1,
+        "documents_total": 2,
+        "documents": [
+            {
+                "mode": "exhaustive",
+                "document_id": "doc-a",
+                "complete": True,
+                "covered_chunks": 1,
+                "total_chunks": 1,
+                "next_cursor": None,
+                "filename": "a.eml",
+            },
+            {
+                "mode": "exhaustive",
+                "document_id": "doc-b",
+                "complete": False,
+                "covered_chunks": 1,
+                "total_chunks": 80,
+                "next_cursor": "doc-b-next",
+                "filename": "b.pdf",
+            },
+        ],
+    }
+    assert {item["chunk_id"] for item in artifact} == {
+        "doc-a-chunk-1",
+        "doc-b-chunk-1",
+    }
+    assert all("ranked" not in item["text"] for item in artifact)
