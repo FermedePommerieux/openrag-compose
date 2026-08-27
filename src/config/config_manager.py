@@ -359,6 +359,14 @@ except OSError:
     )
     DEFAULT_SYSTEM_PROMPT = _RETRIEVAL_V5_FOCUSED_SYSTEM_PROMPT
 
+_RETRIEVAL_V11_EXECUTION_RULE = (
+    "Explicit exhaustive, complete, all-items, audit, or verify-everything requests are "
+    "binding. Use focused discovery only to find `document_id` values; the retrieval tool "
+    "follows every authenticated cursor for those documents before returning. Never "
+    "answer from focused results, repeat already completed exhaustive reads, ask permission, "
+    "offer to do it later, or stop because the work is long. Multi-document work is complete "
+    "only when every selected document reports `coverage.complete=true`."
+)
 _RETRIEVAL_V7_EXECUTION_RULE = (
     "Explicit exhaustive, complete, all-items, audit, or verify-everything requests are "
     "binding. Use focused discovery only to find `document_id` values; the backend starts "
@@ -367,13 +375,18 @@ _RETRIEVAL_V7_EXECUTION_RULE = (
     "focused results, ask permission, offer to do it later, or stop because the work is "
     "long. Multi-document work is complete only when every selected document is complete."
 )
+_RETRIEVAL_V7_DOCUMENTALIST_SYSTEM_PROMPT = DEFAULT_SYSTEM_PROMPT.replace(
+    _RETRIEVAL_V11_EXECUTION_RULE,
+    _RETRIEVAL_V7_EXECUTION_RULE,
+    1,
+)
 _RETRIEVAL_V6_EXECUTION_RULE = (
     "For exhaustive work, first discover the relevant `document_id` values. Then call "
     '`evidence_mode="exhaustive"` separately for every document in scope. Continue with '
     "the returned `coverage.next_cursor` until `coverage.complete=true`. A multi-document "
     "request is complete only when every selected document reports complete coverage."
 )
-_RETRIEVAL_V6_DOCUMENTALIST_SYSTEM_PROMPT = DEFAULT_SYSTEM_PROMPT.replace(
+_RETRIEVAL_V6_DOCUMENTALIST_SYSTEM_PROMPT = _RETRIEVAL_V7_DOCUMENTALIST_SYSTEM_PROMPT.replace(
     _RETRIEVAL_V7_EXECUTION_RULE,
     _RETRIEVAL_V6_EXECUTION_RULE,
     1,
@@ -382,6 +395,7 @@ _RETRIEVAL_V6_DOCUMENTALIST_SYSTEM_PROMPT = DEFAULT_SYSTEM_PROMPT.replace(
 # Recognize every shipped default so an in-place upgrade can safely synchronize
 # security, query-neutrality, role-evidence, and document-reference rules.
 LEGACY_SYSTEM_PROMPTS = (
+    _RETRIEVAL_V7_DOCUMENTALIST_SYSTEM_PROMPT,
     _RETRIEVAL_V6_DOCUMENTALIST_SYSTEM_PROMPT,
     AgentConfig._v060_system_prompt,
     _RETRIEVAL_V1_SECURITY_SYSTEM_PROMPT,

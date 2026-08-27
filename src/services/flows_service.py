@@ -35,7 +35,7 @@ _LEGACY_RETRIEVAL_COMPONENT = (
     "ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra"
 )
 _BACKEND_RETRIEVAL_COMPONENT = "ext:openrag:OpenRAGBackendRetrievalComponent@extra"
-_RETRIEVAL_FLOW_MIGRATION_VERSION = 10
+_RETRIEVAL_FLOW_MIGRATION_VERSION = 11
 _LEGACY_SYSTEM_FLOW_ID = "1098eea1-6649-4e1d-aed1-b77249fb8dd0"
 # SHA-256 of ``flows/openrag_agent.json`` at lifecycle baseline 156f3664,
 # calculated over canonical ``data`` JSON.  Flow IDs and a lock alone are not
@@ -107,6 +107,12 @@ _PREVIOUS_VERSIONED_STABLE_BINDING_GRAPH_SHA256 = (
 )
 _PREVIOUS_VERSIONED_STALE_SHARED_FLOW_GRAPH_SHA256 = (
     "8d1a317642e129d3c6dc719cd097b58a28a9c9e815f10ee503919eab0bbc8e2b"
+)
+# Exact v10 graph before exhaustive continuation became tool-enforced. The
+# model demonstrably stopped after 150/237 chunks despite an explicit prompt;
+# v11 moves cursor completion inside the retrieval component.
+_PREVIOUS_VERSIONED_MODEL_PAGINATED_GRAPH_SHA256 = (
+    "39cfb7049ac0be01b09477a7be5c4fc99433dba864beebcc5bfaf9ea1a4f5c44"
 )
 
 
@@ -1319,6 +1325,8 @@ class FlowsService:
                 _PREVIOUS_VERSIONED_STALE_SHARED_FLOW_GRAPH_SHA256,
             }
             if marker == 9
+            else {_PREVIOUS_VERSIONED_MODEL_PAGINATED_GRAPH_SHA256}
+            if marker == 10
             else set()
         )
         return self._graph_fingerprint(flow_data) in expected

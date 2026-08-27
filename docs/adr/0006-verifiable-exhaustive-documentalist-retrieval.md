@@ -52,11 +52,17 @@ must not use universal claims such as “all”, “none” or “exhaustive”.
 
 Explicit exhaustive intent is also an execution constraint, not merely prompt
 wording. The backend marks the request as `retrievalIntent=exhaustive`. If the
-agent begins with focused discovery, the retrieval tool automatically starts a
-real exhaustive read (batch size 50) for every distinct discovered
-`document_id` and returns each document's authenticated continuation cursor.
-The agent must follow those cursors and has a larger iteration budget for that
-work. Focused result chunks are not substituted for the exhaustive evidence.
+agent begins with focused discovery, the retrieval tool automatically completes
+a real exhaustive read (batch size 50) for every distinct discovered
+`document_id`, following each authenticated continuation cursor internally.
+Focused result chunks are not substituted for the exhaustive evidence.
+
+Cursor traversal is owned by the retrieval tool, not by the language model.
+For every document found during focused discovery, the tool repeatedly reads
+authenticated pages until `coverage.complete=true` or returns an explicit
+incomplete certificate when the backend fails to provide a fresh cursor. This
+prevents a model from stopping early (an observed production run stopped at
+150/237 chunks) while still claiming to have performed exhaustive work.
 
 This automatic expansion certifies only the named
 `focused_discovery_documents` scope. It intentionally does not mislabel a

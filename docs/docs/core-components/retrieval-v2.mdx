@@ -136,11 +136,17 @@ order and returns authenticated continuation cursors plus exact coverage.
 
 When a chat request explicitly asks for exhaustive, complete, all-items,
 audit, or verify-everything work, the backend marks that intent in the trusted
-Langflow context. A focused discovery call then automatically starts the first
-exhaustive page for every distinct discovered document; the agent follows all
-remaining cursors before claiming completeness. This proves the selected
+Langflow context. A focused discovery call then automatically reads every
+exhaustive page for every distinct discovered document before the agent can
+answer. This proves the selected
 document scope only. Whole-archive thematic completeness requires a future
 corpus-snapshot job and is never inferred from ranked discovery.
+
+As of retrieval flow version 11, the component itself follows all continuation
+cursors before returning to the agent. This is intentionally not delegated to
+the model: a real production replay stopped after 150 of 237 chunks even though
+the prompt required completion. A missing or repeated cursor now yields an
+explicit incomplete certificate instead of a silent partial answer.
 
 The search context field is a request-scoped Langflow global variable and must
 be configured with `load_from_db: true`. Its canonical component name is

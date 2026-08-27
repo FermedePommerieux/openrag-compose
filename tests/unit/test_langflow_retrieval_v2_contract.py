@@ -280,7 +280,7 @@ def test_backend_tool_forwards_exhaustive_cursor_and_coverage(monkeypatch):
     assert artifact[0]["chunk_id"] == "chunk-42"
 
 
-def test_explicit_exhaustive_intent_automatically_starts_document_reads(monkeypatch):
+def test_explicit_exhaustive_intent_automatically_completes_document_reads(monkeypatch):
     """A model cannot silently downgrade an explicit exhaustive request."""
     module = _load_component_with_langflow_stubs(monkeypatch)
     calls: list[dict] = []
@@ -318,13 +318,14 @@ def test_explicit_exhaustive_intent_automatically_starts_document_reads(monkeypa
                     }
                 )
             document_id = json["documentId"]
-            complete = document_id == "doc-a"
+            continuation = bool(json["cursor"])
+            complete = document_id == "doc-a" or continuation
             return _Response(
                 {
                     "results": [
                         {
                             "document_id": document_id,
-                            "chunk_id": f"{document_id}-chunk-1",
+                            "chunk_id": f"{document_id}-chunk-{2 if continuation else 1}",
                             "text": f"evidence for {document_id}",
                         }
                     ],
@@ -332,8 +333,8 @@ def test_explicit_exhaustive_intent_automatically_starts_document_reads(monkeypa
                         "mode": "exhaustive",
                         "document_id": document_id,
                         "complete": complete,
-                        "covered_chunks": 1,
-                        "total_chunks": 1 if complete else 80,
+                        "covered_chunks": 80 if continuation else 1,
+                        "total_chunks": 1 if document_id == "doc-a" else 80,
                         "next_cursor": None if complete else "doc-b-next",
                     },
                 }
@@ -355,15 +356,17 @@ def test_explicit_exhaustive_intent_automatically_starts_document_reads(monkeypa
         "focused",
         "exhaustive",
         "exhaustive",
+        "exhaustive",
     ]
-    assert [call["documentId"] for call in calls[1:]] == ["doc-a", "doc-b"]
+    assert [call["documentId"] for call in calls[1:]] == ["doc-a", "doc-b", "doc-b"]
+    assert [call["cursor"] for call in calls[1:]] == ["", "", "doc-b-next"]
     assert all(call["batchSize"] == 50 for call in calls[1:])
     assert payload["coverage"] == {
         "mode": "exhaustive",
         "requested": True,
         "scope": "focused_discovery_documents",
-        "complete": False,
-        "documents_complete": 1,
+        "complete": True,
+        "documents_complete": 2,
         "documents_total": 2,
         "documents": [
             {
@@ -378,10 +381,10 @@ def test_explicit_exhaustive_intent_automatically_starts_document_reads(monkeypa
             {
                 "mode": "exhaustive",
                 "document_id": "doc-b",
-                "complete": False,
-                "covered_chunks": 1,
+                "complete": True,
+                "covered_chunks": 80,
                 "total_chunks": 80,
-                "next_cursor": "doc-b-next",
+                "next_cursor": None,
                 "filename": "b.pdf",
             },
         ],
@@ -389,5 +392,6 @@ def test_explicit_exhaustive_intent_automatically_starts_document_reads(monkeypa
     assert {item["chunk_id"] for item in artifact} == {
         "doc-a-chunk-1",
         "doc-b-chunk-1",
+        "doc-b-chunk-2",
     }
     assert all("ranked" not in item["text"] for item in artifact)

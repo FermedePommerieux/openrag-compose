@@ -150,9 +150,9 @@ class OpenRAGBackendRetrievalComponent(LCToolComponent):
 
         Focused discovery is allowed to identify candidate documents, but its
         chunks are never returned as if they were exhaustive evidence.  The
-        tool immediately reads the first maximum-sized page of every discovered
-        document.  Remaining authenticated cursors are returned to the agent,
-        which must follow them before it can claim complete coverage.
+        tool follows every authenticated cursor for every discovered document
+        itself. Completeness is therefore an execution invariant rather than a
+        discretionary sequence of extra tool calls left to the language model.
         """
         discovered: list[dict[str, str]] = []
         seen: set[str] = set()
@@ -173,33 +173,52 @@ class OpenRAGBackendRetrievalComponent(LCToolComponent):
         exhaustive_results: list[dict[str, Any]] = []
         document_coverages: list[dict[str, Any]] = []
         for document in discovered:
-            response = client.post(
-                url,
-                headers=headers,
-                json={
-                    "query": query,
-                    "filters": filters,
-                    "limit": limit,
-                    "scoreThreshold": score_threshold,
-                    "evidenceMode": "exhaustive",
-                    "documentId": document["document_id"],
-                    "cursor": "",
-                    "batchSize": 50,
-                },
+            cursor = ""
+            seen_cursors: set[str] = set()
+            final_coverage: dict[str, Any] = {}
+            while True:
+                response = client.post(
+                    url,
+                    headers=headers,
+                    json={
+                        "query": query,
+                        "filters": filters,
+                        "limit": limit,
+                        "scoreThreshold": score_threshold,
+                        "evidenceMode": "exhaustive",
+                        "documentId": document["document_id"],
+                        "cursor": cursor,
+                        "batchSize": 50,
+                    },
+                )
+                payload = self._validated_payload(response)
+                exhaustive_results.extend(
+                    item for item in payload.get("results", []) if isinstance(item, dict)
+                )
+                coverage = payload.get("coverage")
+                if not isinstance(coverage, dict):
+                    final_coverage = {
+                        "mode": "exhaustive",
+                        "document_id": document["document_id"],
+                        "complete": False,
+                        "error": payload.get("error") or "missing coverage certificate",
+                    }
+                    break
+                final_coverage = dict(coverage)
+                if coverage.get("complete") is True:
+                    break
+                next_cursor = _as_text(coverage.get("next_cursor"))
+                if not next_cursor or next_cursor in seen_cursors:
+                    final_coverage["complete"] = False
+                    final_coverage["error"] = (
+                        "incomplete coverage returned no fresh continuation cursor"
+                    )
+                    break
+                seen_cursors.add(next_cursor)
+                cursor = next_cursor
+            document_coverages.append(
+                {**final_coverage, "filename": document["filename"]}
             )
-            payload = self._validated_payload(response)
-            exhaustive_results.extend(
-                item for item in payload.get("results", []) if isinstance(item, dict)
-            )
-            coverage = payload.get("coverage")
-            if not isinstance(coverage, dict):
-                coverage = {
-                    "mode": "exhaustive",
-                    "document_id": document["document_id"],
-                    "complete": False,
-                    "error": payload.get("error") or "missing coverage certificate",
-                }
-            document_coverages.append({**coverage, "filename": document["filename"]})
 
         documents_complete = sum(
             coverage.get("complete") is True for coverage in document_coverages
@@ -328,9 +347,9 @@ class OpenRAGBackendRetrievalComponent(LCToolComponent):
                 "add a candidate answer for the attribute being looked up. Use returned "
                 "chunk_id values for inline citations. Use evidence_mode='focused' for "
                 "ranked discovery. Explicit exhaustive/list-all/compare/audit intent is "
-                "marked by the backend: a focused call then automatically starts a real "
-                "exhaustive read for every discovered document. Follow every cursor in "
-                "coverage.documents until each document has complete=true. Never answer an "
+                "marked by the backend: a focused call then automatically follows every "
+                "authenticated cursor for every discovered document. Do not repeat those "
+                "reads when coverage.complete=true. Never answer an "
                 "explicit exhaustive request from focused results alone and never claim "
                 "whole-corpus coverage for scope='focused_discovery_documents'."
             ),
