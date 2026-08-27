@@ -40,9 +40,12 @@ tools and non-null reasoning effort are combined. Sending that contract to
 4. Prompts and raw request bodies are not stored. The validated JSON response,
    original usage summary, timestamps and hit count are stored in PostgreSQL or
    SQLite through the normal OpenRAG database.
-5. Entries expire after 30 days by default. Set
-   `OPENRAG_AI_RESPONSE_CACHE_TTL_DAYS=0` to disable the cache or a positive
-   integer to change retention.
+5. Entries are retained without expiration by default because a verified
+   documentary extraction remains useful research work. Set
+   `OPENRAG_AI_RESPONSE_CACHE_TTL_DAYS` to a positive integer only when a
+   bounded retention policy is required; zero also means unlimited. Cache
+   storage can be disabled independently with
+   `OPENRAG_AI_RESPONSE_CACHE_ENABLED=false`.
 6. Cache read/write failure is fail-open: the provider request proceeds and
    retrieval correctness does not depend on cache availability.
 7. Application-cache savings are reported separately from billed usage as
@@ -71,7 +74,8 @@ basis of semantic similarity.
   calls while Sol still writes a fresh conversational answer.
 - A related but materially different question pays for the changed reasoning
   steps; this is intentional because approximate reuse is not a proof.
-- Database growth is bounded by retention rather than an arbitrary archive
-  size limit. Expired rows are ignored even before physical cleanup.
+- Database growth follows the number of distinct verified reasoning contracts,
+  without an arbitrary retention deadline. A deployment that explicitly sets
+  a positive retention period still ignores expired rows before cleanup.
 - Retrieval v2 is bumped to version 16 so the protected production flow can be
   migrated from the exact version-15 graph without overwriting operator edits.

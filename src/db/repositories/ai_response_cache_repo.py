@@ -17,10 +17,11 @@ class AIResponseCacheRepo:
             return None
         effective_now = now or datetime.now(UTC)
         expires_at = row.expires_at
-        if expires_at.tzinfo is None:
-            expires_at = expires_at.replace(tzinfo=UTC)
-        if expires_at <= effective_now:
-            return None
+        if expires_at is not None:
+            if expires_at.tzinfo is None:
+                expires_at = expires_at.replace(tzinfo=UTC)
+            if expires_at <= effective_now:
+                return None
         row.hit_count += 1
         row.updated_at = effective_now
         self.session.add(row)

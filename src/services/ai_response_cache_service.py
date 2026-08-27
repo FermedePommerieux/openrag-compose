@@ -29,7 +29,16 @@ logger = get_logger(__name__)
 
 AI_RESPONSE_CACHE_VERSION = "1"
 AI_RESPONSE_CACHE_NAMESPACE = "audit_structured_response"
-DEFAULT_AI_RESPONSE_CACHE_TTL_DAYS = 30
+# Documentary proofs are durable research work, not an ephemeral HTTP cache.
+# Zero therefore means "no expiry"; disabling storage is a separate flag so
+# an operator cannot accidentally discard reusable evidence by selecting an
+# unlimited retention policy.
+DEFAULT_AI_RESPONSE_CACHE_TTL_DAYS = 0
+
+
+def _cache_enabled() -> bool:
+    raw = os.getenv("OPENRAG_AI_RESPONSE_CACHE_ENABLED", "true").strip().lower()
+    return raw not in {"0", "false", "no", "off"}
 
 
 def _ttl_days() -> int:
@@ -50,9 +59,16 @@ def _ttl_days() -> int:
 class AIResponseCacheService:
     """Read and write exact structured-call results in the backend database."""
 
-    def __init__(self, session_factory=None, *, ttl_days: int | None = None) -> None:
+    def __init__(
+        self,
+        session_factory=None,
+        *,
+        ttl_days: int | None = None,
+        enabled: bool | None = None,
+    ) -> None:
         self._session_factory = session_factory
         self.ttl_days = _ttl_days() if ttl_days is None else max(0, int(ttl_days))
+        self.enabled = _cache_enabled() if enabled is None else bool(enabled)
 
     def _resolve_session_factory(self):
         if self._session_factory is not None:
@@ -96,7 +112,7 @@ class AIResponseCacheService:
         return hashlib.sha256(canonical.encode("utf-8")).hexdigest(), scope_digest
 
     async def get(self, cache_key: str) -> dict[str, Any] | None:
-        if self.ttl_days <= 0:
+        if not self.enabled:
             return None
         session_factory = self._resolve_session_factory()
         if session_factory is None:
@@ -127,7 +143,7 @@ class AIResponseCacheService:
         usage: dict[str, Any] | None,
         namespace: str = AI_RESPONSE_CACHE_NAMESPACE,
     ) -> None:
-        if self.ttl_days <= 0:
+        if not self.enabled:
             return
         session_factory = self._resolve_session_factory()
         if session_factory is None:
@@ -143,7 +159,7 @@ class AIResponseCacheService:
             usage_payload=usage or {},
             created_at=now,
             updated_at=now,
-            expires_at=now + timedelta(days=self.ttl_days),
+            expires_at=now + timedelta(days=self.ttl_days) if self.ttl_days > 0 else None,
         )
         try:
             async with session_factory() as session:
