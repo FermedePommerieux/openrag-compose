@@ -35,7 +35,7 @@ _LEGACY_RETRIEVAL_COMPONENT = (
     "ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra"
 )
 _BACKEND_RETRIEVAL_COMPONENT = "ext:openrag:OpenRAGBackendRetrievalComponent@extra"
-_RETRIEVAL_FLOW_MIGRATION_VERSION = 11
+_RETRIEVAL_FLOW_MIGRATION_VERSION = 12
 _LEGACY_SYSTEM_FLOW_ID = "1098eea1-6649-4e1d-aed1-b77249fb8dd0"
 # SHA-256 of ``flows/openrag_agent.json`` at lifecycle baseline 156f3664,
 # calculated over canonical ``data`` JSON.  Flow IDs and a lock alone are not
@@ -113,6 +113,13 @@ _PREVIOUS_VERSIONED_STALE_SHARED_FLOW_GRAPH_SHA256 = (
 # v11 moves cursor completion inside the retrieval component.
 _PREVIOUS_VERSIONED_MODEL_PAGINATED_GRAPH_SHA256 = (
     "39cfb7049ac0be01b09477a7be5c4fc99433dba864beebcc5bfaf9ea1a4f5c44"
+)
+# Exact v11 graph whose tool completed every cursor but serialized the entire
+# source artifact into model-visible content. Version 12 keeps that artifact
+# for citation rendering and sends the model a compact evidence/document
+# projection, preventing repeated provenance from exhausting context.
+_PREVIOUS_VERSIONED_UNPROJECTED_EVIDENCE_GRAPH_SHA256 = (
+    "da17e3da3b206360313b3ae7947cec3b521a9792e4bfd3346172f07c818990fa"
 )
 
 
@@ -1327,6 +1334,8 @@ class FlowsService:
             if marker == 9
             else {_PREVIOUS_VERSIONED_MODEL_PAGINATED_GRAPH_SHA256}
             if marker == 10
+            else {_PREVIOUS_VERSIONED_UNPROJECTED_EVIDENCE_GRAPH_SHA256}
+            if marker == 11
             else set()
         )
         return self._graph_fingerprint(flow_data) in expected

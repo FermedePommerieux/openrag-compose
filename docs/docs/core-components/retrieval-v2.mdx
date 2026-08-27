@@ -148,6 +148,24 @@ the model: a real production replay stopped after 150 of 237 chunks even though
 the prompt required completion. A missing or repeated cursor now yields an
 explicit incomplete certificate instead of a silent partial answer.
 
+Retrieval flow version 12 separates the two consumers of a tool result. The
+LangChain artifact retains every complete chunk record, source URL, ACL field,
+ingestion profile and W3C PROV-O object for citation rendering and inspection.
+The language-model content receives the same chunk texts and immutable
+`chunk_id` values, but document metadata is projected once into a document
+manifest and operational fields are omitted. No evidence is ranked away by
+this projection. It fixes a measured production case where 237 ordinary chunks
+became 512,777 input tokens primarily because the same provenance and profile
+were serialized on every row.
+
+This context projection is a transport optimization, not an exhaustiveness
+claim. OpenSearch remains responsible for ACL-scoped lexical/vector discovery,
+RRF and deterministic source-order reads. A coverage certificate proves only
+the scope it names; `focused_discovery_documents` still does not mean the whole
+archive. Corpus-wide thematic certification requires an immutable accessible
+corpus snapshot plus persisted, batch-level relevance decisions before final
+synthesis.
+
 The search context field is a request-scoped Langflow global variable and must
 be configured with `load_from_db: true`. Its canonical component name is
 `OPENRAG_QUERY_FILTER`, so its exact HTTP alias is

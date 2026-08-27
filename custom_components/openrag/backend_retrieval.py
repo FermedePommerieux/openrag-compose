@@ -19,6 +19,49 @@ from lfx.schema.data import Data
 UNTRUSTED_CHUNK_FENCE_START = "<<<UNTRUSTED_DOC_CHUNK>>>"
 UNTRUSTED_CHUNK_FENCE_END = "<<<END_UNTRUSTED_DOC_CHUNK>>>"
 
+# The artifact returned by LangChain is consumed by OpenRAG's source UI and
+# deliberately retains the complete backend result.  Tool ``content`` is sent
+# to the language model, so repeating ACLs, PROV-O JSON, source URLs and the
+# ingestion profile on every chunk wastes context without adding evidence.
+# Keep this projection explicit: adding a backend field must never silently
+# increase model-token use.
+MODEL_EVIDENCE_FIELDS = (
+    "chunk_id",
+    "document_id",
+    "page",
+    "chunk_index",
+    "evidence_order",
+    "score",
+    "text",
+)
+MODEL_DOCUMENT_FIELDS = (
+    "document_id",
+    "filename",
+    "mimetype",
+    "connector_type",
+    "source_entity_id",
+    "source_entity_type",
+    "source_entity_system",
+    "source_entity_alternate_ids",
+    "source_relation_target_ids",
+    "source_relation_roles",
+)
+MODEL_COVERAGE_FIELDS = (
+    "mode",
+    "requested",
+    "scope",
+    "complete",
+    "document_id",
+    "covered_chunks",
+    "total_chunks",
+    "coverage_ratio",
+    "documents_complete",
+    "documents_total",
+    "next_cursor",
+    "error",
+    "filename",
+)
+
 
 def _as_text(value: Any) -> str:
     """Read plain, secret and Langflow Message values without logging them."""
@@ -36,6 +79,82 @@ def _fence_untrusted_text(text: str) -> str:
         UNTRUSTED_CHUNK_FENCE_END, "\\" + UNTRUSTED_CHUNK_FENCE_END
     )
     return f"{UNTRUSTED_CHUNK_FENCE_START}\n{escaped}\n{UNTRUSTED_CHUNK_FENCE_END}"
+
+
+def _present_fields(
+    value: dict[str, Any],
+    fields: tuple[str, ...],
+    *,
+    keep_null: tuple[str, ...] = (),
+) -> dict[str, Any]:
+    """Copy only present, non-empty fields into a model-facing projection."""
+    return {
+        field: value[field]
+        for field in fields
+        if field in value and (field in keep_null or value[field] not in (None, "", [], {}))
+    }
+
+
+def _model_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    """Build compact evidence content while preserving the source artifact.
+
+    OpenSearch stores provenance and document profiling on every chunk so any
+    independently retrieved hit is self-describing.  A model tool message has
+    different economics: document metadata belongs once in a manifest and
+    chunk rows need only stable citation identity, location and text.  This
+    lossless split for answer evidence avoids the production failure where 237
+    modest chunks expanded to more than 512k input tokens.
+    """
+    results = [item for item in payload.get("results", []) if isinstance(item, dict)]
+    documents: list[dict[str, Any]] = []
+    documents_by_id: dict[str, dict[str, Any]] = {}
+    evidence: list[dict[str, Any]] = []
+
+    for item in results:
+        evidence.append(_present_fields(item, MODEL_EVIDENCE_FIELDS))
+        document_id = _as_text(item.get("document_id"))
+        if not document_id:
+            continue
+        projected = documents_by_id.get(document_id)
+        if projected is None:
+            projected = _present_fields(item, MODEL_DOCUMENT_FIELDS)
+            documents_by_id[document_id] = projected
+            documents.append(projected)
+            continue
+        # A field can be absent from the highest-ranked chunk of a legacy
+        # document but present later. Fill gaps without repeating metadata.
+        for field, value in _present_fields(item, MODEL_DOCUMENT_FIELDS).items():
+            projected.setdefault(field, value)
+
+    compact: dict[str, Any] = {
+        "results": evidence,
+        "total": len(evidence),
+        "documents": documents,
+    }
+    coverage = payload.get("coverage")
+    if isinstance(coverage, dict):
+        compact_coverage = _present_fields(
+            coverage, MODEL_COVERAGE_FIELDS, keep_null=("next_cursor",)
+        )
+        nested = coverage.get("documents")
+        if isinstance(nested, list):
+            compact_coverage["documents"] = [
+                _present_fields(item, MODEL_COVERAGE_FIELDS, keep_null=("next_cursor",))
+                for item in nested
+                if isinstance(item, dict)
+            ]
+        compact["coverage"] = compact_coverage
+    discovery = payload.get("discovery")
+    if isinstance(discovery, dict):
+        compact["discovery"] = {
+            key: discovery[key]
+            for key in ("mode", "documents_found")
+            if key in discovery
+        }
+    for field in ("error", "warning", "retrieval_strategy", "retrieval_mode"):
+        if field in payload and payload[field] not in (None, ""):
+            compact[field] = payload[field]
+    return compact
 
 
 class OpenRAGBackendRetrievalComponent(LCToolComponent):
@@ -334,9 +453,9 @@ class OpenRAGBackendRetrievalComponent(LCToolComponent):
             artifact = payload["results"]
 
             # LangChain stores the second tuple element on ToolMessage.artifact.
-            # JSON content remains useful to the model, while the native artifact
-            # survives Langflow/OpenAI transport without relying on Data.__repr__.
-            return json.dumps(payload, ensure_ascii=False), artifact
+            # It retains full source/provenance data for OpenRAG's UI. Only the
+            # compact projection enters the model context.
+            return json.dumps(_model_payload(payload), ensure_ascii=False), artifact
 
         return StructuredTool.from_function(
             func=search_documents,

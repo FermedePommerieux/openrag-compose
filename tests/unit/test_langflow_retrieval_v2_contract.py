@@ -143,6 +143,14 @@ def test_backend_tool_forwards_request_and_preserves_provenance(monkeypatch):
         "chunk_id": "chunk-42",
         "connector_file_id": "drive-file-42",
         "source_url": "/api/source-files/document-42.token",
+        "source_provenance": {
+            "entity": {"id": "urn:openrag:document:42", "type": "document"},
+            "relations": [{"role": "attached_to", "target": "mail-42"}],
+            "large_repeated_value": "metadata must stay out of model context" * 100,
+        },
+        "source_entity_id": "urn:openrag:document:42",
+        "source_relation_target_ids": ["mail-42"],
+        "source_relation_roles": ["attached_to"],
         "filename": "archive.pdf",
         "page": 3,
         "chunk_index": 7,
@@ -199,14 +207,27 @@ def test_backend_tool_forwards_request_and_preserves_provenance(monkeypatch):
     }
     assert "<<<UNTRUSTED_DOC_CHUNK>>>" in result[0].text
     citations = parse_knowledge_chunks({"artifact": [{"data": result[0].__dict__}]})
-    assert {key: citations[0][key] for key in search_result if key != "text"} == {
-        key: value for key, value in search_result.items() if key != "text"
-    }
+    assert citations[0]["chunk_id"] == "chunk-42"
+    assert citations[0]["document_id"] == "document-42"
+    assert citations[0]["source_url"] == "/api/source-files/document-42.token"
+    assert citations[0]["filename"] == "archive.pdf"
 
     built_tool = tool.build_tool()
     assert built_tool["response_format"] == "content_and_artifact"
     content, artifact = built_tool["func"]("where is the archive?")
-    assert json.loads(content)["results"][0]["chunk_id"] == "chunk-42"
+    model_payload = json.loads(content)
+    assert model_payload["results"][0]["chunk_id"] == "chunk-42"
+    assert "source_url" not in model_payload["results"][0]
+    assert "source_provenance" not in content
+    assert model_payload["documents"] == [
+        {
+            "document_id": "document-42",
+            "filename": "archive.pdf",
+            "source_entity_id": "urn:openrag:document:42",
+            "source_relation_target_ids": ["mail-42"],
+            "source_relation_roles": ["attached_to"],
+        }
+    ]
     assert artifact == [
         {
             **search_result,
@@ -215,6 +236,8 @@ def test_backend_tool_forwards_request_and_preserves_provenance(monkeypatch):
             ),
         }
     ]
+    assert artifact[0]["source_url"] == "/api/source-files/document-42.token"
+    assert artifact[0]["source_provenance"]["entity"]["type"] == "document"
     assert "JSON(text_key=" not in content
 
 
