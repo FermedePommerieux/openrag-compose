@@ -292,6 +292,11 @@ chunk order, and complete cursor chain have passed. This avoids leaving the UI
 at “preparing” when Langflow legitimately skips archive discovery for an
 already identified document.
 
+While one of these progress snapshots exists, the chat renders it as the
+primary streaming status and suppresses the generic `Thinking` placeholder.
+The status uses a visible card, exact counters, and a terminal verification
+icon so a long audit cannot appear indistinguishable from an idle model call.
+
 Progress events contain no query, filename, document text, credential, model
 reasoning, or finding. They are excluded from the assistant answer and from
 conversation history. A 15-second repeat of the last snapshot acts as a

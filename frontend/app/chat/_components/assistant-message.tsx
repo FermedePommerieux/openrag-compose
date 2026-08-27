@@ -1,4 +1,4 @@
-import { GitBranch, Loader2 } from "lucide-react";
+import { CircleCheck, GitBranch, Loader2 } from "lucide-react";
 import { motion } from "motion/react";
 import dynamic from "next/dynamic";
 import { useRef, useState } from "react";
@@ -218,7 +218,9 @@ export function AssistantMessage({
     ? processedContent.trim()
       ? processedContent +
         ' <span class="inline-block w-1 h-4 bg-primary ml-1 animate-pulse"></span>'
-      : '<span class="text-muted-foreground italic">Thinking<span class="thinking-dots"></span></span>'
+      : progress
+        ? ""
+        : '<span class="text-muted-foreground italic">Thinking<span class="thinking-dots"></span></span>'
     : processedContent;
 
   const activeCitedSource = citedSources.find(
@@ -318,8 +320,12 @@ export function AssistantMessage({
           )}
           <div className="relative">
             {isStreaming && progress && (
-              <div className="mb-2 flex items-center gap-2 text-xs text-muted-foreground">
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              <div className="mb-2 flex items-center gap-2 rounded-md border border-border/60 bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
+                {progress.complete ? (
+                  <CircleCheck className="h-4 w-4 text-emerald-600" />
+                ) : (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                )}
                 <span>{progress.message}</span>
                 {formatAuditProgressCounter(progress) && (
                   <span className="rounded bg-accent px-1.5 py-0.5 tabular-nums">
