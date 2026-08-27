@@ -272,14 +272,26 @@ class ChatService:
                 extra_headers=extra_headers,
                 previous_response_id=previous_response_id,
                 filter_id=filter_id,
+                billing_model=config.agent.llm_model,
             )
             if audit_progress_id:
-                return _stream_with_audit_progress(response_stream, audit_progress_id)
+                from services.chat_audit_job_service import chat_audit_job_service
+
+                # The detached producer owns the Langflow stream. The HTTP
+                # response is merely a subscriber and may disappear without
+                # cancelling or losing an expensive exhaustive audit.
+                await chat_audit_job_service.start(
+                    audit_id=audit_progress_id,
+                    user_id=conversation_user_id,
+                    model=config.agent.llm_model,
+                    stream=_stream_with_audit_progress(response_stream, audit_progress_id),
+                )
+                return chat_audit_job_service.subscribe(audit_progress_id, conversation_user_id)
             return response_stream
         else:
             from agent import async_langflow_chat
 
-            response_text, response_id, sources = await async_langflow_chat(
+            response_text, response_id, sources, usage = await async_langflow_chat(
                 langflow_client,
                 LANGFLOW_CHAT_FLOW_ID,
                 prompt,
@@ -287,6 +299,8 @@ class ChatService:
                 extra_headers=extra_headers,
                 previous_response_id=previous_response_id,
                 filter_id=filter_id,
+                billing_model=config.agent.llm_model,
+                include_usage=True,
             )
             citation_ids = extract_source_citation_ids(response_text)
             if citation_ids and self.search_service is not None:
@@ -307,6 +321,8 @@ class ChatService:
                 response_data["response_id"] = response_id
             if sources:
                 response_data["sources"] = sources
+            if usage:
+                response_data["usage"] = usage
             return response_data
 
     async def langflow_nudges_chat(

@@ -56,6 +56,7 @@ export function useChatStreaming({
     // Set up timeout to detect stuck/hanging requests
     let timeoutId: NodeJS.Timeout | null = null;
     let hasReceivedData = false;
+    let auditId: string | null = null;
 
     try {
       setIsLoading(true);
@@ -146,6 +147,7 @@ export function useChatStreaming({
       const progress: { value: AuditProgress | undefined } = {
         value: undefined,
       };
+      let auditTerminalReceived = false;
 
       if (!controller.signal.aborted && thisStreamId === streamIdRef.current) {
         setStreamingMessage({
@@ -185,11 +187,30 @@ export function useChatStreaming({
                 }
 
                 if (
+                  chunk.type === "openrag.audit.created" &&
+                  typeof chunk.audit_id === "string"
+                ) {
+                  auditId = chunk.audit_id;
+                  window.localStorage.setItem(
+                    "openrag_active_audit",
+                    chunk.audit_id,
+                  );
+                }
+
+                if (
                   chunk.type === "openrag.audit.progress" &&
                   chunk.progress &&
                   typeof chunk.progress === "object"
                 ) {
                   progress.value = chunk.progress as AuditProgress;
+                }
+                if (
+                  chunk.type === "openrag.audit.usage" &&
+                  chunk.usage &&
+                  typeof chunk.usage === "object"
+                ) {
+                  usage.value = chunk.usage as TokenUsage;
+                  auditTerminalReceived = true;
                 }
 
                 parseOpenAIChatChunk(chunk, content, currentFunctionCalls) ||
@@ -236,6 +257,56 @@ export function useChatStreaming({
       } finally {
         reader.releaseLock();
         if (timeoutId) clearTimeout(timeoutId);
+      }
+
+      // A reverse proxy or browser may end a long SSE response while the
+      // detached audit is still healthy. Poll the durable job instead of
+      // treating transport loss as task loss or starting a duplicate audit.
+      if (auditId && !auditTerminalReceived && !controller.signal.aborted) {
+        while (!controller.signal.aborted) {
+          const statusResponse = await fetch(
+            `/api/chat/audits/${encodeURIComponent(auditId)}`,
+            { signal: controller.signal },
+          );
+          if (!statusResponse.ok) {
+            throw new Error(`Unable to recover audit ${auditId}`);
+          }
+          const status = (await statusResponse.json()) as {
+            status: "running" | "completed" | "failed";
+            response?: string | null;
+            response_id?: string | null;
+            progress?: AuditProgress;
+            usage?: TokenUsage;
+            error?: string | null;
+          };
+          if (status.progress) {
+            progress.value = status.progress;
+            setStreamingMessage({
+              role: "assistant",
+              content: content.value,
+              functionCalls:
+                currentFunctionCalls.length > 0
+                  ? [...currentFunctionCalls]
+                  : undefined,
+              timestamp: new Date(),
+              isStreaming: true,
+              progress: progress.value,
+            });
+          }
+          if (status.status === "completed") {
+            content.value = status.response || content.value;
+            newResponseId = status.response_id || newResponseId;
+            usage.value = status.usage || usage.value;
+            auditTerminalReceived = true;
+            window.localStorage.removeItem("openrag_active_audit");
+            break;
+          }
+          if (status.status === "failed") {
+            window.localStorage.removeItem("openrag_active_audit");
+            throw new Error(status.error || "Exhaustive audit failed");
+          }
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+        }
       }
 
       if (

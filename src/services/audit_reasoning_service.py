@@ -190,6 +190,9 @@ class AuditReasoningService:
             },
             timeout=AUDIT_REASONING_TIMEOUT_SECONDS,
         )
+        from services.token_usage_service import token_usage_service
+
+        token_usage_service.record_response(self.model, response)
         return output_model.model_validate_json(_response_output_text(response))
 
     async def expand_query(

@@ -1,5 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 
+// Exhaustive audits can legitimately exceed the framework's three-minute
+// route budget. The backend job is reconnect-safe, but keeping the first SSE
+// subscriber alive avoids an unnecessary polling hand-off in the common case.
+export const maxDuration = 2400;
+export const dynamic = "force-dynamic";
+
 function getRequestId(request: NextRequest): string {
   return request.headers.get("x-request-id") || crypto.randomUUID();
 }

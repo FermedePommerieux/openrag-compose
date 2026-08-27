@@ -131,3 +131,17 @@ For an example, see the [Langflow quickstart](https://docs.langflow.org/get-star
 
 * [Troubleshoot chat issues](/support/troubleshoot#chat-issues)
 * [Troubleshoot document ingestion or similarity search issues](/support/troubleshoot#document-ingestion-or-similarity-search-issues)
+
+## Exhaustive audit continuity and usage
+
+An explicitly exhaustive archive request is executed as a durable,
+owner-scoped audit job. Closing the page or losing the streaming connection
+does not cancel the producer. When a live page loses its stream, the chat polls
+the existing audit identifier and displays its stored result when complete.
+
+Assistant messages display provider-reported input, cached, output and
+reasoning tokens. They also display a USD estimate based on the dated public
+price table shipped with OpenRAG. For exhaustive audits the figures aggregate
+the complete operation, including internal reasoning workers and query
+embeddings; they are not limited to the final synthesis call. An unavailable
+price is shown as unavailable rather than estimated.

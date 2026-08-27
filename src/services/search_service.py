@@ -750,6 +750,11 @@ class SearchService:
                         resp = await clients.patched_embedding_client.embeddings.create(
                             model=formatted_model, input=[query]
                         )
+                        from services.token_usage_service import token_usage_service
+
+                        # ``model_name`` is the public billing model. The
+                        # formatted LiteLLM name may contain a provider prefix.
+                        token_usage_service.record_response(model_name, resp)
                         # Try to get embedding - some providers return .embedding, others return ['embedding']
                         embedding = getattr(resp.data[0], "embedding", None)
                         if embedding is None:

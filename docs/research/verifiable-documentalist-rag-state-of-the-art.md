@@ -103,3 +103,18 @@ retrieval snapshots and record at least:
 
 A stronger model may improve synthesis. It must never turn incomplete
 retrieval into a reported success.
+
+## Execution durability and economic verifiability
+
+Truth-oriented retrieval cannot bind a long audit's lifetime to an HTTP
+subscriber. The archive audit therefore runs as an owner-scoped durable job:
+the live stream is only one viewer, progress and the terminal result are stored
+in PostgreSQL, and a disconnected chat recovers the same job rather than
+silently launching a second paid search.
+
+Economic claims follow the same evidence principle. The UI reports provider
+token counts and a dated price-derived cost for every answer. Exhaustive audits
+sum all constituent calls—query embeddings, bounded evidence readers,
+coordinators, validators and the final agent response. Unknown pricing is
+reported as unknown; it is never inferred. See
+[ADR 0007](../adr/0007-durable-chat-audits-and-cost-ledger.md).

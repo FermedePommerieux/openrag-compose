@@ -195,6 +195,12 @@ def register_internal_routes(app: FastAPI):
     # Chat endpoints
     app.add_api_route("/chat", chat.chat_endpoint, methods=["POST"], tags=["internal"])
     app.add_api_route("/langflow", chat.langflow_endpoint, methods=["POST"], tags=["internal"])
+    app.add_api_route(
+        "/chat/audits/{audit_id}",
+        chat.chat_audit_status_endpoint,
+        methods=["GET"],
+        tags=["internal"],
+    )
 
     # Chat history endpoints
     app.add_api_route(

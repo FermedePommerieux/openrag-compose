@@ -25,6 +25,19 @@ export function TokenUsage({ usage }: TokenUsageProps) {
             ({usage.input_tokens_details.cached_tokens.toLocaleString()} cached)
           </span>
         ) : null}
+        {usage.output_tokens_details?.reasoning_tokens ? (
+          <span className="ml-1">
+            ({usage.output_tokens_details.reasoning_tokens.toLocaleString()}{" "}
+            reasoning)
+          </span>
+        ) : null}
+        {typeof usage.cost_usd === "number" ? (
+          <span className="ml-1 font-medium text-foreground">
+            · ${usage.cost_usd.toFixed(4)}
+          </span>
+        ) : usage.cost_complete === false ? (
+          <span className="ml-1">· cost unavailable for one model</span>
+        ) : null}
       </span>
     </div>
   );

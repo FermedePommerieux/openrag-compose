@@ -8,6 +8,19 @@ export interface TokenUsage {
   output_tokens_details?: {
     reasoning_tokens?: number;
   };
+  cost_usd?: number | null;
+  cost_complete?: boolean;
+  pricing_basis?: string;
+  calls?: number;
+  models?: Record<
+    string,
+    {
+      input_tokens: number;
+      output_tokens: number;
+      total_tokens: number;
+      calls: number;
+    }
+  >;
 }
 
 export interface Message {

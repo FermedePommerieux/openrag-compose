@@ -575,6 +575,8 @@ async def async_langflow_chat(
     previous_response_id: str = None,
     store_conversation: bool = True,
     filter_id: str = None,
+    billing_model: str | None = None,
+    include_usage: bool = False,
 ):
     logger.debug(
         "async_langflow_chat called",
@@ -613,6 +615,12 @@ async def async_langflow_chat(
         previous_response_id=previous_response_id,
         log_prefix="langflow",
     )
+    priced_usage = None
+    raw_usage = getattr(response_obj, "usage", None)
+    if raw_usage and billing_model:
+        from services.token_usage_service import token_usage_service
+
+        priced_usage = token_usage_service.describe_usage(billing_model, raw_usage)
     logger.debug(
         "Got langflow response",
         response_preview=response_text[:50],
@@ -635,6 +643,8 @@ async def async_langflow_chat(
             if hasattr(response_obj, "model_dump")
             else str(response_obj),  # Store complete response for function calls
         }
+        if priced_usage and isinstance(assistant_message["response_data"], dict):
+            assistant_message["response_data"]["usage"] = priced_usage
         conversation_state["messages"].append(assistant_message)
         logger.debug(
             "Added assistant message to langflow",
@@ -723,6 +733,8 @@ async def async_langflow_chat(
     else:
         logger.warning("No response_id received from langflow, conversation not stored")
 
+    if include_usage:
+        return response_text, response_id, sources, priced_usage
     return response_text, response_id, sources
 
 
@@ -735,6 +747,7 @@ async def async_langflow_chat_stream(
     extra_headers: dict = None,
     previous_response_id: str = None,
     filter_id: str = None,
+    billing_model: str | None = None,
 ):
     logger.debug(
         "async_langflow_chat_stream called",
@@ -796,6 +809,12 @@ async def async_langflow_chat_stream(
                 if chunk_data.get("type") == "response.completed":
                     response_obj = chunk_data.get("response", {})
                     usage_data = response_obj.get("usage")
+                    if usage_data and billing_model:
+                        from services.token_usage_service import token_usage_service
+
+                        usage_data = token_usage_service.describe_usage(billing_model, usage_data)
+                        response_obj["usage"] = usage_data
+                        chunk = (json.dumps(chunk_data, default=str) + "\n").encode("utf-8")
             except Exception:
                 pass
             yield chunk

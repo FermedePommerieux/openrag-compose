@@ -30,7 +30,7 @@ async def test_langflow_chat_passes_owner_metadata(monkeypatch):
     )
 
     # Mock async_langflow_chat to prevent actual network/langflow calls
-    mock_langflow_chat = AsyncMock(return_value=("some response", "response-id", []))
+    mock_langflow_chat = AsyncMock(return_value=("some response", "response-id", [], None))
     monkeypatch.setattr("agent.async_langflow_chat", mock_langflow_chat)
 
     # Capture the context passed to LangflowIngestTokenService.create_token
@@ -86,7 +86,7 @@ async def test_langflow_chat_marks_explicit_exhaustive_intent(monkeypatch):
         "utils.langflow_headers.add_provider_credentials_to_headers",
         AsyncMock(),
     )
-    mock_langflow_chat = AsyncMock(return_value=("response", "response-id", []))
+    mock_langflow_chat = AsyncMock(return_value=("response", "response-id", [], None))
     monkeypatch.setattr("agent.async_langflow_chat", mock_langflow_chat)
     monkeypatch.setattr(
         "services.langflow_ingest_token_service.LangflowIngestTokenService.create_token",
@@ -126,10 +126,17 @@ async def test_streaming_exhaustive_chat_emits_sanitized_progress_event(monkeypa
         yield b'{"type":"response.output_text.delta","delta":"answer"}\n'
 
     monkeypatch.setattr("agent.async_langflow_chat_stream", fake_stream)
+    # Exhaustive streams are now owned by a detached durable producer. Keep
+    # this unit test independent of PostgreSQL while exercising that producer.
+    from services.chat_audit_job_service import chat_audit_job_service
+
+    monkeypatch.setattr(chat_audit_job_service, "_create_row", AsyncMock())
+    monkeypatch.setattr(chat_audit_job_service, "_checkpoint", AsyncMock())
     set_search_filters({})
 
     stream = await ChatService().langflow_chat(
         prompt="Fais une recherche exhaustive sur toute l'archive",
+        user_id="test-user",
         jwt_token="user-jwt",
         stream=True,
     )
@@ -144,7 +151,8 @@ async def test_streaming_exhaustive_chat_emits_sanitized_progress_event(monkeypa
     assert progress["phase"] == "preparing"
     assert "query" not in progress
     assert "prompt" not in progress
-    assert chunks[-1]["delta"] == "answer"
+    assert any(item.get("delta") == "answer" for item in chunks)
+    assert chunks[-1]["type"] == "openrag.audit.usage"
 
 
 @pytest.mark.asyncio
@@ -165,6 +173,7 @@ async def test_non_streaming_chat_hydrates_complete_source_from_cited_chunk(monk
                 "Verified answer. (Source: TEST_CHUNK_ID)",
                 "response-id",
                 [{"chunk_id": "TEST_CHUNK_ID", "filename": ""}],
+                None,
             )
         ),
     )

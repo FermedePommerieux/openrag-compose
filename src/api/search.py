@@ -61,19 +61,25 @@ async def search(
             batch_size=body.batchSize,
         )
 
-        result = await search_service.search(
-            body.query,
-            user_id=user.user_id,
-            jwt_token=jwt_token,
-            filters=body.filters,
-            limit=body.limit,
-            score_threshold=body.scoreThreshold,
-            evidence_mode=body.evidenceMode,
-            document_id=body.documentId,
-            cursor=body.cursor,
-            batch_size=body.batchSize,
-            audit_progress_id=body.progressId,
-        )
+        # Langflow invokes /search in a separate HTTP request. Re-establish the
+        # audit scope here so every nested reasoning and embedding response is
+        # charged to the durable chat job that caused it.
+        from services.token_usage_service import token_usage_service
+
+        with token_usage_service.scope(body.progressId):
+            result = await search_service.search(
+                body.query,
+                user_id=user.user_id,
+                jwt_token=jwt_token,
+                filters=body.filters,
+                limit=body.limit,
+                score_threshold=body.scoreThreshold,
+                evidence_mode=body.evidenceMode,
+                document_id=body.documentId,
+                cursor=body.cursor,
+                batch_size=body.batchSize,
+                audit_progress_id=body.progressId,
+            )
         return JSONResponse(result, status_code=200)
     except ValueError as e:
         from services.audit_progress_service import audit_progress_service
