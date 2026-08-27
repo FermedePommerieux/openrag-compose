@@ -40,7 +40,9 @@ LANGFLOW_GENERIC_GLOBAL_VARIABLES = frozenset(
         "MIMETYPE",
         "OLLAMA_BASE_URL",
         LANGFLOW_QUERY_FILTER_VARIABLE,
+        "OPENRAG_INGEST_BATCH_SIZE",
         "OPENRAG_INGEST_RUN_ID",
+        "OPENRAG_INGEST_URL",
         "OPENSEARCH_INDEX_NAME",
         "OPENSEARCH_URL",
         "SELECTED_EMBEDDING_MODEL",
@@ -84,10 +86,13 @@ def _required_generic_global_values(config) -> dict[str, str]:
         # Component fields and the request-scoped HTTP-header suffix use this
         # exact canonical name. Langflow does not normalize the suffix.
         LANGFLOW_QUERY_FILTER_VARIABLE: "{}",
-        # Correlation identifier overridden for every request. It is routing
-        # metadata, not a credential, and Langflow rejects Credential globals
-        # when they feed the component's ordinary StrInput.
+        # The callback URL, batch size and correlation id are transport data,
+        # not secrets. Langflow rejects Credential globals when they feed the
+        # component's ordinary StrInput/IntInput fields. The signed callback
+        # token deliberately remains a Credential.
+        "OPENRAG_INGEST_BATCH_SIZE": str(settings.LANGFLOW_INGEST_CALLBACK_BATCH_SIZE),
         "OPENRAG_INGEST_RUN_ID": "OPENRAG_INGEST_RUN_ID",
+        "OPENRAG_INGEST_URL": settings.get_ingest_callback_url(),
         "OPENSEARCH_INDEX_NAME": _string_value(getattr(knowledge, "index_name", None))
         or "documents",
         "OPENSEARCH_URL": settings.get_langflow_opensearch_url(),

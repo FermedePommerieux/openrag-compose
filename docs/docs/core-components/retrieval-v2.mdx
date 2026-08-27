@@ -306,6 +306,13 @@ after startup. Retrieval flow version 9 migrates both exact repository-owned
 version 8 states (before and after that normalization) to the stable string
 binding; edited graphs still fail closed.
 
+Langflow global-variable types are part of the executable flow contract. URLs,
+batch sizes, run identifiers and retrieval-filter JSON are `Generic`; only
+tokens and provider secrets are `Credential`. Startup repairs these types
+before serving traffic because Langflow rejects a Credential value bound to an
+ordinary `StrInput` or `IntInput`, even when that component is not on the path
+ultimately selected by the agent.
+
 On clustered deployments, `OPENRAG_FLOWS_PATH` may point to a shared volume
 rather than the files baked into the backend image. The GitOps flow revision
 must therefore equal the immutable source revision behind the image tag, and
