@@ -30,6 +30,10 @@ async def list_files(
     mimetype: str | None = Query(None, description="Filter by MIME type"),
     owner: str | None = Query(None, description="Filter by owner"),
     search: str | None = Query(None, description="Search filename"),
+    data_sources: list[str] | None = Query(
+        None,
+        description="Filter by one or more exact filenames",
+    ),
     file_service=Depends(_get_file_service),
     user: User = Depends(get_current_user),
 ):
@@ -46,6 +50,7 @@ async def list_files(
             mimetype=mimetype,
             owner=owner,
             search=search,
+            data_sources=data_sources,
         )
         return JSONResponse(result)
     except Exception as e:

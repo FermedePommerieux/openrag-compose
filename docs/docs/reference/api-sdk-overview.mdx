@@ -16,3 +16,21 @@ Use the OpenRAG SDKs to interact with OpenRAG programmatically or integrate Open
 * [TypeScript/JavaScript SDK](https://github.com/langflow-ai/openrag/tree/main/sdks/typescript)
 
 * [Core OpenRAG APIs (`main.py`)](https://github.com/langflow-ai/openrag/blob/main/src/main.py)
+
+## Verify indexed files by exact name
+
+Trusted ingestion clients can verify a batch of completed uploads with the
+`GET /files` endpoint. Repeat the optional `data_sources` query parameter for
+each exact filename:
+
+```bash
+curl -G "https://openrag.example/files" \
+  -H "X-API-Key: $OPENRAG_API_KEY" \
+  --data-urlencode "data_sources=mail.eml" \
+  --data-urlencode "data_sources=invoice.pdf" \
+  --data-urlencode "page_size=2"
+```
+
+Unlike the human-facing `search` parameter, `data_sources` performs an exact
+filename filter and accepts several values in one request. The normal user and
+API-key access controls still apply.
