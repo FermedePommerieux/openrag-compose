@@ -31,6 +31,7 @@ logger = get_logger(__name__)
 MAX_EMBED_RETRIES = 3
 EMBED_RETRY_INITIAL_DELAY = 1.0
 EMBED_RETRY_MAX_DELAY = 8.0
+DOCUMENT_SEARCH_RESULT_WINDOW = 10_000
 
 
 # Variable used to store the active instance for the tool wrapper
@@ -317,7 +318,15 @@ class SearchService:
 
         return [by_cited_identity[item] for item in ordered_ids if item in by_cited_identity]
 
-    async def search_tool(self, query: str, embedding_model: str = None) -> dict[str, Any]:
+    async def search_tool(
+        self,
+        query: str,
+        embedding_model: str = None,
+        *,
+        group_by_document: bool = False,
+        page: int = 1,
+        page_size: int = 100,
+    ) -> dict[str, Any]:
         """
         Use this tool to search for documents relevant to the query.
 
@@ -331,6 +340,16 @@ class SearchService:
             dict (str, Any): {"results": [chunks]} on success
         """
         from utils.embedding_fields import get_embedding_field_name
+
+        document_page = max(1, int(page))
+        document_page_size = min(1000, max(1, int(page_size)))
+        document_offset = (document_page - 1) * document_page_size
+        # OpenSearch's result window is 10,000 by default. The Knowledge UI
+        # exposes at most 1,000 documents per page and receives an explicit
+        # empty page rather than silently wrapping if the window is exceeded.
+        document_window = document_offset + document_page_size
+        if group_by_document and document_window > DOCUMENT_SEARCH_RESULT_WINDOW:
+            raise ValueError("Document search pagination cannot exceed 10,000 results")
 
         # Strategy: Use provided model, or default to the configured embedding
         # model. This assumes documents are embedded with that model by default.
@@ -580,13 +599,20 @@ class SearchService:
             for model_name, embedding_vector in query_embeddings.items():
                 field_name = get_embedding_field_name(model_name)
                 embedding_fields_to_check.append(field_name)
+                # A fixed candidate horizon keeps both page membership and the
+                # document cardinality stable while the user moves between
+                # pages. Growing k with the requested page would make the
+                # displayed total change after every click.
+                knn_result_count = (
+                    DOCUMENT_SEARCH_RESULT_WINDOW if group_by_document else 50
+                )
                 knn_queries.append(
                     {
                         "knn": {
                             field_name: {
                                 "vector": embedding_vector,
-                                "k": 50,
-                                "num_candidates": 1000,
+                                "k": knn_result_count,
+                                "num_candidates": max(1000, knn_result_count),
                             }
                         }
                     }
@@ -729,6 +755,25 @@ class SearchService:
                 {"chunk_id": {"order": "asc", "missing": "_last"}},
             ],
         }
+        if group_by_document:
+            # The Knowledge table is a document browser, not a chunk browser.
+            # Collapse keeps the best matching chunk as the representative row,
+            # while the cardinality aggregation supplies a document total for
+            # server-side pagination. A precision threshold above the current
+            # corpus size avoids confusing chunk totals with document totals.
+            search_body.update(
+                {
+                    "from": document_offset,
+                    "size": document_page_size,
+                    "collapse": {"field": "filename"},
+                }
+            )
+            search_body["aggs"]["document_total"] = {
+                "cardinality": {
+                    "field": "filename",
+                    "precision_threshold": 40_000,
+                }
+            }
 
         # Add score threshold only for hybrid (not meaningful for match_all)
         if not is_wildcard_match_all and score_threshold > 0:
@@ -739,7 +784,7 @@ class SearchService:
         # only their ranks are fused below.  Weighted remains available as an
         # explicit compatibility strategy, while RRF is the Standard default.
         retrieval_bodies: list[tuple[str, dict[str, Any]]] = []
-        if use_retrieval_v2 and not is_wildcard_match_all:
+        if use_retrieval_v2 and not is_wildcard_match_all and not group_by_document:
             lexical_body: dict[str, Any] = {
                 "query": {
                     "bool": {
@@ -991,6 +1036,13 @@ class SearchService:
 
         # Preserve ordinary hybrid/RRF results. Exact narrowing is only for
         # identifier-like queries with an actual verbatim match.
+        pre_filter_document_count = len(
+            {
+                chunk.get("filename")
+                for chunk in chunks
+                if isinstance(chunk.get("filename"), str)
+            }
+        )
         chunks, aggregations = _apply_exact_match_file_filter(
             query,
             chunks,
@@ -1006,6 +1058,31 @@ class SearchService:
             "aggregations": aggregations,
             "total": len(chunks),
         }
+        if group_by_document:
+            document_total = int(
+                results.get("aggregations", {})
+                .get("document_total", {})
+                .get("value", len(chunks))
+            )
+            post_filter_document_count = len(
+                {
+                    chunk.get("filename")
+                    for chunk in chunks
+                    if isinstance(chunk.get("filename"), str)
+                }
+            )
+            # Identifier-like searches can deliberately narrow the returned
+            # page to verbatim matches after OpenSearch ranking. In that small
+            # special case, do not expose the broader pre-filter cardinality.
+            if post_filter_document_count < pre_filter_document_count:
+                document_total = post_filter_document_count
+            response.update(
+                {
+                    "total_documents": document_total,
+                    "page": document_page,
+                    "page_size": document_page_size,
+                }
+            )
         if failed_models:
             response["warnings"] = [
                 {
@@ -1275,6 +1352,9 @@ class SearchService:
         document_id: str | None = None,
         cursor: str = "",
         batch_size: int = 20,
+        group_by_document: bool = False,
+        page: int = 1,
+        page_size: int = 100,
     ) -> dict[str, Any]:
         """Public search method for API endpoints
 
@@ -1316,4 +1396,10 @@ class SearchService:
         set_search_limit(limit)
         set_score_threshold(score_threshold)
 
-        return await self.search_tool(query, embedding_model=embedding_model)
+        return await self.search_tool(
+            query,
+            embedding_model=embedding_model,
+            group_by_document=group_by_document,
+            page=page,
+            page_size=page_size,
+        )

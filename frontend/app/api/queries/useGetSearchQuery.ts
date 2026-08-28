@@ -17,6 +17,9 @@ export interface SearchPayload {
     owners?: string[];
     connector_types?: string[];
   };
+  groupByDocument?: boolean;
+  page?: number;
+  pageSize?: number;
 }
 
 export interface ChunkResult {
@@ -102,6 +105,9 @@ export interface SearchWarning {
 export interface SearchResult {
   files: File[];
   warnings: SearchWarning[];
+  total?: number;
+  page?: number;
+  page_size?: number;
 }
 
 const EMPTY_SEARCH_RESULT: SearchResult = { files: [], warnings: [] };
@@ -135,6 +141,7 @@ export const useGetSearchQuery = (
     UseQueryOptions<SearchResult, Error, SearchResult, unknown[]>,
     "queryKey" | "queryFn"
   >,
+  documentPagination?: { page: number; pageSize: number },
 ) => {
   const queryClient = useQueryClient();
 
@@ -165,9 +172,14 @@ export const useGetSearchQuery = (
 
       const searchPayload: SearchPayload = {
         query: effectiveQuery,
-        limit: searchLimit,
+        limit: documentPagination?.pageSize ?? searchLimit,
         scoreThreshold: dynamicScoreThreshold,
       };
+      if (documentPagination) {
+        searchPayload.groupByDocument = true;
+        searchPayload.page = documentPagination.page;
+        searchPayload.pageSize = documentPagination.pageSize;
+      }
       if (queryData?.filters) {
         searchPayload.filters =
           buildSearchPayloadFilters(queryData.filters) ?? undefined;
@@ -299,7 +311,17 @@ export const useGetSearchQuery = (
         ? data.warnings
         : [];
 
-      return { files, warnings };
+      return {
+        files,
+        warnings,
+        total:
+          typeof data.total_documents === "number"
+            ? data.total_documents
+            : files.length,
+        page: typeof data.page === "number" ? data.page : 1,
+        page_size:
+          typeof data.page_size === "number" ? data.page_size : files.length,
+      };
     } catch (error) {
       console.error("Error getting files", error);
       // Re-throw the error so React Query can handle it and trigger onError callbacks
@@ -309,7 +331,7 @@ export const useGetSearchQuery = (
 
   return useQuery(
     {
-      queryKey: ["search", queryData, query],
+      queryKey: ["search", queryData, query, documentPagination],
       placeholderData: (prev) => prev,
       staleTime: 0,
       queryFn: getFiles,

@@ -25,6 +25,9 @@ class SearchBody(BaseModel):
     documentId: str | None = Field(default=None, alias="documentId")
     cursor: str = ""
     batchSize: int = Field(default=20, ge=1, le=50, alias="batchSize")
+    groupByDocument: bool = Field(default=False, alias="groupByDocument")
+    page: int = Field(default=1, ge=1)
+    pageSize: int = Field(default=100, ge=1, le=1000, alias="pageSize")
 
     model_config = {"populate_by_name": True}
 
@@ -56,6 +59,9 @@ async def search(
             document_id=body.documentId,
             cursor=body.cursor,
             batch_size=body.batchSize,
+            group_by_document=body.groupByDocument,
+            page=body.page,
+            page_size=body.pageSize,
         )
 
         result = await search_service.search(
@@ -69,6 +75,9 @@ async def search(
             document_id=body.documentId,
             cursor=body.cursor,
             batch_size=body.batchSize,
+            group_by_document=body.groupByDocument,
+            page=body.page,
+            page_size=body.pageSize,
         )
         return JSONResponse(result, status_code=200)
     except ValueError as e:

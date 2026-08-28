@@ -375,9 +375,17 @@ function SearchPage() {
     isLoading: isSearchLoading,
     error: searchError,
     isError: isSearchError,
-  } = useGetSearchQuery(queryOverride, parsedFilterData, {
-    enabled: !isWildcardQuery,
-  });
+  } = useGetSearchQuery(
+    queryOverride,
+    parsedFilterData,
+    {
+      enabled: !isWildcardQuery,
+    },
+    {
+      page: listPage,
+      pageSize: listPageSize,
+    },
+  );
 
   const { files: searchFiles, warnings: searchWarnings } =
     searchData as SearchResult;
@@ -389,17 +397,19 @@ function SearchPage() {
   const isLoading = isWildcardQuery ? isListFilesLoading : isSearchLoading;
   const error = isWildcardQuery ? listFilesError : searchError;
   const isError = isWildcardQuery ? isListFilesError : isSearchError;
-  const listTotal = listFilesData?.total ?? 0;
-  const listTotalPages = Math.max(1, Math.ceil(listTotal / listPageSize));
+  const resultTotal = isWildcardQuery
+    ? (listFilesData?.total ?? 0)
+    : (searchData.total ?? searchFiles.length);
+  const resultTotalPages = Math.max(1, Math.ceil(resultTotal / listPageSize));
 
   useEffect(() => {
     // Deleting the last item of the last page reduces the server page count.
     // Clamp once the refreshed total arrives instead of leaving the user on an
     // out-of-range page.
-    if (listPage > listTotalPages) {
-      setListPage(listTotalPages);
+    if (listPage > resultTotalPages) {
+      setListPage(resultTotalPages);
     }
-  }, [listPage, listTotalPages]);
+  }, [listPage, resultTotalPages]);
 
   const isOpenragDocsRow = useCallback((file?: File) => {
     return (
@@ -954,15 +964,6 @@ function SearchPage() {
     }
   };
 
-  // enables pagination in the grid
-  const pagination = true;
-
-  // sets 25 rows per page (default is 100)
-  const paginationPageSize = 25;
-
-  // allows the user to select the page size from a predefined list of page sizes
-  const paginationPageSizeSelector = [10, 25, 50, 100];
-
   const previewSourceUrl = getDownloadSourceUrl(previewFile?.source_url);
   const previewKind = previewFile
     ? getSourcePreviewKind(previewFile.filename, previewFile.mimetype)
@@ -1139,9 +1140,7 @@ function SearchPage() {
             onGridReady={handleGridReady}
             onGridPreDestroyed={handleGridPreDestroyed}
             onSelectionChanged={onSelectionChanged}
-            pagination={isWildcardQuery ? false : pagination}
-            paginationPageSize={paginationPageSize}
-            paginationPageSizeSelector={paginationPageSizeSelector}
+            pagination={false}
             headerHeight={64}
             rowHeight={64}
             noRowsOverlayComponent={() => (
@@ -1175,9 +1174,7 @@ function SearchPage() {
             onGridReady={handleGridReady}
             onGridPreDestroyed={handleGridPreDestroyed}
             onSelectionChanged={onSelectionChanged}
-            pagination={isWildcardQuery ? false : pagination}
-            paginationPageSize={paginationPageSize}
-            paginationPageSizeSelector={paginationPageSizeSelector}
+            pagination={false}
             noRowsOverlayComponent={() => (
               <div className="text-center pb-[45px]">
                 <div className="text-lg text-primary font-semibold">
@@ -1190,51 +1187,49 @@ function SearchPage() {
             )}
           />
         )}
-        {isWildcardQuery && (
-          <div className="flex shrink-0 items-center justify-end gap-3 border-t px-3 py-2 text-sm text-muted-foreground">
-            <label className="flex items-center gap-2">
-              Rows
-              <select
-                className="h-8 rounded-md border bg-background px-2 text-foreground"
-                value={listPageSize}
-                onChange={(event) => {
-                  setListPageSize(Number(event.target.value));
-                  setListPage(1);
-                }}
-              >
-                {LIST_FILES_PAGE_SIZE_OPTIONS.map((pageSize) => (
-                  <option key={pageSize} value={pageSize}>
-                    {pageSize}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <span>
-              Page {listPage} / {listTotalPages} · {listTotal} document
-              {listTotal === 1 ? "" : "s"}
-            </span>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={listPage <= 1 || isListFilesLoading}
-              onClick={() => setListPage((page) => Math.max(1, page - 1))}
+        <div className="flex shrink-0 items-center justify-end gap-3 border-t px-3 py-2 text-sm text-muted-foreground">
+          <label className="flex items-center gap-2">
+            Rows
+            <select
+              className="h-8 rounded-md border bg-background px-2 text-foreground"
+              value={listPageSize}
+              onChange={(event) => {
+                setListPageSize(Number(event.target.value));
+                setListPage(1);
+              }}
             >
-              Previous
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={listPage >= listTotalPages || isListFilesLoading}
-              onClick={() =>
-                setListPage((page) => Math.min(listTotalPages, page + 1))
-              }
-            >
-              Next
-            </Button>
-          </div>
-        )}
+              {LIST_FILES_PAGE_SIZE_OPTIONS.map((pageSize) => (
+                <option key={pageSize} value={pageSize}>
+                  {pageSize}
+                </option>
+              ))}
+            </select>
+          </label>
+          <span>
+            Page {listPage} / {resultTotalPages} · {resultTotal} document
+            {resultTotal === 1 ? "" : "s"}
+          </span>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={listPage <= 1 || isLoading}
+            onClick={() => setListPage((page) => Math.max(1, page - 1))}
+          >
+            Previous
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={listPage >= resultTotalPages || isLoading}
+            onClick={() =>
+              setListPage((page) => Math.min(resultTotalPages, page + 1))
+            }
+          >
+            Next
+          </Button>
+        </div>
       </div>
 
       {/* Bulk Delete Confirmation Dialog */}

@@ -398,3 +398,115 @@ async def test_search_service_rrf_fuses_lanes_preserves_provenance_and_emits_deb
         ]
         for body in lane_bodies
     )
+
+
+@pytest.mark.asyncio
+async def test_document_search_paginates_collapsed_results_with_server_total(monkeypatch):
+    from services import search_service
+
+    knowledge = SimpleNamespace(
+        embedding_provider="openai",
+        retrieval_strategy="weighted",
+        retrieval_mode="hybrid",
+        retrieval_lexical_candidates=500,
+        retrieval_vector_candidates=500,
+        retrieval_rrf_k=60,
+        retrieval_max_chunks_per_document=3,
+        retrieval_adaptive_max_chunks_per_document=20,
+        retrieval_reranker_url="",
+        retrieval_reranker_timeout=5,
+        retrieval_debug=False,
+    )
+    config = SimpleNamespace(
+        knowledge=knowledge,
+        providers=SimpleNamespace(ollama=SimpleNamespace(endpoint="")),
+    )
+    monkeypatch.setattr(search_service, "get_openrag_config", lambda: config)
+    monkeypatch.setattr(search_service, "get_embedding_model", lambda: "test-model")
+    monkeypatch.setattr(search_service, "get_index_name", lambda: "documents")
+    monkeypatch.setattr(search_service, "get_auth_context", lambda: ("user-1", "jwt"))
+
+    class OpenSearchClient:
+        bodies: list[dict] = []
+
+        async def search(self, *, index, body, params):
+            self.bodies.append(body)
+            if body.get("size") == 0:
+                return {
+                    "aggregations": {
+                        "embedding_models": {
+                            "buckets": [{"key": "test-model", "doc_count": 245}]
+                        }
+                    }
+                }
+            return {
+                "hits": {
+                    "hits": [
+                        {
+                            "_id": "chunk-a",
+                            "_score": 1.0,
+                            "_source": {
+                                "chunk_id": "chunk-a",
+                                "document_id": "document-a",
+                                "filename": "a.pdf",
+                                "text": "pastoral project",
+                            },
+                        },
+                        {
+                            "_id": "chunk-b",
+                            "_score": 0.9,
+                            "_source": {
+                                "chunk_id": "chunk-b",
+                                "document_id": "document-b",
+                                "filename": "b.pdf",
+                                "text": "pastoral reply",
+                            },
+                        },
+                    ]
+                },
+                "aggregations": {
+                    "document_total": {"value": 245},
+                    "data_sources": {"buckets": []},
+                },
+            }
+
+    embedding_response = SimpleNamespace(data=[SimpleNamespace(embedding=[0.1, 0.2])])
+    monkeypatch.setattr(
+        search_service,
+        "clients",
+        SimpleNamespace(
+            patched_embedding_client=SimpleNamespace(
+                embeddings=SimpleNamespace(create=AsyncMock(return_value=embedding_response))
+            )
+        ),
+    )
+    client = OpenSearchClient()
+    session_manager = MagicMock()
+    session_manager.get_user_opensearch_client.return_value = client
+
+    result = await SearchService(session_manager=session_manager).search_tool(
+        "pastoral",
+        group_by_document=True,
+        page=2,
+        page_size=100,
+    )
+
+    assert result["total_documents"] == 245
+    assert result["page"] == 2
+    assert result["page_size"] == 100
+    assert [item["filename"] for item in result["results"]] == ["a.pdf", "b.pdf"]
+    search_body = client.bodies[-1]
+    assert search_body["from"] == 100
+    assert search_body["size"] == 100
+    assert search_body["collapse"] == {"field": "filename"}
+    assert search_body["aggs"]["document_total"] == {
+        "cardinality": {
+            "field": "filename",
+            "precision_threshold": 40_000,
+        }
+    }
+    knn = search_body["query"]["bool"]["should"][0]["dis_max"]["queries"][0][
+        "knn"
+    ]["chunk_embedding_test_model"]
+    assert knn["k"] == 10_000
+    assert knn["num_candidates"] == 10_000
