@@ -57,6 +57,62 @@ def _require_chunking_strategy(config: Any) -> Literal["character", "hybrid"]:
     )
 
 
+def _postprocess_docling_output_sync(
+    full_doc: dict[str, Any],
+    *,
+    chunking_strategy: Literal["character", "hybrid"],
+    hybrid_max_tokens: int,
+    hybrid_merge_peers: bool,
+) -> tuple[dict[str, Any], Literal["character", "hybrid"]]:
+    """Build chunks from Docling JSON without touching external state.
+
+    Docling documents can contain large tables and deeply nested structures.
+    Pydantic validation and HybridChunker traversal are CPU-bound, so callers
+    must run this pure function outside the asyncio event-loop thread.
+    """
+    slim_doc = extract_relevant(full_doc)
+    slim_doc["parser"] = DOCLING_PARSER_LABEL
+    if chunking_strategy == "character":
+        return slim_doc, "character"
+
+    try:
+        slim_doc["chunks"] = chunk_docling_hybrid(
+            full_doc,
+            max_tokens=hybrid_max_tokens,
+            merge_peers=hybrid_merge_peers,
+        )
+    except HybridChunkingError as exc:
+        # Preserve the explicit no-fallback contract in the file-task error.
+        raise HybridChunkingError(
+            "Hybrid chunking failed; requested_chunking_strategy=hybrid "
+            f"effective_chunking_strategy=none: {exc}"
+        ) from exc
+    return slim_doc, "hybrid"
+
+
+async def _postprocess_docling_output(
+    full_doc: dict[str, Any],
+    *,
+    chunking_strategy: Literal["character", "hybrid"],
+    hybrid_max_tokens: int,
+    hybrid_merge_peers: bool,
+) -> tuple[dict[str, Any], Literal["character", "hybrid"]]:
+    """Run CPU-heavy Docling post-processing without blocking API traffic.
+
+    ``asyncio.to_thread`` uses asyncio's bounded process-wide thread pool. Bulk
+    ingestion remains bounded separately by ``TaskService``. Cancellation
+    stops waiting immediately; the already-running pure calculation may finish
+    in its worker thread but cannot index data or mutate task state.
+    """
+    return await asyncio.to_thread(
+        _postprocess_docling_output_sync,
+        full_doc,
+        chunking_strategy=chunking_strategy,
+        hybrid_max_tokens=hybrid_max_tokens,
+        hybrid_merge_peers=hybrid_merge_peers,
+    )
+
+
 def _verification_client(fallback_client):
     """Client for post-ingestion verification ("did the chunks land in the
     index?"). That is a system integrity check, not a user-visibility check,
@@ -885,26 +941,12 @@ class TaskProcessor:
                             "Docling full-page OCR did not produce trustworthy PDF text "
                             f"({remaining_issue}); refusing to index it"
                         )
-            slim_doc = extract_relevant(full_doc)
-            slim_doc["parser"] = DOCLING_PARSER_LABEL
-
-            if requested_chunking_strategy == "hybrid":
-                try:
-                    slim_doc["chunks"] = chunk_docling_hybrid(
-                        full_doc,
-                        max_tokens=hybrid_max_tokens,
-                        merge_peers=hybrid_merge_peers,
-                    )
-                except HybridChunkingError as exc:
-                    # The caller records this message on the failed file task.
-                    # Include both strategies there as well as on successful
-                    # task results: hybrid must never be mistaken for a silent
-                    # character-chunking fallback.
-                    raise HybridChunkingError(
-                        "Hybrid chunking failed; requested_chunking_strategy=hybrid "
-                        f"effective_chunking_strategy=none: {exc}"
-                    ) from exc
-                effective_chunking_strategy = "hybrid"
+            slim_doc, effective_chunking_strategy = await _postprocess_docling_output(
+                full_doc,
+                chunking_strategy=requested_chunking_strategy,
+                hybrid_max_tokens=hybrid_max_tokens,
+                hybrid_merge_peers=hybrid_merge_peers,
+            )
 
         # Override filename with original_filename if provided
         if original_filename:
