@@ -1248,6 +1248,45 @@ class FlowsService:
         )
         return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
+    @staticmethod
+    def _preserve_runtime_managed_retrieval_fields(
+        source_graph: dict[str, Any], target_graph: dict[str, Any]
+    ) -> None:
+        """Carry settings-owned provider fields into a verified replacement graph."""
+        source_nodes = source_graph.get("nodes", [])
+        target_nodes = target_graph.get("nodes", [])
+        if not isinstance(source_nodes, list) or not isinstance(target_nodes, list):
+            return
+        source_by_id = {
+            node.get("id"): node
+            for node in source_nodes
+            if isinstance(node, dict) and isinstance(node.get("id"), str)
+        }
+        for target_node in target_nodes:
+            if not isinstance(target_node, dict):
+                continue
+            source_node = source_by_id.get(target_node.get("id"))
+            if not isinstance(source_node, dict):
+                continue
+            source_component = source_node.get("data", {}).get("node", {})
+            target_component = target_node.get("data", {}).get("node", {})
+            if not isinstance(source_component, dict) or not isinstance(target_component, dict):
+                continue
+            display_name = target_component.get("display_name")
+            if (
+                display_name not in _RUNTIME_MANAGED_RETRIEVAL_COMPONENTS
+                or source_component.get("display_name") != display_name
+            ):
+                continue
+            source_template = source_component.get("template", {})
+            target_template = target_component.get("template", {})
+            if not isinstance(source_template, dict) or not isinstance(target_template, dict):
+                continue
+            for field in _RUNTIME_MANAGED_RETRIEVAL_FIELDS.intersection(
+                source_template, target_template
+            ):
+                target_template[field] = copy.deepcopy(source_template[field])
+
     def _is_known_legacy_retrieval_flow(self, flow_data: dict[str, Any]) -> bool:
         """Recognise exactly the immutable 156f3664 system agent graph.
 
@@ -1403,6 +1442,11 @@ class FlowsService:
         # wiring and avoids retaining stale legacy inputs such as embeddings.
         migrated = copy.deepcopy(flow_data)
         migrated_graph = copy.deepcopy(template_graph)
+        # A verified system flow may still contain model choices and global
+        # credential/endpoint references written by OpenRAG settings. Preserve
+        # them exactly; recognizing those fields must never imply resetting
+        # them to the bundled template defaults.
+        self._preserve_runtime_managed_retrieval_fields(graph, migrated_graph)
         migrated["data"] = migrated_graph
         # Stored with the graph so repeated startups can identify the installed
         # known version without relying on timestamps or an in-memory cache.

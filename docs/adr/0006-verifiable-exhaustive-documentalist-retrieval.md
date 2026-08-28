@@ -147,9 +147,10 @@ maps should be added to the same evidence ledger as they become available.
   snapshot validation, ACL-scoped access and coverage accounting.
 - Flow migration fingerprints ignore only provider fields owned by OpenRAG's
   settings synchronization (`model` and provider credential/endpoint
-  references). Prompt, code, nodes, edges and all other values remain covered,
-  so selecting a model does not break a safe upgrade and a customized graph is
-  still rejected.
+  references). Those fields are copied into the replacement graph rather than
+  reset to bundled defaults. Prompt, code, nodes, edges and all other values
+  remain covered, so selecting a model does not break a safe upgrade and a
+  customized graph is still rejected.
 - All backend replicas must share the same production `SESSION_SECRET`; it
   authenticates continuation cursors. A secret rotation invalidates active
   cursors and forces a safe restart of the evidence read.

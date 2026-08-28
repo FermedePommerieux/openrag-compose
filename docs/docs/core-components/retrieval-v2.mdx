@@ -111,8 +111,9 @@ At startup OpenRAG recognizes only the exact locked historical OpenRAG agent
 graph from lifecycle baseline `156f3664`, identified by its expected ID and a
 versioned canonical graph fingerprint. The comparison normalizes only model and
 provider credential/endpoint fields that OpenRAG settings are designed to
-rewrite; prompt, code, topology, and every other value remain fingerprinted. It
-writes a local backup, then uses
+rewrite, and copies those configured fields into the replacement graph. Prompt,
+code, topology, and every other value remain fingerprinted. It writes a local
+backup, then uses
 Langflow 0.11.2's supported `PATCH` API to unlock the system flow temporarily,
 replaces it with the bundled `OpenRAGBackendRetrievalComponent` graph, verifies
 the persisted wiring, and locks it again. The migration is idempotent. A

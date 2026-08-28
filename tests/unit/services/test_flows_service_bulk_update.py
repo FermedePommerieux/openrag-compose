@@ -546,6 +546,36 @@ def test_migrated_graph_accepts_settings_sync_but_rejects_prompt_edits():
     assert service._is_known_migrated_retrieval_flow(flow) is False
 
 
+def test_version_6_migration_preserves_settings_managed_model_values():
+    service = FlowsService()
+    flow = _versioned_retrieval_v6_flow()
+    embedding = next(
+        node
+        for node in flow["data"]["nodes"]
+        if node.get("data", {}).get("node", {}).get("display_name") == "Embedding Model"
+    )
+    embedding_template = embedding["data"]["node"]["template"]
+    embedding_template["api_key"]["value"] = "OPENAI_API_KEY"
+    embedding_template["api_key"]["load_from_db"] = True
+    embedding_template["model"]["value"] = [
+        {"name": "text-embedding-3-large", "provider": "OpenAI"}
+    ]
+
+    migrated = service._migrate_known_legacy_retrieval_flow(flow)
+
+    assert migrated is not None
+    migrated_embedding = next(
+        node
+        for node in migrated["data"]["nodes"]
+        if node.get("data", {}).get("node", {}).get("display_name") == "Embedding Model"
+    )
+    migrated_template = migrated_embedding["data"]["node"]["template"]
+    assert migrated_template["api_key"]["value"] == "OPENAI_API_KEY"
+    assert migrated_template["api_key"]["load_from_db"] is True
+    assert migrated_template["model"]["value"][0]["name"] == "text-embedding-3-large"
+    assert migrated["data"]["openrag_retrieval_version"] == 7
+
+
 @pytest.mark.asyncio
 async def test_migrate_first_versioned_retrieval_v2_prompt_revision():
     """The exact prior v3 graph may receive the document-wide evidence rule."""
