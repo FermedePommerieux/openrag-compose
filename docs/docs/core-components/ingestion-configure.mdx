@@ -165,6 +165,15 @@ You can edit the following settings on the OpenRAG <Icon name="Settings2" aria-h
 
    If OpenRAG detects that the local machine is running on macOS, OpenRAG uses the [ocrmac](https://www.piwheels.org/project/ocrmac/) OCR engine. Other platforms use [easyocr](https://www.jaided.ai/easyocr/).
 
+* **Corrupt PDF text fallback**: Checks Docling's first PDF extraction for a
+  narrow, high-confidence broken character-map signature. When detected,
+  OpenRAG retries that PDF once with full-page OCR and indexes only the second
+  result. If forced OCR still contains the signature, ingestion fails instead
+  of storing unverifiable text. Normal PDFs are never retried. This option is
+  disabled by default and is also configurable as
+  `knowledge.ocr_mojibake_fallback` or
+  `OCR_MOJIBAKE_FALLBACK_ENABLED=true` before the configuration is edited.
+
 * **Picture descriptions**: Adds image descriptions using an explicitly
   configured remote OpenAI-compatible VLM or a local model installed on every
   Docling worker. OpenRAG deliberately has no implicit local-model fallback:

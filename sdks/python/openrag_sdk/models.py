@@ -203,6 +203,7 @@ class KnowledgeSettings(BaseModel):
     chunk_overlap: int | None = None
     table_structure: bool | None = None
     ocr: bool | None = None
+    ocr_mojibake_fallback: bool | None = None
     picture_descriptions: bool | None = None
 
 
@@ -242,6 +243,7 @@ class SettingsUpdateOptions(BaseModel):
     chunk_overlap: int | None = None
     table_structure: bool | None = None
     ocr: bool | None = None
+    ocr_mojibake_fallback: bool | None = None
     picture_descriptions: bool | None = None
     archive_sources_enabled: bool | None = None
 

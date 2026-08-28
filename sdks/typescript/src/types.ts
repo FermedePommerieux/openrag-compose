@@ -201,6 +201,7 @@ export interface KnowledgeSettings {
   chunk_overlap?: number | null;
   table_structure?: boolean | null;
   ocr?: boolean | null;
+  ocr_mojibake_fallback?: boolean | null;
   picture_descriptions?: boolean | null;
   chunking_strategy?: "character" | "hybrid" | null;
   hybrid_max_tokens?: number | null;
@@ -248,6 +249,8 @@ export interface SettingsUpdateOptions {
   table_structure?: boolean;
   /** Enable OCR for text extraction. */
   ocr?: boolean;
+  /** Retry PDFs with a broken character map using full-page OCR. */
+  ocr_mojibake_fallback?: boolean;
   /** Enable picture descriptions. */
   picture_descriptions?: boolean;
   /** Keep original local source files after successful ingestion. */

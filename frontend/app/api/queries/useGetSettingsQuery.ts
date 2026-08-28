@@ -21,6 +21,7 @@ export interface KnowledgeSettings {
   hybrid_merge_peers?: boolean;
   table_structure?: boolean;
   ocr?: boolean;
+  ocr_mojibake_fallback?: boolean;
   picture_descriptions?: boolean;
   picture_description_vlm_configured?: boolean;
   disable_ingest_with_langflow?: boolean;

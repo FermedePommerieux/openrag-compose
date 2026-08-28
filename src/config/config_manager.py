@@ -182,6 +182,9 @@ class KnowledgeConfig:
     hybrid_merge_peers: bool = True
     table_structure: bool = True
     ocr: bool = False
+    # When enabled, a PDF extraction with a high-confidence broken character
+    # map is retried once with full-page OCR before any chunks are indexed.
+    ocr_mojibake_fallback: bool = False
     picture_descriptions: bool = False
     index_name: str = "documents"  # OpenSearch index name
     disable_ingest_with_langflow: bool = False
@@ -625,6 +628,10 @@ class ConfigManager:
                 "1",
                 "yes",
             )
+        if os.getenv("OCR_MOJIBAKE_FALLBACK_ENABLED"):
+            config_data["knowledge"]["ocr_mojibake_fallback"] = os.getenv(
+                "OCR_MOJIBAKE_FALLBACK_ENABLED"
+            ).lower() in ("true", "1", "yes")
         if os.getenv("PICTURE_DESCRIPTIONS_ENABLED"):
             config_data["knowledge"]["picture_descriptions"] = os.getenv(
                 "PICTURE_DESCRIPTIONS_ENABLED"

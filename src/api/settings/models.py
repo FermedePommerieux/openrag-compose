@@ -23,6 +23,7 @@ class SettingsUpdateBody(BaseModel):
     hybrid_merge_peers: bool | None = None
     table_structure: bool | None = None
     ocr: bool | None = None
+    ocr_mojibake_fallback: bool | None = None
     picture_descriptions: bool | None = None
     disable_ingest_with_langflow: bool | None = None
     archive_sources_enabled: bool | None = None
@@ -197,6 +198,7 @@ class KnowledgeConfig(BaseModel):
     hybrid_merge_peers: bool | None = None
     table_structure: bool | None
     ocr: bool | None
+    ocr_mojibake_fallback: bool | None = None
     picture_descriptions: bool | None
     picture_description_vlm_configured: bool = False
     index_name: str | None

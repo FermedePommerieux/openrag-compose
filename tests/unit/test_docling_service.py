@@ -231,6 +231,26 @@ async def test_upload_ocr_enabled_sends_rapidocr_preset(docling_service, mock_ht
 
 
 @pytest.mark.asyncio
+async def test_upload_forced_ocr_replaces_existing_pdf_text(docling_service, mock_httpx_client):
+    """The fallback uses Docling Serve's explicit full-page replacement flag."""
+    mock_httpx_client.post.return_value = _make_response(200, {"task_id": "forced-ocr"})
+    mock_config = MagicMock()
+    mock_config.knowledge.table_structure = True
+    mock_config.knowledge.ocr = False
+    mock_config.knowledge.picture_descriptions = False
+
+    with patch("services.docling_service.get_openrag_config", return_value=mock_config):
+        await docling_service.upload_to_docling_direct_async(
+            "test.pdf", b"data", ocr=True, force_ocr=True
+        )
+
+    data = mock_httpx_client.post.call_args.kwargs["data"]
+    assert data["do_ocr"] == "true"
+    assert data["force_ocr"] == "true"
+    assert data["ocr_preset"] == "rapidocr"
+
+
+@pytest.mark.asyncio
 async def test_upload_http_error(docling_service, mock_httpx_client):
     """Raises exception if upload returns non-200."""
     mock_httpx_client.post.return_value = _make_response(400)
@@ -289,9 +309,7 @@ def test_remote_picture_description_options_are_explicit_and_authenticated():
     with patch.dict(
         "services.docling_service.os.environ",
         {
-            "OPENRAG_PICTURE_DESCRIPTION_API_URL": (
-                "https://api.openai.com/v1/chat/completions"
-            ),
+            "OPENRAG_PICTURE_DESCRIPTION_API_URL": ("https://api.openai.com/v1/chat/completions"),
             "OPENRAG_PICTURE_DESCRIPTION_MODEL": "gpt-5.6-sol",
         },
         clear=True,

@@ -23,6 +23,7 @@ data:
       hybrid_max_tokens: {{ .Values.appConfig.knowledge.hybridMaxTokens }}
       hybrid_merge_peers: {{ .Values.appConfig.knowledge.hybridMergePeers }}
       ocr: {{ .Values.appConfig.knowledge.ocr }}
+      ocr_mojibake_fallback: {{ .Values.appConfig.knowledge.ocrMojibakeFallback }}
       picture_descriptions: {{ .Values.appConfig.knowledge.pictureDescriptions }}
       table_structure: {{ .Values.appConfig.knowledge.tableStructure }}
     providers:

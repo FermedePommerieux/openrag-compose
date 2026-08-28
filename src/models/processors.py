@@ -1702,6 +1702,9 @@ class ConnectorFileProcessor(TaskProcessor):
                         dict(self.ingest_settings) if self.ingest_settings else {}
                     )
                     effective_ingest_settings["ocr"] = config.knowledge.ocr
+                    effective_ingest_settings["ocrMojibakeFallback"] = (
+                        getattr(config.knowledge, "ocr_mojibake_fallback", False)
+                    )
                     effective_ingest_settings["pictureDescriptions"] = (
                         config.knowledge.picture_descriptions
                     )
@@ -2061,6 +2064,9 @@ class LangflowFileProcessor(TaskProcessor):
             config = get_openrag_config()
             effective_settings = dict(self.settings) if self.settings else {}
             effective_settings["ocr"] = config.knowledge.ocr
+            effective_settings["ocrMojibakeFallback"] = getattr(
+                config.knowledge, "ocr_mojibake_fallback", False
+            )
             effective_settings["pictureDescriptions"] = config.knowledge.picture_descriptions
 
             # Process file using langflow service. Passing the polling

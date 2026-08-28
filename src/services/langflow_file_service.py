@@ -878,6 +878,7 @@ class LangflowFileService:
         owner: str | None = None,
         *,
         ocr: bool | None = None,
+        force_ocr: bool = False,
         picture_descriptions: bool | None = None,
     ) -> str:
         """Upload a file to Docling Serve and return the task_id immediately.
@@ -898,6 +899,7 @@ class LangflowFileService:
                 user_id=owner,
                 auth_header=jwt_token,
                 ocr=ocr,
+                force_ocr=force_ocr,
                 picture_descriptions=picture_descriptions,
             )
             logger.debug(
@@ -966,6 +968,9 @@ class LangflowFileService:
         filename, content, _ = file_tuple
 
         ocr_override = settings.get("ocr") if isinstance(settings, dict) else None
+        mojibake_ocr_fallback = bool(
+            settings.get("ocrMojibakeFallback", False) if isinstance(settings, dict) else False
+        )
         pic_desc_override = (
             settings.get("pictureDescriptions") if isinstance(settings, dict) else None
         )
@@ -975,21 +980,28 @@ class LangflowFileService:
             file_task.phase = IngestionPhase.DOCLING
             file_task.docling_status = DoclingPhaseStatus.PENDING
 
-        task_id = await self.submit_to_docling(
-            filename,
-            content,
-            owner=owner,
-            jwt_token=jwt_token,
-            ocr=ocr_override,
-            picture_descriptions=pic_desc_override,
-        )
+        force_ocr = False
+        while True:
+            task_id = await self.submit_to_docling(
+                filename,
+                content,
+                owner=owner,
+                jwt_token=jwt_token,
+                ocr=True if force_ocr else ocr_override,
+                force_ocr=force_ocr,
+                picture_descriptions=pic_desc_override,
+            )
 
-        if file_task is not None:
-            file_task.docling_task_id = task_id
-            file_task.docling_status = DoclingPhaseStatus.PROCESSING
+            if file_task is not None:
+                file_task.docling_task_id = task_id
+                file_task.docling_status = DoclingPhaseStatus.PROCESSING
 
-        # ── Phase 1b: backend-side polling (optional) ───────────────────
-        if docling_polling_service is not None:
+            # The legacy path lets Langflow own polling and therefore cannot
+            # inspect the Docling JSON before indexing.
+            if docling_polling_service is None:
+                break
+
+            # ── Phase 1b: backend-side polling (optional) ───────────────
             from config.settings import (
                 DOCLING_POLL_BACKOFF_FACTOR,
                 DOCLING_POLL_INTERVAL_SECONDS,
@@ -1031,6 +1043,28 @@ class LangflowFileService:
                     f"{poll_result.detail or 'no detail provided'}"
                 )
 
+            if mojibake_ocr_fallback and filename.lower().endswith(".pdf"):
+                from services.text_quality import docling_document_has_mojibake
+
+                corrupt_text = bool(
+                    poll_result.document_json
+                    and docling_document_has_mojibake(poll_result.document_json)
+                )
+                if corrupt_text and not force_ocr:
+                    logger.warning(
+                        "[LF] Broken PDF character map detected; retrying with forced OCR",
+                        extra={"task_id": task_id, "filename": filename},
+                    )
+                    force_ocr = True
+                    continue
+                if corrupt_text:
+                    if file_task is not None:
+                        file_task.docling_status = DoclingPhaseStatus.FAILED
+                    raise Exception(
+                        "Docling full-page OCR still produced corrupt PDF text; "
+                        "refusing to index it"
+                    )
+
             if file_task is not None:
                 file_task.docling_status = DoclingPhaseStatus.SUCCESS
             logger.info(
@@ -1041,6 +1075,7 @@ class LangflowFileService:
                     "elapsed_seconds": round(poll_result.elapsed_seconds, 2),
                 },
             )
+            break
 
         # ── Phase 2: trigger Langflow ingestion ─────────────────────────
         final_tweaks = LangflowFileService.merge_ui_ingest_settings_into_tweaks(tweaks, settings)

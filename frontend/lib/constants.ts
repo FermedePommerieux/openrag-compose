@@ -18,6 +18,7 @@ export const DEFAULT_KNOWLEDGE_SETTINGS = {
   hybrid_merge_peers: true,
   table_structure: true,
   ocr: false,
+  ocr_mojibake_fallback: false,
   picture_descriptions: false,
 } as const;
 

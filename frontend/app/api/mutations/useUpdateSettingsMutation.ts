@@ -21,6 +21,7 @@ export interface UpdateSettingsRequest {
   hybrid_merge_peers?: boolean;
   table_structure?: boolean;
   ocr?: boolean;
+  ocr_mojibake_fallback?: boolean;
   picture_descriptions?: boolean;
   disable_ingest_with_langflow?: boolean;
   embedding_model?: string;

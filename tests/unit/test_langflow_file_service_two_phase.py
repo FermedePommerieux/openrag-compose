@@ -72,6 +72,7 @@ async def test_two_phase_success_invokes_langflow_with_task_id(
         user_id="owner-123",
         auth_header="Bearer jwt-token",
         ocr=None,
+        force_ocr=False,
         picture_descriptions=None,
     )
 
@@ -88,6 +89,45 @@ async def test_two_phase_success_invokes_langflow_with_task_id(
     # Result envelope.
     assert result["status"] == "success"
     assert result["docling_task_id"] == "task-abc-123"
+
+
+@pytest.mark.asyncio
+async def test_mojibake_fallback_retries_pdf_once_with_forced_ocr(
+    langflow_service, mock_docling_service, mock_polling_service, file_tuple, file_task
+):
+    corrupt = "Tous les pins et les chênes ĚĞ ƋƵĂůŝƚĠ ďŽŝƐ Ě͛ƈƵǀƌĞ͕ ƐƵƉĠƌŝĞƵƌƐ ă ϯϱ Đŵ ĚĞ ĚŝĂŵğƚƌĞ."
+    mock_docling_service.upload_to_docling_direct_async.side_effect = [
+        "task-text-layer",
+        "task-full-page-ocr",
+    ]
+    mock_polling_service.poll_until_ready.side_effect = [
+        DoclingPollResult(
+            outcome=PollOutcome.SUCCESS,
+            document_json={"texts": [{"text": corrupt}]},
+        ),
+        DoclingPollResult(
+            outcome=PollOutcome.SUCCESS,
+            document_json={"texts": [{"text": "Tous les pins et les chênes de qualité."}]},
+        ),
+    ]
+
+    result = await langflow_service.upload_and_ingest_file(
+        file_tuple=file_tuple,
+        settings={"ocr": False, "ocrMojibakeFallback": True},
+        docling_polling_service=mock_polling_service,
+        file_task=file_task,
+    )
+
+    assert mock_docling_service.upload_to_docling_direct_async.await_count == 2
+    first, second = mock_docling_service.upload_to_docling_direct_async.await_args_list
+    assert first.kwargs["ocr"] is False
+    assert first.kwargs["force_ocr"] is False
+    assert second.kwargs["ocr"] is True
+    assert second.kwargs["force_ocr"] is True
+    assert langflow_service.run_ingestion_flow.call_args.kwargs["docling_task_id"] == (
+        "task-full-page-ocr"
+    )
+    assert result["docling_task_id"] == "task-full-page-ocr"
 
 
 @pytest.mark.asyncio

@@ -267,6 +267,7 @@ async def get_settings(
                 hybrid_merge_peers=knowledge_config.hybrid_merge_peers,
                 table_structure=knowledge_config.table_structure,
                 ocr=knowledge_config.ocr,
+                ocr_mojibake_fallback=knowledge_config.ocr_mojibake_fallback,
                 picture_descriptions=knowledge_config.picture_descriptions,
                 picture_description_vlm_configured=is_picture_description_vlm_configured(
                     openrag_config
@@ -542,6 +543,10 @@ async def update_settings(
                 await _update_langflow_docling_settings(working_config, flows_service)
             except Exception as e:
                 logger.error(f"Failed to update docling settings in flow: {str(e)}")
+
+        if body.ocr_mojibake_fallback is not None:
+            working_config.knowledge.ocr_mojibake_fallback = body.ocr_mojibake_fallback
+            config_updated = True
 
         if body.picture_descriptions is not None:
             if body.picture_descriptions:

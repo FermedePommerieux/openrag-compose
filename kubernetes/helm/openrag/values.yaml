@@ -608,6 +608,7 @@ appConfig:
     hybridMaxTokens: 512
     hybridMergePeers: true
     ocr: false
+    ocrMojibakeFallback: false
     pictureDescriptions: false
     tableStructure: true
 

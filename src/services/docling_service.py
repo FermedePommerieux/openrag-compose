@@ -243,6 +243,7 @@ class DoclingService:
         self,
         *,
         ocr_override: bool | None = None,
+        force_ocr: bool = False,
         picture_descriptions_override: bool | None = None,
     ) -> dict[str, Any]:
         """Build the options payload for docling from OpenRAG configs.
@@ -264,6 +265,10 @@ class DoclingService:
         )
 
         options = {"to_formats": "json", "image_export_mode": "placeholder", **preset}
+        if force_ocr:
+            # Docling Serve maps this field to ``force_full_page_ocr`` and
+            # replaces a broken PDF text layer instead of supplementing it.
+            options["force_ocr"] = True
         if picture_descriptions:
             options.update(get_picture_description_options(config))
         return options
@@ -285,6 +290,7 @@ class DoclingService:
         auth_header: str | None = None,
         *,
         ocr: bool | None = None,
+        force_ocr: bool = False,
         picture_descriptions: bool | None = None,
     ) -> str:
         """
@@ -292,6 +298,7 @@ class DoclingService:
         """
         options = self._build_docling_options(
             ocr_override=ocr,
+            force_ocr=force_ocr,
             picture_descriptions_override=picture_descriptions,
         )
         headers = self._get_auth_headers(user_id, auth_header)

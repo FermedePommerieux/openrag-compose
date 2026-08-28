@@ -52,6 +52,8 @@ export function IngestSettingsSection() {
   >(null);
   const [tableStructure, setTableStructure] = useState<boolean>(true);
   const [ocr, setOcr] = useState<boolean>(false);
+  const [ocrMojibakeFallback, setOcrMojibakeFallback] =
+    useState<boolean>(false);
   const [pictureDescriptions, setPictureDescriptions] =
     useState<boolean>(false);
   const [disableIngestWithLangflow, setDisableIngestWithLangflow] =
@@ -194,6 +196,8 @@ export function IngestSettingsSection() {
       setHybridMergePeers(k.hybrid_merge_peers);
     if (k.table_structure !== undefined) setTableStructure(k.table_structure);
     if (k.ocr !== undefined) setOcr(k.ocr);
+    if (k.ocr_mojibake_fallback !== undefined)
+      setOcrMojibakeFallback(k.ocr_mojibake_fallback);
     if (k.picture_descriptions !== undefined)
       setPictureDescriptions(k.picture_descriptions);
     if (k.disable_ingest_with_langflow !== undefined)
@@ -214,6 +218,7 @@ export function IngestSettingsSection() {
         hybridMergePeers !== (k?.hybrid_merge_peers ?? hybridMergePeers))) ||
     tableStructure !== (k?.table_structure ?? tableStructure) ||
     ocr !== (k?.ocr ?? ocr) ||
+    ocrMojibakeFallback !== (k?.ocr_mojibake_fallback ?? ocrMojibakeFallback) ||
     pictureDescriptions !== (k?.picture_descriptions ?? pictureDescriptions) ||
     disableIngestWithLangflow !==
       (k?.disable_ingest_with_langflow ?? disableIngestWithLangflow);
@@ -249,6 +254,7 @@ export function IngestSettingsSection() {
         ...chunkingPayload,
         table_structure: tableStructure,
         ocr,
+        ocr_mojibake_fallback: ocrMojibakeFallback,
         picture_descriptions: pictureDescriptions,
         disable_ingest_with_langflow: disableIngestWithLangflow,
       },
@@ -276,6 +282,7 @@ export function IngestSettingsSection() {
         ...chunkingPayload,
         table_structure: tableStructure,
         ocr,
+        ocr_mojibake_fallback: ocrMojibakeFallback,
         picture_descriptions: pictureDescriptions,
         disable_ingest_with_langflow: disableIngestWithLangflow,
       },
@@ -331,6 +338,9 @@ export function IngestSettingsSection() {
         setHybridMergePeers(DEFAULT_KNOWLEDGE_SETTINGS.hybrid_merge_peers);
         setTableStructure(DEFAULT_KNOWLEDGE_SETTINGS.table_structure);
         setOcr(DEFAULT_KNOWLEDGE_SETTINGS.ocr);
+        setOcrMojibakeFallback(
+          DEFAULT_KNOWLEDGE_SETTINGS.ocr_mojibake_fallback,
+        );
         setPictureDescriptions(DEFAULT_KNOWLEDGE_SETTINGS.picture_descriptions);
         setDisableIngestWithLangflow(false);
         setChunkValidationError(null);
@@ -622,6 +632,25 @@ export function IngestSettingsSection() {
                 </div>
               </div>
               <Switch id="ocr" checked={ocr} onCheckedChange={setOcr} />
+            </div>
+            <div className="flex items-center justify-between py-3 border-b border-border">
+              <div className="flex-1">
+                <Label
+                  htmlFor="ocr-mojibake-fallback"
+                  className="text-base font-medium cursor-pointer pb-3"
+                >
+                  Corrupt PDF text fallback
+                </Label>
+                <div className="text-sm text-muted-foreground">
+                  Retries a PDF with full-page OCR only when its embedded text
+                  has a high-confidence broken character-map signature.
+                </div>
+              </div>
+              <Switch
+                id="ocr-mojibake-fallback"
+                checked={ocrMojibakeFallback}
+                onCheckedChange={setOcrMojibakeFallback}
+              />
             </div>
             <div className="flex items-center justify-between py-3">
               <div className="flex-1">

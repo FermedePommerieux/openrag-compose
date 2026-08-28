@@ -36,6 +36,7 @@ class DoclingPollResult:
     detail: str | None = None
     last_snapshot: DoclingStatusSnapshot | None = None
     elapsed_seconds: float = 0.0
+    document_json: dict | None = None
 
 
 class DoclingPollingService:
@@ -116,7 +117,7 @@ class DoclingPollingService:
                             elapsed_seconds=elapsed,
                         )
                     try:
-                        await self.docling_service.fetch_task_result(
+                        document_json = await self.docling_service.fetch_task_result(
                             task_id, user_id=user_id, auth_header=auth_header
                         )
                         break
@@ -170,6 +171,7 @@ class DoclingPollingService:
                     outcome=PollOutcome.SUCCESS,
                     last_snapshot=snapshot,
                     elapsed_seconds=elapsed,
+                    document_json=document_json,
                 )
 
             if snapshot.state == DoclingTaskState.FAILED:
