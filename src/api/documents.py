@@ -295,8 +295,16 @@ async def delete_chunks_by_document_ids(
 
 
 async def _ensure_index_exists(jwt_token: str = None):
-    """Create the OpenSearch index if it doesn't exist yet."""
+    """Create the OpenSearch index only when it is actually absent.
+
+    ``init_index`` also bootstraps OpenSearch roles in deployments that own
+    their security configuration. Calling it for every upload made concurrent
+    connector jobs rewrite the same role mappings and race with one another.
+    The cheap existence check keeps ingestion read-only with respect to cluster
+    security after startup/onboarding has created the index.
+    """
     from config.settings import clients as app_clients
+    from config.settings import get_index_name
     from main import init_index
 
     # Index administration needs more privileges than the per-user client has
@@ -304,6 +312,8 @@ async def _ensure_index_exists(jwt_token: str = None):
     # calls like HEAD /<index> or index creation) — pick the admin-capable
     # client for the run mode.
     opensearch_client = app_clients.create_index_admin_opensearch_client(jwt_token)
+    if await opensearch_client.indices.exists(index=get_index_name()):
+        return
     await init_index(opensearch_client)
 
 
