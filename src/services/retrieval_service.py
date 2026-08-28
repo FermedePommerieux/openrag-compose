@@ -12,8 +12,6 @@ import hashlib
 import hmac
 import json
 import math
-import re
-import unicodedata
 from base64 import urlsafe_b64decode, urlsafe_b64encode
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -27,106 +25,6 @@ logger = get_logger(__name__)
 
 EXHAUSTIVE_PROFILE_VERSION = 1
 EXHAUSTIVE_BATCH_MAX = 50
-
-_EXHAUSTIVE_INTENT_PATTERNS = (
-    re.compile(r"\bexhausti\w*\b"),
-    re.compile(r"\bcouverture\s+(?:exhaustive|complete)\b"),
-    re.compile(r"\brecherche\s+(?:exhaustive|complete)\b"),
-    re.compile(r"\bverifi\w*\s+tout\b"),
-    re.compile(r"\b(?:tous|toutes)\s+les\b"),
-    re.compile(r"\btoute\s+l[' ]archive\b"),
-    re.compile(r"\b(?:find|list|read|check)\s+all\b"),
-    re.compile(r"\b(?:complete|full)\s+(?:coverage|archive|corpus)\b"),
-    re.compile(r"\bevery\s+(?:document|email|mail|occurrence|source)\b"),
-)
-
-_AUDIT_TOPIC_MARKER = re.compile(
-    r"\b(?:th[eé]matique|sujet|topic)\b\s*(?:(?:de|du|des)\s+|[:\-]\s*)?",
-    re.IGNORECASE,
-)
-_AUDIT_TRAILING_INSTRUCTION = re.compile(
-    r"(?:[.!?;]\s*|\s+-\s+)"
-    r"(?:j?e\s+veux|je\s+souhaite|i\s+want|v[eé]rif\w*\s+tout)\b",
-    re.IGNORECASE,
-)
-_AUDIT_TOPIC_CONNECTORS = frozenset(
-    {
-        "a",
-        "au",
-        "aux",
-        "avec",
-        "de",
-        "des",
-        "du",
-        "en",
-        "et",
-        "la",
-        "le",
-        "les",
-        "lien",
-        "ou",
-        "the",
-        "to",
-        "with",
-    }
-)
-
-
-def exhaustive_retrieval_requested(prompt: str) -> bool:
-    """Return whether the user explicitly requests exhaustive evidence work.
-
-    This detector is deliberately limited to explicit French and English
-    formulations.  It does not decide relevance and it never broadens the
-    caller's ACL/filter scope; it only prevents an explicit completeness
-    request from being silently downgraded to ranked focused retrieval.
-    """
-    normalized = unicodedata.normalize("NFKD", str(prompt or "").casefold())
-    normalized = "".join(char for char in normalized if not unicodedata.combining(char))
-    normalized = re.sub(r"\s+", " ", normalized).strip()
-    if not normalized:
-        return False
-    if re.search(r"\bne\b.{0,80}\bpas\b.{0,80}\bexhausti\w*\b", normalized) or re.search(
-        r"\b(?:pas|non|sans)\s+(?:de\s+)?(?:recherche\s+)?exhausti\w*\b", normalized
-    ):
-        return False
-    return any(pattern.search(normalized) for pattern in _EXHAUSTIVE_INTENT_PATTERNS)
-
-
-def audit_topic_query(prompt: str) -> str:
-    """Extract the topical predicate from explicit audit instructions.
-
-    OpenSearch must rank the subject, not conversational control words such as
-    ``recherche exhaustive`` or ``toute l'archive``.  Those words express the
-    required execution contract but have no evidentiary value and can match a
-    large fraction of email archives.  This deterministic extraction is used
-    only when a trusted caller has already selected audit mode; the complete
-    user request remains unchanged for evidence synthesis and final answering.
-
-    A marker such as ``thématique``/``sujet``/``topic`` is required before any
-    text is removed.  If extraction is ambiguous, the original query is
-    returned fail-open.  The deliberately tolerated ``e veux`` spelling covers
-    a real copied production request without weakening exhaustive-intent
-    detection.
-    """
-
-    original = re.sub(r"\s+", " ", str(prompt or "")).strip()
-    if not original:
-        return original
-    marker = _AUDIT_TOPIC_MARKER.search(original)
-    if marker is None:
-        return original
-    topic = original[marker.end() :].strip()
-    trailing = _AUDIT_TRAILING_INSTRUCTION.search(topic)
-    if trailing is not None:
-        topic = topic[: trailing.start()]
-    topic = topic.strip(" \t\r\n\"'“”‘’.,;:!?-")
-    terms = re.findall(r"[\w]+(?:[-'][\w]+)*", topic, flags=re.UNICODE)
-    topical_terms = [term for term in terms if term.casefold() not in _AUDIT_TOPIC_CONNECTORS]
-    if topical_terms:
-        topic = " ".join(topical_terms)
-    # A one-character extraction is more likely punctuation or a malformed
-    # instruction than a useful archive predicate.
-    return topic if len(topic) >= 2 else original
 
 
 @dataclass(frozen=True)
@@ -220,6 +118,139 @@ def reciprocal_rank_fusion(
     for identity in ordered_ids:
         item = hit_by_id[identity]
         item["_retrieval_fusion_score"] = score_by_id[identity]
+        fused.append(item)
+    return fused
+
+
+def normalized_score_fusion(
+    ranked_lists: Iterable[Iterable[dict[str, Any]]],
+    *,
+    limit: int | None = None,
+) -> list[dict[str, Any]]:
+    """Fuse lane scores after independent min-max normalization.
+
+    BM25 and vector similarities do not share a meaningful raw score scale.
+    Each non-empty lane is therefore normalized independently to ``[0, 1]``
+    before an equal-weight arithmetic mean is calculated. Missing hits receive
+    zero for that lane, so agreement across independent retrieval methods is a
+    useful signal without becoming a hard inclusion rule.
+
+    A constant-score lane assigns ``1`` to all of its hits: the lane still
+    provides evidence of retrieval, but invents no ordering between ties.
+    OpenSearch has already applied the stable ``chunk_id`` secondary sort; the
+    persistent hit identity remains the final deterministic tie-breaker here.
+    """
+    lane_scores: list[dict[str, float]] = []
+    hit_by_id: dict[str, dict[str, Any]] = {}
+
+    for ranked in ranked_lists:
+        scores: dict[str, float] = {}
+        for hit in ranked:
+            identity = hit_identity(hit)
+            if identity in scores:
+                continue
+            try:
+                score = float(hit.get("_score", 0.0) or 0.0)
+            except (TypeError, ValueError):
+                score = 0.0
+            if not math.isfinite(score):
+                score = 0.0
+            scores[identity] = score
+            hit_by_id.setdefault(identity, dict(hit))
+        if not scores:
+            continue
+
+        minimum = min(scores.values())
+        maximum = max(scores.values())
+        if math.isclose(minimum, maximum):
+            lane_scores.append(dict.fromkeys(scores, 1.0))
+        else:
+            scale = maximum - minimum
+            lane_scores.append(
+                {identity: (score - minimum) / scale for identity, score in scores.items()}
+            )
+
+    if not lane_scores:
+        return []
+
+    divisor = float(len(lane_scores))
+    score_by_id = {
+        identity: sum(scores.get(identity, 0.0) for scores in lane_scores) / divisor
+        for identity in hit_by_id
+    }
+    ordered_ids = sorted(
+        hit_by_id,
+        key=lambda identity: (-score_by_id[identity], identity),
+    )
+    if limit is not None:
+        ordered_ids = ordered_ids[: max(0, limit)]
+
+    fused: list[dict[str, Any]] = []
+    for identity in ordered_ids:
+        item = hit_by_id[identity]
+        item["_retrieval_normalized_score"] = score_by_id[identity]
+        fused.append(item)
+    return fused
+
+
+def consensus_rank_fusion(
+    ranked_lists: Iterable[Iterable[dict[str, Any]]],
+    *,
+    k: int = 60,
+    limit: int | None = None,
+) -> list[dict[str, Any]]:
+    """Combine RRF and normalized-score rankings with a final rank-only RRF.
+
+    Both first-stage rankings reuse the same materialized OpenSearch lane
+    responses. This adds no search or model request. The final stage compares
+    ranks rather than the incompatible RRF and normalized score magnitudes,
+    giving both policies equal influence while retaining their diagnostic
+    scores and ranks on each hit.
+    """
+    materialized = [list(ranked) for ranked in ranked_lists]
+    rrf_hits = reciprocal_rank_fusion(materialized, k=k)
+    normalized_hits = normalized_score_fusion(materialized)
+    if not rrf_hits:
+        return []
+
+    safe_k = max(1, int(k))
+    rrf_by_id = {hit_identity(hit): hit for hit in rrf_hits}
+    normalized_by_id = {hit_identity(hit): hit for hit in normalized_hits}
+    rrf_rank = {hit_identity(hit): rank for rank, hit in enumerate(rrf_hits, start=1)}
+    normalized_rank = {hit_identity(hit): rank for rank, hit in enumerate(normalized_hits, start=1)}
+    identities = set(rrf_by_id) | set(normalized_by_id)
+    consensus_score = {
+        identity: (
+            (1.0 / (safe_k + rrf_rank[identity]) if identity in rrf_rank else 0.0)
+            + (1.0 / (safe_k + normalized_rank[identity]) if identity in normalized_rank else 0.0)
+        )
+        for identity in identities
+    }
+    ordered_ids = sorted(
+        identities,
+        key=lambda identity: (-consensus_score[identity], identity),
+    )
+    if limit is not None:
+        ordered_ids = ordered_ids[: max(0, limit)]
+
+    fused: list[dict[str, Any]] = []
+    for identity in ordered_ids:
+        rrf_hit = rrf_by_id.get(identity)
+        normalized_hit = normalized_by_id.get(identity)
+        item = dict(rrf_hit or normalized_hit or {})
+        item["_retrieval_rrf_score"] = (
+            rrf_hit.get("_retrieval_fusion_score") if rrf_hit is not None else None
+        )
+        item["_retrieval_normalized_score"] = (
+            normalized_hit.get("_retrieval_normalized_score")
+            if normalized_hit is not None
+            else None
+        )
+        item["_retrieval_fusion_score"] = consensus_score[identity]
+        item["_retrieval_fusion_ranks"] = {
+            "rrf": rrf_rank.get(identity),
+            "normalized": normalized_rank.get(identity),
+        }
         fused.append(item)
     return fused
 

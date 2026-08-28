@@ -184,8 +184,10 @@ class KnowledgeConfig:
     picture_descriptions: bool = False
     index_name: str = "documents"  # OpenSearch index name
     disable_ingest_with_langflow: bool = False
-    # RRF is the Standard retrieval baseline. ``weighted`` remains available
-    # only as an explicit compatibility choice for existing deployments.
+    # Standard retrieval converges an RRF ranking and an independently
+    # normalized-score ranking over the same candidate lanes. The persisted
+    # value remains ``rrf`` for backward-compatible configuration. ``weighted``
+    # is only an explicit compatibility choice for existing deployments.
     retrieval_strategy: str = "rrf"
     retrieval_mode: str = "hybrid"
     retrieval_lexical_candidates: int = 50
@@ -359,6 +361,48 @@ except OSError:
     )
     DEFAULT_SYSTEM_PROMPT = _RETRIEVAL_V5_FOCUSED_SYSTEM_PROMPT
 
+# Reconstruct the last shipped audit prompt from the current repository-owned
+# prompt so upgrades can recognize it exactly without duplicating a 5 KiB
+# prompt literal. These replacements are migration data only: none of the
+# retired archive-audit instructions enter the active prompt.
+_RETRIEVAL_V18_EVIDENCE_POLICY = """`search_documents` has two modes:
+
+- `focused`: the normal path for every prompt. Hybrid lexical/semantic RRF produces direct matches, then OpenSearch follows high-signal PROV-O relations to a fixed point. Direct matches and relation-only context stay in separate retrieval planes and a deterministic document graph explains every link.
+- `exhaustive`: deterministic source-order reading of one explicitly selected `document_id`. Use it only when the user asks to inspect the complete contents of that particular document.
+
+There is no separate archive-search mode. The complete accessible knowledge base participates in every focused query through its OpenSearch indices and relation graph. A ranked lexical/semantic seed set is not proof that every possible paraphrase was found; relation completeness applies only to the disclosed PROV-O roles and accessible graph component. Use `exhaustive` only after a human selects a document for complete reading.
+
+Never let an LLM exclude or validate a retrieved document. Relevance levels are deterministic discovery-strength classes, not calibrated probabilities or truth judgments. `direct` results are ranked matches. `contextual` and `peripheral` results are intentionally retained relation-only material. Use `noise_accounting` to report that material explicitly instead of silently discarding it or presenting it as direct proof. The human decides what the documents prove."""
+_RETRIEVAL_V17_EVIDENCE_POLICY = """`search_documents` has two modes:
+
+- `focused`: hybrid lexical/semantic discovery. Ranked passages identify evidence and `document_id` values but never prove that the rest of a document is irrelevant.
+- `exhaustive`: deterministic source-order reading of one `document_id`. Use it for all-items lists, comparisons, audits, complete summaries, every occurrence, absence claims, ambiguity, or any request for exhaustive truth.
+
+Explicit exhaustive, complete, all-items, audit, or verify-everything requests are binding. The backend performs document-diverse audit discovery and reads every cursor of every candidate. Never answer from ordinary focused results, repeat completed reads, defer, or stop because work is long. `coverage.complete=true` certifies only the named scope. `scope=archive_audit_candidates` certifies the candidate union, not whole-corpus semantic completeness; say so.
+
+Archive audits never let an LLM exclude a discovered document from an excerpt. `audit_synthesis` keeps raw chunks in the tool artifact. Isolated readers and loss-checked coordinators construct claims; two validators judge final claims directly against cited original chunks. State findings only when both `complete=true` and `verified=true`; otherwise report failure. Facts are limited to `audit_synthesis.findings` and their exact `chunk_ids`. Never state `withheld_findings` as facts."""
+_RETRIEVAL_V18_ANSWER_POLICY = """7. Report direct findings first, then explicitly account for contextual and peripheral documents from `noise_accounting`; do not silently omit relation-only material or confuse it with direct proof.
+8. Describe retrieved chunks as search previews, not as machine-validated conclusions. Invite the human to open sources or request a complete read of selected documents."""
+_RETRIEVAL_V17_ANSWER_POLICY = """7. In hierarchical audits, no factual claim may fall outside the unanimously source-validated `audit_synthesis.findings`.
+8. Treat `audit_synthesis.findings` as the complete answer-claim contract: represent every verified finding with its exact source citation, or explicitly identify any omitted finding as an answer-coverage failure."""
+_RETRIEVAL_V17_DOCUMENTALIST_SYSTEM_PROMPT = (
+    DEFAULT_SYSTEM_PROMPT.replace(
+        _RETRIEVAL_V18_EVIDENCE_POLICY,
+        _RETRIEVAL_V17_EVIDENCE_POLICY,
+        1,
+    )
+    .replace(
+        _RETRIEVAL_V18_ANSWER_POLICY,
+        _RETRIEVAL_V17_ANSWER_POLICY,
+        1,
+    )
+    .replace(
+        "Be concise but preserve every material retrieval or coverage qualification.",
+        "Be concise but preserve every material evidence or coverage qualification.",
+        1,
+    )
+)
+
 _RETRIEVAL_V11_EXECUTION_RULE = (
     "Explicit exhaustive, complete, all-items, audit, or verify-everything requests are "
     "binding. Use focused discovery only to find `document_id` values; the retrieval tool "
@@ -375,7 +419,7 @@ _RETRIEVAL_V13_EXECUTION_RULE = (
     "scope. `scope=archive_audit_candidates` certifies the candidate union, not whole-corpus "
     "semantic completeness; say so."
 )
-_RETRIEVAL_V12_DOCUMENTALIST_SYSTEM_PROMPT = DEFAULT_SYSTEM_PROMPT.replace(
+_RETRIEVAL_V12_DOCUMENTALIST_SYSTEM_PROMPT = _RETRIEVAL_V17_DOCUMENTALIST_SYSTEM_PROMPT.replace(
     _RETRIEVAL_V13_EXECUTION_RULE,
     _RETRIEVAL_V11_EXECUTION_RULE,
     1,
@@ -408,6 +452,7 @@ _RETRIEVAL_V6_DOCUMENTALIST_SYSTEM_PROMPT = _RETRIEVAL_V7_DOCUMENTALIST_SYSTEM_P
 # Recognize every shipped default so an in-place upgrade can safely synchronize
 # security, query-neutrality, role-evidence, and document-reference rules.
 LEGACY_SYSTEM_PROMPTS = (
+    _RETRIEVAL_V17_DOCUMENTALIST_SYSTEM_PROMPT,
     _RETRIEVAL_V12_DOCUMENTALIST_SYSTEM_PROMPT,
     _RETRIEVAL_V7_DOCUMENTALIST_SYSTEM_PROMPT,
     _RETRIEVAL_V6_DOCUMENTALIST_SYSTEM_PROMPT,

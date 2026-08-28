@@ -1,6 +1,11 @@
 # ADR 0008: Relevance-bounded archive audits
 
-Status: accepted, amended by ADR 0009
+Status: superseded by Retrieval v2 version 18
+
+This calibration is retained as historical evidence for why an unbounded KNN
+tail is not exhaustive. Version 18 no longer has an archive-audit mode: bounded
+direct lexical/vector lanes and native PROV-O context participate in every
+normal query, with no LLM document gate.
 
 ## Context
 

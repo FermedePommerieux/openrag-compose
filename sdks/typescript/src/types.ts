@@ -42,6 +42,7 @@ export interface SourceProvenanceFields {
   source_entity_system?: string | null;
   source_entity_alternate_ids?: string[];
   source_relation_target_ids?: string[];
+  source_relation_predicates?: string[];
   source_relation_roles?: string[];
 }
 
@@ -120,6 +121,11 @@ export interface EvidenceCoverage {
 export interface SearchResponse {
   results: SearchResult[];
   coverage?: EvidenceCoverage;
+  retrieval_fusion?: Record<string, unknown>;
+  document_graph?: Record<string, unknown>;
+  provenance_retrieval?: Record<string, unknown>;
+  retrieval_planes?: Record<string, unknown>;
+  noise_accounting?: Record<string, unknown>;
   error?: string;
 }
 

@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
-// Exhaustive audits can legitimately exceed the framework's three-minute
-// route budget. The backend job is reconnect-safe, but keeping the first SSE
-// subscriber alive avoids an unnecessary polling hand-off in the common case.
+// Document parsing and deeply connected PROV-O retrieval can exceed the
+// framework's default route budget. Keep the proxy transparent to the backend.
 export const maxDuration = 2400;
 export const dynamic = "force-dynamic";
 

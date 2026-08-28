@@ -2,7 +2,6 @@ import asyncio
 import copy
 import hashlib
 import hmac
-import math
 import os
 import re
 from typing import Any
@@ -12,19 +11,18 @@ from agentd.tool_decorator import tool
 from auth_context import get_auth_context
 from config.embedding_constants import get_declared_default_embedding_model
 from config.settings import clients, get_embedding_model, get_index_name, get_openrag_config
-from services.audit_progress_service import audit_progress_service
-from services.audit_reasoning_service import AuditReasoningService
+from models.source_provenance import ROLE_TO_PROV_PREDICATE, SourceRelationRole
+from services.retrieval_progress_service import retrieval_progress_service
 from services.retrieval_service import (
     EXHAUSTIVE_BATCH_MAX,
     EXHAUSTIVE_PROFILE_VERSION,
     HttpReranker,
     RetrievalSettings,
-    audit_topic_query,
+    consensus_rank_fusion,
     decode_exhaustive_cursor,
     encode_exhaustive_cursor,
     exhaustive_scope_sha256,
     limit_chunks_per_document,
-    reciprocal_rank_fusion,
 )
 from utils.container_utils import transform_localhost_url
 from utils.logging_config import get_logger
@@ -35,50 +33,20 @@ logger = get_logger(__name__)
 MAX_EMBED_RETRIES = 3
 EMBED_RETRY_INITIAL_DELAY = 1.0
 EMBED_RETRY_MAX_DELAY = 8.0
-# Archive audit discovery must never turn a transport batch size into a silent
-# recall limit. Lexical hits are therefore read from one OpenSearch scroll
-# snapshot until the result set is exhausted. Scroll is required here because
-# the OpenSearch Security plugin rejects PIT creation under document-level
-# security. Vector search is a ranked nearest-neighbour operation and cannot
-# prove semantic completeness. Its empirically bounded depth and the resulting
-# unsearched tail are disclosed rather than mislabelled as exhaustive.
-ARCHIVE_AUDIT_PAGE_SIZE = 500
-ARCHIVE_AUDIT_VECTOR_INITIAL_DEPTH = 100
-# Empirical calibration on the production archive (75,393 chunks) showed that
-# k=25 and k=50 contributed respectively zero and one semantic-only document,
-# while k=100 contributed eight. Beyond k=100 the curve became mostly noise:
-# k=250 returned 101 documents but only 12 overlapped the independently
-# exhausted lexical set. Exhaustive truth means exhausting plausible evidence,
-# not paying an LLM to read the long tail of nearest-neighbour noise.
-ARCHIVE_AUDIT_VECTOR_MAX_DEPTH = 100
-ARCHIVE_AUDIT_VECTOR_STABILITY_ROUNDS = 2
-ARCHIVE_AUDIT_EXPANSION_CONCURRENCY = 4
-ARCHIVE_AUDIT_DOCUMENT_READ_CONCURRENCY = 4
-# Alternate queries are recall helpers, not independent proof that every match
-# is on-topic.  A lane is safe to exhaust only when its document frequency is
-# no greater than sqrt(N) for the caller-visible corpus.  This is equivalent to
-# requiring at least half of the corpus's maximum inverse-document-frequency:
-# ``log(N / df) >= 0.5 * log(N)``.  Unlike a fixed top-k, the predicate adapts
-# to archive size and either consumes every qualifying match or rejects the
-# whole over-broad expansion. The original topical lexical lane is always
-# exhausted and PROV-O still recovers implicit replies/attachments.
-ARCHIVE_AUDIT_EXPANSION_MIN_SELECTIVE_DOCUMENTS = 8
-ARCHIVE_AUDIT_CARDINALITY_PRECISION = 40_000
-# Audit discovery is fed a topical query, not a bag of independent trigger
-# words. Requiring all terms for one- and two-token queries, then half for
-# longer queries, prevents generic request words from matching most of an
-# archive while preserving multi-concept evidence. Vector lanes cover wording
-# variation independently. This is an adaptive relevance rule, not a result cap.
-ARCHIVE_AUDIT_LEXICAL_MINIMUM_SHOULD_MATCH = "2<50%"
-ARCHIVE_AUDIT_PROVENANCE_ROLES = frozenset({"attachment_of", "member_of", "references", "reply_to"})
-ARCHIVE_AUDIT_TRANSIENT_FIELDS = (
-    "retrieval_relation_paths",
-    "retrieval_relevance_decision",
-    "retrieval_relevance_reason",
-    "retrieval_supporting_document_ids",
+# OpenSearch scrolls exhaust each PROV-O frontier without imposing a silent
+# relation-result cap. The Security plugin rejects PIT creation under DLS, so
+# the traversal uses short-lived scroll snapshots instead.
+PROVENANCE_PAGE_SIZE = 500
+# OpenSearch stores and queries full PROV-O predicate URIs. OpenRAG roles are
+# qualifications only: they distinguish contexts that collapse onto the same
+# PROV-O predicate. In particular, broad archive containment maps to
+# ``prov:wasMemberOf`` just like attachment/thread membership, but following it
+# would connect unrelated documents and create deliberate, unbounded noise.
+PROVENANCE_EXCLUDED_ROLES = frozenset({SourceRelationRole.CONTAINED_IN.value})
+PROVENANCE_TRAVERSAL_PREDICATES = frozenset(ROLE_TO_PROV_PREDICATE.values())
+PROVENANCE_LEGACY_ROLES = frozenset(
+    role.value for role in SourceRelationRole if role.value not in PROVENANCE_EXCLUDED_ROLES
 )
-
-
 # Variable used to store the active instance for the tool wrapper
 _global_search_service = None
 
@@ -94,77 +62,6 @@ def _build_file_facet_aggregations() -> dict[str, Any]:
     }
 
 
-def _calibrate_audit_vector_lanes(
-    retrieval_results: dict[str, dict[str, Any]],
-    audit_lane_metadata: dict[str, dict[str, Any]],
-) -> None:
-    """Select grounded semantic audit candidates without a fixed top-k.
-
-    A deep k-NN query eventually returns weak neighbours for nearly every
-    document. Each model's score scale is instead calibrated against documents
-    independently supported by the exhausted lexical lane. An uncalibrated
-    vector lane is excluded rather than turning an unknown scale into thousands
-    of purportedly relevant documents; metadata makes that loss of semantic
-    evidence explicit and semantic completeness remains false.
-    """
-    lexical_document_ids = {
-        str(hit.get("_source", {}).get("document_id"))
-        for lane, result in retrieval_results.items()
-        # Only the original topical predicate is an independent calibration
-        # anchor. Alternate queries are derived from those same seeds and
-        # cannot bootstrap their own semantic threshold without circularly
-        # admitting query drift.
-        if lane == "lexical"
-        for hit in result.get("hits", {}).get("hits", [])
-        if hit.get("_source", {}).get("document_id")
-    }
-    for lane, lane_result in retrieval_results.items():
-        if not lane.startswith("vector:"):
-            continue
-        vector_hits = lane_result.get("hits", {}).get("hits", [])
-        best_lexical_score_by_document: dict[str, float] = {}
-        for hit in vector_hits:
-            document_id = str(hit.get("_source", {}).get("document_id") or "")
-            score = hit.get("_score")
-            if document_id not in lexical_document_ids or not isinstance(score, (int, float)):
-                continue
-            previous = best_lexical_score_by_document.get(document_id)
-            if previous is None or float(score) > previous:
-                best_lexical_score_by_document[document_id] = float(score)
-
-        calibration_scores = sorted(best_lexical_score_by_document.values())
-        if not calibration_scores:
-            lane_result["hits"]["hits"] = []
-            audit_lane_metadata[lane]["selection"] = {
-                "rule": "uncalibrated_excluded",
-                "reason": "no_lexical_supported_document_in_vector_lane",
-                "calibration_documents": 0,
-                "raw_candidates": len(vector_hits),
-                "selected_candidates": 0,
-            }
-            continue
-
-        middle = len(calibration_scores) // 2
-        threshold = (
-            calibration_scores[middle]
-            if len(calibration_scores) % 2
-            else (calibration_scores[middle - 1] + calibration_scores[middle]) / 2
-        )
-        selected_hits = [
-            hit
-            for hit in vector_hits
-            if isinstance(hit.get("_score"), (int, float)) and float(hit["_score"]) >= threshold
-        ]
-        lane_result["hits"]["hits"] = selected_hits
-        audit_lane_metadata[lane]["selection"] = {
-            "rule": "lexical_supported_median_similarity",
-            "score_threshold": threshold,
-            "calibration_documents": len(calibration_scores),
-            "raw_candidates": len(vector_hits),
-            "selected_candidates": len(selected_hits),
-        }
-
-
 def _hits_by_document(hits: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
     """Keep the first ranked hit for every stable document identity."""
     documents: dict[str, dict[str, Any]] = {}
@@ -175,41 +72,108 @@ def _hits_by_document(hits: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
     return documents
 
 
-def _is_audit_lexical_lane(lane: str) -> bool:
-    """Return whether a lane is an exhaustively consumed lexical predicate."""
-    return lane == "lexical" or lane.startswith(("lexical_expansion:", "entity_expansion:"))
-
-
-def _audit_expansion_document_limit(visible_documents: int | None) -> int | None:
-    """Return the adaptive IDF gate for an alternate lexical predicate."""
-
-    if (
-        not isinstance(visible_documents, int)
-        or isinstance(visible_documents, bool)
-        or visible_documents <= 0
-    ):
+def _prov_predicate_for_role(role: str) -> str | None:
+    """Resolve one bounded OpenRAG qualifier to its canonical PROV-O URI."""
+    try:
+        return ROLE_TO_PROV_PREDICATE[SourceRelationRole(role)]
+    except ValueError:
         return None
-    return max(
-        ARCHIVE_AUDIT_EXPANSION_MIN_SELECTIVE_DOCUMENTS,
-        math.ceil(math.sqrt(visible_documents)),
-    )
 
 
-def _provenance_relations(hit: dict[str, Any]) -> list[tuple[str, str]]:
-    """Return role/target pairs from the canonical nested provenance object."""
+def _canonical_provenance_relation(relation: object) -> tuple[str, str, str] | None:
+    """Return ``(predicate, role, target)`` for one traversable relation.
+
+    Current ingestions persist the full predicate URI. The role-based fallback
+    keeps already-indexed version-1 records searchable until they are reingested;
+    it never accepts a predicate inconsistent with the bounded role mapping.
+    """
+    if not isinstance(relation, dict):
+        return None
+    role = str(relation.get("role") or "")
+    if role in PROVENANCE_EXCLUDED_ROLES:
+        return None
+    expected_predicate = _prov_predicate_for_role(role)
+    if expected_predicate is None:
+        return None
+    predicate = str(relation.get("prov_predicate") or expected_predicate)
+    if predicate != expected_predicate or predicate not in PROVENANCE_TRAVERSAL_PREDICATES:
+        return None
+    target = relation.get("target")
+    target_id = str(target.get("id") or "") if isinstance(target, dict) else ""
+    return (predicate, role, target_id) if target_id else None
+
+
+def _provenance_relations(hit: dict[str, Any]) -> list[tuple[str, str, str]]:
+    """Return canonical predicate/role/target triples from one indexed hit."""
     provenance = hit.get("_source", {}).get("source_provenance")
     if not isinstance(provenance, dict) or not isinstance(provenance.get("relations"), list):
         return []
-    pairs: list[tuple[str, str]] = []
-    for relation in provenance["relations"]:
-        if not isinstance(relation, dict):
-            continue
-        role = str(relation.get("role") or "")
-        target = relation.get("target")
-        target_id = str(target.get("id") or "") if isinstance(target, dict) else ""
-        if role in ARCHIVE_AUDIT_PROVENANCE_ROLES and target_id:
-            pairs.append((role, target_id))
-    return pairs
+    return [
+        canonical
+        for relation in provenance["relations"]
+        if (canonical := _canonical_provenance_relation(relation)) is not None
+    ]
+
+
+def _provenance_relation_target_query(target_ids: set[str]) -> dict[str, Any]:
+    """Build one native OpenSearch nested query for canonical PROV-O edges.
+
+    The primary branch matches full ``prov_predicate`` URIs. A narrowly scoped
+    fallback matches records created before that field was persisted, but only
+    when the predicate field is absent and the bounded role maps unambiguously
+    to a supported predicate. ``contained_in`` is excluded in both branches.
+    """
+    return {
+        "nested": {
+            "path": "source_provenance.relations",
+            "query": {
+                "bool": {
+                    "filter": [
+                        {"terms": {"source_provenance.relations.target.id": sorted(target_ids)}}
+                    ],
+                    "must_not": [
+                        {
+                            "terms": {
+                                "source_provenance.relations.role": sorted(
+                                    PROVENANCE_EXCLUDED_ROLES
+                                )
+                            }
+                        }
+                    ],
+                    "should": [
+                        {
+                            "terms": {
+                                "source_provenance.relations.prov_predicate": sorted(
+                                    PROVENANCE_TRAVERSAL_PREDICATES
+                                )
+                            }
+                        },
+                        {
+                            "bool": {
+                                "must_not": [
+                                    {
+                                        "exists": {
+                                            "field": ("source_provenance.relations.prov_predicate")
+                                        }
+                                    }
+                                ],
+                                "filter": [
+                                    {
+                                        "terms": {
+                                            "source_provenance.relations.role": sorted(
+                                                PROVENANCE_LEGACY_ROLES
+                                            )
+                                        }
+                                    }
+                                ],
+                            }
+                        },
+                    ],
+                    "minimum_should_match": 1,
+                }
+            },
+        }
+    }
 
 
 def _provenance_identity_sets(hit: dict[str, Any]) -> tuple[set[str], set[str]]:
@@ -223,7 +187,7 @@ def _provenance_identity_sets(hit: dict[str, Any]) -> tuple[set[str], set[str]]:
         ]
         if value
     }
-    relation_targets = {target_id for _role, target_id in _provenance_relations(hit)}
+    relation_targets = {target_id for _predicate, _role, target_id in _provenance_relations(hit)}
     return entity_ids, relation_targets
 
 
@@ -236,30 +200,51 @@ def _provenance_relation_paths(
     candidate_source = candidate.get("_source", {})
     candidate_id = str(candidate_source.get("document_id") or "")
     paths: list[dict[str, str]] = []
-    seen: set[tuple[str, str, str]] = set()
+    seen: set[tuple[str, str, str, str, str, str]] = set()
     for anchor_id, anchor in frontier.items():
         anchor_entities, _anchor_targets = _provenance_identity_sets(anchor)
         anchor_relations = _provenance_relations(anchor)
         candidate_relations = _provenance_relations(candidate)
-        connections: list[tuple[str, str, str, str]] = []
+        connections: list[tuple[str, str, str, str, str, str]] = []
         connections.extend(
-            (role, "anchor_to_candidate", target_id, "")
-            for role, target_id in anchor_relations
+            (predicate, role, "anchor_to_candidate", target_id, "", "")
+            for predicate, role, target_id in anchor_relations
             if target_id in candidate_entities
         )
         connections.extend(
-            (role, "candidate_to_anchor", target_id, "")
-            for role, target_id in candidate_relations
+            (predicate, role, "candidate_to_anchor", target_id, "", "")
+            for predicate, role, target_id in candidate_relations
             if target_id in anchor_entities
         )
         connections.extend(
-            (candidate_role, "shared_target", target_id, anchor_role)
-            for anchor_role, target_id in anchor_relations
-            for candidate_role, candidate_target_id in candidate_relations
+            (
+                candidate_predicate,
+                candidate_role,
+                "shared_target",
+                target_id,
+                anchor_predicate,
+                anchor_role,
+            )
+            for anchor_predicate, anchor_role, target_id in anchor_relations
+            for candidate_predicate, candidate_role, candidate_target_id in candidate_relations
             if target_id == candidate_target_id
         )
-        for relation_role, direction, identifier, anchor_role in connections:
-            identity = (anchor_id, f"{direction}:{relation_role}:{anchor_role}", identifier)
+        for (
+            predicate,
+            relation_role,
+            direction,
+            identifier,
+            anchor_predicate,
+            anchor_role,
+        ) in connections:
+            identity = (
+                anchor_id,
+                direction,
+                predicate,
+                relation_role,
+                anchor_predicate,
+                identifier,
+            )
             if identity in seen:
                 continue
             seen.add(identity)
@@ -268,11 +253,14 @@ def _provenance_relation_paths(
                 "from_document_id": anchor_id,
                 "from_filename": str(anchor_source.get("filename") or ""),
                 "to_document_id": candidate_id,
+                "prov_predicate": predicate,
                 "relation_role": relation_role,
                 "direction": direction,
                 "via_entity_id": identifier,
                 "anchor_excerpt": str(anchor_source.get("text") or "")[:1200],
             }
+            if anchor_predicate:
+                path["anchor_prov_predicate"] = anchor_predicate
             if anchor_role:
                 path["anchor_relation_role"] = anchor_role
             paths.append(path)
@@ -297,6 +285,304 @@ def _propagate_provenance_paths(
             paths = paths_by_document.get(str(source.get("document_id") or ""))
             if paths:
                 source["retrieval_relation_paths"] = paths
+
+
+def _retrieval_discovery_channels(
+    retrieval_results: dict[str, dict[str, Any]],
+) -> dict[str, set[str]]:
+    """Return every observable discovery channel for each document."""
+    channels: dict[str, set[str]] = {}
+    for lane, result in retrieval_results.items():
+        channel = (
+            "lexical"
+            if lane == "lexical"
+            else "semantic"
+            if lane.startswith("vector:")
+            else "provenance"
+            if lane == "provenance"
+            else "lexical_expansion"
+            if lane.startswith("lexical_expansion:")
+            else "entity_expansion"
+            if lane.startswith("entity_expansion:")
+            else lane
+        )
+        for hit in result.get("hits", {}).get("hits", []):
+            document_id = str(hit.get("_source", {}).get("document_id") or "")
+            if document_id:
+                channels.setdefault(document_id, set()).add(channel)
+    return channels
+
+
+def _document_relevance(
+    channels: set[str], *, relation_paths: bool, relation_depth: int | None
+) -> dict[str, Any]:
+    """Assign an explainable relevance tier without inventing probabilities.
+
+    OpenSearch scores from BM25, k-NN and RRF are not calibrated probabilities.
+    The levels below communicate discovery strength only.  They never exclude a
+    document and they are explicitly reserved for human triage.
+    """
+    if "lexical" in channels and "semantic" in channels:
+        level = "strong"
+        reason = "Matched the topical lexical predicate and the calibrated semantic lane."
+    elif "lexical" in channels:
+        level = "strong"
+        reason = "Matched the fully exhausted topical lexical predicate."
+    elif relation_depth is not None and relation_depth > 1:
+        level = "peripheral"
+        reason = f"Reached after {relation_depth} deterministic PROV-O graph expansion steps."
+    elif "provenance" in channels or relation_paths:
+        level = "contextual"
+        reason = "Reached through one deterministic high-signal PROV-O graph expansion step."
+    elif "semantic" in channels:
+        level = "exploratory"
+        reason = "Found only in the calibrated semantic neighbourhood."
+    else:
+        level = "exploratory"
+        reason = "Retained by an auxiliary OpenSearch discovery lane."
+    return {
+        "level": level,
+        "reason": reason,
+        "probability_calibrated": False,
+        "human_validation_required": True,
+        "relation_depth": relation_depth,
+    }
+
+
+def _build_document_graph(
+    chunks: list[dict[str, Any]],
+    retrieval_results: dict[str, dict[str, Any]],
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Build a deterministic document register and PROV-O relationship graph.
+
+    One representative chunk is retained per document. Edges come only from
+    persisted PROV-O relations or from the observable paths produced by the
+    fixed-point traversal; no language model creates or validates an edge.
+    """
+    channels_by_document = _retrieval_discovery_channels(retrieval_results)
+    documents_by_id: dict[str, dict[str, Any]] = {}
+    for chunk in chunks:
+        if chunk.get("document_id"):
+            documents_by_id.setdefault(str(chunk["document_id"]), chunk)
+    entity_documents: dict[str, set[str]] = {}
+    for document_id, chunk in documents_by_id.items():
+        for entity_id in [
+            chunk.get("source_entity_id"),
+            *(chunk.get("source_entity_alternate_ids") or []),
+        ]:
+            if entity_id:
+                entity_documents.setdefault(str(entity_id), set()).add(document_id)
+
+    edge_rows: list[dict[str, Any]] = []
+    seen_edges: set[tuple[str, str, str, str, str]] = set()
+
+    def add_edge(
+        source_document_id: str,
+        target_document_id: str,
+        predicate: str | None,
+        role: str | None,
+        via_entity_id: str,
+        evidence: str,
+        edge_kind: str,
+        assertions: list[dict[str, str]] | None = None,
+    ) -> None:
+        if (
+            not source_document_id
+            or not target_document_id
+            or source_document_id == target_document_id
+            or source_document_id not in documents_by_id
+            or target_document_id not in documents_by_id
+        ):
+            return
+        identity = (
+            source_document_id,
+            target_document_id,
+            predicate or "",
+            role or "",
+            via_entity_id,
+        )
+        if identity in seen_edges:
+            return
+        seen_edges.add(identity)
+        edge: dict[str, Any] = {
+            "source_document_id": source_document_id,
+            "target_document_id": target_document_id,
+            "prov_predicate": predicate,
+            "role": role,
+            "via_entity_id": via_entity_id,
+            "evidence": evidence,
+            "edge_kind": edge_kind,
+        }
+        if assertions:
+            edge["assertions"] = assertions
+        edge_rows.append(edge)
+
+    for document_id, chunk in documents_by_id.items():
+        provenance = chunk.get("source_provenance")
+        relations = provenance.get("relations", []) if isinstance(provenance, dict) else []
+        for relation in relations if isinstance(relations, list) else []:
+            canonical = _canonical_provenance_relation(relation)
+            if canonical is None:
+                continue
+            predicate, role, target_id = canonical
+            for target_document_id in sorted(entity_documents.get(target_id, set())):
+                add_edge(
+                    document_id,
+                    target_document_id,
+                    predicate,
+                    role,
+                    target_id,
+                    "source_provenance",
+                    "prov_assertion",
+                )
+
+        for path in chunk.get("retrieval_relation_paths") or []:
+            if not isinstance(path, dict):
+                continue
+            anchor_id = str(path.get("from_document_id") or "")
+            candidate_id = str(path.get("to_document_id") or document_id)
+            direction = str(path.get("direction") or "anchor_to_candidate")
+            role = str(path.get("relation_role") or "related")
+            predicate = str(path.get("prov_predicate") or "") or _prov_predicate_for_role(role)
+            via_entity_id = str(path.get("via_entity_id") or "")
+            if predicate not in PROVENANCE_TRAVERSAL_PREDICATES:
+                continue
+            if direction == "candidate_to_anchor":
+                add_edge(
+                    candidate_id,
+                    anchor_id,
+                    predicate,
+                    role,
+                    via_entity_id,
+                    "retrieval_relation_path",
+                    direction,
+                )
+            elif direction == "shared_target":
+                anchor_predicate = str(path.get("anchor_prov_predicate") or "")
+                anchor_role = str(path.get("anchor_relation_role") or "")
+                if anchor_predicate not in PROVENANCE_TRAVERSAL_PREDICATES:
+                    continue
+                # There is no asserted PROV-O edge between these two
+                # documents. They are a document-graph projection of two
+                # independently persisted assertions to the same entity.
+                add_edge(
+                    anchor_id,
+                    candidate_id,
+                    None,
+                    None,
+                    via_entity_id,
+                    "retrieval_relation_path",
+                    "shared_target_projection",
+                    assertions=[
+                        {
+                            "document_id": anchor_id,
+                            "prov_predicate": anchor_predicate,
+                            "role": anchor_role,
+                            "target_entity_id": via_entity_id,
+                        },
+                        {
+                            "document_id": candidate_id,
+                            "prov_predicate": predicate,
+                            "role": role,
+                            "target_entity_id": via_entity_id,
+                        },
+                    ],
+                )
+            else:
+                add_edge(
+                    anchor_id,
+                    candidate_id,
+                    predicate,
+                    role,
+                    via_entity_id,
+                    "retrieval_relation_path",
+                    direction,
+                )
+
+    adjacency: dict[str, set[str]] = {document_id: set() for document_id in documents_by_id}
+    for edge in edge_rows:
+        source_id = edge["source_document_id"]
+        target_id = edge["target_document_id"]
+        adjacency[source_id].add(target_id)
+        adjacency[target_id].add(source_id)
+
+    component_by_document: dict[str, int] = {}
+    components: list[dict[str, Any]] = []
+    for document_id in documents_by_id:
+        if document_id in component_by_document:
+            continue
+        component_id = len(components) + 1
+        frontier = [document_id]
+        members: list[str] = []
+        component_by_document[document_id] = component_id
+        while frontier:
+            current = frontier.pop()
+            members.append(current)
+            for neighbour in sorted(adjacency[current]):
+                if neighbour not in component_by_document:
+                    component_by_document[neighbour] = component_id
+                    frontier.append(neighbour)
+        components.append(
+            {
+                "component_id": component_id,
+                "document_ids": sorted(members),
+                "document_count": len(members),
+            }
+        )
+
+    register: list[dict[str, Any]] = []
+    registered_documents: set[str] = set()
+    for rank, chunk in enumerate(chunks, start=1):
+        document_id = str(chunk.get("document_id") or "")
+        if not document_id:
+            continue
+        channels = channels_by_document.get(document_id, set())
+        relation_paths = bool(chunk.get("retrieval_relation_paths"))
+        raw_relation_depth = chunk.get("retrieval_relation_depth")
+        relation_depth = (
+            raw_relation_depth
+            if isinstance(raw_relation_depth, int) and not isinstance(raw_relation_depth, bool)
+            else None
+        )
+        relevance = _document_relevance(
+            channels,
+            relation_paths=relation_paths,
+            relation_depth=relation_depth,
+        )
+        chunk["retrieval_channels"] = sorted(channels)
+        chunk["retrieval_relevance"] = relevance
+        chunk["retrieval_plane"] = "context" if relation_depth is not None else "direct"
+        if document_id in registered_documents:
+            continue
+        registered_documents.add(document_id)
+        register.append(
+            {
+                "document_id": document_id,
+                "filename": chunk.get("filename"),
+                "mimetype": chunk.get("mimetype"),
+                "representative_chunk_id": chunk.get("chunk_id"),
+                "representative_rank": rank,
+                "score": chunk.get("score"),
+                "channels": sorted(channels),
+                "relevance": relevance,
+                "retrieval_plane": chunk["retrieval_plane"],
+                "component_id": component_by_document.get(document_id),
+                "related_document_count": len(adjacency.get(document_id, set())),
+            }
+        )
+
+    return register, {
+        "schema_version": "1.0",
+        "nodes": register,
+        "edges": edge_rows,
+        "components": components,
+        "node_count": len(register),
+        "edge_count": len(edge_rows),
+        "component_count": len(components),
+        "generated_by": "deterministic_prov_o_projection",
+        "canonical_relation_field": "source_provenance.relations.prov_predicate",
+        "llm_generated": False,
+    }
 
 
 def _is_exact_token_query(query: str) -> bool:
@@ -446,52 +732,10 @@ class SearchService:
         self,
         session_manager=None,
         models_service=None,
-        audit_reasoning_service: AuditReasoningService | None = None,
     ):
         self.session_manager = session_manager
         self.models_service = models_service
-        self.audit_reasoning_service = audit_reasoning_service
         self._configure_provider_env()
-
-    def _resolve_audit_reasoner(
-        self,
-        openrag_config: Any,
-        *,
-        cache_scope: str | None = None,
-        query_embeddings: dict[str, Any] | None = None,
-    ) -> tuple[AuditReasoningService | None, str | None]:
-        """Resolve the configured audit model without making retrieval fragile."""
-        if self.audit_reasoning_service is not None:
-            return self.audit_reasoning_service, None
-        agent_config = getattr(openrag_config, "agent", None)
-        # High-volume audit classification and map/reduce should not inherit an
-        # expensive flagship merely because the final chat uses one. Operators
-        # can use Luna for the bounded evidence workers while preserving Sol
-        # for the final user-facing synthesis.
-        reasoning_model = str(
-            os.getenv("OPENRAG_AUDIT_REASONING_MODEL")
-            or getattr(agent_config, "llm_model", "")
-            or ""
-        ).strip()
-        if not reasoning_model:
-            return None, "model_not_configured"
-        try:
-            return (
-                AuditReasoningService(
-                    clients.patched_llm_client,
-                    reasoning_model,
-                    cache_scope=cache_scope,
-                    query_embeddings=query_embeddings,
-                ),
-                None,
-            )
-        except Exception as error:
-            logger.warning(
-                "Archive audit reasoning client is unavailable",
-                model=reasoning_model,
-                error=str(error),
-            )
-            return None, str(error)
 
     def _configure_provider_env(self):
         """Set provider env vars once at init time."""
@@ -572,6 +816,7 @@ class SearchService:
             "source_entity_system",
             "source_entity_alternate_ids",
             "source_relation_target_ids",
+            "source_relation_predicates",
             "source_relation_roles",
             "connector_file_id",
             "chunk_index",
@@ -617,8 +862,7 @@ class SearchService:
         query: str,
         embedding_model: str = None,
         *,
-        audit_discovery: bool = False,
-        audit_progress_id: str | None = None,
+        progress_id: str | None = None,
     ) -> dict[str, Any]:
         """
         Use this tool to search for documents relevant to the query.
@@ -628,28 +872,17 @@ class SearchService:
             embedding_model (str): Optional override for embedding model.
                                   If not provided, uses the current embedding
                                   model from configuration.
-            audit_discovery: Gather a deep, document-diverse candidate union
-                for a trusted explicit exhaustive request.
-
         Returns:
             dict (str, Any): {"results": [chunks]} on success
         """
         from utils.embedding_fields import get_embedding_field_name
 
-        if audit_discovery:
-            audit_progress_service.update(
-                audit_progress_id,
-                phase="discovery",
-                message="Searching lexical and semantic archive lanes",
-            )
-
-        # Audit instructions and their topical predicate have different jobs.
-        # Keep the complete request for the later evidence synthesis, but do
-        # not ask BM25/embeddings to rank control words such as "exhaustive",
-        # "archive" or "verify everything".  A deterministic extractor only
-        # changes queries with an explicit topic marker and otherwise leaves
-        # the model-supplied search text untouched.
-        retrieval_query = audit_topic_query(query) if audit_discovery else query
+        retrieval_progress_service.update(
+            progress_id,
+            phase="search",
+            message="Searching lexical and semantic document lanes",
+        )
+        retrieval_query = query
 
         # Strategy: Use provided model, or default to the configured embedding
         # model. This assumes documents are embedded with that model by default.
@@ -669,7 +902,6 @@ class SearchService:
             embedding_model=embedding_model,
             embedding_field=embedding_field_name,
             query_preview=retrieval_query[:50] if retrieval_query else None,
-            audit_topic_extracted=(audit_discovery and retrieval_query != query),
             retrieval_strategy=retrieval_settings.strategy,
             retrieval_mode=retrieval_settings.mode,
         )
@@ -686,14 +918,8 @@ class SearchService:
         filters = get_search_filters() or {}
         limit = get_search_limit()
         score_threshold = get_score_threshold()
-        lexical_candidate_depth = (
-            ARCHIVE_AUDIT_PAGE_SIZE if audit_discovery else retrieval_settings.lexical_candidates
-        )
-        vector_candidate_depth = (
-            max(retrieval_settings.vector_candidates, ARCHIVE_AUDIT_VECTOR_INITIAL_DEPTH)
-            if audit_discovery
-            else retrieval_settings.vector_candidates
-        )
+        lexical_candidate_depth = retrieval_settings.lexical_candidates
+        vector_candidate_depth = retrieval_settings.vector_candidates
         result_limit = limit
         # Detect wildcard request ("*") to return global facets/stats without semantic search
         is_wildcard_match_all = isinstance(retrieval_query, str) and retrieval_query.strip() == "*"
@@ -701,8 +927,6 @@ class SearchService:
         # Get available embedding models from corpus
         query_embeddings = {}
         available_models = []
-        available_model_counts: dict[str, int] = {}
-        audit_scope_documents: int | None = None
         failed_models: list = []
 
         opensearch_client = self.session_manager.get_user_opensearch_client(user_id, jwt_token)
@@ -749,19 +973,12 @@ class SearchService:
 
             try:
                 # Build aggregation query with filters applied
-                agg_query = {
+                agg_query: dict[str, Any] = {
                     "size": 0,
                     "aggs": {
                         "embedding_models": {"terms": {"field": "embedding_model", "size": 10}}
                     },
                 }
-                if audit_discovery:
-                    agg_query["aggs"]["audit_scope_documents"] = {
-                        "cardinality": {
-                            "field": "document_id",
-                            "precision_threshold": ARCHIVE_AUDIT_CARDINALITY_PRECISION,
-                        }
-                    }
 
                 # Apply filters to model detection if any exist
                 if filter_clauses:
@@ -776,17 +993,6 @@ class SearchService:
                     .get("buckets", [])
                 )
                 available_models = [b["key"] for b in buckets if b["key"]]
-                available_model_counts = {
-                    str(bucket["key"]): int(bucket.get("doc_count", 0))
-                    for bucket in buckets
-                    if bucket.get("key")
-                }
-                scope_value = (
-                    agg_result.get("aggregations", {}).get("audit_scope_documents", {}).get("value")
-                )
-                if isinstance(scope_value, int) and not isinstance(scope_value, bool):
-                    audit_scope_documents = max(0, scope_value)
-
                 if not available_models:
                     # Fallback to configured model if no documents indexed yet
                     available_models = [embedding_model]
@@ -828,11 +1034,6 @@ class SearchService:
                         resp = await clients.patched_embedding_client.embeddings.create(
                             model=formatted_model, input=[retrieval_query]
                         )
-                        from services.token_usage_service import token_usage_service
-
-                        # ``model_name`` is the public billing model. The
-                        # formatted LiteLLM name may contain a provider prefix.
-                        token_usage_service.record_response(model_name, resp)
                         # Try to get embedding - some providers return .embedding, others return ['embedding']
                         embedding = getattr(resp.data[0], "embedding", None)
                         if embedding is None:
@@ -933,12 +1134,6 @@ class SearchService:
             for model_name, embedding_vector in query_embeddings.items():
                 field_name = get_embedding_field_name(model_name)
                 embedding_fields_to_check.append(field_name)
-                model_vector_depth = vector_candidate_depth
-                if audit_discovery and available_model_counts.get(model_name):
-                    model_vector_depth = min(
-                        model_vector_depth,
-                        available_model_counts[model_name],
-                    )
                 knn_queries.append(
                     (
                         model_name,
@@ -946,8 +1141,8 @@ class SearchService:
                             "knn": {
                                 field_name: {
                                     "vector": embedding_vector,
-                                    "k": model_vector_depth,
-                                    "num_candidates": max(1000, model_vector_depth),
+                                    "k": vector_candidate_depth,
+                                    "num_candidates": max(1000, vector_candidate_depth),
                                 }
                             }
                         },
@@ -1051,6 +1246,7 @@ class SearchService:
             "source_entity_system",
             "source_entity_alternate_ids",
             "source_relation_target_ids",
+            "source_relation_predicates",
             "source_relation_roles",
             "connector_file_id",
             "owner",
@@ -1094,10 +1290,12 @@ class SearchService:
         if not is_wildcard_match_all and score_threshold > 0:
             search_body["min_score"] = score_threshold
 
-        # In RRF mode lexical and vector candidates are intentionally fetched
-        # by separate OpenSearch requests.  Their score scales are unrelated;
-        # only their ranks are fused below.  Weighted remains available as an
-        # explicit compatibility strategy, while RRF is the Standard default.
+        # In Standard mode lexical and vector candidates are intentionally
+        # fetched as independent lanes. Their score scales are unrelated. The
+        # backend therefore computes both rank-only RRF and independently
+        # normalized score fusion from these same responses, then converges
+        # their rankings without another OpenSearch request. Weighted remains
+        # available as an explicit compatibility strategy.
         retrieval_bodies: list[tuple[str, dict[str, Any]]] = []
         if use_retrieval_v2 and not is_wildcard_match_all:
             lexical_body: dict[str, Any] = {
@@ -1129,15 +1327,12 @@ class SearchService:
                 "aggs": _build_file_facet_aggregations(),
                 "_source": source_fields,
                 "size": lexical_candidate_depth,
-                "track_total_hits": audit_discovery,
+                "track_total_hits": False,
                 "sort": [
                     {"_score": {"order": "desc"}},
                     {"chunk_id": {"order": "asc", "missing": "_last"}},
                 ],
             }
-            if audit_discovery:
-                multi_match = lexical_body["query"]["bool"]["should"][0]["multi_match"]
-                multi_match["minimum_should_match"] = ARCHIVE_AUDIT_LEXICAL_MINIMUM_SHOULD_MATCH
             if score_threshold > 0:
                 lexical_body["min_score"] = score_threshold
             if retrieval_settings.mode in {"hybrid", "lexical"}:
@@ -1157,7 +1352,7 @@ class SearchService:
                         "aggs": _build_file_facet_aggregations(),
                         "_source": source_fields,
                         "size": next(iter(knn_query["knn"].values()))["k"],
-                        "track_total_hits": audit_discovery,
+                        "track_total_hits": False,
                         "sort": [
                             {"_score": {"order": "desc"}},
                             {"chunk_id": {"order": "asc", "missing": "_last"}},
@@ -1204,15 +1399,6 @@ class SearchService:
 
         # Get user's OpenSearch client with JWT for OIDC auth through session manager
         opensearch_client = self.session_manager.get_user_opensearch_client(user_id, jwt_token)
-        audit_reasoner: AuditReasoningService | None = None
-        audit_reasoner_error: str | None = None
-        if audit_discovery:
-            audit_reasoner, audit_reasoner_error = self._resolve_audit_reasoner(
-                openrag_config,
-                cache_scope=user_id,
-                query_embeddings=query_embeddings,
-            )
-
         from opensearchpy.exceptions import RequestError
 
         from utils.opensearch_utils import (
@@ -1293,7 +1479,7 @@ class SearchService:
                 logger.error("OpenSearch query failed", error=str(error), retrieval_lane=label)
                 raise
 
-        async def execute_scroll_audit(
+        async def execute_scrolled_search(
             body: dict[str, Any], label: str
         ) -> tuple[dict[str, Any], dict[str, Any]]:
             """Read every match from one DLS-compatible scroll snapshot."""
@@ -1306,7 +1492,7 @@ class SearchService:
                 while True:
                     if first_result is None:
                         page_body = copy.deepcopy(body)
-                        page_body["size"] = ARCHIVE_AUDIT_PAGE_SIZE
+                        page_body["size"] = PROVENANCE_PAGE_SIZE
                         page_body["track_total_hits"] = True
                         page_result = await execute_search(
                             page_body,
@@ -1316,7 +1502,7 @@ class SearchService:
                     else:
                         if not scroll_id:
                             raise RuntimeError(
-                                f"OpenSearch {label} audit omitted its scroll identifier"
+                                f"OpenSearch {label} traversal omitted its scroll identifier"
                             )
                         page_result = await opensearch_client.scroll(
                             body={"scroll_id": scroll_id, "scroll": "5m"}
@@ -1352,117 +1538,17 @@ class SearchService:
                 "truncated": not exhausted,
             }
 
-        async def execute_lexical_audit(
-            body: dict[str, Any], label: str
-        ) -> tuple[dict[str, Any], dict[str, Any]]:
-            """Read every lexical match and disclose its exact predicate."""
-            result, metadata = await execute_scroll_audit(body, label)
-            metadata.update(
-                {
-                    "query_rule": {
-                        "type": "adaptive_minimum_should_match",
-                        "minimum_should_match": ARCHIVE_AUDIT_LEXICAL_MINIMUM_SHOULD_MATCH,
-                    },
-                }
-            )
-            return result, metadata
-
-        def _set_vector_depth(body: dict[str, Any], depth: int) -> None:
-            """Update the single k-NN clause in one model-specific lane."""
-            bool_query = body.get("query", {}).get("bool", {})
-            for clause in bool_query.get("must", []):
-                for spec in clause.get("knn", {}).values():
-                    spec["k"] = depth
-                    spec["num_candidates"] = max(1000, depth)
-                    body["size"] = depth
-
-        async def execute_vector_audit(
-            body: dict[str, Any], label: str
-        ) -> tuple[dict[str, Any], dict[str, Any]]:
-            """Search the empirically useful semantic neighbourhood only.
-
-            Vector scores are similarities, not calibrated probabilities. The
-            bounded k-NN lane is therefore treated as candidate generation and
-            later calibrated against independently supported lexical matches.
-            Returning the entire weak-neighbour tail would be expensive without
-            making the audit more truthful.
-            """
-            model_name = label.removeprefix("vector:")
-            corpus_depth = available_model_counts.get(model_name, ARCHIVE_AUDIT_VECTOR_MAX_DEPTH)
-            maximum_depth = min(max(1, corpus_depth), ARCHIVE_AUDIT_VECTOR_MAX_DEPTH)
-            depth = min(maximum_depth, max(1, body.get("size", 1)))
-            stable_rounds = 0
-            previous_documents: set[str] = set()
-            merged_by_id: dict[str, dict[str, Any]] = {}
-            deepest_result: dict[str, Any] = {}
-            attempts: list[dict[str, Any]] = []
-
-            while True:
-                request_body = copy.deepcopy(body)
-                _set_vector_depth(request_body, depth)
-                deepest_result = await execute_search(request_body, label)
-                lane_hits = deepest_result.get("hits", {}).get("hits", [])
-                current_documents = {
-                    str(hit.get("_source", {}).get("document_id"))
-                    for hit in lane_hits
-                    if hit.get("_source", {}).get("document_id")
-                }
-                new_documents = current_documents - previous_documents
-                stable_rounds = stable_rounds + 1 if not new_documents else 0
-                previous_documents.update(current_documents)
-                for hit in lane_hits:
-                    identity = str(hit.get("_source", {}).get("chunk_id") or hit.get("_id"))
-                    merged_by_id.setdefault(identity, hit)
-                attempts.append(
-                    {
-                        "depth": depth,
-                        "returned": len(lane_hits),
-                        "new_documents": len(new_documents),
-                    }
-                )
-
-                engine_exhausted = len(lane_hits) < depth or depth >= corpus_depth
-                converged = stable_rounds >= ARCHIVE_AUDIT_VECTOR_STABILITY_ROUNDS
-                if engine_exhausted or converged or depth >= maximum_depth:
-                    break
-                depth = min(maximum_depth, depth * 2)
-
-            deepest_hits = deepest_result.get("hits", {}).get("hits", [])
-            ranked_ids = {
-                str(hit.get("_source", {}).get("chunk_id") or hit.get("_id"))
-                for hit in deepest_hits
-            }
-            merged_hits = [*deepest_hits]
-            merged_hits.extend(hit for key, hit in merged_by_id.items() if key not in ranked_ids)
-            merged = dict(deepest_result)
-            merged["hits"] = {
-                **(merged.get("hits", {}) if isinstance(merged.get("hits"), dict) else {}),
-                "hits": merged_hits,
-            }
-            engine_exhausted = len(deepest_hits) < depth or depth >= corpus_depth
-            converged = stable_rounds >= ARCHIVE_AUDIT_VECTOR_STABILITY_ROUNDS
-            return merged, {
-                "attempts": attempts,
-                "returned": len(merged_hits),
-                "documents_found": len(previous_documents),
-                "depth_reached": depth,
-                "corpus_vectors": corpus_depth,
-                "engine_exhausted": engine_exhausted,
-                "converged": converged,
-                "semantic_completeness_certified": False,
-                "truncated": not engine_exhausted,
-                "selection_scope": "bounded_plausible_neighbourhood",
-            }
-
-        async def execute_provenance_audit(
+        async def execute_provenance_closure(
             seed_hits: list[dict[str, Any]],
         ) -> tuple[dict[str, Any], dict[str, Any]]:
-            """Traverse the visible high-signal PROV-O graph to a fixpoint.
+            """Traverse the caller-visible PROV-O graph to a fixpoint.
 
-            ``contained_in`` is intentionally absent: it identifies the source
-            archive and would connect unrelated mail. Thread membership,
-            replies, RFC references and attachments are contextual relations
-            capable of resolving phrases such as "your project".
+            OpenSearch natively matches the full predicate URI and nested
+            target identity for each frontier. The backend owns only recursive
+            orchestration because OpenSearch has no recursive RDF operator.
+            ``contained_in`` remains an explicit role qualification exclusion:
+            PROV-O maps it to the same membership predicate as attachments and
+            threads, but following a whole archive would connect unrelated mail.
             """
             discovered = _hits_by_document(seed_hits)
             frontier = dict(discovered)
@@ -1485,61 +1571,11 @@ class SearchService:
                         [
                             {"terms": {"source_entity_id": sorted(relation_targets)}},
                             {"terms": {"source_entity_alternate_ids": sorted(relation_targets)}},
-                            {
-                                "nested": {
-                                    "path": "source_provenance.relations",
-                                    "query": {
-                                        "bool": {
-                                            "filter": [
-                                                {
-                                                    "terms": {
-                                                        "source_provenance.relations.role": sorted(
-                                                            ARCHIVE_AUDIT_PROVENANCE_ROLES
-                                                        )
-                                                    }
-                                                },
-                                                {
-                                                    "terms": {
-                                                        "source_provenance.relations.target.id": sorted(
-                                                            relation_targets
-                                                        )
-                                                    }
-                                                },
-                                            ]
-                                        }
-                                    },
-                                }
-                            },
+                            _provenance_relation_target_query(relation_targets),
                         ]
                     )
                 if entity_ids:
-                    should.append(
-                        {
-                            "nested": {
-                                "path": "source_provenance.relations",
-                                "query": {
-                                    "bool": {
-                                        "filter": [
-                                            {
-                                                "terms": {
-                                                    "source_provenance.relations.role": sorted(
-                                                        ARCHIVE_AUDIT_PROVENANCE_ROLES
-                                                    )
-                                                }
-                                            },
-                                            {
-                                                "terms": {
-                                                    "source_provenance.relations.target.id": sorted(
-                                                        entity_ids
-                                                    )
-                                                }
-                                            },
-                                        ]
-                                    }
-                                },
-                            }
-                        }
-                    )
+                    should.append(_provenance_relation_target_query(entity_ids))
 
                 relation_body = {
                     "query": {
@@ -1550,14 +1586,14 @@ class SearchService:
                         }
                     },
                     "_source": source_fields,
-                    "size": ARCHIVE_AUDIT_PAGE_SIZE,
+                    "size": PROVENANCE_PAGE_SIZE,
                     "track_total_hits": True,
                     "sort": [
                         {"_score": {"order": "desc"}},
                         {"chunk_id": {"order": "asc", "missing": "_last"}},
                     ],
                 }
-                relation_result, page_metadata = await execute_scroll_audit(
+                relation_result, page_metadata = await execute_scrolled_search(
                     relation_body,
                     f"provenance:{len(iterations) + 1}",
                 )
@@ -1570,6 +1606,7 @@ class SearchService:
                 for hit in new_documents.values():
                     source = hit.get("_source", {})
                     source["retrieval_relation_paths"] = _provenance_relation_paths(frontier, hit)
+                    source["retrieval_relation_depth"] = len(iterations) + 1
                     expanded_hits.append(hit)
                 iterations.append(
                     {
@@ -1582,300 +1619,125 @@ class SearchService:
                         "exhausted": page_metadata["exhausted"],
                     }
                 )
+                retrieval_progress_service.update(
+                    progress_id,
+                    phase="provenance",
+                    message="Following verified PROV-O document relationships",
+                    counters={
+                        "relation_iterations": len(iterations),
+                        "related_documents": len(expanded_hits),
+                    },
+                )
                 discovered.update(new_documents)
                 frontier = new_documents
 
+            frontiers_exhausted = all(item["exhausted"] for item in iterations)
+            frontier_stabilized = not frontier
             return {"hits": {"hits": expanded_hits}}, {
                 "seed_documents": len(_hits_by_document(seed_hits)),
                 "documents_found": len(expanded_hits),
                 "closure_documents": len(discovered),
                 "iterations": iterations,
-                "roles": sorted(ARCHIVE_AUDIT_PROVENANCE_ROLES),
-                "ignored_roles": ["contained_in"],
-                "fixpoint_reached": not frontier,
-                "exhausted": all(item["exhausted"] for item in iterations),
+                "canonical_field": "source_provenance.relations.prov_predicate",
+                "predicates": sorted(PROVENANCE_TRAVERSAL_PREDICATES),
+                "role_policy": {
+                    "purpose": "qualify_same_predicate_context",
+                    "excluded": sorted(PROVENANCE_EXCLUDED_ROLES),
+                },
+                "legacy_role_fallback": {
+                    "enabled": True,
+                    "only_when_predicate_missing": True,
+                },
+                # A mathematical fixed point is certified only when every
+                # frontier was read completely. ``frontier_stabilized`` keeps
+                # the weaker observable fact separate when a scan truncates.
+                "fixpoint_reached": frontier_stabilized and frontiers_exhausted,
+                "frontier_stabilized": frontier_stabilized,
+                "exhausted": frontiers_exhausted,
                 "snapshot": "scroll_per_frontier",
-                "truncated": False,
+                "truncated": not frontiers_exhausted,
             }
 
         retrieval_results: dict[str, dict[str, Any]] = {}
-        audit_lane_metadata: dict[str, dict[str, Any]] = {}
-        audit_query_expansion: dict[str, Any] = {
-            "available": False,
-            "reason": (
-                "not_requested"
-                if not audit_discovery
-                else audit_reasoner_error
-                if audit_reasoner_error in {"model_not_configured"}
-                else "model_client_unavailable"
-                if audit_reasoner_error is not None
-                else "model_not_configured"
-            ),
-        }
-        # A discovery excerpt is sufficient for query expansion, never for a
-        # destructive relevance decision. Every document admitted by lexical,
-        # calibrated semantic or PROV-O discovery remains in the full-read
-        # scope. Relevance is decided later by validating answer claims against
-        # the cited source chunks.
-        audit_contextual_review: dict[str, Any] = {
-            "available": False,
-            "reason": ("not_requested" if not audit_discovery else "disabled_pre_read_exclusion"),
-            "selection_policy": "all_discovered_candidates_read",
-            "pre_read_exclusion_applied": False,
-        }
-        if audit_reasoner_error:
-            audit_query_expansion["error"] = audit_reasoner_error
-            audit_contextual_review["error"] = audit_reasoner_error
+        provenance_result_for_graph: dict[str, Any] = {"hits": {"hits": []}}
+        provenance_metadata: dict[str, Any] = {}
         if retrieval_bodies:
             lanes = [name for name, _body in retrieval_bodies]
-            if audit_discovery:
-
-                async def execute_audit_lane(
-                    name: str, body: dict[str, Any]
-                ) -> tuple[dict[str, Any], dict[str, Any]]:
-                    if name == "lexical":
-                        return await execute_lexical_audit(body, name)
-                    return await execute_vector_audit(body, name)
-
-                audit_results = await asyncio.gather(
-                    *[execute_audit_lane(name, body) for name, body in retrieval_bodies]
-                )
-                lane_results = [result for result, _metadata in audit_results]
-                audit_lane_metadata = {
-                    name: metadata
-                    for name, (_result, metadata) in zip(lanes, audit_results, strict=True)
-                }
-                initial_documents = len(
-                    _hits_by_document(
-                        [
-                            hit
-                            for lane_result in lane_results
-                            for hit in lane_result.get("hits", {}).get("hits", [])
-                        ]
-                    )
-                )
-                audit_progress_service.update(
-                    audit_progress_id,
-                    phase="query_expansion",
-                    message="Deriving evidence-grounded query and entity expansions",
-                    counters={
-                        "search_lanes_complete": len(audit_results),
-                        "candidate_documents": initial_documents,
-                    },
-                )
-            else:
-                lane_results = await asyncio.gather(
-                    *[execute_search(body, name) for name, body in retrieval_bodies]
-                )
+            lane_results = await asyncio.gather(
+                *[execute_search(body, name) for name, body in retrieval_bodies]
+            )
             retrieval_results = dict(zip(lanes, lane_results, strict=True))
             results = retrieval_results.get("lexical") or lane_results[0]
         else:
             results = await execute_search(search_body, "weighted")
 
+        direct_lane_results = list(retrieval_results.values()) if retrieval_results else [results]
+        direct_hits = [
+            hit
+            for lane_result in direct_lane_results
+            for hit in lane_result.get("hits", {}).get("hits", [])
+        ]
+        retrieval_progress_service.update(
+            progress_id,
+            phase="ranking",
+            message="Combining direct document rankings",
+            counters={
+                "search_lanes_complete": len(retrieval_results) or 1,
+                "direct_documents": len(_hits_by_document(direct_hits)),
+            },
+        )
+
         raw_hits = results.get("hits", {}).get("hits", [])
+        # PROV-O is a native retrieval plane for every query strategy. Seed it
+        # from the direct lexical/vector lanes (or the legacy weighted lane),
+        # traverse the accessible high-signal component to a fixed point, and
+        # keep the result separate from direct relevance ranking.
+        provenance_seed_hits = (
+            [
+                hit
+                for result in retrieval_results.values()
+                for hit in result.get("hits", {}).get("hits", [])
+            ]
+            if retrieval_results
+            else list(raw_hits)
+        )
+        if provenance_seed_hits and not is_wildcard_match_all:
+            provenance_result_for_graph, provenance_metadata = await execute_provenance_closure(
+                provenance_seed_hits
+            )
+            _propagate_provenance_paths(
+                retrieval_results,
+                provenance_result_for_graph.get("hits", {}).get("hits", []),
+            )
         if retrieval_results:
-            if audit_discovery and "lexical" in retrieval_results:
-                if audit_reasoner is not None:
-                    expansion, audit_query_expansion = await audit_reasoner.expand_query(
-                        retrieval_query,
-                        retrieval_results["lexical"].get("hits", {}).get("hits", []),
-                    )
-                    expansion_jobs: list[tuple[str, dict[str, Any], str]] = []
-                    for index, expanded_query in enumerate(expansion.queries, start=1):
-                        expansion_body = copy.deepcopy(lexical_body)
-                        expansion_bool = expansion_body["query"]["bool"]
-                        expansion_bool["should"][0]["multi_match"]["query"] = expanded_query
-                        expansion_bool["should"][1]["match_phrase_prefix"]["text"]["query"] = (
-                            expanded_query
-                        )
-                        expansion_jobs.append(
-                            (f"lexical_expansion:{index}", expansion_body, expanded_query)
-                        )
-                    for index, entity in enumerate(expansion.entities, start=1):
-                        entity_body = copy.deepcopy(lexical_body)
-                        entity_body["query"]["bool"]["should"] = [
-                            {
-                                "multi_match": {
-                                    "query": entity,
-                                    "fields": ["text^2", "filename^1.5"],
-                                    "type": "best_fields",
-                                    "operator": "and",
-                                }
-                            },
-                            {"match_phrase": {"text": {"query": entity}}},
-                        ]
-                        expansion_jobs.append((f"entity_expansion:{index}", entity_body, entity))
-                    if expansion_jobs:
-                        expansion_selectivity_limit = _audit_expansion_document_limit(
-                            audit_scope_documents
-                        )
-                        audit_progress_service.update(
-                            audit_progress_id,
-                            phase="expanded_search",
-                            message="Running grounded query and entity searches",
-                            counters={
-                                "expanded_queries": len(expansion.queries),
-                                "expanded_entities": len(expansion.entities),
-                                "expanded_searches_total": len(expansion_jobs),
-                            },
-                        )
-                        expansion_semaphore = asyncio.Semaphore(ARCHIVE_AUDIT_EXPANSION_CONCURRENCY)
-
-                        async def execute_expansion(
-                            lane: str, body: dict[str, Any]
-                        ) -> tuple[dict[str, Any], dict[str, Any]]:
-                            async with expansion_semaphore:
-                                matching_documents: int | None = None
-                                if expansion_selectivity_limit is not None:
-                                    # Probe document frequency before opening a
-                                    # scroll. An alternate term that matches a
-                                    # large part of the archive (for example
-                                    # "project" or "DDT") is not evidence that
-                                    # those documents concern this subject. It
-                                    # adds no safe recall beyond the original
-                                    # topical lane, semantic calibration and
-                                    # PROV-O closure, so do not materialize its
-                                    # entire noisy match set.
-                                    probe_body = copy.deepcopy(body)
-                                    probe_body["size"] = 0
-                                    probe_body["track_total_hits"] = False
-                                    probe_body.pop("sort", None)
-                                    probe_body["aggs"] = {
-                                        "audit_expansion_documents": {
-                                            "cardinality": {
-                                                "field": "document_id",
-                                                "precision_threshold": (
-                                                    ARCHIVE_AUDIT_CARDINALITY_PRECISION
-                                                ),
-                                            }
-                                        }
-                                    }
-                                    probe = await execute_search(probe_body, f"{lane}:selectivity")
-                                    probe_value = (
-                                        probe.get("aggregations", {})
-                                        .get("audit_expansion_documents", {})
-                                        .get("value")
-                                    )
-                                    if isinstance(probe_value, int) and not isinstance(
-                                        probe_value, bool
-                                    ):
-                                        matching_documents = max(0, probe_value)
-                                    if (
-                                        matching_documents is not None
-                                        and matching_documents > expansion_selectivity_limit
-                                    ):
-                                        return {"hits": {"hits": []}}, {
-                                            "pages": 0,
-                                            "returned": 0,
-                                            "matching_documents": matching_documents,
-                                            "exhausted": False,
-                                            "snapshot": "cardinality_probe",
-                                            "truncated": False,
-                                            "selection": {
-                                                "rule": "adaptive_idf_expansion_gate",
-                                                "selected": False,
-                                                "reason": "over_broad_alternate_predicate",
-                                                "visible_corpus_documents": (audit_scope_documents),
-                                                "maximum_matching_documents": (
-                                                    expansion_selectivity_limit
-                                                ),
-                                                "matching_documents": matching_documents,
-                                            },
-                                        }
-                                if lane.startswith("entity_expansion:"):
-                                    result, metadata = await execute_scroll_audit(body, lane)
-                                    metadata["query_rule"] = {"type": "grounded_entity_phrase"}
-                                else:
-                                    result, metadata = await execute_lexical_audit(body, lane)
-                                exact_documents = len(
-                                    _hits_by_document(result.get("hits", {}).get("hits", []))
-                                )
-                                metadata["matching_documents"] = (
-                                    matching_documents
-                                    if matching_documents is not None
-                                    else exact_documents
-                                )
-                                metadata["selection"] = {
-                                    "rule": "adaptive_idf_expansion_gate",
-                                    "selected": True,
-                                    "visible_corpus_documents": audit_scope_documents,
-                                    "maximum_matching_documents": expansion_selectivity_limit,
-                                    "matching_documents": metadata["matching_documents"],
-                                }
-                                return result, metadata
-
-                        expansion_results = await asyncio.gather(
-                            *[
-                                execute_expansion(lane, body)
-                                for lane, body, _query in expansion_jobs
-                            ]
-                        )
-                        for (lane, _body, lane_query), (
-                            expansion_result,
-                            expansion_metadata,
-                        ) in zip(expansion_jobs, expansion_results, strict=True):
-                            expansion_metadata["query"] = lane_query
-                            retrieval_results[lane] = expansion_result
-                            audit_lane_metadata[lane] = expansion_metadata
-
-                _calibrate_audit_vector_lanes(retrieval_results, audit_lane_metadata)
-                provenance_seed_hits = [
-                    hit
-                    for result in retrieval_results.values()
-                    for hit in result.get("hits", {}).get("hits", [])
-                ]
-                audit_progress_service.update(
-                    audit_progress_id,
-                    phase="provenance",
-                    message="Following verified document and thread relationships",
-                    counters={
-                        "candidate_documents": len(_hits_by_document(provenance_seed_hits)),
-                    },
-                )
-                provenance_result, provenance_metadata = await execute_provenance_audit(
-                    provenance_seed_hits
-                )
-                retrieval_results["provenance"] = provenance_result
-                audit_lane_metadata["provenance"] = provenance_metadata
-                _propagate_provenance_paths(
-                    retrieval_results,
-                    provenance_result.get("hits", {}).get("hits", []),
-                )
             ranked_lists = [
                 lane_result.get("hits", {}).get("hits", [])
                 for lane_result in retrieval_results.values()
             ]
-            raw_hits = reciprocal_rank_fusion(ranked_lists, k=retrieval_settings.rrf_k)
+            raw_hits = consensus_rank_fusion(ranked_lists, k=retrieval_settings.rrf_k)
             raw_hits = limit_chunks_per_document(
                 raw_hits,
-                max_chunks_per_document=(
-                    1 if audit_discovery else retrieval_settings.max_chunks_per_document
-                ),
+                max_chunks_per_document=retrieval_settings.max_chunks_per_document,
                 adaptive_max_chunks_per_document=(
-                    1 if audit_discovery else retrieval_settings.adaptive_max_chunks_per_document
+                    retrieval_settings.adaptive_max_chunks_per_document
                 ),
             )
-            if audit_discovery:
-                candidate_documents = len(_hits_by_document(raw_hits))
-                audit_contextual_review.update(
-                    {
-                        "reviewed_documents": 0,
-                        "retained_documents": candidate_documents,
-                        "excluded_documents": 0,
-                    }
-                )
-                audit_progress_service.update(
-                    audit_progress_id,
-                    phase="candidate_selection",
-                    message="Retaining every discovered candidate for full source reading",
-                    counters={"candidate_documents": candidate_documents},
-                )
             raw_hits = await HttpReranker(
                 retrieval_settings.reranker_url,
                 retrieval_settings.reranker_timeout,
             ).rerank(retrieval_query, raw_hits)
-            if not audit_discovery:
-                raw_hits = raw_hits[:result_limit]
+            raw_hits = raw_hits[:result_limit]
+
+        # The relation plane is exhaustive for the disclosed high-signal
+        # PROV-O component but is not a direct relevance score. Append one
+        # representative hit per related document after the ranked plane,
+        # keeping context visible without letting it displace direct hits.
+        direct_document_ids = set(_hits_by_document(raw_hits))
+        for related_hit in provenance_result_for_graph.get("hits", {}).get("hits", []):
+            related_document_id = str(related_hit.get("_source", {}).get("document_id") or "")
+            if related_document_id and related_document_id not in direct_document_ids:
+                raw_hits.append(related_hit)
+                direct_document_ids.add(related_document_id)
 
         # Transform results (keep for backward compatibility)
         chunks = []
@@ -1903,13 +1765,10 @@ class SearchService:
                     "source_entity_system": source.get("source_entity_system"),
                     "source_entity_alternate_ids": source.get("source_entity_alternate_ids", []),
                     "source_relation_target_ids": source.get("source_relation_target_ids", []),
+                    "source_relation_predicates": source.get("source_relation_predicates", []),
                     "source_relation_roles": source.get("source_relation_roles", []),
                     "retrieval_relation_paths": source.get("retrieval_relation_paths", []),
-                    "retrieval_relevance_decision": source.get("retrieval_relevance_decision"),
-                    "retrieval_relevance_reason": source.get("retrieval_relevance_reason"),
-                    "retrieval_supporting_document_ids": source.get(
-                        "retrieval_supporting_document_ids", []
-                    ),
+                    "retrieval_relation_depth": source.get("retrieval_relation_depth"),
                     "owner": source.get("owner"),
                     "owner_name": source.get("owner_name"),
                     "owner_email": source.get("owner_email"),
@@ -1946,6 +1805,15 @@ class SearchService:
             is_wildcard_match_all=is_wildcard_match_all,
         )
 
+        document_register: list[dict[str, Any]] = []
+        document_graph: dict[str, Any] | None = None
+        if raw_hits:
+            graph_retrieval_results = dict(retrieval_results or {"weighted": results})
+            graph_retrieval_results["provenance"] = provenance_result_for_graph
+            document_register, document_graph = _build_document_graph(
+                chunks, graph_retrieval_results
+            )
+
         # Return both transformed results and aggregations. Surface degraded
         # semantic-search signals so the UI can show a non-fatal warning
         # instead of treating partial-embedding failure as a hard error.
@@ -1954,62 +1822,58 @@ class SearchService:
             "aggregations": aggregations,
             "total": len(chunks),
         }
-        if audit_discovery:
-            lexical_lanes = {
-                lane: metadata
-                for lane, metadata in audit_lane_metadata.items()
-                if _is_audit_lexical_lane(lane)
-                and metadata.get("selection", {}).get("selected") is not False
+        if retrieval_results:
+            response["retrieval_fusion"] = {
+                "strategy": "rrf_normalized_consensus",
+                "candidate_lanes": len(retrieval_results),
+                "first_stage": [
+                    {"method": "rrf", "input": "rank"},
+                    {
+                        "method": "normalized_score",
+                        "normalization": "min_max_per_lane",
+                        "combination": "equal_weight_arithmetic_mean",
+                    },
+                ],
+                "final_stage": {"method": "rrf", "k": retrieval_settings.rrf_k},
+                "additional_opensearch_requests": 0,
+                "llm_used": False,
             }
-            response["discovery"] = {
-                "mode": "archive_audit",
-                "query_normalization": {
-                    "applied": retrieval_query != query,
-                    "topic_query": retrieval_query,
+        if document_graph is not None:
+            response["document_graph"] = document_graph
+            response["provenance_retrieval"] = provenance_metadata
+            direct_documents = sum(
+                item.get("retrieval_plane") == "direct" for item in document_register
+            )
+            contextual_documents = sum(
+                item.get("relevance", {}).get("level") == "contextual" for item in document_register
+            )
+            peripheral_documents = sum(
+                item.get("relevance", {}).get("level") == "peripheral" for item in document_register
+            )
+            response["retrieval_planes"] = {
+                "direct": {
+                    "documents": direct_documents,
+                    "ranking": "rrf_normalized_consensus",
                 },
-                "expansion_selectivity": {
-                    "rule": "adaptive_idf_expansion_gate",
-                    "visible_corpus_documents": audit_scope_documents,
-                    "maximum_matching_documents": _audit_expansion_document_limit(
-                        audit_scope_documents
-                    ),
+                "context": {
+                    "documents": contextual_documents + peripheral_documents,
+                    "first_hop_documents": contextual_documents,
+                    "multi_hop_documents": peripheral_documents,
+                    "ranking": "prov_o_graph_distance",
+                    "fixpoint_reached": provenance_metadata.get("fixpoint_reached"),
                 },
-                "documents_found": len(
-                    {item.get("document_id") for item in chunks if item.get("document_id")}
+            }
+            response["noise_accounting"] = {
+                "policy": "preserved_separately_not_mixed_into_direct_rank",
+                "direct_documents": direct_documents,
+                "intentional_context_documents": contextual_documents,
+                "intentional_peripheral_documents": peripheral_documents,
+                "excluded_relation_documents": 0,
+                "llm_classification_used": False,
+                "message": (
+                    "Relation-only documents are retained as intentional context and must be "
+                    "reported separately from direct matches."
                 ),
-                "chunks_returned": len(chunks),
-                "lanes": audit_lane_metadata,
-                "query_expansion": audit_query_expansion,
-                "contextual_review": audit_contextual_review,
-                "truncated": any(
-                    lane.get("truncated") is True for lane in audit_lane_metadata.values()
-                ),
-                "lexical_completeness_certified": (
-                    bool(lexical_lanes)
-                    and all(
-                        metadata.get("exhausted") is True for metadata in lexical_lanes.values()
-                    )
-                    if lexical_lanes
-                    else None
-                ),
-                "provenance_completeness_certified": (
-                    audit_lane_metadata.get("provenance", {}).get("fixpoint_reached") is True
-                    and audit_lane_metadata.get("provenance", {}).get("exhausted") is True
-                ),
-                "contextual_review_complete": (
-                    None
-                    if audit_contextual_review.get("pre_read_exclusion_applied") is False
-                    else audit_contextual_review.get("available") is True
-                    and audit_contextual_review.get("failed_batches") == 0
-                    and audit_contextual_review.get("missing_decisions", 0) == 0
-                    and audit_contextual_review.get("invalid_decisions", 0) == 0
-                ),
-                "candidate_selection_complete": (
-                    audit_contextual_review.get("pre_read_exclusion_applied") is False
-                    and audit_contextual_review.get("excluded_documents") == 0
-                ),
-                "answer_verification_policy": "claims_against_cited_source_chunks",
-                "semantic_completeness_certified": False,
             }
         if failed_models:
             response["warnings"] = [
@@ -2028,7 +1892,8 @@ class SearchService:
             ]
         if retrieval_results and retrieval_settings.debug:
             response["retrieval_debug"] = {
-                "strategy": "rrf",
+                "configured_strategy": "rrf",
+                "effective_strategy": "rrf_normalized_consensus",
                 "mode": retrieval_settings.mode,
                 "lanes": {
                     lane: len(lane_result.get("hits", {}).get("hits", []))
@@ -2041,18 +1906,21 @@ class SearchService:
                 ),
                 "reranker_enabled": bool(retrieval_settings.reranker_url),
             }
-        if audit_discovery:
-            audit_progress_service.update(
-                audit_progress_id,
-                phase="document_read",
-                message="Reading every chunk of every discovered document",
-                counters={
-                    "candidate_documents": len(
-                        {item.get("document_id") for item in chunks if item.get("document_id")}
-                    ),
-                    "discovery_chunks": len(chunks),
-                },
-            )
+        retrieval_progress_service.update(
+            progress_id,
+            phase="document_graph",
+            message="Building the document register and relationship graph",
+            counters={
+                "returned_documents": len(document_register),
+                "relationship_edges": (
+                    int(document_graph.get("edge_count", 0)) if document_graph else 0
+                ),
+            },
+        )
+        retrieval_progress_service.finish(
+            progress_id,
+            complete=provenance_metadata.get("truncated") is not True,
+        )
         return response
 
     async def read_document_chunks(
@@ -2133,6 +2001,7 @@ class SearchService:
             "source_entity_system",
             "source_entity_alternate_ids",
             "source_relation_target_ids",
+            "source_relation_predicates",
             "source_relation_roles",
             "connector_file_id",
             "owner",
@@ -2269,227 +2138,6 @@ class SearchService:
         }
         return {"results": chunks, "total": len(chunks), "coverage": coverage}
 
-    async def _read_archive_audit_documents(
-        self,
-        discovery_results: list[dict[str, Any]],
-        *,
-        user_id: str,
-        jwt_token: str | None,
-        filters: dict[str, Any] | None,
-        audit_progress_id: str | None = None,
-    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-        """Read every candidate snapshot with bounded I/O concurrency.
-
-        Concurrency limits transport pressure only. There is deliberately no
-        document or chunk limit, and each document's continuation chain remains
-        sequential so its snapshot certificate cannot be reordered.
-        """
-        documents: list[dict[str, Any]] = []
-        seen_document_ids: set[str] = set()
-        for result in discovery_results:
-            document_id = str(result.get("document_id") or "").strip()
-            if not document_id or document_id in seen_document_ids:
-                continue
-            seen_document_ids.add(document_id)
-            documents.append(
-                {
-                    "document_id": document_id,
-                    "filename": result.get("filename"),
-                    **{
-                        field: result[field]
-                        for field in ARCHIVE_AUDIT_TRANSIENT_FIELDS
-                        if field in result and result[field] not in (None, "", [], {})
-                    },
-                }
-            )
-
-        semaphore = asyncio.Semaphore(ARCHIVE_AUDIT_DOCUMENT_READ_CONCURRENCY)
-        progress_lock = asyncio.Lock()
-        documents_read = 0
-        chunks_read = 0
-        audit_progress_service.update(
-            audit_progress_id,
-            phase="document_read",
-            message="Reading every chunk of every discovered document",
-            counters={"documents_total": len(documents), "documents_read": 0},
-        )
-
-        async def read_document(
-            document: dict[str, Any],
-        ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-            nonlocal documents_read, chunks_read
-            async with semaphore:
-                chunks: list[dict[str, Any]] = []
-                cursor = ""
-                seen_cursors: set[str] = set()
-                final_coverage: dict[str, Any] = {}
-                while True:
-                    payload = await self.read_document_chunks(
-                        document["document_id"],
-                        user_id=user_id,
-                        jwt_token=jwt_token,
-                        filters=filters,
-                        cursor=cursor,
-                        batch_size=EXHAUSTIVE_BATCH_MAX,
-                    )
-                    for chunk in payload.get("results", []):
-                        if not isinstance(chunk, dict):
-                            continue
-                        enriched = dict(chunk)
-                        for field in ARCHIVE_AUDIT_TRANSIENT_FIELDS:
-                            if field in document:
-                                enriched[field] = document[field]
-                        chunks.append(enriched)
-                    coverage = payload.get("coverage")
-                    if not isinstance(coverage, dict):
-                        final_coverage = {
-                            "mode": "exhaustive",
-                            "document_id": document["document_id"],
-                            "complete": False,
-                            "error": payload.get("error") or "missing coverage certificate",
-                        }
-                        break
-                    final_coverage = dict(coverage)
-                    if coverage.get("complete") is True:
-                        break
-                    next_cursor = str(coverage.get("next_cursor") or "").strip()
-                    if not next_cursor or next_cursor in seen_cursors:
-                        final_coverage["complete"] = False
-                        final_coverage["error"] = (
-                            payload.get("error")
-                            or "incomplete coverage returned no fresh continuation cursor"
-                        )
-                        break
-                    seen_cursors.add(next_cursor)
-                    cursor = next_cursor
-                final_coverage["filename"] = document.get("filename")
-                async with progress_lock:
-                    documents_read += 1
-                    chunks_read += len(chunks)
-                    audit_progress_service.update(
-                        audit_progress_id,
-                        phase="document_read",
-                        message="Reading every chunk of every discovered document",
-                        counters={
-                            "documents_total": len(documents),
-                            "documents_read": documents_read,
-                            "chunks_read": chunks_read,
-                        },
-                    )
-                return chunks, final_coverage
-
-        document_reads = await asyncio.gather(*[read_document(document) for document in documents])
-        chunks = [
-            chunk for document_chunks, _coverage in document_reads for chunk in document_chunks
-        ]
-        coverages = [coverage for _chunks, coverage in document_reads]
-        return chunks, coverages
-
-    async def _orchestrate_archive_audit(
-        self,
-        query: str,
-        discovery_result: dict[str, Any],
-        *,
-        user_id: str,
-        jwt_token: str | None,
-        filters: dict[str, Any] | None,
-        audit_progress_id: str | None = None,
-    ) -> dict[str, Any]:
-        """Turn discovery into bounded, citation-preserving hierarchical evidence."""
-        discovery_hits = [
-            item for item in discovery_result.get("results", []) if isinstance(item, dict)
-        ]
-        chunks, document_coverages = await self._read_archive_audit_documents(
-            discovery_hits,
-            user_id=user_id,
-            jwt_token=jwt_token,
-            filters=filters,
-            audit_progress_id=audit_progress_id,
-        )
-        documents_complete = sum(
-            coverage.get("complete") is True for coverage in document_coverages
-        )
-        read_complete = documents_complete == len(document_coverages)
-        coverage = {
-            "mode": "exhaustive",
-            "requested": True,
-            "scope": "archive_audit_candidates",
-            "complete": read_complete,
-            "documents_complete": documents_complete,
-            "documents_total": len(document_coverages),
-            "documents": document_coverages,
-        }
-
-        openrag_config = get_openrag_config()
-        reasoner, reasoner_error = self._resolve_audit_reasoner(
-            openrag_config,
-            cache_scope=user_id,
-        )
-        if not read_complete:
-            synthesis: dict[str, Any] = {
-                "schema_version": "1.0",
-                "strategy": "hierarchical_verified_map_reduce",
-                "complete": False,
-                "verified": False,
-                "error": "Full-document evidence coverage is incomplete.",
-            }
-        elif reasoner is None:
-            synthesis = {
-                "schema_version": "1.0",
-                "strategy": "hierarchical_verified_map_reduce",
-                "complete": False,
-                "verified": False,
-                "error": reasoner_error or "Audit reasoning model is not configured.",
-            }
-        else:
-            audit_progress_service.update(
-                audit_progress_id,
-                phase="evidence_analysis",
-                message="Analyzing all evidence in independent bounded batches",
-                counters={
-                    "documents_total": len(document_coverages),
-                    "chunks_read": len(chunks),
-                },
-            )
-            synthesis, synthesis_coverage = await reasoner.synthesize_evidence(
-                query,
-                chunks,
-                audit_progress_id=audit_progress_id,
-            )
-            synthesis_coverage.update(
-                {
-                    "documents_total": len(document_coverages),
-                    "documents_complete": documents_complete,
-                }
-            )
-
-        discovery = dict(discovery_result.get("discovery") or {})
-        discovery["hierarchical_synthesis"] = {
-            "strategy": synthesis.get("strategy"),
-            "complete": synthesis.get("complete") is True,
-            "verified": synthesis.get("verified") is True,
-            "model": synthesis.get("model"),
-            "coverage": synthesis.get("coverage"),
-            "error": synthesis.get("error"),
-        }
-        response = {
-            **discovery_result,
-            "results": chunks,
-            "total": len(chunks),
-            "coverage": coverage,
-            "audit_synthesis": synthesis,
-            "discovery": discovery,
-        }
-        audit_progress_service.finish(
-            audit_progress_id,
-            verified=(
-                coverage.get("complete") is True
-                and synthesis.get("complete") is True
-                and synthesis.get("verified") is True
-            ),
-        )
-        return response
-
     async def search(
         self,
         query: str,
@@ -2503,7 +2151,7 @@ class SearchService:
         document_id: str | None = None,
         cursor: str = "",
         batch_size: int = 20,
-        audit_progress_id: str | None = None,
+        progress_id: str | None = None,
     ) -> dict[str, Any]:
         """Public search method for API endpoints
 
@@ -2511,8 +2159,8 @@ class SearchService:
             embedding_model: Embedding model to use for search (defaults to the
                 currently configured embedding model)
         """
-        if evidence_mode not in {"focused", "audit", "exhaustive"}:
-            raise ValueError("evidence_mode must be 'focused', 'audit' or 'exhaustive'")
+        if evidence_mode not in {"focused", "exhaustive"}:
+            raise ValueError("evidence_mode must be 'focused' or 'exhaustive'")
 
         # Set auth context if provided (for direct API calls)
         from config.settings import is_no_auth_mode
@@ -2531,8 +2179,8 @@ class SearchService:
         if evidence_mode == "exhaustive":
             if not user_id:
                 return {"results": [], "error": "Authentication required"}
-            audit_progress_service.update(
-                audit_progress_id,
+            retrieval_progress_service.update(
+                progress_id,
                 phase="document_read",
                 message="Reading every chunk of the requested document",
                 counters={"documents_total": 1, "documents_read": 0},
@@ -2565,19 +2213,16 @@ class SearchService:
                     and total_chunks >= 0
                 ):
                     counters["chunks_total"] = total_chunks
-                audit_progress_service.update(
-                    audit_progress_id,
+                retrieval_progress_service.update(
+                    progress_id,
                     phase="document_read",
                     message="Reading every chunk of the requested document",
                     counters=counters,
                 )
                 if coverage.get("complete") is True:
-                    # A complete per-document snapshot has already passed the
-                    # digest, ordering and contiguous-coverage checks in
-                    # read_document_chunks. It is therefore a verified terminal
-                    # state even though archive-wide audits additionally run
-                    # hierarchical reasoning over many documents.
-                    audit_progress_service.finish(audit_progress_id, verified=True)
+                    # The complete snapshot has already passed digest, ordering
+                    # and contiguous-coverage checks in read_document_chunks.
+                    retrieval_progress_service.finish(progress_id, complete=True)
             return result
 
         from auth_context import set_score_threshold, set_search_limit
@@ -2588,16 +2233,6 @@ class SearchService:
         result = await self.search_tool(
             query,
             embedding_model=embedding_model,
-            audit_discovery=evidence_mode == "audit",
-            audit_progress_id=audit_progress_id,
+            progress_id=progress_id,
         )
-        if evidence_mode == "audit" and user_id and not result.get("error"):
-            return await self._orchestrate_archive_audit(
-                query,
-                result,
-                user_id=user_id,
-                jwt_token=jwt_token,
-                filters=filters,
-                audit_progress_id=audit_progress_id,
-            )
         return result

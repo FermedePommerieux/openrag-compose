@@ -20,7 +20,7 @@ class _VisibleTextHTMLParser(HTMLParser):
         self._ignored_depth = 0
         self._chunks: list[str] = []
 
-    def handle_starttag(self, tag, attrs):
+    def handle_starttag(self, tag, _attrs):
         if tag.lower() in {"script", "style"}:
             self._ignored_depth += 1
 

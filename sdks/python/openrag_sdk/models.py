@@ -29,6 +29,7 @@ class Source(BaseModel):
     source_entity_system: str | None = None
     source_entity_alternate_ids: list[str] = Field(default_factory=list)
     source_relation_target_ids: list[str] = Field(default_factory=list)
+    source_relation_predicates: list[str] = Field(default_factory=list)
     source_relation_roles: list[str] = Field(default_factory=list)
 
 
@@ -104,6 +105,7 @@ class SearchResult(BaseModel):
     source_entity_system: str | None = None
     source_entity_alternate_ids: list[str] = Field(default_factory=list)
     source_relation_target_ids: list[str] = Field(default_factory=list)
+    source_relation_predicates: list[str] = Field(default_factory=list)
     source_relation_roles: list[str] = Field(default_factory=list)
 
 
@@ -112,6 +114,11 @@ class SearchResponse(BaseModel):
 
     results: list[SearchResult]
     coverage: EvidenceCoverage | None = None
+    retrieval_fusion: dict | None = None
+    document_graph: dict | None = None
+    provenance_retrieval: dict | None = None
+    retrieval_planes: dict | None = None
+    noise_accounting: dict | None = None
     error: str | None = None
 
 

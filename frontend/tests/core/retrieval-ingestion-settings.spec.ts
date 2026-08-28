@@ -165,14 +165,16 @@ test.describe("Retrieval and ingestion settings contracts", () => {
       page.getByRole("combobox", { name: "Search mode" }),
     ).toHaveCount(0);
     await expect(
-      page.getByText(/Available with Standard \(RRF\)/i),
+      page.getByText(/Available with Standard consensus fusion/i),
     ).toBeVisible();
     expect(settings.posts).toEqual([]);
 
     await page
       .getByRole("combobox", { name: "Compatibility retrieval strategy" })
       .click();
-    await page.getByRole("option", { name: /Standard \(RRF\)/ }).click();
+    await page
+      .getByRole("option", { name: /Standard \(RRF \+ normalized\)/ })
+      .click();
     await expect(
       page.getByRole("combobox", { name: "Search mode" }),
     ).toBeVisible();
@@ -187,7 +189,7 @@ test.describe("Retrieval and ingestion settings contracts", () => {
     const mode = page.getByRole("combobox", { name: "Search mode" });
     await expect(
       page.getByRole("combobox", { name: "Compatibility retrieval" }),
-    ).toHaveText("Standard (RRF) — Recommended");
+    ).toHaveText("Standard (RRF + normalized) — Recommended");
     for (const [label, value] of [
       ["Lexical only", "lexical"],
       ["Vector only", "vector"],

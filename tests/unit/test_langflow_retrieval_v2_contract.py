@@ -55,11 +55,10 @@ def test_default_agent_uses_versioned_documentalist_prompt():
 
     assert agent["data"]["node"]["template"]["system_prompt"]["value"] == prompt
     assert DEFAULT_SYSTEM_PROMPT == prompt
-    assert "coverage.complete=true" in prompt
-    assert "never prove" in prompt
-    assert "Explicit exhaustive" in prompt
-    assert "Never answer from ordinary focused results" in prompt
-    assert "scope=archive_audit_candidates" in prompt
+    assert "normal path for every prompt" in prompt
+    assert "There is no separate archive-search mode" in prompt
+    assert "noise_accounting" in prompt
+    assert "The human decides what the documents prove" in prompt
     assert agent["data"]["node"]["template"]["max_iterations"]["value"] == 128
 
 
@@ -72,15 +71,13 @@ def test_gpt_56_tool_agent_uses_openai_responses_transport():
         if node["data"]["node"].get("display_name") == "Agent"
     )
     embedded = agent["data"]["node"]["template"]["code"]["value"]
-    source = (ROOT / "flows" / "components" / "openrag_agent.py").read_text(
-        encoding="utf-8"
-    )
+    source = (ROOT / "flows" / "components" / "openrag_agent.py").read_text(encoding="utf-8")
 
     assert embedded == source
     assert 'provider == "openai"' in source
     assert 'model_name.startswith("gpt-5.6")' in source
     assert 'overrides["use_responses_api"] = True' in source
-    assert "reasoning_effort\"] = \"none\"" not in source
+    assert 'reasoning_effort"] = "none"' not in source
 
 
 def test_backend_retrieval_tool_is_thin_and_embedded_verbatim():
@@ -174,14 +171,21 @@ def test_backend_tool_forwards_request_and_preserves_provenance(monkeypatch):
         "source_relation_roles": ["attached_to"],
         "retrieval_relation_paths": [
             {
-                "role": "reply_to",
+                "relation_role": "reply_to",
                 "from_document_id": "document-42",
                 "to_document_id": "document-41",
             }
         ],
-        "retrieval_relevance_decision": "relevant",
-        "retrieval_relevance_reason": "The reply path resolves the implicit reference.",
-        "retrieval_supporting_document_ids": ["document-41"],
+        "retrieval_plane": "context",
+        "retrieval_relation_depth": 1,
+        "retrieval_channels": ["provenance"],
+        "retrieval_relevance": {
+            "level": "contextual",
+            "reason": "Reached through one explicit high-signal PROV-O relation hop.",
+            "probability_calibrated": False,
+            "human_validation_required": True,
+            "relation_depth": 1,
+        },
         "filename": "archive.pdf",
         "page": 3,
         "chunk_index": 7,
@@ -234,11 +238,11 @@ def test_backend_tool_forwards_request_and_preserves_provenance(monkeypatch):
             "scoreThreshold": 0.25,
             "evidenceMode": "focused",
             "documentId": None,
-                "cursor": "",
-                "batchSize": 20,
-                "progressId": None,
-            },
-        }
+            "cursor": "",
+            "batchSize": 20,
+            "progressId": None,
+        },
+    }
     assert "<<<UNTRUSTED_DOC_CHUNK>>>" in result[0].text
     citations = parse_knowledge_chunks({"artifact": [{"data": result[0].__dict__}]})
     assert citations[0]["chunk_id"] == "chunk-42"
@@ -262,14 +266,21 @@ def test_backend_tool_forwards_request_and_preserves_provenance(monkeypatch):
             "source_relation_roles": ["attached_to"],
             "retrieval_relation_paths": [
                 {
-                    "role": "reply_to",
+                    "relation_role": "reply_to",
                     "from_document_id": "document-42",
                     "to_document_id": "document-41",
                 }
             ],
-            "retrieval_relevance_decision": "relevant",
-            "retrieval_relevance_reason": "The reply path resolves the implicit reference.",
-            "retrieval_supporting_document_ids": ["document-41"],
+            "retrieval_plane": "context",
+            "retrieval_relation_depth": 1,
+            "retrieval_channels": ["provenance"],
+            "retrieval_relevance": {
+                "level": "contextual",
+                "reason": "Reached through one explicit high-signal PROV-O relation hop.",
+                "probability_calibrated": False,
+                "human_validation_required": True,
+                "relation_depth": 1,
+            },
         }
     ]
     assert artifact == [
@@ -347,7 +358,7 @@ def test_backend_tool_forwards_exhaustive_cursor_and_coverage(monkeypatch):
     assert artifact[0]["chunk_id"] == "chunk-42"
 
 
-def test_hierarchical_synthesis_replaces_raw_model_evidence_but_not_artifact(monkeypatch):
+def test_legacy_hierarchical_synthesis_cannot_replace_source_evidence(monkeypatch):
     module = _load_component_with_langflow_stubs(monkeypatch)
     payload = {
         "results": [
@@ -376,34 +387,33 @@ def test_hierarchical_synthesis_replaces_raw_model_evidence_but_not_artifact(mon
 
     compact = module._model_payload(payload)
 
-    assert compact["results"] == []
+    assert compact["results"][0]["chunk_id"] == "chunk-42"
+    assert "raw source text" in compact["results"][0]["text"]
     assert compact["evidence_chunks_available"] == 1
-    assert compact["audit_synthesis"]["complete"] is True
-    assert compact["audit_synthesis"]["findings"][0]["chunk_ids"] == ["chunk-42"]
-    assert "raw source text" not in json.dumps(compact)
+    assert "audit_synthesis" not in compact
     assert payload["results"][0]["text"].startswith("raw source text")
 
 
-def test_oversized_uncertified_raw_evidence_is_withheld(monkeypatch):
+def test_large_source_evidence_is_not_hidden_by_a_legacy_audit_budget(monkeypatch):
     module = _load_component_with_langflow_stubs(monkeypatch)
+    source_text = "x" * 50_000
     payload = {
         "results": [
             {
                 "document_id": "document-42",
                 "chunk_id": "chunk-42",
-                "text": "x" * (module.MODEL_RAW_EVIDENCE_CHARACTER_BUDGET + 1),
+                "text": source_text,
             }
         ]
     }
 
     compact = module._model_payload(payload)
 
-    assert compact["results"] == []
-    assert compact["raw_evidence_omitted"] is True
-    assert "incomplete" in compact["error"]
+    assert compact["results"][0]["text"] == source_text
+    assert "raw_evidence_omitted" not in compact
 
 
-def test_complete_but_unverified_synthesis_is_withheld(monkeypatch):
+def test_legacy_unverified_synthesis_cannot_withhold_source_evidence(monkeypatch):
     module = _load_component_with_langflow_stubs(monkeypatch)
     payload = {
         "results": [
@@ -422,13 +432,13 @@ def test_complete_but_unverified_synthesis_is_withheld(monkeypatch):
 
     compact = module._model_payload(payload)
 
-    assert compact["results"] == []
-    assert compact["raw_evidence_omitted"] is True
-    assert "incomplete" in compact["error"]
+    assert compact["results"][0]["text"] == "raw evidence"
+    assert "audit_synthesis" not in compact
+    assert "raw_evidence_omitted" not in compact
 
 
-def test_explicit_exhaustive_intent_automatically_completes_document_reads(monkeypatch):
-    """A model cannot silently downgrade an explicit exhaustive request."""
+def test_historical_exhaustive_intent_uses_normal_provenance_search(monkeypatch):
+    """Chat intent no longer starts an archive-wide document-read cascade."""
     module = _load_component_with_langflow_stubs(monkeypatch)
     calls: list[dict] = []
 
@@ -454,16 +464,24 @@ def test_explicit_exhaustive_intent_automatically_completes_document_reads(monke
 
         def post(self, _url, *, headers, json):
             calls.append(json)
-            if json["evidenceMode"] == "audit":
+            if json["evidenceMode"] == "focused":
                 return _Response(
                     {
                         "results": [
-                            {"document_id": "doc-a", "filename": "a.eml", "text": "ranked"},
-                            {"document_id": "doc-a", "filename": "a.eml", "text": "duplicate"},
+                            {
+                                "document_id": "doc-a",
+                                "chunk_id": "doc-a-direct",
+                                "filename": "a.eml",
+                                "text": "ranked",
+                                "retrieval_plane": "direct",
+                            },
                             {
                                 "document_id": "doc-b",
+                                "chunk_id": "doc-b-context",
                                 "filename": "b.pdf",
                                 "text": "ranked",
+                                "retrieval_plane": "context",
+                                "retrieval_relation_depth": 1,
                                 "retrieval_relation_paths": [
                                     {
                                         "from_document_id": "doc-a",
@@ -471,18 +489,17 @@ def test_explicit_exhaustive_intent_automatically_completes_document_reads(monke
                                         "relation_role": "reply_to",
                                     }
                                 ],
-                                "retrieval_relevance_decision": "relevant",
-                                "retrieval_relevance_reason": "The reply resolves your project.",
-                                "retrieval_supporting_document_ids": ["doc-a"],
+                                "retrieval_relevance": {
+                                    "level": "contextual",
+                                    "reason": "One PROV-O hop.",
+                                },
                             },
                         ],
-                        "discovery": {
-                            "mode": "archive_audit",
-                            "documents_found": 2,
-                            "lexical_completeness_certified": True,
-                            "truncated": False,
-                            "semantic_completeness_certified": False,
+                        "retrieval_planes": {
+                            "direct": {"documents": 1},
+                            "context": {"documents": 1, "fixpoint_reached": True},
                         },
+                        "noise_accounting": {"intentional_context_documents": 1},
                     }
                 )
             document_id = json["documentId"]
@@ -520,58 +537,11 @@ def test_explicit_exhaustive_intent_automatically_completes_document_reads(monke
     content, artifact = tool.build_tool()["func"]("surface pastorale DDT")
     payload = json.loads(content)
 
-    assert [call["evidenceMode"] for call in calls] == [
-        "audit",
-        "exhaustive",
-        "exhaustive",
-        "exhaustive",
-    ]
-    assert [call["documentId"] for call in calls[1:]] == ["doc-a", "doc-b", "doc-b"]
-    assert [call["cursor"] for call in calls[1:]] == ["", "", "doc-b-next"]
-    assert all(call["batchSize"] == 50 for call in calls[1:])
-    assert payload["coverage"] == {
-        "mode": "exhaustive",
-        "requested": True,
-        "scope": "archive_audit_candidates",
-        "complete": True,
-        "documents_complete": 2,
-        "documents_total": 2,
-        "documents": [
-            {
-                "mode": "exhaustive",
-                "document_id": "doc-a",
-                "complete": True,
-                "covered_chunks": 1,
-                "total_chunks": 1,
-                "next_cursor": None,
-                "filename": "a.eml",
-            },
-            {
-                "mode": "exhaustive",
-                "document_id": "doc-b",
-                "complete": True,
-                "covered_chunks": 80,
-                "total_chunks": 80,
-                "next_cursor": None,
-                "filename": "b.pdf",
-            },
-        ],
-    }
-    assert {item["chunk_id"] for item in artifact} == {
-        "doc-a-chunk-1",
-        "doc-b-chunk-1",
-        "doc-b-chunk-2",
-    }
-    assert all("ranked" not in item["text"] for item in artifact)
-    doc_b_artifacts = [item for item in artifact if item["document_id"] == "doc-b"]
-    assert all(item["retrieval_relevance_decision"] == "relevant" for item in doc_b_artifacts)
+    assert [call["evidenceMode"] for call in calls] == ["focused"]
+    assert {item["chunk_id"] for item in artifact} == {"doc-a-direct", "doc-b-context"}
+    assert "coverage" not in payload
+    assert payload["retrieval_planes"]["context"]["fixpoint_reached"] is True
+    assert payload["noise_accounting"]["intentional_context_documents"] == 1
     doc_b_manifest = next(item for item in payload["documents"] if item["document_id"] == "doc-b")
     assert doc_b_manifest["retrieval_relation_paths"][0]["relation_role"] == "reply_to"
-    assert doc_b_manifest["retrieval_supporting_document_ids"] == ["doc-a"]
-    assert payload["discovery"] == {
-        "mode": "archive_audit",
-        "documents_found": 2,
-        "truncated": False,
-        "lexical_completeness_certified": True,
-        "semantic_completeness_certified": False,
-    }
+    assert doc_b_manifest["retrieval_plane"] == "context"

@@ -217,7 +217,7 @@ export function RetrievalSettingsSection() {
                 className="rounded-md border bg-muted/30 px-3 py-2 text-sm"
               >
                 {strategy === "rrf"
-                  ? "Standard (RRF) — Recommended"
+                  ? "Standard (RRF + normalized) — Recommended"
                   : "Legacy weighted retrieval"}
               </div>
             </div>
@@ -244,8 +244,8 @@ export function RetrievalSettingsSection() {
               <div className="space-y-2">
                 <Label>Search mode</Label>
                 <p className="rounded-md border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
-                  Available with Standard (RRF). Legacy weighted retrieval keeps
-                  its existing compatibility behavior.
+                  Available with Standard consensus fusion. Legacy weighted
+                  retrieval keeps its existing compatibility behavior.
                 </p>
               </div>
             )}
@@ -263,7 +263,8 @@ export function RetrievalSettingsSection() {
                   Candidate retrieval
                 </h3>
                 <p className="text-sm text-muted-foreground">
-                  Candidates are gathered from each lane before they are fused.
+                  Each lane is queried once. RRF and normalized-score rankings
+                  reuse those candidates before a final rank consensus.
                 </p>
               </div>
               <div className="grid gap-4 md:grid-cols-2">
@@ -342,7 +343,9 @@ export function RetrievalSettingsSection() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="rrf">Standard (RRF) — Recommended</SelectItem>
+              <SelectItem value="rrf">
+                Standard (RRF + normalized) — Recommended
+              </SelectItem>
               <SelectItem value="weighted">
                 Legacy weighted retrieval
               </SelectItem>

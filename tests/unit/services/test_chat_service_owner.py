@@ -70,13 +70,12 @@ async def test_langflow_chat_passes_owner_metadata(monkeypatch):
     assert headers["X-LANGFLOW-GLOBAL-VAR-JWT"] == "user-jwt"
     assert headers["X-Langflow-Global-Var-OPENRAG_RETRIEVAL_URL"].endswith("/search")
     assert headers["X-Langflow-Global-Var-OPENRAG_QUERY_FILTER"] == (
-        '{"filters": {"data_sources": ["archive.pdf"]}, "limit": 4, '
-        '"scoreThreshold": 0.25, "retrievalIntent": "focused"}'
+        '{"filters": {"data_sources": ["archive.pdf"]}, "limit": 4, "scoreThreshold": 0.25}'
     )
 
 
 @pytest.mark.asyncio
-async def test_langflow_chat_marks_explicit_exhaustive_intent(monkeypatch):
+async def test_langflow_chat_keeps_explicit_exhaustive_wording_on_normal_search_path(monkeypatch):
     fake_langflow_client = MagicMock()
     monkeypatch.setattr(
         "config.settings.clients.ensure_langflow_client",
@@ -101,11 +100,11 @@ async def test_langflow_chat_marks_explicit_exhaustive_intent(monkeypatch):
 
     headers = mock_langflow_chat.call_args.kwargs["extra_headers"]
     context = json.loads(headers["X-Langflow-Global-Var-OPENRAG_QUERY_FILTER"])
-    assert context["retrievalIntent"] == "exhaustive"
+    assert context == {"filters": {}, "limit": 10, "scoreThreshold": 0}
 
 
 @pytest.mark.asyncio
-async def test_streaming_exhaustive_chat_emits_sanitized_progress_event(monkeypatch):
+async def test_streaming_chat_uses_standard_retrieval_progress_without_legacy_audit(monkeypatch):
     fake_langflow_client = MagicMock()
     monkeypatch.setattr(
         "config.settings.clients.ensure_langflow_client",
@@ -126,12 +125,6 @@ async def test_streaming_exhaustive_chat_emits_sanitized_progress_event(monkeypa
         yield b'{"type":"response.output_text.delta","delta":"answer"}\n'
 
     monkeypatch.setattr("agent.async_langflow_chat_stream", fake_stream)
-    # Exhaustive streams are now owned by a detached durable producer. Keep
-    # this unit test independent of PostgreSQL while exercising that producer.
-    from services.chat_audit_job_service import chat_audit_job_service
-
-    monkeypatch.setattr(chat_audit_job_service, "_create_row", AsyncMock())
-    monkeypatch.setattr(chat_audit_job_service, "_checkpoint", AsyncMock())
     set_search_filters({})
 
     stream = await ChatService().langflow_chat(
@@ -142,17 +135,14 @@ async def test_streaming_exhaustive_chat_emits_sanitized_progress_event(monkeypa
     )
     chunks = [json.loads(chunk) async for chunk in stream]
 
-    progress = next(item["progress"] for item in chunks if item.get("type") == "openrag.audit.progress")
-    context = json.loads(
-        captured["headers"]["X-Langflow-Global-Var-OPENRAG_QUERY_FILTER"]
-    )
-    assert context["retrievalIntent"] == "exhaustive"
-    assert context["auditProgressId"] == progress["audit_id"]
-    assert progress["phase"] == "preparing"
-    assert "query" not in progress
-    assert "prompt" not in progress
+    context = json.loads(captured["headers"]["X-Langflow-Global-Var-OPENRAG_QUERY_FILTER"])
+    assert context["filters"] == {}
+    assert context["limit"] == 10
+    assert context["scoreThreshold"] == 0
+    assert len(context["progressId"]) == 32
+    assert not any(str(item.get("type", "")).startswith("openrag.audit.") for item in chunks)
+    assert any(item.get("type") == "openrag.retrieval.progress" for item in chunks)
     assert any(item.get("delta") == "answer" for item in chunks)
-    assert chunks[-1]["type"] == "openrag.audit.usage"
 
 
 @pytest.mark.asyncio

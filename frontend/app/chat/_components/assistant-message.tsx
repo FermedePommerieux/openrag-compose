@@ -28,8 +28,8 @@ import {
 } from "@/lib/source-url";
 import { cn } from "@/lib/utils";
 import type {
-  AuditProgress,
   FunctionCall,
+  RetrievalProgress,
   TokenUsage as TokenUsageType,
   ToolCallResult,
 } from "../_types/types";
@@ -84,28 +84,15 @@ interface AssistantMessageProps {
   interactiveCitations?: boolean;
   showFunctionCalls?: boolean;
   unstyledMessageContent?: boolean;
-  progress?: AuditProgress;
+  progress?: RetrievalProgress;
 }
 
-const formatAuditProgressCounter = (progress: AuditProgress): string => {
+const formatRetrievalProgressCounter = (
+  progress: RetrievalProgress,
+): string => {
   const counters = progress.counters;
   const pairByPhase: Record<string, [string, string, string]> = {
-    candidate_review: [
-      "review_batches_complete",
-      "review_batches_total",
-      "review batches",
-    ],
     document_read: ["documents_read", "documents_total", "documents"],
-    evidence_analysis: [
-      "leaf_workers_complete",
-      "leaf_workers_total",
-      "evidence readers",
-    ],
-    source_verification: [
-      "verification_batches_complete",
-      "verification_batches_total",
-      "verification batches",
-    ],
   };
   const pair = pairByPhase[progress.phase];
   if (
@@ -115,11 +102,14 @@ const formatAuditProgressCounter = (progress: AuditProgress): string => {
   ) {
     return `${counters[pair[0]]}/${counters[pair[1]]} ${pair[2]}`;
   }
-  if (counters.candidate_documents !== undefined) {
-    return `${counters.candidate_documents} candidate documents`;
+  if (counters.returned_documents !== undefined) {
+    return `${counters.returned_documents} documents`;
   }
-  if (counters.final_findings_total !== undefined) {
-    return `${counters.final_findings_total} final findings`;
+  if (counters.related_documents !== undefined) {
+    return `${counters.related_documents} related documents`;
+  }
+  if (counters.direct_documents !== undefined) {
+    return `${counters.direct_documents} direct documents`;
   }
   return "";
 };
@@ -327,9 +317,9 @@ export function AssistantMessage({
                   <Loader2 className="h-4 w-4 animate-spin" />
                 )}
                 <span>{progress.message}</span>
-                {formatAuditProgressCounter(progress) && (
+                {formatRetrievalProgressCounter(progress) && (
                   <span className="rounded bg-accent px-1.5 py-0.5 tabular-nums">
-                    {formatAuditProgressCounter(progress)}
+                    {formatRetrievalProgressCounter(progress)}
                   </span>
                 )}
               </div>

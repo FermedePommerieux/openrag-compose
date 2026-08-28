@@ -4,20 +4,104 @@ title: Retrieval v2
 
 # Retrieval v2
 
-Retrieval v2 is the Standard retrieval path for chat, the API, and both SDKs.
-The backend is the single source of truth for retrieval policy:
+Retrieval v2 is the standard search path for chat, the API, and both SDKs. The
+backend is the single source of truth for retrieval policy:
 
 ```text
-Chat → Langflow agent → OpenRAG Retrieval v2 tool → backend /search
-     → lexical/vector lanes → RRF → OpenSearch (user-scoped DLS)
+Chat → Langflow tool → backend /search
+     → lexical + vector lanes → RRF + normalized score → consensus → direct plane
+     → OpenSearch-native PROV-O predicate matching
+     → backend fixed-point orchestration → context plane + document graph
 ```
 
-The Langflow tool is intentionally thin. It forwards the end-user context and
-does not implement BM25, KNN, RRF, ACL filtering, reranking, or provenance.
+The Langflow component only forwards the authenticated request and projects the
+response for the model. It contains no OpenSearch query, graph traversal,
+ranking, ACL, or validation policy.
+
+## One normal search path
+
+There is no separate thematic "exhaustive" or "audit" search mode. Every
+focused query uses the same complete accessible knowledge index and the same
+PROV-O relation machinery. `exhaustive` remains an API operation for reading
+all chunks of one explicitly selected `document_id` in source order; it is not
+an archive-wide reasoning workflow.
+
+The normal path has two deliberately separate planes:
+
+1. **Direct plane.** BM25 and each available embedding model produce ranked
+   candidates. The backend computes both RRF and an equal-weight arithmetic
+   mean after min-max normalization inside each lane. A final RRF converges
+   those two rankings without comparing their incompatible score magnitudes.
+   The configured result limit applies to this plane.
+2. **Context plane.** Direct documents seed OpenSearch `nested` queries over
+   full `source_provenance.relations.prov_predicate` URIs and paired target
+   identities. The backend submits each new frontier until a fixed point is
+   reached inside the caller-visible graph. One representative chunk for each
+   newly related document is appended after the direct plane.
+
+`contained_in` is intentionally ignored: documents sharing a mailbox or an
+archive are not necessarily about the same subject.
+
+## Relevance and intentional noise
+
+PROV-O context is useful precisely because a reply can say "your project"
+without repeating the project's name. It can also introduce documents that are
+related but not responsive. Retrieval v2 preserves that ambiguity instead of
+hiding it behind an LLM decision.
+
+Each returned document receives an explainable class:
+
+| Class | Meaning |
+| --- | --- |
+| `strong` | Direct lexical match, optionally corroborated by the semantic lane |
+| `exploratory` | Direct semantic-only match |
+| `contextual` | Relation-only document reached in one PROV-O graph expansion step |
+| `peripheral` | Relation-only document reached after multiple graph expansion steps |
+
+These are discovery-strength classes, not probabilities and not truth
+verdicts. No LLM excludes, validates, or labels documents. The response exposes
+`retrieval_planes`, `noise_accounting`, and `document_graph` so the chat and the
+human can distinguish direct evidence from intentionally retained context.
+
+Relation-only documents never enter the direct RRF list and cannot displace a
+direct result. They are ordered by graph traversal distance and OpenSearch rank
+within each frontier. The source artifact retains every returned document;
+the model-facing projection shortens context-only excerpts to control tokens.
+
+## Document graph contract
+
+`document_graph` is generated deterministically from persisted `source_provenance`
+relations and the observable paths returned by the fixed-point traversal. It
+contains:
+
+- one node per returned document;
+- the representative `chunk_id`, filename, direct/context plane, relevance
+  class, graph component and relation count;
+- asserted edges with source document, target document, canonical PROV-O
+  predicate URI, OpenRAG role qualification, direction, edge kind, and entity
+  id;
+- shared-target projections represented explicitly as two persisted assertions,
+  never as an invented PROV-O predicate between the documents;
+- connected components and exact node/edge counts;
+- `llm_generated=false`.
+
+A model cannot invent an edge. If provenance is absent on a legacy document,
+that document remains searchable through lexical/vector retrieval but has no
+graph claim.
+
+OpenSearch owns predicate/target matching, filtering, DLS enforcement, sorting,
+and exhaustive scrolling of each frontier. The backend owns recursion only;
+OpenSearch is not presented as an RDF reasoner. The response exposes the
+canonical field, traversed predicates, role exclusion policy, legacy fallback,
+iteration counts, `frontier_stabilized`, and `fixpoint_reached`. The latter is
+true only when the frontier stabilized **and** every OpenSearch scroll was
+exhausted.
 
 ## Strategy and configuration
 
-New installations use RRF by default:
+New installations use consensus fusion and Hybrid retrieval. The persisted
+`rrf` value is retained for configuration compatibility; its effective
+Standard behavior is RRF plus normalized-score consensus:
 
 ```yaml
 knowledge:
@@ -29,366 +113,72 @@ knowledge:
   retrieval_max_chunks_per_document: 3
 ```
 
-RRF ranks lexical and vector candidates independently and fuses ranks, avoiding
-comparison of BM25 and vector scores. `weighted` is retained as an explicit
-compatibility setting, but is not the Standard baseline. On upgrade, a config
-without `retrieval_strategy` resolves to `rrf`; an explicit persisted
-`weighted` value is preserved. Operators may set `OPENRAG_RETRIEVAL_STRATEGY`
-to `rrf` or `weighted` for a non-edited configuration.
+Administrators can change these settings under **Settings > Retrieval**.
+Candidate counts bound the direct ranked lanes, not the PROV-O component. The
+context plane is complete for the disclosed predicate/role policy and
+accessible connected component when `fixpoint_reached=true` and every
+OpenSearch scroll is exhausted.
+This does not prove that semantic search found every possible paraphrase.
 
-## Settings UI
+The two first-stage rankings reuse the exact same materialized OpenSearch lane
+responses. No replica, second index, additional OpenSearch request or language
+model call is required. RRF contributes rank agreement; lane-local min-max
+normalization preserves meaningful score gaps without allowing BM25 magnitude
+to dominate vector similarity. The response exposes `retrieval_fusion`,
+including the effective strategy, normalization rule, final fusion constant,
+and the explicit `additional_opensearch_requests: 0` and `llm_used: false`
+contracts.
 
-Administrators with `config:write` can change retrieval policy in
-**Settings > Retrieval**. These settings query the existing index differently
-and apply immediately; they do not normally require reindexing.
+This ensemble improves ordering robustness but does not create candidates that
+are absent from every direct lane. Recall comes from complementary BM25,
+embedding-model and PROV-O discovery; fusion decides how their direct
+candidates are ordered.
 
-* **Standard (RRF)** is the recommended strategy. Existing `weighted`
-  configurations appear as **Legacy weighted retrieval** under Advanced /
-  Compatibility and are never converted merely by opening the page.
-* **Search mode** is available only with **Standard (RRF)**: **Hybrid (lexical
-  + semantic)**, **Lexical only**, or **Vector only**. Legacy `weighted`
-  retrieval keeps its compatibility behavior; the stored mode is preserved for
-  a future return to RRF but is not active while weighted is selected. This
-  meaning of Hybrid is unrelated to Docling's Hybrid chunking option in
-  **Settings > Langflow > Knowledge Ingest**.
-* **Lexical candidates** and **Vector candidates** control how many candidates
-  each lane gathers before RRF fusion. **RRF k** is the fusion constant, not a
-  final top-k. **Max chunks per document** preserves result diversity.
+Equal-score candidates are secondarily sorted by persisted keyword `chunk_id`.
+`chunk_id: keyword` with doc values is a hard RRF precondition. Older documents
+without a value remain searchable and sort last; an incompatible mapping fails
+with an explicit reindexing instruction.
 
-The settings page intentionally does not expose `retrieval_reranker_url`.
-The optional reranker endpoint remains backend API/persisted-configuration only
-until URL validation is hardened against unsafe network destinations.
-`retrieval_debug` also remains out of the public UI while its response and
-logging contract is kept internal.
+## Authentication and sources
 
-Explicit archive audits exhaust lexical predicates and verified PROV-O graph
-links, but semantic k-NN is deliberately bounded to the empirically useful
-`k=100` neighbourhood. Vector similarity is not a probability and weak nearest
-neighbours exist even for unrelated documents. The response therefore reports
-the semantic tail as unsearched rather than paying an LLM to read it or
-claiming semantic completeness. Grounded `irrelevant` decisions are excluded;
-failed, malformed, missing and `uncertain` decisions remain fail-open.
+The agent forwards the exact end-user JWT to `/search`. The backend refreshes
+the caller's workspace, owner, and DLS principals and creates only a user-
+scoped OpenSearch client. Graph traversal uses the same client and filters, so a
+relation can never cross the caller's access boundary.
 
-Set `OPENRAG_AUDIT_REASONING_MODEL` to use a lower-cost model for candidate
-classification and hierarchical evidence work without changing the final chat
-model. Production evaluation should compare recall and citation validity on a
-fixed audit set before promoting a cheaper model.
+Results preserve `document_id`, `chunk_id`, `source_url`, `connector_file_id`,
+filename, page, ingestion profile, flattened provenance identities, relation
+paths, graph distance and relevance class. The chat tool artifact keeps the
+full source records for citation and preview. Model content receives compact
+document metadata and shorter context-only excerpts.
 
-Equal-score candidates are secondarily sorted by the persisted keyword
-`chunk_id`, rather than OpenSearch metadata `_id`, which is not sortable. New
-chunks have this field with doc values. Older chunks without it remain
-searchable and sort last within equal-score ties until re-indexed; they retain
-best-effort compatibility rather than a claim of complete reproducibility.
+## Single-document complete reading
 
-`chunk_id: keyword` with doc values is a hard RRF precondition. OpenRAG reads
-the live mapping before an RRF request. A missing field, a `text` mapping, or
-disabled doc values produces an explicit `RRF unavailable` error with a
-reindexing instruction. This does not reject legacy documents that merely lack
-a `chunk_id` value: `missing: _last` keeps those documents searchable.
+`evidence_mode=exhaustive` reads one immutable document snapshot in source
+order. The continuation cursor is bound to the document digest and access
+scope. `coverage.complete=true` proves only that named document snapshot was
+read; it says nothing about archive-wide thematic completeness.
 
-## Identity, authentication, and access control
-
-The agent forwards the exact end-user JWT as a Bearer token to `/search`.
-In OSS mode the same identity resolver accepts either the existing browser
-`auth_token` cookie or that Bearer token. The backend then refreshes the
-user's workspace, owner and DLS principals and creates only a user-scoped
-OpenSearch client. No service or administrator credential is used for search.
-
-Results preserve `document_id`, `chunk_id`, `connector_file_id`, `source_url`,
-`filename`, `page`, `chunk_index`, and `chunking_strategy` across `/search`,
-chat responses, and public v1 streaming SSE citations. Legacy documents may
-have null or absent provenance fields, but remain readable.
-
-## Persisted Langflow flows
-
-At startup OpenRAG recognizes only the exact locked historical OpenRAG agent
-graph from lifecycle baseline `156f3664`, identified by its expected ID and a
-versioned canonical graph fingerprint. It writes a local backup, then uses
-Langflow 0.11.2's supported `PATCH` API to unlock the system flow temporarily,
-replaces it with the bundled `OpenRAGBackendRetrievalComponent` graph, verifies
-the persisted wiring, and locks it again. The migration is idempotent. A
-protected system flow that is missing, altered, partially migrated, or not
-verified as locked Retrieval v2 fails closed before the backend becomes Ready.
-An explicitly configured custom flow ID is preserved without automatic
-migration, settings reapplication, Retrieval v2 guarantees, or prompt
-synchronization. Startup may still create missing non-chat system flows, but
-excludes the custom chat flow from creation/recovery and does not run the
-global flow synchronization that could mutate it. Roll back by restoring the
-generated backup through Langflow and re-locking the flow.
+This operation supports document inspection after a human selects a result. It
+is never launched automatically across all search candidates.
 
 ## Hybrid chunking and replacements
 
-`chunking_strategy: hybrid` uses Docling's `HybridChunker` in the backend.
-Hybrid is fail-fast: unavailable dependencies, unsupported plain text, or a
-chunking error fail the ingestion task; it never silently falls back to
-character chunks.
+Retrieval Hybrid mode is unrelated to Docling Hybrid chunking. Hybrid chunking
+uses Docling's `HybridChunker` and fails fast rather than silently falling back
+to character chunks. Supplemental page-furniture chunks preserve headers,
+footers, legal identity, navigation and payment evidence that Docling may omit.
 
-OpenRAG also preserves Docling text regions that HybridChunker intentionally
-omits as page furniture, such as headers and footers. These supplemental chunks
-record the page, Docling region label, and spatial position. This keeps identity,
-legal, navigation, and payment evidence searchable without adding
-document-type-specific extraction rules.
+Replacements are two-phase. OpenRAG parses, chunks, embeds and indexes a
+temporary generation while the old one remains available. It promotes the new
+generation and deletes the old only after complete success. Replacement scope
+includes both logical `document_id` and owner/shared identity.
 
-Replacements are two-phase. OpenRAG first parses, chunks, embeds, and indexes
-a temporary generation while the old chunks remain available. Only after full
-success does it promote the new generation and delete the old one. A failed
-generation is cleaned up without deleting the previous document. Deduplication
-also includes the requested chunking strategy and relevant parameters, so a
-character document is not considered unchanged when hybrid is requested.
+## Langflow flow ownership
 
-The replacement scope always includes both the logical `document_id` and the
-owner/shared identity. Equal file bytes may be uploaded by different users;
-reindexing one owner never reads, promotes, deletes, rolls back, or cleans up
-the other owner's chunks. After a partial delete, restoration checks the global
-bulk response and every item. An incomplete restore is a fatal error with the
-affected chunk IDs preserved for recovery.
-
-Focused retrieval uses lexical/vector RRF and adaptive per-document diversity.
-Exhaustive retrieval reads one verified immutable document snapshot in source
-order and returns authenticated continuation cursors plus exact coverage.
-
-When a chat request explicitly asks for exhaustive, complete, all-items,
-audit, or verify-everything work, the backend marks that intent in the trusted
-Langflow context. A focused discovery call then automatically reads every
-exhaustive page for every distinct discovered document before the agent can
-answer. This proves the selected
-document scope only. Whole-archive thematic completeness requires a future
-corpus-snapshot job and is never inferred from ranked discovery.
-
-As of retrieval flow version 11, the component itself follows all continuation
-cursors before returning to the agent. This is intentionally not delegated to
-the model: a real production replay stopped after 150 of 237 chunks even though
-the prompt required completion. A missing or repeated cursor now yields an
-explicit incomplete certificate instead of a silent partial answer.
-
-Retrieval flow version 12 separates the two consumers of a tool result. The
-LangChain artifact retains every complete chunk record, source URL, ACL field,
-ingestion profile and W3C PROV-O object for citation rendering and inspection.
-The language-model content receives the same chunk texts and immutable
-`chunk_id` values, but document metadata is projected once into a document
-manifest and operational fields are omitted. No evidence is ranked away by
-this projection. It fixes a measured production case where 237 ordinary chunks
-became 512,777 input tokens primarily because the same provenance and profile
-were serialized on every row.
-
-This context projection is a transport optimization, not an exhaustiveness
-claim. OpenSearch remains responsible for ACL-scoped lexical/vector discovery,
-RRF and deterministic source-order reads. A coverage certificate proves only
-the scope it names; `focused_discovery_documents` still does not mean the whole
-archive. Corpus-wide thematic certification requires an immutable accessible
-corpus snapshot plus persisted, batch-level relevance decisions before final
-synthesis.
-
-Retrieval flow version 15 gives explicit exhaustive intent a separate
-archive-audit discovery profile. The lexical lane opens an immutable
-OpenSearch scroll snapshot and consumes it until every matching hit has been
-returned; 500 is only its transport page size, never a candidate limit. Scroll
-is intentional because the OpenSearch Security plugin rejects PIT creation
-when document-level security is active. Audit BM25 requires all lexical terms
-for one- and two-term queries and half for longer queries (`2<50%`). This
-adaptive relevance predicate prevents generic words from making most of the
-archive a candidate; it limits no result count, and its fully consumed match
-set is reported in metadata. Each embedding-model lane deepens independently until its
-filtered vector population is exhausted, document discovery stabilizes across
-successive expansions, or OpenSearch's declared k-NN ceiling is reached. The
-response exposes the attempts, reached depth and any truncation instead of
-silently treating a budget as truth. A diversity pass then keeps one discovery
-hit per document before complete source-order reads begin. Ordinary chat
-remains at the administrator-configured candidate depth. The resulting
-`archive_audit_candidates` certificate proves that every document in that
-multi-lane union was read. Lexical completeness can be certified for the exact
-query predicate and scroll snapshot; semantic corpus completeness remains false because a
-ranked nearest-neighbour search cannot prove that no unstated synonym exists.
-
-Deep vector retrieval is not allowed to turn every weak neighbour into a
-document read. For each embedding-model lane, OpenRAG calibrates the raw
-similarity scale against documents independently supported by the exhausted
-lexical lane. A semantic-only candidate is retained when it scores at least as
-high as the median lexical candidate in that same embedding space. This yields
-a query-, corpus- and model-specific threshold rather than a fixed top-k; the
-threshold, calibration population, raw candidate count and selected count are
-returned in the audit metadata. An uncalibrated lane is explicitly labelled
-and excluded rather than treating thousands of weak neighbours as relevant;
-it never receives a semantic-completeness certificate.
-
-Retrieval flow version 17 refines that audit with deterministic topic
-extraction, evidence-grounded hint validation and adaptive expansion
-selectivity. Archive audit discovery then performs three evidence-preserving
-stages:
-
-1. The configured reasoning model receives only the high-precision lexical
-   seeds and returns structured alternate queries and named entities. OpenRAG
-   independently rejects any hint that contributes no new term or whose new
-   terms are absent from the current visible seeds; semantically related cache
-   hints pass the same evidence-scope check. Before opening a scroll, OpenSearch
-   measures the distinct-document frequency of each alternate predicate. The
-   predicate is selected only when `df <= ceil(sqrt(N))`, with a floor of eight
-   documents for small archives, where `N` is the caller-visible document
-   count. This is an adaptive IDF requirement
-   (`log(N/df) >= 0.5 * log(N)`), not a fixed candidate cap. Every selected
-   predicate is then consumed completely. An over-broad alternative such as a
-   bare organization or `project` is rejected as a whole rather than turning
-   thousands of weak matches into paid model reads. The original topical
-   lexical predicate remains fully exhausted.
-2. Starting from the exhausted lexical lanes and calibrated semantic lanes,
-   the visible W3C PROV-O graph is traversed to a fixpoint through
-   `member_of`, `reply_to`, `references`, and `attachment_of`. Each newly found
-   document carries the exact anchor, entity identifier, direction, and anchor
-   excerpt that justified its inclusion. `contained_in` is deliberately not a
-   thematic edge because a whole mailbox shares one archive source.
-3. No language model excludes documents from a discovery excerpt. Every
-   document admitted by the original topical predicate, a selected high-IDF
-   expansion, calibrated semantic retrieval or PROV-O closure is read in full.
-   The hierarchical answer workers then decide relevance from the complete
-   pieces and the final claims are verified against their cited source chunks.
-   This keeps candidate generation inexpensive and makes the answer model judge
-   the evidence, rather than asking a model to judge unread documents first.
-
-Batch size and concurrency are transport controls, never result limits: all
-admitted candidates are processed. The response reports the visible corpus
-cardinality, adaptive expansion threshold, selected/rejected predicates,
-queries, entities, graph iterations, relation roles and model identity. This
-still does not prove semantic completeness for concepts absent from every
-lexical, vector and provenance path.
-
-The tool then carries each transient relation path and relevance decision onto
-the mandatory full-document reads. These fields appear once per document in
-the compact model manifest and remain present in the complete source artifact;
-replacing discovery excerpts with exhaustive evidence therefore cannot erase
-the reason an implicit document entered the audit.
-
-### Hierarchical audit synthesis
-
-An exhaustive candidate set is not injected into one model context. Retrieval
-v15 uses an orchestration pattern inspired by Hermes Agent while keeping the
-authenticated operation inside the OpenRAG backend:
-
-1. Every candidate document is read to its immutable cursor certificate, with
-   four concurrent document readers but no document or chunk cap.
-2. Source chunks are partitioned into isolated leaf contexts of at most 24
-   segments and 80,000 serialized characters. A single oversized chunk is
-   segmented without changing its immutable `chunk_id`.
-3. Two independent roles inspect every leaf context: an evidence extractor and
-   a skeptical omission/contradiction reader. Batch size and concurrency bound
-   transport only; every chunk enters both readings.
-4. Every proposed finding is then checked by two different validator roles
-   against the exact supplied source evidence. Only unanimous `supported`
-   verdicts can become factual findings. Contradicted, uncertain, malformed or
-   incomplete verdicts are withheld rather than silently accepted.
-5. Coordinator levels consume at most eight bounded memos or 120,000 serialized
-   characters at a time. A coordinator output is rejected unless it covers
-   every direct input id and the exact union of all leaf finding ids. Final
-   coordinator statements undergo the same dual validation against their
-   already source-validated leaf findings.
-
-The final chat model receives only this validated dossier, its coverage
-certificate and leaf `chunk_id` citations. Complete raw chunks stay in the tool
-artifact used by the source UI, so context compression does not remove source
-inspectability. A compatibility guard refuses to place more than 600,000 raw
-characters into a legacy, unsynthesized model context. If hierarchical
-synthesis is incomplete, raw evidence is withheld and the chat must report the
-failure instead of improvising an answer.
-
-The orchestrator currently runs inside the authenticated backend request, not
-in a separate Hermes pod. This keeps the user's DLS/ACL identity and the exact
-coverage snapshot in one trust boundary. Its map/reduce contracts are isolated
-from HTTP transport so they can later move unchanged to a durable worker if
-audits must survive process restarts; that move must preserve the same identity,
-snapshot, loss checks and fail-closed result contract.
-
-### Factual chat progress
-
-An explicit exhaustive chat starts a random request-scoped progress id in the
-backend. The trusted Langflow search context forwards this id to Retrieval v15;
-it is not a model-controlled tool argument. While the retrieval tool is busy,
-the chat stream multiplexes `openrag.audit.progress` events with the ordinary
-Langflow events. The frontend displays the current phase and factual counters,
-for example documents read, leaf readers completed, or verification batches
-completed. It never estimates a percentage or completion time.
-
-The same contract covers a model call that directly requests
-`evidence_mode=exhaustive` for one known document. Retrieval reports the
-document-read phase and the exact covered/total chunk counters, then emits a
-verified terminal state only after the immutable snapshot digest, contiguous
-chunk order, and complete cursor chain have passed. This avoids leaving the UI
-at “preparing” when Langflow legitimately skips archive discovery for an
-already identified document.
-
-While one of these progress snapshots exists, the chat renders it as the
-primary streaming status and suppresses the generic `Thinking` placeholder.
-The status uses a visible card, exact counters, and a terminal verification
-icon so a long audit cannot appear indistinguishable from an idle model call.
-
-Progress events contain no query, filename, document text, credential, model
-reasoning, or finding. They are excluded from the assistant answer and from
-conversation history. A 15-second repeat of the last snapshot acts as a
-transport heartbeat during long model calls. The registry is best-effort and
-process-local for the current single backend replica; missing progress can
-never weaken or strengthen the coverage certificate. A multi-replica backend
-must replace it with a shared TTL store before treating cross-pod progress as
-reliable.
-
-The backend's OpenAI-compatible Langflow client explicitly uses
-`LANGFLOW_TIMEOUT`. Without that binding the OpenAI Python SDK applies its own
-600-second read timeout, which can terminate a healthy detached audit while it
-is still inside the retrieval tool. Terminal timeout exceptions are normalized
-to a non-empty durable error and emitted as `openrag.audit.failed` events.
-
-This provides a fail-closed factual contract, not a mathematical guarantee that
-a probabilistic model can never err. `complete` certifies processing coverage;
-`verified` certifies redundant leaf reading. The chat may state findings only
-when both are true, and those findings additionally carry unanimous
-source-verdicts and exact chunk citations. Corpus-wide semantic completeness
-remains false unless a separate semantic certificate exists.
-
-Each embedding model is an independent RRF lane. OpenRAG no longer compares
-scores from different vector spaces inside one `dis_max` query: BM25 and every
-dense model contribute ranks to the candidate union separately. This permits
-measured multi-model ensembles without duplicating OpenSearch clusters. A
-three-node OpenSearch cluster can improve availability and throughput, but it
-does not by itself change candidate recall, so horizontal scaling must not be
-presented as an exhaustiveness feature.
-
-The search context field is a request-scoped Langflow global variable and must
-be configured with `load_from_db: true`. Its canonical component name is
-`OPENRAG_QUERY_FILTER`, so its exact HTTP alias is
-`X-Langflow-Global-Var-OPENRAG_QUERY_FILTER`. Langflow strips the prefix but
-preserves the suffix; a hyphenated suffix is a different variable and silently
-loses the trusted exhaustive intent. Retrieval flow version 8 migrates the
-exact repository-owned version 7 graph to the required `load_from_db` binding.
-The shared header-name constant prevents the backend transport from drifting
-from the component name.
-
-The field is deliberately a `StrInput`, not a `MultilineInput`. Langflow's
-custom-component rebuild path clears `load_from_db` after assigning a
-multiline value, which would downgrade every request back to focused retrieval
-after startup. Retrieval flow version 9 migrates both exact repository-owned
-version 8 states (before and after that normalization) to the stable string
-binding; edited graphs still fail closed.
-
-Langflow global-variable types are part of the executable flow contract. URLs,
-batch sizes, run identifiers and retrieval-filter JSON are `Generic`; only
-tokens and provider secrets are `Credential`. Startup repairs these types
-before serving traffic because Langflow rejects a Credential value bound to an
-ordinary `StrInput` or `IntInput`, even when that component is not on the path
-ultimately selected by the agent.
-
-On clustered deployments, `OPENRAG_FLOWS_PATH` may point to a shared volume
-rather than the files baked into the backend image. The GitOps flow revision
-must therefore equal the immutable source revision behind the image tag, and
-the deployment refreshes those shared files on rollout. Retrieval flow version
-10 safely repairs the exact stale-volume v9 state that exposed this mismatch.
-
-The Knowledge document-detail page uses the same exhaustive contract. The
-table passes the stable `document_id`; legacy filename-only links first resolve
-that identity through an exact `data_sources` lookup. The frontend then follows
-every authenticated cursor before displaying chunks. It never derives a
-document detail from a bounded corpus-wide `*` result set. The Original
-document panel also renders the stored `source_provenance` JSON so entity and
-relation metadata remain directly inspectable.
-
-Inspectors may switch from source order to relevance after entering a query.
-This performs a second hybrid search scoped to the exact open filename and
-merges its scores into the already complete chunk set. Scored candidates appear
-first; unscored chunks remain visible afterward. Relevance therefore changes
-presentation only and never becomes a coverage filter.
+The repository-owned flow is migrated only when its complete canonical graph
+matches a known OpenRAG fingerprint. Customized Langflow graphs fail closed and
+are never overwritten. Flow version 18 moves PROV-O into every normal query,
+removes the automatic archive-read cascade, exposes direct/context retrieval
+planes, and gives the source panel a clear visual distinction between direct
+matches and intentional relation context.

@@ -117,12 +117,27 @@ async def search_endpoint(
                 "source_entity_system": item.get("source_entity_system"),
                 "source_entity_alternate_ids": item.get("source_entity_alternate_ids", []),
                 "source_relation_target_ids": item.get("source_relation_target_ids", []),
+                "source_relation_predicates": item.get("source_relation_predicates", []),
                 "source_relation_roles": item.get("source_relation_roles", []),
             }
             for item in result.get("results", [])
         ]
 
-        return JSONResponse({"results": results})
+        response: dict[str, Any] = {"results": results}
+        # Preserve deterministic Retrieval v2 diagnostics for API clients.
+        # These fields are optional so legacy indexes and weighted retrieval
+        # keep their existing response shape.
+        for field in (
+            "retrieval_fusion",
+            "document_graph",
+            "provenance_retrieval",
+            "retrieval_planes",
+            "noise_accounting",
+        ):
+            value = result.get(field)
+            if isinstance(value, dict):
+                response[field] = value
+        return JSONResponse(response)
 
     except ValueError as e:
         return JSONResponse({"error": str(e)}, status_code=400)

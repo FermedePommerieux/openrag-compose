@@ -1,6 +1,11 @@
 # ADR 0009: Verify answer claims against sources
 
-Status: accepted
+Status: superseded as an implementation; truth principle retained
+
+Version 18 removed the multi-model readers, coordinators and validators. The
+surviving rule is stricter and simpler: no LLM may exclude retrieved material;
+OpenSearch returns direct evidence plus explicitly labelled relation context,
+and the human evaluates the pieces. Citations remain mandatory for chat facts.
 
 ## Context
 

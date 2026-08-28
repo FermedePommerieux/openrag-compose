@@ -7,125 +7,89 @@ import pytest
 from services.retrieval_service import (
     RetrievalSettings,
     adaptive_chunk_limit,
-    audit_topic_query,
+    consensus_rank_fusion,
     decode_exhaustive_cursor,
     encode_exhaustive_cursor,
-    exhaustive_retrieval_requested,
     exhaustive_scope_sha256,
     limit_chunks_per_document,
+    normalized_score_fusion,
     reciprocal_rank_fusion,
 )
 from services.search_service import (
-    ARCHIVE_AUDIT_VECTOR_INITIAL_DEPTH,
-    ARCHIVE_AUDIT_VECTOR_MAX_DEPTH,
+    PROVENANCE_TRAVERSAL_PREDICATES,
     SearchService,
-    _audit_expansion_document_limit,
-    _calibrate_audit_vector_lanes,
+    _build_document_graph,
     _propagate_provenance_paths,
     _provenance_relation_paths,
+    _provenance_relation_target_query,
 )
-
-
-def test_archive_audit_vector_depth_is_bounded_to_empirical_neighbourhood():
-    assert ARCHIVE_AUDIT_VECTOR_INITIAL_DEPTH == 100
-    assert ARCHIVE_AUDIT_VECTOR_MAX_DEPTH == 100
-
-
-def test_archive_expansion_gate_adapts_by_idf_instead_of_fixed_candidate_cap():
-    assert _audit_expansion_document_limit(5_756) == 76
-    assert _audit_expansion_document_limit(100) == 10
-    assert _audit_expansion_document_limit(4) == 8
-    assert _audit_expansion_document_limit(None) is None
-
-
-def test_archive_audit_reasoner_can_be_cheaper_than_final_agent(monkeypatch):
-    from services import search_service
-
-    monkeypatch.setenv("OPENRAG_AUDIT_REASONING_MODEL", "gpt-5.6-luna")
-    monkeypatch.setattr(
-        search_service,
-        "clients",
-        SimpleNamespace(patched_llm_client=SimpleNamespace()),
-    )
-    service = object.__new__(SearchService)
-    service.audit_reasoning_service = None
-
-    reasoner, error = service._resolve_audit_reasoner(
-        SimpleNamespace(agent=SimpleNamespace(llm_model="gpt-5.6-sol"))
-    )
-
-    assert error is None
-    assert reasoner is not None
-    assert reasoner.model == "gpt-5.6-luna"
-
-
-@pytest.mark.parametrize(
-    "prompt",
-    [
-        "Fais une recherche exhaustive sur toute l'archive",
-        "Je veux tous les mails liés à ce projet",
-        "Vérifiez tout avant de répondre",
-        "I need complete coverage of the corpus",
-        "Find all emails mentioning this person",
-    ],
-)
-def test_explicit_exhaustive_intent_is_detected(prompt):
-    assert exhaustive_retrieval_requested(prompt) is True
-
-
-@pytest.mark.parametrize(
-    "prompt",
-    [
-        "Quels sont les mails les plus pertinents ?",
-        "Une recherche ciblée suffit",
-        "Je ne demande pas une recherche exhaustive",
-        "Answer briefly from the best sources",
-    ],
-)
-def test_focused_or_negated_intent_is_not_promoted(prompt):
-    assert exhaustive_retrieval_requested(prompt) is False
-
-
-def test_archive_audit_extracts_topic_from_real_misspelled_request():
-    prompt = (
-        "e veux que tu fasse une recherche exhaustive complète sur toute l'archive sur la "
-        "thématique ancien surface pastorale/sylvopastoralisme en lien avec la ddt. "
-        "je veux tous les échanges administratifs sur ce projet, vérifies tout"
-    )
-
-    assert exhaustive_retrieval_requested(prompt) is True
-    assert audit_topic_query(prompt) == "ancien surface pastorale sylvopastoralisme ddt"
-
-
-def test_archive_topic_extraction_fails_open_without_explicit_marker():
-    prompt = "Recherche exhaustive des anciennes surfaces pastorales"
-
-    assert audit_topic_query(prompt) == prompt
 
 
 def _hit(identifier: str, document_id: str, text: str = "text") -> dict:
     return {"_id": identifier, "_source": {"document_id": document_id, "text": text}}
 
 
-def test_uncalibrated_audit_vector_lane_is_excluded_and_disclosed():
-    vector_hit = _hit("semantic-only", "document-semantic-only")
-    vector_hit["_score"] = 0.99
+def test_document_graph_keeps_relation_noise_separate_without_excluding_it():
+    direct_hit = _hit("direct-chunk", "direct")
+    context_hit = _hit("context-chunk", "context")
+    context_hit["_source"].update(
+        {
+            "retrieval_relation_depth": 1,
+            "retrieval_relation_paths": [
+                {
+                    "from_document_id": "direct",
+                    "to_document_id": "context",
+                    "relation_role": "reply_to",
+                    "direction": "anchor_to_candidate",
+                    "via_entity_id": "urn:mail:context",
+                }
+            ],
+        }
+    )
     retrieval_results = {
-        "lexical": {"hits": {"hits": []}},
-        "vector:model": {"hits": {"hits": [vector_hit]}},
+        "lexical": {"hits": {"hits": [direct_hit]}},
+        "provenance": {"hits": {"hits": [context_hit]}},
     }
-    metadata = {"lexical": {}, "vector:model": {}}
+    chunks = [
+        {"document_id": "direct", "chunk_id": "direct-chunk", "filename": "direct.eml"},
+        {
+            "document_id": "context",
+            "chunk_id": "context-chunk",
+            "filename": "context.eml",
+            "retrieval_relation_depth": 1,
+            "retrieval_relation_paths": context_hit["_source"]["retrieval_relation_paths"],
+        },
+    ]
 
-    _calibrate_audit_vector_lanes(retrieval_results, metadata)
+    register, graph = _build_document_graph(chunks, retrieval_results)
 
-    assert retrieval_results["vector:model"]["hits"]["hits"] == []
-    assert metadata["vector:model"]["selection"] == {
-        "rule": "uncalibrated_excluded",
-        "reason": "no_lexical_supported_document_in_vector_lane",
-        "calibration_documents": 0,
-        "raw_candidates": 1,
-        "selected_candidates": 0,
+    assert [item["retrieval_plane"] for item in register] == ["direct", "context"]
+    assert register[1]["relevance"]["level"] == "contextual"
+    assert register[1]["relevance"]["probability_calibrated"] is False
+    assert graph["llm_generated"] is False
+    assert graph["edge_count"] == 1
+    assert graph["edges"][0]["prov_predicate"] == ("http://www.w3.org/ns/prov#wasInfluencedBy")
+    assert graph["canonical_relation_field"] == ("source_provenance.relations.prov_predicate")
+
+
+def test_provenance_query_uses_canonical_predicates_and_bounded_legacy_fallback():
+    query = _provenance_relation_target_query({"urn:mail:anchor"})
+    nested_bool = query["nested"]["query"]["bool"]
+
+    assert nested_bool["filter"] == [
+        {"terms": {"source_provenance.relations.target.id": ["urn:mail:anchor"]}}
+    ]
+    assert nested_bool["should"][0] == {
+        "terms": {
+            "source_provenance.relations.prov_predicate": sorted(PROVENANCE_TRAVERSAL_PREDICATES)
+        }
     }
+    assert nested_bool["must_not"] == [
+        {"terms": {"source_provenance.relations.role": ["contained_in"]}}
+    ]
+    assert nested_bool["should"][1]["bool"]["must_not"] == [
+        {"exists": {"field": "source_provenance.relations.prov_predicate"}}
+    ]
 
 
 def test_provenance_path_resolves_implicit_reply_to_explicit_anchor():
@@ -158,10 +122,87 @@ def test_provenance_path_resolves_implicit_reply_to_explicit_anchor():
             "from_document_id": "anchor",
             "from_filename": "explicit-request.eml",
             "to_document_id": "reply",
+            "prov_predicate": "http://www.w3.org/ns/prov#wasInfluencedBy",
             "relation_role": "reply_to",
             "direction": "candidate_to_anchor",
             "via_entity_id": "urn:mail:anchor",
             "anchor_excerpt": "Anciennes surfaces pastorales",
+        }
+    ]
+
+
+def test_shared_target_graph_projection_preserves_both_prov_assertions():
+    anchor = _hit("anchor-chunk", "anchor")
+    anchor["_source"].update(
+        {
+            "source_entity_id": "urn:mail:anchor",
+            "source_provenance": {
+                "relations": [
+                    {
+                        "role": "member_of",
+                        "target": {"id": "urn:thread:one"},
+                    }
+                ]
+            },
+        }
+    )
+    candidate = _hit("candidate-chunk", "candidate")
+    candidate["_source"].update(
+        {
+            "source_entity_id": "urn:mail:candidate",
+            "source_provenance": {
+                "relations": [
+                    {
+                        "role": "member_of",
+                        "target": {"id": "urn:thread:one"},
+                    }
+                ]
+            },
+        }
+    )
+    paths = _provenance_relation_paths({"anchor": anchor}, candidate)
+    candidate["_source"]["retrieval_relation_paths"] = paths
+    candidate["_source"]["retrieval_relation_depth"] = 1
+
+    _register, graph = _build_document_graph(
+        [
+            {"document_id": "anchor", "chunk_id": "anchor-chunk"},
+            {
+                "document_id": "candidate",
+                "chunk_id": "candidate-chunk",
+                "retrieval_relation_paths": paths,
+                "retrieval_relation_depth": 1,
+            },
+        ],
+        {
+            "lexical": {"hits": {"hits": [anchor]}},
+            "provenance": {"hits": {"hits": [candidate]}},
+        },
+    )
+
+    assert graph["edges"] == [
+        {
+            "source_document_id": "anchor",
+            "target_document_id": "candidate",
+            "prov_predicate": None,
+            "role": None,
+            "via_entity_id": "urn:thread:one",
+            "evidence": "retrieval_relation_path",
+            "edge_kind": "shared_target_projection",
+            "assertions": [
+                {
+                    "document_id": "anchor",
+                    "prov_predicate": "http://www.w3.org/ns/prov#wasMemberOf",
+                    "role": "member_of",
+                    "target_entity_id": "urn:thread:one",
+                },
+                {
+                    "document_id": "candidate",
+                    "prov_predicate": "http://www.w3.org/ns/prov#wasMemberOf",
+                    "role": "member_of",
+                    "target_entity_id": "urn:thread:one",
+                },
+            ],
         }
     ]
 
@@ -190,35 +231,17 @@ def test_provenance_path_survives_when_rrf_keeps_a_vector_copy():
 
 
 @pytest.mark.asyncio
-async def test_archive_audit_orchestrator_reads_every_candidate_before_synthesis(monkeypatch):
+async def test_normal_search_does_not_start_document_reads_or_llm_synthesis(monkeypatch):
     from services import search_service
 
     monkeypatch.setattr(search_service, "get_auth_context", lambda: ("user-1", "jwt"))
-    synthesis = {
-        "strategy": "hierarchical_verified_map_reduce",
-        "complete": True,
-        "verified": True,
-        "model": "test-reasoner",
-        "findings": [
-            {
-                "statement": "Verified exchange.",
-                "chunk_ids": ["chunk-a", "chunk-b"],
-            }
-        ],
-        "coverage": {},
-    }
-    reasoner = SimpleNamespace(
-        synthesize_evidence=AsyncMock(return_value=(synthesis, synthesis["coverage"]))
-    )
-    service = SearchService(
-        session_manager=MagicMock(),
-        audit_reasoning_service=reasoner,
-    )
+    service = SearchService(session_manager=MagicMock())
     service.search_tool = AsyncMock(
         return_value={
             "results": [
                 {
                     "document_id": "document-a",
+                    "chunk_id": "chunk-a",
                     "filename": "a.eml",
                     "retrieval_relation_paths": [
                         {
@@ -227,60 +250,36 @@ async def test_archive_audit_orchestrator_reads_every_candidate_before_synthesis
                         }
                     ],
                 },
-                {"document_id": "document-b", "filename": "b.eml"},
+                {"document_id": "document-b", "chunk_id": "chunk-b", "filename": "b.eml"},
             ],
-            "discovery": {"mode": "archive_audit"},
+            "retrieval_planes": {"direct": {"documents": 1}, "context": {"documents": 1}},
             "aggregations": {},
         }
     )
-
-    async def read_document(document_id, **_kwargs):
-        chunk_id = "chunk-a" if document_id == "document-a" else "chunk-b"
-        return {
-            "results": [
-                {
-                    "document_id": document_id,
-                    "chunk_id": chunk_id,
-                    "filename": f"{document_id}.eml",
-                    "text": f"Evidence from {document_id}",
-                }
-            ],
-            "coverage": {
-                "mode": "exhaustive",
-                "document_id": document_id,
-                "covered_chunks": 1,
-                "total_chunks": 1,
-                "complete": True,
-                "next_cursor": None,
-            },
-        }
-
-    service.read_document_chunks = AsyncMock(side_effect=read_document)
+    service.read_document_chunks = AsyncMock()
 
     result = await service.search(
         "projet DDT",
         user_id="user-1",
         jwt_token="jwt",
-        evidence_mode="audit",
+        evidence_mode="focused",
     )
 
     assert {item["chunk_id"] for item in result["results"]} == {"chunk-a", "chunk-b"}
-    chunk_a = next(item for item in result["results"] if item["chunk_id"] == "chunk-a")
-    assert chunk_a["retrieval_relation_paths"][0]["relation_role"] == "reply_to"
-    assert result["coverage"]["complete"] is True
-    assert result["coverage"]["documents_total"] == 2
-    assert result["audit_synthesis"]["complete"] is True
-    assert result["discovery"]["hierarchical_synthesis"]["verified"] is True
-    assert reasoner.synthesize_evidence.await_count == 1
-    assert service.read_document_chunks.await_count == 2
+    service.read_document_chunks.assert_not_awaited()
+    service.search_tool.assert_awaited_once_with(
+        "projet DDT",
+        embedding_model=None,
+        progress_id=None,
+    )
 
 
 @pytest.mark.asyncio
 async def test_direct_exhaustive_document_read_reports_verified_progress():
-    from services.audit_progress_service import audit_progress_service
+    from services.retrieval_progress_service import retrieval_progress_service
 
     progress_id = "directdocumentprogress"
-    audit_progress_service.start(progress_id)
+    retrieval_progress_service.start(progress_id)
     service = SearchService(session_manager=MagicMock())
     service.read_document_chunks = AsyncMock(
         return_value={
@@ -302,11 +301,11 @@ async def test_direct_exhaustive_document_read_reports_verified_progress():
         jwt_token="jwt",
         evidence_mode="exhaustive",
         document_id="document-1",
-        audit_progress_id=progress_id,
+        progress_id=progress_id,
     )
 
     assert result["coverage"]["complete"] is True
-    snapshot = audit_progress_service.snapshot(progress_id)
+    snapshot = retrieval_progress_service.snapshot(progress_id)
     assert snapshot is not None
     assert snapshot["phase"] == "complete"
     assert snapshot["complete"] is True
@@ -360,6 +359,55 @@ def test_rrf_is_reproducible_across_twenty_reordered_equal_score_responses():
         sequences.append(tuple(hit["_id"] for hit in reciprocal_rank_fusion([lexical, vector])))
 
     assert all(sequence == expected for sequence in sequences)
+
+
+def test_normalized_score_fusion_calibrates_each_lane_before_combining_scores():
+    lexical = [_hit("lexical", "a"), _hit("shared", "b")]
+    vector = [_hit("shared", "b"), _hit("vector", "c")]
+    lexical[0]["_score"] = 100.0
+    lexical[1]["_score"] = 10.0
+    vector[0]["_score"] = 0.99
+    vector[1]["_score"] = 0.50
+
+    fused = normalized_score_fusion([lexical, vector])
+
+    # Raw BM25 magnitude never overwhelms the vector lane. The lexical-only
+    # and vector-supported hits receive comparable normalized contributions.
+    assert [hit["_id"] for hit in fused] == ["lexical", "shared", "vector"]
+    assert fused[0]["_retrieval_normalized_score"] == pytest.approx(0.5)
+    assert fused[1]["_retrieval_normalized_score"] == pytest.approx(0.5)
+    assert fused[2]["_retrieval_normalized_score"] == pytest.approx(0.0)
+    assert "_retrieval_normalized_score" not in lexical[0]
+
+
+def test_normalized_score_fusion_does_not_invent_order_for_constant_lane_scores():
+    b = _hit("b", "b")
+    a = _hit("a", "a")
+    b["_score"] = a["_score"] = 2.0
+
+    fused = normalized_score_fusion([[b, a]])
+
+    assert [hit["_id"] for hit in fused] == ["a", "b"]
+    assert all(hit["_retrieval_normalized_score"] == 1.0 for hit in fused)
+
+
+def test_consensus_fusion_keeps_both_policy_signals_without_new_candidates():
+    lexical = [_hit("lexical", "a"), _hit("shared", "b")]
+    vector = [_hit("shared", "b"), _hit("vector", "c")]
+    lexical[0]["_score"] = 100.0
+    lexical[1]["_score"] = 10.0
+    vector[0]["_score"] = 0.99
+    vector[1]["_score"] = 0.50
+
+    fused = consensus_rank_fusion([lexical, vector], k=60)
+
+    assert {hit["_id"] for hit in fused} == {"lexical", "shared", "vector"}
+    assert [hit["_id"] for hit in fused] == ["lexical", "shared", "vector"]
+    shared = fused[1]
+    assert shared["_retrieval_fusion_ranks"] == {"rrf": 1, "normalized": 2}
+    assert shared["_retrieval_rrf_score"] > 0
+    assert shared["_retrieval_normalized_score"] == pytest.approx(0.5)
+    assert "_retrieval_fusion_score" not in lexical[0]
 
 
 def test_rrf_uses_persisted_chunk_id_across_simulated_shard_ties():
@@ -601,8 +649,10 @@ def test_settings_normalize_invalid_or_unbounded_values():
 
 
 @pytest.mark.asyncio
-async def test_search_service_rrf_fuses_lanes_preserves_provenance_and_emits_debug(monkeypatch):
-    """RRF is an explicit opt-in and never relies on incomparable raw scores."""
+async def test_search_service_consensus_fuses_lanes_preserves_provenance_and_emits_debug(
+    monkeypatch,
+):
+    """Standard retrieval converges rank and normalized score policies."""
     from services import search_service
 
     knowledge = SimpleNamespace(
@@ -635,12 +685,17 @@ async def test_search_service_rrf_fuses_lanes_preserves_provenance_and_emits_deb
             "page": 3,
             "chunk_index": 0,
             "chunking_strategy": "hybrid",
+            "source_entity_id": "urn:mail:shared",
+            "source_provenance": {
+                "relations": [{"role": "reply_to", "target": {"id": "urn:mail:related"}}]
+            },
         }
     )
     lexical_only = _hit("lexical", "document-a", "lexical text")
     lexical_only["_source"].update({"filename": "a.pdf", "chunk_index": 2})
-    lexical_second_page = _hit("lexical-page-2", "document-c", "lexical continuation")
     vector_same_document = _hit("vector-a", "document-a", "other text")
+    related = _hit("related", "document-d", "Nous soutenons votre projet")
+    related["_source"].update({"filename": "reply.eml", "source_entity_id": "urn:mail:related"})
     shared["_score"] = 0.9
     vector_same_document["_score"] = 0.8
 
@@ -656,12 +711,11 @@ async def test_search_service_rrf_fuses_lanes_preserves_provenance_and_emits_deb
 
         async def scroll(self, *, body):
             self.scroll_bodies.append(body)
-            lexical_second_page["sort"] = [0.9, lexical_second_page["_id"]]
             return {
                 "_scroll_id": "audit-scroll-2",
                 "hits": {
-                    "total": {"value": 3, "relation": "eq"},
-                    "hits": [lexical_second_page],
+                    "total": {"value": 1, "relation": "eq"},
+                    "hits": [],
                 },
             }
 
@@ -684,6 +738,16 @@ async def test_search_service_rrf_fuses_lanes_preserves_provenance_and_emits_deb
                         },
                         "audit_scope_documents": {"value": 100},
                     }
+                }
+            if body.get("size") == 500:
+                related["sort"] = [1.0, related["_id"]]
+                return {
+                    "_scroll_id": "audit-scroll-1",
+                    "hits": {
+                        "total": {"value": 1, "relation": "eq"},
+                        "hits": [related],
+                    },
+                    "aggregations": {"data_sources": {"buckets": []}},
                 }
             bool_query = body.get("query", {}).get("bool", {})
             must = bool_query.get("must", [])
@@ -726,45 +790,11 @@ async def test_search_service_rrf_fuses_lanes_preserves_provenance_and_emits_deb
     session_manager = MagicMock()
     opensearch_client = OpenSearchClient()
     session_manager.get_user_opensearch_client.return_value = opensearch_client
-    audit_reasoner = SimpleNamespace(
-        expand_query=AsyncMock(
-            return_value=(
-                SimpleNamespace(
-                    queries=["surface pastorale ASP"],
-                    entities=["DDT 41"],
-                ),
-                {
-                    "available": True,
-                    "model": "test-reasoner",
-                    "queries": ["surface pastorale ASP"],
-                    "entities": ["DDT 41"],
-                },
-            )
-        ),
-        review_candidates=AsyncMock(
-            side_effect=lambda _query, hits, **_kwargs: (
-                hits,
-                {
-                    "available": True,
-                    "model": "test-reasoner",
-                    "reviewed_documents": len(hits),
-                    "retained_documents": len(hits),
-                    "relevant": len(hits),
-                    "uncertain": 0,
-                    "irrelevant": 0,
-                    "failed_batches": 0,
-                },
-            )
-        ),
-    )
-    service = SearchService(
-        session_manager=session_manager,
-        audit_reasoning_service=audit_reasoner,
-    )
+    service = SearchService(session_manager=session_manager)
 
     result = await service.search_tool("shared text")
 
-    assert [item["chunk_id"] for item in result["results"]] == ["shared", "lexical"]
+    assert [item["chunk_id"] for item in result["results"]] == ["shared", "lexical", "related"]
     assert result["results"][0]["source_url"] == "https://example.test/b"
     assert result["results"][0]["document_id"] == "document-b"
     assert result["results"][0]["connector_file_id"] == "drive-file-b"
@@ -777,8 +807,25 @@ async def test_search_service_rrf_fuses_lanes_preserves_provenance_and_emits_deb
         "vector:test-model-a": 2,
         "vector:test-model-b": 1,
     }
+    assert result["retrieval_debug"]["configured_strategy"] == "rrf"
+    assert result["retrieval_debug"]["effective_strategy"] == "rrf_normalized_consensus"
+    assert result["retrieval_fusion"] == {
+        "strategy": "rrf_normalized_consensus",
+        "candidate_lanes": 3,
+        "first_stage": [
+            {"method": "rrf", "input": "rank"},
+            {
+                "method": "normalized_score",
+                "normalization": "min_max_per_lane",
+                "combination": "equal_weight_arithmetic_mean",
+            },
+        ],
+        "final_stage": {"method": "rrf", "k": 60},
+        "additional_opensearch_requests": 0,
+        "llm_used": False,
+    }
     lane_bodies = [body for body in OpenSearchClient.bodies if body.get("size") != 0]
-    assert len(lane_bodies) == 3
+    assert len(lane_bodies) == 5
     assert all(
         body["sort"]
         == [
@@ -787,77 +834,19 @@ async def test_search_service_rrf_fuses_lanes_preserves_provenance_and_emits_deb
         ]
         for body in lane_bodies
     )
-
-    opensearch_client.bodies.clear()
-    audit_result = await service.search_tool("shared text", audit_discovery=True)
-    audit_bodies = [body for body in opensearch_client.bodies if body.get("size") != 0]
-    assert len(audit_bodies) == 5
-    lexical_audit_bodies = [body for body in audit_bodies if body["size"] == 500]
-    assert len(lexical_audit_bodies) == 3
-    lexical_audit_body = lexical_audit_bodies[0]
-    assert lexical_audit_body["track_total_hits"] is True
-    assert (
-        lexical_audit_body["query"]["bool"]["should"][0]["multi_match"]["minimum_should_match"]
-        == "2<50%"
+    assert result["provenance_retrieval"]["fixpoint_reached"] is True
+    assert result["provenance_retrieval"]["canonical_field"] == (
+        "source_provenance.relations.prov_predicate"
     )
-    assert sorted(body["size"] for body in audit_bodies if body["size"] != 500) == [100, 100]
-    assert opensearch_client.scroll_bodies == [
-        {"scroll_id": "audit-scroll-1", "scroll": "5m"},
-        {"scroll_id": "audit-scroll-1", "scroll": "5m"},
-        {"scroll_id": "audit-scroll-1", "scroll": "5m"},
-    ]
-    assert opensearch_client.cleared_scrolls == [
-        {"scroll_id": ["audit-scroll-2"]},
-        {"scroll_id": ["audit-scroll-2"]},
-        {"scroll_id": ["audit-scroll-2"]},
-    ]
-    assert audit_result["discovery"]["mode"] == "archive_audit"
-    assert audit_result["discovery"]["documents_found"] == 3
-    assert audit_result["discovery"]["lanes"]["lexical"]["pages"] == 2
-    assert audit_result["discovery"]["lanes"]["lexical"]["returned"] == 3
-    assert audit_result["discovery"]["lanes"]["lexical"]["query_rule"] == {
-        "type": "adaptive_minimum_should_match",
-        "minimum_should_match": "2<50%",
+    assert result["provenance_retrieval"]["predicates"] == sorted(PROVENANCE_TRAVERSAL_PREDICATES)
+    assert result["provenance_retrieval"]["role_policy"] == {
+        "purpose": "qualify_same_predicate_context",
+        "excluded": ["contained_in"],
     }
-    selection = audit_result["discovery"]["lanes"]["vector:test-model-a"]["selection"]
-    assert selection["score_threshold"] == pytest.approx(0.85)
-    assert {key: value for key, value in selection.items() if key != "score_threshold"} == {
-        "rule": "lexical_supported_median_similarity",
-        "calibration_documents": 2,
-        "raw_candidates": 2,
-        "selected_candidates": 1,
-    }
-    assert audit_result["discovery"]["lexical_completeness_certified"] is True
-    assert audit_result["discovery"]["truncated"] is False
-    assert audit_result["discovery"]["semantic_completeness_certified"] is False
-    assert audit_result["discovery"]["query_expansion"]["model"] == "test-reasoner"
-    assert audit_result["discovery"]["lanes"]["lexical_expansion:1"]["query"] == (
-        "surface pastorale ASP"
-    )
-    assert audit_result["discovery"]["lanes"]["entity_expansion:1"]["query"] == "DDT 41"
-    assert audit_result["discovery"]["lanes"]["entity_expansion:1"]["query_rule"] == {
-        "type": "grounded_entity_phrase"
-    }
-    assert audit_result["discovery"]["lanes"]["entity_expansion:1"]["selection"] == {
-        "rule": "adaptive_idf_expansion_gate",
-        "selected": True,
-        "visible_corpus_documents": 100,
-        "maximum_matching_documents": 10,
-        "matching_documents": 3,
-    }
-    assert audit_result["discovery"]["contextual_review_complete"] is None
-    assert audit_result["discovery"]["candidate_selection_complete"] is True
-    assert audit_result["discovery"]["answer_verification_policy"] == (
-        "claims_against_cited_source_chunks"
-    )
-    assert audit_result["discovery"]["contextual_review"] == {
-        "available": False,
-        "reason": "disabled_pre_read_exclusion",
-        "selection_policy": "all_discovered_candidates_read",
-        "pre_read_exclusion_applied": False,
-        "reviewed_documents": 0,
-        "retained_documents": 3,
-        "excluded_documents": 0,
-    }
-    assert audit_reasoner.expand_query.await_count == 1
-    assert audit_reasoner.review_candidates.await_count == 0
+    assert result["retrieval_planes"]["direct"]["documents"] == 2
+    assert result["retrieval_planes"]["direct"]["ranking"] == "rrf_normalized_consensus"
+    assert result["retrieval_planes"]["context"]["documents"] == 1
+    assert result["results"][2]["retrieval_plane"] == "context"
+    assert result["results"][2]["retrieval_relation_depth"] == 1
+    assert result["results"][2]["retrieval_relevance"]["level"] == "contextual"
+    assert result["noise_accounting"]["excluded_relation_documents"] == 0

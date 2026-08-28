@@ -134,9 +134,7 @@ class FileService:
             # This is a proof-oriented filter, not fuzzy search: callers such
             # as archival connectors must verify the exact submitted filename
             # and deterministic document_id before declaring ingestion valid.
-            filter_clauses.append(
-                {"terms": {"filename": list(dict.fromkeys(data_sources))}}
-            )
+            filter_clauses.append({"terms": {"filename": list(dict.fromkeys(data_sources))}})
 
         if search:
             # Combine wildcard (partial), prefix, and fuzzy for flexible matching
@@ -185,6 +183,7 @@ class FileService:
                                     "source_entity_system",
                                     "source_entity_alternate_ids",
                                     "source_relation_target_ids",
+                                    "source_relation_predicates",
                                     "source_relation_roles",
                                     "owner",
                                     "owner_name",
@@ -230,6 +229,7 @@ class FileService:
                     "source_entity_system": source.get("source_entity_system"),
                     "source_entity_alternate_ids": source.get("source_entity_alternate_ids", []),
                     "source_relation_target_ids": source.get("source_relation_target_ids", []),
+                    "source_relation_predicates": source.get("source_relation_predicates", []),
                     "source_relation_roles": source.get("source_relation_roles", []),
                     "owner": source.get("owner", ""),
                     "owner_name": source.get("owner_name", ""),

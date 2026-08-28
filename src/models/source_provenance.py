@@ -160,6 +160,14 @@ class SourceProvenance(BaseModel):
             "source_entity_system": self.entity.source_system or "",
             "source_entity_alternate_ids": list(self.entity.alternate_ids),
             "source_relation_target_ids": [relation.target.id for relation in self.relations],
+            # Full PROV-O predicate URIs are the canonical retrieval field.
+            # ``source_relation_roles`` remains a bounded OpenRAG qualifier
+            # used for policies that PROV-O alone cannot express, such as
+            # distinguishing an attachment collection from a broad archive.
+            "source_relation_predicates": [
+                relation.prov_predicate or ROLE_TO_PROV_PREDICATE[relation.role]
+                for relation in self.relations
+            ],
             "source_relation_roles": [relation.role.value for relation in self.relations],
         }
 

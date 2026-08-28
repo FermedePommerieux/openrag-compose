@@ -15,23 +15,18 @@ def _usage(input_tokens: int, output_tokens: int, *, cached: int = 0, reasoning:
     )
 
 
-def test_accumulates_reasoning_embedding_and_cached_cost_per_audit() -> None:
+def test_prices_reasoning_cached_input_and_embeddings_per_response() -> None:
     service = TokenUsageService()
-    service.reset("audit-1")
+    sol = service.describe_usage(
+        "gpt-5.6-sol",
+        _usage(1_000, 100, cached=400, reasoning=50),
+    )
+    embedding = service.describe_usage("text-embedding-3-large", _usage(2_000, 0))
 
-    with service.scope("audit-1"):
-        service.record_usage("gpt-5.6-sol", _usage(1_000, 100, cached=400, reasoning=50))
-        service.record_usage("text-embedding-3-large", _usage(2_000, 0))
-
-    result = service.snapshot("audit-1")
-    assert result["input_tokens"] == 3_000
-    assert result["output_tokens"] == 100
-    assert result["input_tokens_details"]["cached_tokens"] == 400
-    assert result["output_tokens_details"]["reasoning_tokens"] == 50
-    assert result["calls"] == 2
-    # Sol: 600*4 + 400*.4 + 100*20 = $0.00456; embedding: $0.00026.
-    assert result["cost_usd"] == pytest.approx(0.00482)
-    assert result["cost_complete"] is True
+    assert sol["input_tokens_details"]["cached_tokens"] == 400
+    assert sol["output_tokens_details"]["reasoning_tokens"] == 50
+    assert sol["cost_usd"] == pytest.approx(0.00456)
+    assert embedding["cost_usd"] == pytest.approx(0.00026)
 
 
 def test_applies_long_context_multiplier_to_each_call_not_aggregate() -> None:
@@ -42,38 +37,7 @@ def test_applies_long_context_multiplier_to_each_call_not_aggregate() -> None:
 
 def test_unknown_model_keeps_tokens_but_refuses_to_invent_cost() -> None:
     service = TokenUsageService()
-    service.reset("audit-unknown")
-    service.record_usage("private-model", _usage(10, 5), audit_id="audit-unknown")
-    result = service.snapshot("audit-unknown")
+    result = service.describe_usage("private-model", _usage(10, 5))
     assert result["total_tokens"] == 15
     assert result["cost_usd"] is None
     assert result["cost_complete"] is False
-
-
-def test_application_cache_reports_avoided_usage_without_billing_it() -> None:
-    service = TokenUsageService()
-    service.reset("audit-cache")
-
-    service.record_application_cache_hit(
-        "gpt-5.6-luna",
-        {
-            "input_tokens": 10_000,
-            "output_tokens": 500,
-            "total_tokens": 10_500,
-            "cost_usd": 0.0008,
-        },
-        audit_id="audit-cache",
-    )
-
-    result = service.snapshot("audit-cache")
-    assert result["calls"] == 0
-    assert result["total_tokens"] == 0
-    assert result["cost_usd"] == 0.0
-    assert result["application_cache"] == {
-        "hits": 1,
-        "avoided_provider_calls": 1,
-        "avoided_input_tokens": 10_000,
-        "avoided_output_tokens": 500,
-        "avoided_total_tokens": 10_500,
-        "avoided_cost_usd": 0.0008,
-    }

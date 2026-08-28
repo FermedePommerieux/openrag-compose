@@ -132,19 +132,16 @@ For an example, see the [Langflow quickstart](https://docs.langflow.org/get-star
 * [Troubleshoot chat issues](/support/troubleshoot#chat-issues)
 * [Troubleshoot document ingestion or similarity search issues](/support/troubleshoot#document-ingestion-or-similarity-search-issues)
 
-## Exhaustive audit continuity and usage
+## Retrieval progress and usage
 
-An explicitly exhaustive archive request is executed as a durable,
-owner-scoped audit job. Losing a live page's streaming connection does not
-cancel the producer: that page polls the existing audit identifier and
-displays its stored result when complete. The durable status also preserves a
-non-empty terminal explanation, token usage and progress counters when an
-upstream operation fails; the UI must show that failure rather than remaining
-on `Thinking`.
+Streaming chat displays small factual progress updates while the normal
+OpenSearch retrieval is running: direct lane search, rank convergence, PROV-O
+relation traversal and document-graph construction. These events contain only
+phase codes and integer counters. They are observability, not evidence, and
+never enter the answer or conversation history.
 
-Assistant messages display provider-reported input, cached, output and
-reasoning tokens. They also display a USD estimate based on the dated public
-price table shipped with OpenRAG. For exhaustive audits the figures aggregate
-the complete operation, including internal reasoning workers and query
-embeddings; they are not limited to the final synthesis call. An unavailable
-price is shown as unavailable rather than estimated.
+Assistant messages display the input, cached, output and reasoning token usage
+reported by the response provider, plus an estimated USD cost when that model
+has a known price. OpenSearch retrieval and PROV-O traversal are local and do
+not consume LLM tokens. There is no detached archive-audit job or hidden
+multi-model validation bill.

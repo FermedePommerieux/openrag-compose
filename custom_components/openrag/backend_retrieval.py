@@ -1,8 +1,8 @@
 """Thin Langflow tool that delegates document search to the OpenRAG backend.
 
-The backend owns query construction, ACL-scoped OpenSearch access, RRF,
-diversity, reranking and provenance.  This component deliberately contains no
-OpenSearch query logic so the chat agent cannot drift from ``SearchService``.
+The backend owns query construction, ACL-scoped OpenSearch access, consensus
+fusion, diversity, reranking and provenance. This component deliberately
+contains no OpenSearch query logic so chat cannot drift from ``SearchService``.
 """
 
 from __future__ import annotations
@@ -32,6 +32,8 @@ MODEL_EVIDENCE_FIELDS = (
     "chunk_index",
     "evidence_order",
     "score",
+    "retrieval_plane",
+    "retrieval_relation_depth",
     "text",
 )
 MODEL_DOCUMENT_FIELDS = (
@@ -44,50 +46,26 @@ MODEL_DOCUMENT_FIELDS = (
     "source_entity_system",
     "source_entity_alternate_ids",
     "source_relation_target_ids",
+    "source_relation_predicates",
     "source_relation_roles",
-    # Legacy advisory relevance fields remain readable for older backend
-    # responses. They are never an inclusion gate: the current backend keeps
-    # every discovered candidate and validates final claims against sources.
     "retrieval_relation_paths",
-    "retrieval_relevance_decision",
-    "retrieval_relevance_reason",
-    "retrieval_supporting_document_ids",
+    "retrieval_plane",
+    "retrieval_relation_depth",
+    "retrieval_channels",
+    "retrieval_relevance",
 )
 MODEL_COVERAGE_FIELDS = (
     "mode",
-    "requested",
-    "scope",
     "complete",
     "document_id",
     "covered_chunks",
     "total_chunks",
     "coverage_ratio",
-    "documents_complete",
-    "documents_total",
     "next_cursor",
     "error",
-    "filename",
 )
-# These fields are computed during audit discovery rather than persisted in
-# OpenSearch. Carry them onto the subsequent full-document reads so the final
-# model manifest and source artifact do not lose the proof that selected an
-# implicit document.
-AUDIT_DOCUMENT_CONTEXT_FIELDS = (
-    "retrieval_relation_paths",
-    "retrieval_relevance_decision",
-    "retrieval_relevance_reason",
-    "retrieval_supporting_document_ids",
-)
-# Compatibility guard for an older backend that has not produced a certified
-# hierarchical synthesis. At roughly three characters per token this leaves a
-# conservative margin below a 272k context once prompts and answer tokens are
-# included. New archive audits never rely on this fallback.
-MODEL_RAW_EVIDENCE_CHARACTER_BUDGET = 600_000
+MODEL_PROVENANCE_CONTEXT_EXCERPT_CHARACTERS = 800
 FOCUSED_BACKEND_TIMEOUT_SECONDS = 2_400.0
-# Keep this below the backend's default LANGFLOW_STREAM_TIMEOUT (six hours) so
-# the inner failure can be checkpointed and delivered before the outer
-# OpenAI-compatible Langflow connection reaches its own guard.
-AUDIT_BACKEND_TIMEOUT_SECONDS = 18_000.0
 
 
 def _as_text(value: Any) -> str:
@@ -133,28 +111,22 @@ def _model_payload(payload: dict[str, Any]) -> dict[str, Any]:
     modest chunks expanded to more than 512k input tokens.
     """
     results = [item for item in payload.get("results", []) if isinstance(item, dict)]
-    audit_synthesis = payload.get("audit_synthesis")
-    synthesis_certified = (
-        isinstance(audit_synthesis, dict)
-        and audit_synthesis.get("complete") is True
-        and audit_synthesis.get("verified") is True
-    )
-    synthesis_failed = (
-        isinstance(audit_synthesis, dict) and not synthesis_certified
-    )
-    raw_characters = sum(len(str(item.get("text") or "")) for item in results)
-    include_raw_evidence = (
-        not synthesis_certified
-        and not synthesis_failed
-        and raw_characters <= MODEL_RAW_EVIDENCE_CHARACTER_BUDGET
-    )
+    is_provenance_search = isinstance(payload.get("retrieval_planes"), dict)
     documents: list[dict[str, Any]] = []
     documents_by_id: dict[str, dict[str, Any]] = {}
     evidence: list[dict[str, Any]] = []
 
     for item in results:
-        if include_raw_evidence:
-            evidence.append(_present_fields(item, MODEL_EVIDENCE_FIELDS))
+        projected_evidence = _present_fields(item, MODEL_EVIDENCE_FIELDS)
+        if (
+            is_provenance_search
+            and projected_evidence.get("retrieval_plane") == "context"
+            and "text" in projected_evidence
+        ):
+            projected_evidence["text"] = str(projected_evidence["text"])[
+                :MODEL_PROVENANCE_CONTEXT_EXCERPT_CHARACTERS
+            ]
+        evidence.append(projected_evidence)
         document_id = _as_text(item.get("document_id"))
         if not document_id:
             continue
@@ -175,52 +147,22 @@ def _model_payload(payload: dict[str, Any]) -> dict[str, Any]:
         "documents": documents,
         "evidence_chunks_available": len(results),
     }
-    if isinstance(audit_synthesis, dict):
-        compact["audit_synthesis"] = audit_synthesis
-    if not include_raw_evidence and not synthesis_certified:
-        compact["error"] = (
-            "Hierarchical audit synthesis is incomplete; raw evidence was withheld to prevent "
-            "an uncertified or over-context answer."
-        )
-        compact["raw_evidence_omitted"] = True
-        compact["raw_evidence_characters"] = raw_characters
+    for field in (
+        "retrieval_fusion",
+        "document_graph",
+        "provenance_retrieval",
+        "retrieval_planes",
+        "noise_accounting",
+    ):
+        value = payload.get(field)
+        if isinstance(value, dict):
+            compact[field] = value
     coverage = payload.get("coverage")
     if isinstance(coverage, dict):
         compact_coverage = _present_fields(
             coverage, MODEL_COVERAGE_FIELDS, keep_null=("next_cursor",)
         )
-        nested = coverage.get("documents")
-        if isinstance(nested, list):
-            compact_coverage["documents"] = [
-                _present_fields(item, MODEL_COVERAGE_FIELDS, keep_null=("next_cursor",))
-                for item in nested
-                if isinstance(item, dict)
-            ]
         compact["coverage"] = compact_coverage
-    discovery = payload.get("discovery")
-    if isinstance(discovery, dict):
-        compact["discovery"] = {
-            key: discovery[key]
-            for key in (
-                "mode",
-                "query_normalization",
-                "expansion_selectivity",
-                "documents_found",
-                "chunks_returned",
-                "lanes",
-                "truncated",
-                "lexical_completeness_certified",
-                "semantic_completeness_certified",
-                "provenance_completeness_certified",
-                "contextual_review_complete",
-                "candidate_selection_complete",
-                "answer_verification_policy",
-                "query_expansion",
-                "contextual_review",
-                "hierarchical_synthesis",
-            )
-            if key in discovery
-        }
     for field in ("error", "warning", "retrieval_strategy", "retrieval_mode"):
         if field in payload and payload[field] not in (None, ""):
             compact[field] = payload[field]
@@ -264,8 +206,8 @@ class OpenRAGBackendRetrievalComponent(LCToolComponent):
             load_from_db=True,
             advanced=True,
             info=(
-                "Backend filters, result limit, score threshold and trusted retrieval intent "
-                "supplied by OpenRAG through a request-scoped Langflow global variable."
+                "Backend filters, result limit and score threshold supplied by OpenRAG "
+                "through a request-scoped Langflow global variable."
             ),
         ),
         IntInput(
@@ -286,10 +228,10 @@ class OpenRAGBackendRetrievalComponent(LCToolComponent):
         )
     ]
 
-    def _request_context(self) -> tuple[dict[str, Any], int, float, str, str]:
+    def _request_context(self) -> tuple[dict[str, Any], int, float, str]:
         raw = _as_text(getattr(self, "filter_expression", ""))
         if not raw or raw == "OPENRAG_QUERY_FILTER":
-            return {}, max(1, int(self.number_of_results or 10)), 0.0, "focused", ""
+            return {}, max(1, int(self.number_of_results or 10)), 0.0, ""
         try:
             parsed = json.loads(raw)
         except json.JSONDecodeError as exc:
@@ -307,15 +249,10 @@ class OpenRAGBackendRetrievalComponent(LCToolComponent):
             score_threshold = float(score_threshold)
         except (TypeError, ValueError) as exc:
             raise ValueError("OpenRAG retrieval limit or score threshold is invalid") from exc
-        retrieval_intent = _as_text(parsed.get("retrievalIntent", "focused")).lower()
-        if retrieval_intent not in {"focused", "exhaustive"}:
-            raise ValueError("OpenRAG retrieval intent must be focused or exhaustive")
-        audit_progress_id = _as_text(parsed.get("auditProgressId", ""))
-        if len(audit_progress_id) > 64 or (
-            audit_progress_id and not audit_progress_id.replace("-", "").isalnum()
-        ):
-            raise ValueError("OpenRAG audit progress id is invalid")
-        return filters, limit, score_threshold, retrieval_intent, audit_progress_id
+        progress_id = _as_text(parsed.get("progressId"))
+        if len(progress_id) > 64 or (progress_id and not progress_id.replace("-", "").isalnum()):
+            raise ValueError("OpenRAG retrieval progress id is invalid")
+        return filters, limit, score_threshold, progress_id
 
     @staticmethod
     def _validated_payload(response: httpx.Response) -> dict[str, Any]:
@@ -327,135 +264,6 @@ class OpenRAGBackendRetrievalComponent(LCToolComponent):
         if not isinstance(payload.get("results", []), list):
             raise ValueError("OpenRAG retrieval response has an invalid results field")
         return payload
-
-    def _start_required_exhaustive_reads(
-        self,
-        client: httpx.Client,
-        *,
-        url: str,
-        headers: dict[str, str],
-        query: str,
-        filters: dict[str, Any],
-        limit: int,
-        score_threshold: float,
-        focused_payload: dict[str, Any],
-    ) -> dict[str, Any]:
-        """Turn explicit exhaustive intent into real document evidence reads.
-
-        Focused discovery is allowed to identify candidate documents, but its
-        chunks are never returned as if they were exhaustive evidence.  The
-        tool follows every authenticated cursor for every discovered document
-        itself. Completeness is therefore an execution invariant rather than a
-        discretionary sequence of extra tool calls left to the language model.
-        """
-        if isinstance(focused_payload.get("audit_synthesis"), dict):
-            # Retrieval v15 performs full reads and hierarchical synthesis in
-            # the authenticated backend. Re-reading here would duplicate every
-            # chunk and discard the backend's exact coverage snapshot.
-            return focused_payload
-        discovered: list[dict[str, Any]] = []
-        seen: set[str] = set()
-        for item in focused_payload.get("results", []):
-            if not isinstance(item, dict):
-                continue
-            document_id = _as_text(item.get("document_id"))
-            if not document_id or document_id in seen:
-                continue
-            seen.add(document_id)
-            discovered.append(
-                {
-                    "document_id": document_id,
-                    "filename": _as_text(item.get("filename")),
-                    **_present_fields(item, AUDIT_DOCUMENT_CONTEXT_FIELDS),
-                }
-            )
-
-        exhaustive_results: list[dict[str, Any]] = []
-        document_coverages: list[dict[str, Any]] = []
-        for document in discovered:
-            cursor = ""
-            seen_cursors: set[str] = set()
-            final_coverage: dict[str, Any] = {}
-            while True:
-                response = client.post(
-                    url,
-                    headers=headers,
-                    json={
-                        "query": query,
-                        "filters": filters,
-                        "limit": limit,
-                        "scoreThreshold": score_threshold,
-                        "evidenceMode": "exhaustive",
-                        "documentId": document["document_id"],
-                        "cursor": cursor,
-                        "batchSize": 50,
-                    },
-                )
-                payload = self._validated_payload(response)
-                for item in payload.get("results", []):
-                    if not isinstance(item, dict):
-                        continue
-                    enriched = dict(item)
-                    for field in AUDIT_DOCUMENT_CONTEXT_FIELDS:
-                        if field in document:
-                            enriched[field] = document[field]
-                    exhaustive_results.append(enriched)
-                coverage = payload.get("coverage")
-                if not isinstance(coverage, dict):
-                    final_coverage = {
-                        "mode": "exhaustive",
-                        "document_id": document["document_id"],
-                        "complete": False,
-                        "error": payload.get("error") or "missing coverage certificate",
-                    }
-                    break
-                final_coverage = dict(coverage)
-                if coverage.get("complete") is True:
-                    break
-                next_cursor = _as_text(coverage.get("next_cursor"))
-                if not next_cursor or next_cursor in seen_cursors:
-                    final_coverage["complete"] = False
-                    final_coverage["error"] = (
-                        "incomplete coverage returned no fresh continuation cursor"
-                    )
-                    break
-                seen_cursors.add(next_cursor)
-                cursor = next_cursor
-            document_coverages.append({**final_coverage, "filename": document["filename"]})
-
-        documents_complete = sum(
-            coverage.get("complete") is True for coverage in document_coverages
-        )
-        backend_discovery = focused_payload.get("discovery")
-        if not isinstance(backend_discovery, dict):
-            backend_discovery = {"mode": "focused"}
-        discovery_mode = _as_text(backend_discovery.get("mode")) or "focused"
-        return {
-            "results": exhaustive_results,
-            "total": len(exhaustive_results),
-            "discovery": {
-                **backend_discovery,
-                "mode": discovery_mode,
-                "document_ids": [document["document_id"] for document in discovered],
-                "documents_found": len(discovered),
-            },
-            "coverage": {
-                "mode": "exhaustive",
-                "requested": True,
-                # This certificate deliberately names the actual candidate
-                # scope. It must never be presented as whole-corpus coverage.
-                "scope": (
-                    "archive_audit_candidates"
-                    if discovery_mode == "archive_audit"
-                    else "focused_discovery_documents"
-                ),
-                "complete": bool(document_coverages)
-                and documents_complete == len(document_coverages),
-                "documents_complete": documents_complete,
-                "documents_total": len(document_coverages),
-                "documents": document_coverages,
-            },
-        }
 
     def _retrieve_payload(
         self,
@@ -485,22 +293,14 @@ class OpenRAGBackendRetrievalComponent(LCToolComponent):
         if jwt:
             headers["Authorization"] = jwt if jwt.lower().startswith("bearer ") else f"Bearer {jwt}"
 
-        filters, limit, score_threshold, retrieval_intent, audit_progress_id = (
-            self._request_context()
-        )
-        # Only trusted request context can enable the deeper archive-audit
-        # discovery path. The public tool argument remains focused/exhaustive,
-        # so a model cannot independently widen its authenticated search scope.
-        backend_mode = "audit" if mode == "focused" and retrieval_intent == "exhaustive" else mode
-        # Archive audits may page an entire lexical result set and then read
-        # every candidate document. Keep a short connection timeout while
-        # allowing slow, evidence-complete responses from Raspberry Pi nodes.
-        backend_timeout = (
-            AUDIT_BACKEND_TIMEOUT_SECONDS
-            if retrieval_intent == "exhaustive"
-            else FOCUSED_BACKEND_TIMEOUT_SECONDS
-        )
-        with httpx.Client(timeout=httpx.Timeout(backend_timeout, connect=10.0)) as client:
+        filters, limit, score_threshold, progress_id = self._request_context()
+        # PROV-O expansion is part of ordinary focused retrieval. A chat-level
+        # "exhaustive" intent no longer switches to a separate archive mode;
+        # exhaustive remains only the explicit, single-document cursor API.
+        backend_mode = mode
+        with httpx.Client(
+            timeout=httpx.Timeout(FOCUSED_BACKEND_TIMEOUT_SECONDS, connect=10.0)
+        ) as client:
             response = client.post(
                 url,
                 headers=headers,
@@ -513,21 +313,10 @@ class OpenRAGBackendRetrievalComponent(LCToolComponent):
                     "documentId": resolved_document_id or None,
                     "cursor": _as_text(cursor),
                     "batchSize": min(50, max(1, int(batch_size))),
-                    "progressId": audit_progress_id or None,
+                    "progressId": progress_id or None,
                 },
             )
             payload = self._validated_payload(response)
-            if mode == "focused" and retrieval_intent == "exhaustive":
-                payload = self._start_required_exhaustive_reads(
-                    client,
-                    url=url,
-                    headers=headers,
-                    query=query,
-                    filters=filters,
-                    limit=limit,
-                    score_threshold=score_threshold,
-                    focused_payload=payload,
-                )
 
         fenced_results: list[dict[str, Any]] = []
         for item in payload.get("results", []):
@@ -573,14 +362,10 @@ class OpenRAGBackendRetrievalComponent(LCToolComponent):
                 "Build queries from stable identifiers and established context only; never "
                 "add a candidate answer for the attribute being looked up. Use returned "
                 "chunk_id values for inline citations. Use evidence_mode='focused' for "
-                "ranked discovery. Explicit exhaustive/list-all/compare/audit intent is "
-                "marked by the backend: a deep document-diverse OpenSearch audit discovery "
-                "then automatically follows every authenticated cursor for every discovered "
-                "document. Do not repeat those "
-                "reads when coverage.complete=true. Never answer an "
-                "explicit exhaustive request from focused results alone. Neither "
-                "scope='focused_discovery_documents' nor scope='archive_audit_candidates' "
-                "proves semantic completeness for the whole corpus."
+                "ranked discovery: OpenSearch follows high-signal PROV-O links and supplies "
+                "a deterministic document graph for human review. It never validates or "
+                "excludes documents with an LLM. Use evidence_mode='exhaustive' only to read "
+                "one explicitly selected document completely."
             ),
             response_format="content_and_artifact",
         )

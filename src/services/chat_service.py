@@ -14,15 +14,14 @@ from utils.logging_config import get_logger
 logger = get_logger(__name__)
 
 
-async def _stream_with_audit_progress(stream, audit_id: str):
-    """Multiplex sanitized audit status with the ordinary Langflow stream.
+async def _stream_with_retrieval_progress(stream, progress_id: str):
+    """Multiplex sanitized retrieval status with the Langflow stream.
 
-    Langflow does not emit model events while a retrieval tool is blocked on a
-    long audit.  Polling the backend-local progress registry lets us emit a
-    small status event (and a 15-second heartbeat) without inserting that text
-    into the assistant answer or conversation history.
+    Langflow emits no model events while its retrieval tool is waiting for the
+    backend. Polling the local registry provides small status events without
+    inserting them into the answer or conversation history.
     """
-    from services.audit_progress_service import audit_progress_service
+    from services.retrieval_progress_service import retrieval_progress_service
 
     iterator = stream.__aiter__()
     pending = asyncio.create_task(anext(iterator))
@@ -30,19 +29,19 @@ async def _stream_with_audit_progress(stream, audit_id: str):
     last_emit = 0.0
     try:
         while True:
-            done, _pending = await asyncio.wait({pending}, timeout=5.0)
-            snapshot = audit_progress_service.snapshot(audit_id)
+            done, _ = await asyncio.wait({pending}, timeout=5.0)
+            snapshot = retrieval_progress_service.snapshot(progress_id)
             now = time.monotonic()
             if snapshot is not None and (
                 snapshot["sequence"] != last_sequence or now - last_emit >= 15.0
             ):
                 yield (
                     json.dumps(
-                        {"type": "openrag.audit.progress", "progress": snapshot},
+                        {"type": "openrag.retrieval.progress", "progress": snapshot},
                         ensure_ascii=False,
                     )
                     + "\n"
-                ).encode("utf-8")
+                ).encode()
                 last_sequence = int(snapshot["sequence"])
                 last_emit = now
 
@@ -55,9 +54,7 @@ async def _stream_with_audit_progress(stream, audit_id: str):
             yield chunk
             pending = asyncio.create_task(anext(iterator))
     except Exception:
-        snapshot = audit_progress_service.snapshot(audit_id)
-        if snapshot is None or snapshot.get("complete") is not True:
-            audit_progress_service.fail(audit_id)
+        retrieval_progress_service.fail(progress_id)
         raise
     finally:
         if not pending.done():
@@ -224,27 +221,18 @@ class ChatService:
             "limit": limit or 10,
             "scoreThreshold": score_threshold or 0,
         }
-        # Natural-language model compliance is not a sufficient execution
-        # boundary for a truth-oriented exhaustive request.  Mark explicit
-        # intent in the trusted backend context so the retrieval tool can
-        # automatically start document-wide evidence reads even if the model's
-        # first call is still a focused discovery query.
-        from services.retrieval_service import exhaustive_retrieval_requested
+        retrieval_progress_id: str | None = None
+        if stream:
+            from services.retrieval_progress_service import retrieval_progress_service
 
-        retrieval_intent = "exhaustive" if exhaustive_retrieval_requested(prompt) else "focused"
-        filter_expression["retrievalIntent"] = retrieval_intent
-        audit_progress_id: str | None = None
-        if stream and retrieval_intent == "exhaustive":
-            from services.audit_progress_service import audit_progress_service
-
-            audit_progress_id = uuid.uuid4().hex
-            audit_progress_service.start(audit_progress_id)
-            filter_expression["auditProgressId"] = audit_progress_id
+            retrieval_progress_id = uuid.uuid4().hex
+            retrieval_progress_service.start(retrieval_progress_id)
+            filter_expression["progressId"] = retrieval_progress_id
         logger.info(
             "Sending backend-owned retrieval context to Langflow",
             has_filters=bool(filters),
             limit=filter_expression["limit"],
-            retrieval_intent=filter_expression["retrievalIntent"],
+            provenance_enabled=True,
         )
         # Langflow strips the HTTP prefix and preserves the variable-name
         # suffix verbatim. Keep this header derived from the exact component
@@ -274,19 +262,11 @@ class ChatService:
                 filter_id=filter_id,
                 billing_model=config.agent.llm_model,
             )
-            if audit_progress_id:
-                from services.chat_audit_job_service import chat_audit_job_service
-
-                # The detached producer owns the Langflow stream. The HTTP
-                # response is merely a subscriber and may disappear without
-                # cancelling or losing an expensive exhaustive audit.
-                await chat_audit_job_service.start(
-                    audit_id=audit_progress_id,
-                    user_id=conversation_user_id,
-                    model=config.agent.llm_model,
-                    stream=_stream_with_audit_progress(response_stream, audit_progress_id),
+            if retrieval_progress_id:
+                return _stream_with_retrieval_progress(
+                    response_stream,
+                    retrieval_progress_id,
                 )
-                return chat_audit_job_service.subscribe(audit_progress_id, conversation_user_id)
             return response_stream
         else:
             from agent import async_langflow_chat

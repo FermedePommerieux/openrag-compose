@@ -55,6 +55,7 @@ function fileFromChunks(chunks: ChunkResult[]): File | undefined {
     source_entity_system: chunk.source_entity_system,
     source_entity_alternate_ids: chunk.source_entity_alternate_ids || [],
     source_relation_target_ids: chunk.source_relation_target_ids || [],
+    source_relation_predicates: chunk.source_relation_predicates || [],
     source_relation_roles: chunk.source_relation_roles || [],
     owner: chunk.owner || "",
     owner_name: chunk.owner_name || "",

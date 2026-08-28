@@ -1,6 +1,12 @@
 # ADR 0007: Durable chat audits and a per-request cost ledger
 
-Status: accepted
+Status: superseded by Retrieval v2 version 18
+
+This ADR records a retired implementation. Archive-wide detached LLM audit
+jobs, their database runtime and `openrag.audit.*` protocol were removed in
+version 18. Normal chat now uses one OpenSearch/PROV-O retrieval path and emits
+ephemeral, sanitized `openrag.retrieval.progress` events. The migration files
+remain immutable so existing installations can still upgrade safely.
 
 ## Context
 

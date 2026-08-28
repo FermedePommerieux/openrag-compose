@@ -37,6 +37,7 @@ export interface ChunkResult {
   source_entity_system?: string;
   source_entity_alternate_ids?: string[];
   source_relation_target_ids?: string[];
+  source_relation_predicates?: string[];
   source_relation_roles?: string[];
   owner?: string;
   owner_name?: string;
@@ -66,6 +67,7 @@ export interface File {
   source_entity_system?: string;
   source_entity_alternate_ids?: string[];
   source_relation_target_ids?: string[];
+  source_relation_predicates?: string[];
   source_relation_roles?: string[];
   owner?: string;
   owner_name?: string;
@@ -205,6 +207,7 @@ export const useGetSearchQuery = (
           source_entity_system?: string;
           source_entity_alternate_ids?: string[];
           source_relation_target_ids?: string[];
+          source_relation_predicates?: string[];
           source_relation_roles?: string[];
           owner?: string;
           owner_name?: string;
@@ -250,6 +253,7 @@ export const useGetSearchQuery = (
             source_entity_system: chunk.source_entity_system,
             source_entity_alternate_ids: chunk.source_entity_alternate_ids,
             source_relation_target_ids: chunk.source_relation_target_ids,
+            source_relation_predicates: chunk.source_relation_predicates,
             source_relation_roles: chunk.source_relation_roles,
             owner: chunk.owner,
             owner_name: chunk.owner_name,
@@ -277,6 +281,7 @@ export const useGetSearchQuery = (
         source_entity_system: file.source_entity_system,
         source_entity_alternate_ids: file.source_entity_alternate_ids || [],
         source_relation_target_ids: file.source_relation_target_ids || [],
+        source_relation_predicates: file.source_relation_predicates || [],
         source_relation_roles: file.source_relation_roles || [],
         owner: file.owner || "",
         owner_name: file.owner_name || "",

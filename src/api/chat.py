@@ -198,20 +198,6 @@ async def langflow_history_endpoint(
         return JSONResponse({"error": f"Failed to get langflow history: {str(e)}"}, status_code=500)
 
 
-async def chat_audit_status_endpoint(
-    audit_id: str,
-    user: User = Depends(require_permission("chat:use")),
-):
-    """Return a reconnect-safe exhaustive audit status to its owner only."""
-    from services.chat_audit_job_service import chat_audit_job_service
-
-    result = await chat_audit_job_service.get(audit_id, _openrag_user_id(user))
-    if result is None:
-        # Do not reveal whether a foreign identifier exists.
-        raise HTTPException(status_code=404, detail={"error": "audit_not_found"})
-    return JSONResponse(result)
-
-
 async def delete_session_endpoint(
     session_id: str,
     chat_service=Depends(get_chat_service),

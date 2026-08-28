@@ -149,8 +149,7 @@ function ChatPage() {
       // Set chat error flag to trigger test_completion=true on health checks
       setChatError(true);
       // useChatStreaming forwards one precise, persistent terminal message to
-      // onComplete. Adding a second generic message here hid the real audit
-      // failure and made the chat appear inconsistent.
+      // onComplete. A second generic message would hide the real failure.
     },
   });
 

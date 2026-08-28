@@ -296,6 +296,11 @@ def parse_knowledge_chunks(results: Any) -> list[dict]:
                 "connector_file_id",
                 "chunk_index",
                 "chunking_strategy",
+                "retrieval_plane",
+                "retrieval_relation_depth",
+                "retrieval_relation_paths",
+                "retrieval_channels",
+                "retrieval_relevance",
             ):
                 if provenance_field in data:
                     parsed_chunk[provenance_field] = data.get(provenance_field)

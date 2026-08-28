@@ -2,7 +2,12 @@
 
 ## Status
 
-Accepted for Retrieval v2 version 16.
+Superseded for Retrieval v2 version 18.
+
+The structured archive-reasoning cache described below was removed with the
+retired multi-model audit pipeline. OpenRAG does not cache final answers or
+ordinary retrieval results. The GPT-5.6 transport requirement remains valid:
+tool-capable GPT-5.6 flows use the Responses API.
 
 ## Context
 

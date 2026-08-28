@@ -12,14 +12,6 @@ export interface TokenUsage {
   cost_complete?: boolean;
   pricing_basis?: string;
   calls?: number;
-  application_cache?: {
-    hits: number;
-    avoided_provider_calls: number;
-    avoided_input_tokens: number;
-    avoided_output_tokens: number;
-    avoided_total_tokens: number;
-    avoided_cost_usd: number;
-  };
   models?: Record<
     string,
     {
@@ -40,11 +32,11 @@ export interface Message {
   source?: "langflow" | "chat";
   error?: boolean;
   usage?: TokenUsage;
-  progress?: AuditProgress;
+  progress?: RetrievalProgress;
 }
 
-export interface AuditProgress {
-  audit_id: string;
+export interface RetrievalProgress {
+  progress_id: string;
   phase: string;
   message: string;
   sequence: number;
@@ -114,6 +106,7 @@ export interface ToolCallResult {
   source_entity_system?: string;
   source_entity_alternate_ids?: string[];
   source_relation_target_ids?: string[];
+  source_relation_predicates?: string[];
   source_relation_roles?: string[];
   text?: string;
   embedding_model?: string;
@@ -125,6 +118,22 @@ export interface ToolCallResult {
   connector_file_id?: string;
   chunk_index?: number | string;
   chunking_strategy?: string;
+  retrieval_plane?: "direct" | "context";
+  retrieval_relation_depth?: number;
+  retrieval_relation_paths?: Array<Record<string, unknown>>;
+  retrieval_channels?: string[];
+  retrieval_relevance?: {
+    level?:
+      | "strong"
+      | "plausible"
+      | "contextual"
+      | "peripheral"
+      | "exploratory";
+    reason?: string;
+    probability_calibrated?: boolean;
+    human_validation_required?: boolean;
+    relation_depth?: number | null;
+  };
   metadata?: {
     embedding_model?: string;
     parser?: string;

@@ -168,7 +168,7 @@ def configure_logging(
             "NO_COLOR" not in os.environ and hasattr(sys.stderr, "isatty") and sys.stderr.isatty()
         )
 
-        def custom_formatter(logger, log_method, event_dict):
+        def custom_formatter(_logger, _log_method, event_dict):
             timestamp = event_dict.pop("timestamp", "")
             pathname = event_dict.pop("pathname", "")
             filename = event_dict.pop("filename", "")

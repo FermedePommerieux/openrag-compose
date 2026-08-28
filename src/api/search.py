@@ -21,9 +21,7 @@ class SearchBody(BaseModel):
     filters: dict[str, Any] = Field(default_factory=dict)
     limit: int = 10
     scoreThreshold: float = Field(default=0, alias="scoreThreshold")
-    evidenceMode: Literal["focused", "audit", "exhaustive"] = Field(
-        default="focused", alias="evidenceMode"
-    )
+    evidenceMode: Literal["focused", "exhaustive"] = Field(default="focused", alias="evidenceMode")
     documentId: str | None = Field(default=None, alias="documentId")
     cursor: str = ""
     batchSize: int = Field(default=20, ge=1, le=50, alias="batchSize")
@@ -61,40 +59,34 @@ async def search(
             batch_size=body.batchSize,
         )
 
-        # Langflow invokes /search in a separate HTTP request. Re-establish the
-        # audit scope here so every nested reasoning and embedding response is
-        # charged to the durable chat job that caused it.
-        from services.token_usage_service import token_usage_service
-
-        with token_usage_service.scope(body.progressId):
-            result = await search_service.search(
-                body.query,
-                user_id=user.user_id,
-                jwt_token=jwt_token,
-                filters=body.filters,
-                limit=body.limit,
-                score_threshold=body.scoreThreshold,
-                evidence_mode=body.evidenceMode,
-                document_id=body.documentId,
-                cursor=body.cursor,
-                batch_size=body.batchSize,
-                audit_progress_id=body.progressId,
-            )
+        result = await search_service.search(
+            body.query,
+            user_id=user.user_id,
+            jwt_token=jwt_token,
+            filters=body.filters,
+            limit=body.limit,
+            score_threshold=body.scoreThreshold,
+            evidence_mode=body.evidenceMode,
+            document_id=body.documentId,
+            cursor=body.cursor,
+            batch_size=body.batchSize,
+            progress_id=body.progressId,
+        )
         return JSONResponse(result, status_code=200)
     except ValueError as e:
-        from services.audit_progress_service import audit_progress_service
+        from services.retrieval_progress_service import retrieval_progress_service
 
-        audit_progress_service.fail(body.progressId)
+        retrieval_progress_service.fail(body.progressId)
         return JSONResponse({"error": str(e)}, status_code=400)
     except OpenSearchDiskSpaceError:
-        from services.audit_progress_service import audit_progress_service
+        from services.retrieval_progress_service import retrieval_progress_service
 
-        audit_progress_service.fail(body.progressId)
+        retrieval_progress_service.fail(body.progressId)
         return JSONResponse({"error": DISK_SPACE_ERROR_MESSAGE}, status_code=507)
     except Exception as e:
-        from services.audit_progress_service import audit_progress_service
+        from services.retrieval_progress_service import retrieval_progress_service
 
-        audit_progress_service.fail(body.progressId)
+        retrieval_progress_service.fail(body.progressId)
         error_msg = str(e)
         if "AuthenticationException" in error_msg or "access denied" in error_msg.lower():
             return JSONResponse({"error": error_msg}, status_code=403)

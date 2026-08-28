@@ -661,6 +661,7 @@ class DocumentIndexWriter:
             "source_entity_system": {"type": "keyword"},
             "source_entity_alternate_ids": {"type": "keyword"},
             "source_relation_target_ids": {"type": "keyword"},
+            "source_relation_predicates": {"type": "keyword"},
             "source_relation_roles": {"type": "keyword"},
         }
         mappings = await client.indices.get_mapping(index=index_name)
@@ -671,6 +672,7 @@ class DocumentIndexWriter:
                 properties.update(candidate)
 
         existing_provenance = properties.get("source_provenance")
+        provenance_mapping_update: dict[str, Any] | None = None
         if existing_provenance is not None:
             relations = existing_provenance.get("properties", {}).get("relations", {})
             if relations.get("type") != "nested":
@@ -678,6 +680,17 @@ class DocumentIndexWriter:
                     "Existing source_provenance mapping is incompatible; "
                     "relations must be nested and the index must be reindexed"
                 )
+            predicate_mapping = relations.get("properties", {}).get("prov_predicate")
+            if predicate_mapping is not None and predicate_mapping.get("type") != "keyword":
+                raise RuntimeError(
+                    "Existing source_provenance mapping is incompatible; "
+                    "relations.prov_predicate must be keyword and the index must be reindexed"
+                )
+            if predicate_mapping is None:
+                # OpenSearch can add a field below an existing nested object.
+                # Send the complete bounded subtree and let mapping merge keep
+                # every already-indexed property intact.
+                provenance_mapping_update = source_provenance_mapping()
 
         incompatible = {
             name: properties[name].get("type")
@@ -693,6 +706,8 @@ class DocumentIndexWriter:
             )
 
         missing = {name: value for name, value in required.items() if name not in properties}
+        if provenance_mapping_update is not None:
+            missing["source_provenance"] = provenance_mapping_update
         if missing:
             await client.indices.put_mapping(index=index_name, body={"properties": missing})
             logger.info(

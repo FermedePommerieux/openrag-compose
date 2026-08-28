@@ -58,6 +58,7 @@ async def create_index_body(
         "source_entity_system": {"type": "keyword"},
         "source_entity_alternate_ids": {"type": "keyword"},
         "source_relation_target_ids": {"type": "keyword"},
+        "source_relation_predicates": {"type": "keyword"},
         "source_relation_roles": {"type": "keyword"},
         "connector_type": {"type": "keyword"},
         "parser": {"type": "keyword"},

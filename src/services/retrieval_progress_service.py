@@ -1,16 +1,13 @@
-"""Best-effort, factual progress reporting for long archive audits.
+"""Best-effort, factual progress for backend-owned document retrieval.
 
-Archive audits deliberately trade latency for coverage and verification.  The
-chat stream therefore needs small, non-evidentiary status events while the
-Langflow tool is waiting for the backend.  This registry carries only phase
-codes and integer counters; document text, filenames, queries, credentials and
-reasoning traces must never be stored here or emitted to the browser.
+The registry contains only phase codes and integer counters. It never stores
+queries, document text, filenames, credentials, or model reasoning. Progress
+is observability, not evidence: a missing event cannot change retrieval output
+or a coverage certificate.
 
-The registry is process-local by design.  OpenRAG currently runs one backend
-replica, and progress is an optional observability aid rather than part of the
-audit certificate.  A missing event can never change retrieval or answer
-semantics.  If backend replicas are added, replace this implementation with a
-shared TTL store while keeping the same public snapshot contract.
+OpenRAG currently runs one backend process, so a small process-local TTL store
+is sufficient. A shared store can replace it behind this interface if backend
+replicas are enabled later.
 """
 
 from __future__ import annotations
@@ -20,12 +17,12 @@ from datetime import UTC, datetime, timedelta
 from threading import Lock
 from typing import Any
 
-AUDIT_PROGRESS_TTL = timedelta(hours=1)
+RETRIEVAL_PROGRESS_TTL = timedelta(hours=1)
 
 
 @dataclass
-class _AuditProgress:
-    audit_id: str
+class _RetrievalProgress:
+    progress_id: str
     phase: str
     message: str
     sequence: int = 1
@@ -36,7 +33,7 @@ class _AuditProgress:
 
     def snapshot(self) -> dict[str, Any]:
         return {
-            "audit_id": self.audit_id,
+            "progress_id": self.progress_id,
             "phase": self.phase,
             "message": self.message,
             "sequence": self.sequence,
@@ -47,19 +44,16 @@ class _AuditProgress:
         }
 
 
-class AuditProgressService:
-    """Store sanitized audit progress without affecting audit execution."""
+class RetrievalProgressService:
+    """Store sanitized retrieval progress without affecting execution."""
 
     def __init__(self) -> None:
-        self._items: dict[str, _AuditProgress] = {}
+        self._items: dict[str, _RetrievalProgress] = {}
         self._lock = Lock()
 
     @staticmethod
-    def _normalized_id(audit_id: str | None) -> str:
-        value = str(audit_id or "").strip()
-        # Chat creates a UUID hex token.  Bounding and restricting the value
-        # prevents an untrusted API caller from turning registry keys into log
-        # or memory payloads.
+    def _normalized_id(progress_id: str | None) -> str:
+        value = str(progress_id or "").strip()
         if not value or len(value) > 64 or not value.replace("-", "").isalnum():
             return ""
         return value
@@ -71,88 +65,86 @@ class AuditProgressService:
             normalized_key = str(key or "").strip()
             if not normalized_key or len(normalized_key) > 64:
                 continue
-            # bool is intentionally rejected even though it subclasses int.
             if isinstance(value, bool) or not isinstance(value, int) or value < 0:
                 continue
             safe[normalized_key] = value
         return safe
 
     def _prune_locked(self, now: datetime) -> None:
-        cutoff = now - AUDIT_PROGRESS_TTL
-        expired = [key for key, item in self._items.items() if item.updated_at < cutoff]
-        for key in expired:
+        cutoff = now - RETRIEVAL_PROGRESS_TTL
+        for key in [key for key, item in self._items.items() if item.updated_at < cutoff]:
             self._items.pop(key, None)
 
-    def start(self, audit_id: str | None) -> None:
-        normalized = self._normalized_id(audit_id)
+    def start(self, progress_id: str | None) -> None:
+        normalized = self._normalized_id(progress_id)
         if not normalized:
             return
         now = datetime.now(UTC)
         with self._lock:
             self._prune_locked(now)
-            self._items[normalized] = _AuditProgress(
-                audit_id=normalized,
+            self._items[normalized] = _RetrievalProgress(
+                progress_id=normalized,
                 phase="preparing",
-                message="Preparing exhaustive archive audit",
+                message="Preparing document retrieval",
                 updated_at=now,
             )
 
     def update(
         self,
-        audit_id: str | None,
+        progress_id: str | None,
         *,
         phase: str,
         message: str,
         counters: dict[str, Any] | None = None,
     ) -> None:
-        normalized = self._normalized_id(audit_id)
+        normalized = self._normalized_id(progress_id)
         if not normalized:
             return
         now = datetime.now(UTC)
         with self._lock:
             item = self._items.get(normalized)
             if item is None:
-                item = _AuditProgress(
-                    audit_id=normalized,
+                item = _RetrievalProgress(
+                    progress_id=normalized,
                     phase="preparing",
-                    message="Preparing exhaustive archive audit",
+                    message="Preparing document retrieval",
                     updated_at=now,
                 )
                 self._items[normalized] = item
             item.phase = str(phase or "working")[:64]
-            item.message = str(message or "Audit in progress")[:160]
+            item.message = str(message or "Retrieval in progress")[:160]
             item.counters.update(self._safe_counters(counters))
             item.sequence += 1
             item.updated_at = now
 
-    def finish(self, audit_id: str | None, *, verified: bool) -> None:
+    def finish(self, progress_id: str | None, *, complete: bool) -> None:
         self.update(
-            audit_id,
-            phase="complete" if verified else "incomplete",
+            progress_id,
+            phase="complete" if complete else "incomplete",
             message=(
-                "Exhaustive audit completed and verified"
-                if verified
-                else "Audit stopped without a complete verification certificate"
+                "Document retrieval completed"
+                if complete
+                else "Document retrieval ended without complete coverage"
             ),
         )
-        normalized = self._normalized_id(audit_id)
+        normalized = self._normalized_id(progress_id)
         if not normalized:
             return
         with self._lock:
             item = self._items.get(normalized)
             if item is not None:
                 item.complete = True
-                item.failed = not verified
+                item.failed = not complete
                 item.sequence += 1
                 item.updated_at = datetime.now(UTC)
 
-    def fail(self, audit_id: str | None) -> None:
+    def fail(self, progress_id: str | None) -> None:
         self.update(
-            audit_id,
+            progress_id,
             phase="failed",
-            message="Audit failed before verification completed",
+            message="Document retrieval failed",
         )
-        normalized = self._normalized_id(audit_id)
+        normalized = self._normalized_id(progress_id)
         if not normalized:
             return
         with self._lock:
@@ -163,8 +155,8 @@ class AuditProgressService:
                 item.sequence += 1
                 item.updated_at = datetime.now(UTC)
 
-    def snapshot(self, audit_id: str | None) -> dict[str, Any] | None:
-        normalized = self._normalized_id(audit_id)
+    def snapshot(self, progress_id: str | None) -> dict[str, Any] | None:
+        normalized = self._normalized_id(progress_id)
         if not normalized:
             return None
         now = datetime.now(UTC)
@@ -174,4 +166,4 @@ class AuditProgressService:
             return item.snapshot() if item is not None else None
 
 
-audit_progress_service = AuditProgressService()
+retrieval_progress_service = RetrievalProgressService()

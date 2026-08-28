@@ -81,8 +81,32 @@ The Python and TypeScript SDKs expose the same optional `source_provenance` /
 Validated provenance is signed into the Langflow callback context, copied to
 every indexed chunk, and returned by search, chat-source, and file-listing
 responses. The canonical object preserves relation pairing; flattened fields
-such as `source_entity_id`, `source_relation_target_ids`, and
-`source_relation_roles` support filtering and reverse traversal.
+such as `source_entity_id`, `source_relation_target_ids`,
+`source_relation_predicates`, and `source_relation_roles` support filtering
+and reverse traversal. `source_relation_predicates` contains the complete W3C
+URI and is the canonical search field; `source_relation_roles` is only an
+OpenRAG qualification of that predicate.
+
+## OpenSearch retrieval contract
+
+Every normal search uses provenance. OpenSearch performs native `nested`
+queries over the paired predicate and target fields:
+
+```text
+source_provenance.relations.prov_predicate
+source_provenance.relations.target.id
+```
+
+The full URI—not the OpenRAG role—is the primary relation predicate. Existing
+version-1 documents that lack the indexed predicate remain readable through a
+strict fallback that accepts only a known role with no `prov_predicate` field.
+The response discloses that this fallback is enabled and restricted to records
+where the predicate is missing, until those documents are reingested.
+
+OpenSearch matches and exhausts each relation frontier under the caller's DLS
+scope. OpenRAG performs only the recursive fixed-point orchestration because
+OpenSearch has no recursive RDF operator. This is an OpenSearch-native PROV-O
+edge query, not an RDF/OWL inference engine or a SPARQL endpoint.
 
 ## Durable ingestion proof
 
@@ -120,19 +144,19 @@ duplicates quoted content, weakens citations, and becomes stale when a message
 arrives later. Retrieval should expand the relation graph and report how many
 messages and attachments were actually read.
 
-Explicit archive audits use these edges as retrieval evidence, not decorative
-metadata. High-precision matching may identify a request that names a project;
-the graph then retrieves a reply containing only wording such as "we support
-your project" and supplies the originating message as its contextual anchor.
+Every normal search uses these edges as retrieval evidence, not decorative
+metadata. A direct match may identify a request that names a project; the graph
+then retrieves a reply containing only wording such as "we support your
+project" and supplies the originating message as its contextual anchor.
 Traversal continues until no new visible document is found. Every inclusion
-records its relation path. Contextual review labels likely noise but never
-removes a candidate before its complete read; hierarchical synthesis removes
-noise from the answer only when dual source validation finds no supported
-claim in it.
+records the predicate URI, business role, direction, anchor, target identity,
+and traversal depth. No LLM validates or excludes a relation or document.
 
-`contained_in` remains useful for lineage and inspection but is not followed
-as a thematic expansion edge. Following it would connect every unrelated
-message imported from the same mailbox or archive.
+`contained_in` remains useful for lineage and inspection but is not followed as
+a thematic expansion edge. PROV-O maps it to `prov:wasMemberOf`, the same
+predicate used for attachments and thread membership. The role therefore
+remains necessary as an anti-noise qualification: following archive membership
+would connect every unrelated message imported from the same mailbox.
 
 ## Access control
 

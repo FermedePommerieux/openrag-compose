@@ -56,6 +56,10 @@ def test_source_provenance_resolves_predicates_and_builds_query_fields():
         "urn:openrag:email:message-1",
         "urn:openrag:email-thread:thread-1",
     ]
+    assert provenance.index_fields()["source_relation_predicates"] == [
+        f"{PROV_NAMESPACE}wasMemberOf",
+        f"{PROV_NAMESPACE}wasMemberOf",
+    ]
     assert provenance.index_fields()["source_relation_roles"] == [
         "attachment_of",
         "member_of",
@@ -94,6 +98,7 @@ def test_source_provenance_mapping_keeps_relation_target_pairing():
 
     relations = mapping["properties"]["relations"]
     assert relations["type"] == "nested"
+    assert relations["properties"]["prov_predicate"] == {"type": "keyword"}
     assert relations["properties"]["target"]["properties"]["id"] == {"type": "keyword"}
 
 
@@ -123,6 +128,10 @@ def test_document_writer_repeats_provenance_on_each_verifiable_chunk():
 
     assert document["source_url"] == "https://archive.example.test/invoice.pdf"
     assert document["source_entity_id"] == "urn:openrag:attachment:invoice-1"
+    assert document["source_relation_predicates"] == [
+        f"{PROV_NAMESPACE}wasMemberOf",
+        f"{PROV_NAMESPACE}wasMemberOf",
+    ]
     assert document["source_provenance"]["relations"][0]["role"] == "attachment_of"
 
 
@@ -176,6 +185,38 @@ async def test_existing_index_receives_only_missing_provenance_mappings():
     body = client.indices.put_mapping.await_args.kwargs["body"]
     assert body["properties"]["source_provenance"]["properties"]["relations"]["type"] == ("nested")
     assert body["properties"]["source_entity_id"] == {"type": "keyword"}
+    assert body["properties"]["source_relation_predicates"] == {"type": "keyword"}
+
+
+@pytest.mark.asyncio
+async def test_existing_nested_mapping_receives_canonical_predicate_field():
+    client = MagicMock()
+    client.indices.get_mapping = AsyncMock(
+        return_value={
+            "documents": {
+                "mappings": {
+                    "properties": {
+                        "source_provenance": {
+                            "properties": {
+                                "relations": {
+                                    "type": "nested",
+                                    "properties": {"role": {"type": "keyword"}},
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    )
+    client.indices.put_mapping = AsyncMock()
+
+    await DocumentIndexWriter._ensure_source_provenance_mapping(client, "documents")
+
+    body = client.indices.put_mapping.await_args.kwargs["body"]
+    relations = body["properties"]["source_provenance"]["properties"]["relations"]
+    assert relations["type"] == "nested"
+    assert relations["properties"]["prov_predicate"] == {"type": "keyword"}
 
 
 @pytest.mark.asyncio
