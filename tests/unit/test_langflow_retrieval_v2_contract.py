@@ -17,6 +17,7 @@ ROOT = Path(__file__).resolve().parents[2]
 FLOW_PATH = ROOT / "flows" / "openrag_agent.json"
 COMPONENT_PATH = ROOT / "custom_components" / "openrag" / "backend_retrieval.py"
 PROMPT_PATH = ROOT / "flows" / "components" / "openrag_agent_system_prompt.md"
+AGENT_COMPONENT_PATH = ROOT / "flows" / "components" / "openrag_agent.py"
 
 
 def test_default_agent_uses_only_backend_retrieval_tool():
@@ -57,6 +58,21 @@ def test_default_agent_uses_versioned_documentalist_prompt():
     assert DEFAULT_SYSTEM_PROMPT == prompt
     assert "coverage.complete=true" in prompt
     assert "never prove" in prompt
+
+
+def test_gpt_56_tool_agent_uses_openai_responses_transport():
+    flow = json.loads(FLOW_PATH.read_text(encoding="utf-8"))
+    agent = next(
+        node
+        for node in flow["data"]["nodes"]
+        if node["data"]["node"].get("display_name") == "Agent"
+    )
+    source = AGENT_COMPONENT_PATH.read_text(encoding="utf-8")
+
+    assert agent["data"]["node"]["template"]["code"]["value"] == source
+    assert 'provider == "openai"' in source
+    assert 'model_name.startswith("gpt-5.6")' in source
+    assert 'overrides["use_responses_api"] = True' in source
 
 
 def test_backend_retrieval_tool_is_thin_and_embedded_verbatim():
