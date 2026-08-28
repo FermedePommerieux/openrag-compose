@@ -1,4 +1,5 @@
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 from fastapi import HTTPException
@@ -168,3 +169,61 @@ async def test_update_settings_persists_hybrid_and_rrf_configuration(monkeypatch
 def test_retrieval_settings_reject_backend_out_of_range_values(field, value):
     with pytest.raises(ValidationError):
         settings_api.SettingsUpdateBody(**{field: value})
+
+
+@pytest.mark.asyncio
+async def test_ingestion_capacity_settings_are_persisted_and_applied_live(monkeypatch):
+    """The Knowledge Ingest control is backend-owned and hot-reloadable."""
+    config = _make_config()
+    saved_configs = []
+    task_service = SimpleNamespace(reconfigure_ingestion_capacity=AsyncMock())
+    monkeypatch.setattr(settings_endpoints, "get_openrag_config", lambda: config, raising=True)
+    monkeypatch.setattr(
+        settings_endpoints.config_manager,
+        "save_config_file",
+        lambda updated_config: saved_configs.append(updated_config) or True,
+        raising=True,
+    )
+    monkeypatch.setattr(
+        settings_endpoints.clients,
+        "refresh_patched_client",
+        AsyncMock(),
+        raising=True,
+    )
+
+    await settings_api.update_settings(
+        settings_api.SettingsUpdateBody(
+            ingestion_concurrency_mode="auto",
+            ingestion_worker_fallback=2,
+            ingestion_worker_max=6,
+        ),
+        session_manager=object(),
+        task_service=task_service,
+        user=None,
+    )
+
+    saved = saved_configs[0].knowledge
+    assert saved.ingestion_concurrency_mode == "auto"
+    assert saved.ingestion_worker_fallback == 2
+    assert saved.ingestion_worker_max == 6
+    task_service.reconfigure_ingestion_capacity.assert_awaited_once_with(saved)
+
+
+@pytest.mark.asyncio
+async def test_ingestion_capacity_rejects_fallback_above_maximum(monkeypatch):
+    config = _make_config()
+    monkeypatch.setattr(settings_endpoints, "get_openrag_config", lambda: config, raising=True)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await settings_api.update_settings(
+            settings_api.SettingsUpdateBody(
+                ingestion_concurrency_mode="auto",
+                ingestion_worker_fallback=5,
+                ingestion_worker_max=4,
+            ),
+            session_manager=object(),
+            user=None,
+        )
+
+    assert exc_info.value.status_code == 422
+    assert not hasattr(config.knowledge, "ingestion_concurrency_mode")

@@ -58,6 +58,17 @@ export function IngestSettingsSection() {
     useState<boolean>(false);
   const [disableIngestWithLangflow, setDisableIngestWithLangflow] =
     useState<boolean>(false);
+  const [ingestionConcurrencyMode, setIngestionConcurrencyMode] = useState<
+    "deployment" | "auto" | "manual"
+  >(DEFAULT_KNOWLEDGE_SETTINGS.ingestion_concurrency_mode);
+  const [ingestionManualWorkers, setIngestionManualWorkers] = useState<number>(
+    DEFAULT_KNOWLEDGE_SETTINGS.ingestion_manual_workers,
+  );
+  const [ingestionWorkerFallback, setIngestionWorkerFallback] =
+    useState<number>(DEFAULT_KNOWLEDGE_SETTINGS.ingestion_worker_fallback);
+  const [ingestionWorkerMax, setIngestionWorkerMax] = useState<number>(
+    DEFAULT_KNOWLEDGE_SETTINGS.ingestion_worker_max,
+  );
 
   const { data: settings = {} } = useGetSettingsQuery({
     enabled: isAuthenticated || isNoAuthMode,
@@ -202,6 +213,14 @@ export function IngestSettingsSection() {
       setPictureDescriptions(k.picture_descriptions);
     if (k.disable_ingest_with_langflow !== undefined)
       setDisableIngestWithLangflow(k.disable_ingest_with_langflow);
+    if (k.ingestion_concurrency_mode !== undefined)
+      setIngestionConcurrencyMode(k.ingestion_concurrency_mode);
+    if (k.ingestion_manual_workers !== undefined)
+      setIngestionManualWorkers(k.ingestion_manual_workers);
+    if (k.ingestion_worker_fallback !== undefined)
+      setIngestionWorkerFallback(k.ingestion_worker_fallback);
+    if (k.ingestion_worker_max !== undefined)
+      setIngestionWorkerMax(k.ingestion_worker_max);
   }, [settings.knowledge]);
 
   const k = settings.knowledge;
@@ -221,7 +240,19 @@ export function IngestSettingsSection() {
     ocrMojibakeFallback !== (k?.ocr_mojibake_fallback ?? ocrMojibakeFallback) ||
     pictureDescriptions !== (k?.picture_descriptions ?? pictureDescriptions) ||
     disableIngestWithLangflow !==
-      (k?.disable_ingest_with_langflow ?? disableIngestWithLangflow);
+      (k?.disable_ingest_with_langflow ?? disableIngestWithLangflow) ||
+    ingestionConcurrencyMode !==
+      (k?.ingestion_concurrency_mode ??
+        DEFAULT_KNOWLEDGE_SETTINGS.ingestion_concurrency_mode) ||
+    ingestionManualWorkers !==
+      (k?.ingestion_manual_workers ??
+        DEFAULT_KNOWLEDGE_SETTINGS.ingestion_manual_workers) ||
+    ingestionWorkerFallback !==
+      (k?.ingestion_worker_fallback ??
+        DEFAULT_KNOWLEDGE_SETTINGS.ingestion_worker_fallback) ||
+    ingestionWorkerMax !==
+      (k?.ingestion_worker_max ??
+        DEFAULT_KNOWLEDGE_SETTINGS.ingestion_worker_max);
 
   const handleChunkSizeChange = (value: string) => {
     setChunkSize(Math.max(0, Number.parseInt(value, 10) || 0));
@@ -257,6 +288,10 @@ export function IngestSettingsSection() {
         ocr_mojibake_fallback: ocrMojibakeFallback,
         picture_descriptions: pictureDescriptions,
         disable_ingest_with_langflow: disableIngestWithLangflow,
+        ingestion_concurrency_mode: ingestionConcurrencyMode,
+        ingestion_manual_workers: ingestionManualWorkers,
+        ingestion_worker_fallback: ingestionWorkerFallback,
+        ingestion_worker_max: ingestionWorkerMax,
       },
     });
     if (chunkingStrategy === "character" && chunkSize < 1) {
@@ -277,6 +312,21 @@ export function IngestSettingsSection() {
       toast.error("Could not save ingest settings", { description: msg });
       return;
     }
+    if (ingestionConcurrencyMode === "manual" && ingestionManualWorkers < 1) {
+      const msg = "Manual ingestion workers must be at least 1";
+      setChunkValidationError(msg);
+      toast.error("Could not save ingest settings", { description: msg });
+      return;
+    }
+    if (
+      ingestionConcurrencyMode === "auto" &&
+      ingestionWorkerFallback > ingestionWorkerMax
+    ) {
+      const msg = "Worker fallback must not exceed the automatic maximum";
+      setChunkValidationError(msg);
+      toast.error("Could not save ingest settings", { description: msg });
+      return;
+    }
     updateSettingsMutation.mutate(
       {
         ...chunkingPayload,
@@ -285,6 +335,10 @@ export function IngestSettingsSection() {
         ocr_mojibake_fallback: ocrMojibakeFallback,
         picture_descriptions: pictureDescriptions,
         disable_ingest_with_langflow: disableIngestWithLangflow,
+        ingestion_concurrency_mode: ingestionConcurrencyMode,
+        ingestion_manual_workers: ingestionManualWorkers,
+        ingestion_worker_fallback: ingestionWorkerFallback,
+        ingestion_worker_max: ingestionWorkerMax,
       },
       { onSuccess: () => setChunkValidationError(null) },
     );
@@ -581,6 +635,120 @@ export function IngestSettingsSection() {
             future ingestion; existing indexed documents are not automatically
             rebuilt.
           </div>
+          <section
+            className="space-y-4"
+            aria-labelledby="ingestion-concurrency-settings"
+          >
+            <div>
+              <h3 id="ingestion-concurrency-settings" className="font-medium">
+                Ingestion concurrency
+              </h3>
+              <p className="text-sm text-muted-foreground">
+                Control backend file-processing slots independently of Uvicorn
+                and Langflow workers. Changes apply immediately.
+              </p>
+            </div>
+            <div
+              className="grid grid-cols-3 gap-3"
+              role="radiogroup"
+              aria-label="Ingestion concurrency mode"
+            >
+              {(
+                [
+                  ["deployment", "Deployment"],
+                  ["auto", "Automatic"],
+                  ["manual", "Manual"],
+                ] as const
+              ).map(([mode, label]) => (
+                <Button
+                  key={mode}
+                  type="button"
+                  variant={
+                    ingestionConcurrencyMode === mode ? "default" : "outline"
+                  }
+                  onClick={() => setIngestionConcurrencyMode(mode)}
+                  aria-pressed={ingestionConcurrencyMode === mode}
+                >
+                  {label}
+                </Button>
+              ))}
+            </div>
+            {ingestionConcurrencyMode === "deployment" ? (
+              <p className="text-sm text-muted-foreground">
+                Follow the MAX_WORKERS mode and limits supplied by GitOps or the
+                deployment environment.
+              </p>
+            ) : null}
+            {ingestionConcurrencyMode === "manual" ? (
+              <LabelWrapper
+                id="ingestion-manual-workers"
+                label="Concurrent ingestion workers"
+              >
+                <Input
+                  id="ingestion-manual-workers"
+                  type="number"
+                  min="1"
+                  max="64"
+                  value={ingestionManualWorkers}
+                  onChange={(event) =>
+                    setIngestionManualWorkers(
+                      Math.max(0, Number.parseInt(event.target.value, 10) || 0),
+                    )
+                  }
+                />
+              </LabelWrapper>
+            ) : null}
+            {ingestionConcurrencyMode === "auto" ? (
+              <>
+                <p className="text-sm text-muted-foreground">
+                  Follow live RQ workers subscribed to the Docling convert
+                  queue. Disappearing workers never cancel active files.
+                </p>
+                <div className="grid grid-cols-2 gap-4">
+                  <LabelWrapper
+                    id="ingestion-worker-fallback"
+                    label="Fallback workers"
+                  >
+                    <Input
+                      id="ingestion-worker-fallback"
+                      type="number"
+                      min="1"
+                      max="64"
+                      value={ingestionWorkerFallback}
+                      onChange={(event) =>
+                        setIngestionWorkerFallback(
+                          Math.max(
+                            0,
+                            Number.parseInt(event.target.value, 10) || 0,
+                          ),
+                        )
+                      }
+                    />
+                  </LabelWrapper>
+                  <LabelWrapper
+                    id="ingestion-worker-max"
+                    label="Automatic maximum"
+                  >
+                    <Input
+                      id="ingestion-worker-max"
+                      type="number"
+                      min="1"
+                      max="64"
+                      value={ingestionWorkerMax}
+                      onChange={(event) =>
+                        setIngestionWorkerMax(
+                          Math.max(
+                            0,
+                            Number.parseInt(event.target.value, 10) || 0,
+                          ),
+                        )
+                      }
+                    />
+                  </LabelWrapper>
+                </div>
+              </>
+            ) : null}
+          </section>
           <div>
             <div className="flex items-center justify-between py-3 border-b border-border">
               <div className="flex-1">

@@ -149,6 +149,33 @@ Finalization uses one extended-timeout index refresh. Replacing a prior
 generation deletes concrete stale chunk IDs without refreshing the entire
 index after every ID, then performs the same single bounded refresh.
 
+## Configure ingestion concurrency
+
+In **Settings > Langflow > Knowledge Ingest**, use **Ingestion concurrency** to
+control how many ordinary files the backend can submit concurrently:
+
+* **Deployment** follows `MAX_WORKERS` and its bounds from Helm or the process
+  environment.
+* **Automatic** follows the live RQ workers subscribed to Docling's `convert`
+  queue. The workspace can set its fallback and maximum.
+* **Manual** uses a fixed number of concurrent ingestion slots.
+
+This setting controls admission inside the OpenRAG backend. It does not change
+the number of Uvicorn processes, OpenRAG replicas, Langflow workers, or Docling
+workers. Although the control is grouped with the Knowledge Ingest settings,
+it is a backend/Docling setting rather than a Langflow graph parameter.
+
+Automatic mode reacts to workers that appear or disappear without restarting
+OpenRAG. When capacity decreases, active documents continue normally and new
+documents wait. A temporary metrics failure retains the last valid capacity;
+after the configured failure threshold, or when no live worker is reported,
+OpenRAG uses the bounded fallback. Local files at or above
+`OPENRAG_LARGE_INGEST_FILE_BYTES` still share one separate serialized heavy
+lane, regardless of the ordinary-file capacity.
+
+See [Environment variables](/reference/configuration#system-settings) for the
+metrics URL, refresh interval, minimum, maximum, fallback, and failure threshold.
+
 ## Configure table parsing
 
 You can edit the following setting on the OpenRAG <Icon name="Settings2" aria-hidden="true"/> **Settings** page in the **Knowledge Ingest** section:

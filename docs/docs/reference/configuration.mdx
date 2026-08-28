@@ -178,7 +178,13 @@ Configure general system components, session management, and logging.
 | `FRONTEND_PORT` | `3000` | Host port for the OpenRAG frontend web interface. Change this if port 3000 is already in use on your system. |
 | `OPENRAG_VERSION` | `latest` | The version of the OpenRAG Docker images to run. For more information, see [Upgrade OpenRAG](/upgrade) |
 | `NEXT_ALLOWED_DEV_ORIGINS` | `http://localhost:3000` | Only used when [running OpenRAG in development mode](/support/contribute). Accepts a comma-separated list of hostnames to allow additional origins to make requests to the Next.js development server. |
-| `MAX_WORKERS` | `min(4, CPU_COUNT // 2)` | Number of Backend worker processes for concurrent request handling.  Be mindful of hardware limitations to avoid overtaxing system resources. |
+| `MAX_WORKERS` | `min(4, CPU_COUNT // 2)` | Maximum concurrent file-ingestion slots in manual mode. Set it to `auto` to follow live Docling RQ workers subscribed to the `convert` queue. This does not change the OpenRAG/Uvicorn process count. |
+| `MAX_WORKERS_FALLBACK` | `2` | Ingestion capacity used at automatic-mode startup, when no live `convert` worker is reported, or after the metrics failure threshold is reached. It is bounded by `MAX_WORKERS_MIN` and `MAX_WORKERS_MAX`. |
+| `MAX_WORKERS_MIN` | `1` | Lower bound for automatically detected ingestion capacity. |
+| `MAX_WORKERS_MAX` | `6` | Upper bound for automatically detected ingestion capacity. Keep this consistent with Docling CPU, memory, and storage resources. |
+| `DOCLING_METRICS_URL` | `http://docling-serve.docling.svc.cluster.local:5001/metrics` | Prometheus endpoint used in `MAX_WORKERS=auto` mode to discover live Docling RQ workers. |
+| `DOCLING_WORKER_REFRESH_SECONDS` | `15` | Interval in seconds between automatic worker-topology reads. |
+| `DOCLING_WORKER_FAILURE_THRESHOLD` | `3` | Consecutive failed metrics reads allowed before automatic mode switches from its last valid capacity to `MAX_WORKERS_FALLBACK`. |
 | `OPENRAG_LARGE_INGEST_FILE_BYTES` | `33554432` | Local files at or above this size use one serialized heavy-ingestion lane. Smaller files may still use the other Docling workers concurrently. |
 | `LANGFLOW_WORKERS` | `1` | Number of Langflow worker processes for concurrent request handling. Be mindful of hardware limitations to avoid overtaxing system resources. |
 | `DOCLING_WORKERS` | `1` | Number of Docling worker processes for concurrent request handling. Be mindful of hardware limitations to avoid overtaxing system resources. |
@@ -187,3 +193,18 @@ Configure general system components, session management, and logging.
 | `LOG_LEVEL` | `INFO` | Logging level. Can be one of `DEBUG`, `INFO`, `WARNING`, `ERROR`, or `CRITICAL`. `DEBUG` provides the most detailed logs but can impact performance. |
 | `SERVICE_NAME` | `openrag` | Service name used in log entries. |
 | `SESSION_SECRET` | Automatically generated | Secret key for session management. If not provided, a secure random key is generated automatically. |
+
+`MAX_WORKERS` controls ingestion slots inside the single OpenRAG backend; it
+does not create backend processes, Kubernetes replicas, Langflow workers, or
+Docling workers. In automatic mode, OpenRAG counts both idle and busy live RQ
+workers on Docling's `convert` queue and changes its admission capacity without
+a restart. Capacity increases wake queued files. Capacity decreases never
+cancel active files: new files wait until the active count is below the new
+limit. A short metrics outage retains the last valid capacity; repeated
+failures use the bounded fallback and are rate-limited in structured logs.
+
+The same policy can be selected at runtime in **Settings > Langflow > Knowledge
+Ingest > Ingestion concurrency**. **Deployment** follows the environment,
+**Automatic** enables live discovery with workspace-specific fallback and
+maximum values, and **Manual** fixes the number of slots. The metrics URL,
+refresh interval, minimum, and failure threshold remain deployment-owned.

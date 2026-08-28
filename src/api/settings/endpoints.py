@@ -274,6 +274,18 @@ async def get_settings(
                 ),
                 index_name=knowledge_config.index_name,
                 disable_ingest_with_langflow=knowledge_config.disable_ingest_with_langflow,
+                ingestion_concurrency_mode=getattr(
+                    knowledge_config, "ingestion_concurrency_mode", "deployment"
+                ),
+                ingestion_manual_workers=getattr(
+                    knowledge_config, "ingestion_manual_workers", 2
+                ),
+                ingestion_worker_fallback=getattr(
+                    knowledge_config, "ingestion_worker_fallback", 2
+                ),
+                ingestion_worker_max=getattr(
+                    knowledge_config, "ingestion_worker_max", 6
+                ),
                 retrieval_strategy=knowledge_config.retrieval_strategy,
                 retrieval_mode=knowledge_config.retrieval_mode,
                 retrieval_lexical_candidates=knowledge_config.retrieval_lexical_candidates,
@@ -317,6 +329,7 @@ async def update_settings(
     user: User = Depends(require_permission("config:write")),
     models_service=Depends(get_models_service),
     rbac=Depends(get_rbac_service),
+    task_service=Depends(get_task_service),
 ) -> SettingsUpdateResponse:
     """Update settings in configuration"""
     try:
@@ -648,6 +661,10 @@ async def update_settings(
             "chunking_strategy",
             "hybrid_max_tokens",
             "hybrid_merge_peers",
+            "ingestion_concurrency_mode",
+            "ingestion_manual_workers",
+            "ingestion_worker_fallback",
+            "ingestion_worker_max",
             "retrieval_strategy",
             "retrieval_mode",
             "retrieval_lexical_candidates",
@@ -664,6 +681,17 @@ async def update_settings(
             if value is not None:
                 setattr(working_config.knowledge, field_name, value)
                 config_updated = True
+        ingestion_worker_fallback = getattr(
+            working_config.knowledge, "ingestion_worker_fallback", 2
+        )
+        ingestion_worker_max = getattr(
+            working_config.knowledge, "ingestion_worker_max", 6
+        )
+        if ingestion_worker_fallback > ingestion_worker_max:
+            raise HTTPException(
+                status_code=422,
+                detail="ingestion_worker_fallback must not exceed ingestion_worker_max",
+            )
         if body.index_name is not None:
             old_index_name = working_config.knowledge.index_name
             new_index_name = body.index_name.strip()
@@ -867,6 +895,15 @@ async def update_settings(
         # Save the updated configuration
         if not config_manager.save_config_file(working_config):
             return JSONResponse({"error": "Failed to save configuration"}, status_code=500)
+
+        capacity_fields = {
+            "ingestion_concurrency_mode",
+            "ingestion_manual_workers",
+            "ingestion_worker_fallback",
+            "ingestion_worker_max",
+        }
+        if any(getattr(body, field_name) is not None for field_name in capacity_fields):
+            await task_service.reconfigure_ingestion_capacity(working_config.knowledge)
 
         provider_health_cache.invalidate()
 

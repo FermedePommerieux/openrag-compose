@@ -21,6 +21,10 @@ const BASE_KNOWLEDGE: Knowledge = {
   ocr: false,
   picture_descriptions: false,
   disable_ingest_with_langflow: false,
+  ingestion_concurrency_mode: "deployment",
+  ingestion_manual_workers: 2,
+  ingestion_worker_fallback: 2,
+  ingestion_worker_max: 6,
   retrieval_strategy: "rrf",
   retrieval_mode: "hybrid",
   retrieval_lexical_candidates: 50,
@@ -147,6 +151,28 @@ test.describe("Retrieval and ingestion settings contracts", () => {
     ).not.toBeChecked();
     await expect(page.getByLabel("Chunk size")).toHaveCount(0);
     await expect(page.getByLabel("Chunk overlap")).toHaveCount(0);
+  });
+
+  test("persists automatic Docling worker concurrency from Knowledge Ingest", async ({
+    page,
+  }) => {
+    const settings = await mockSettings(page);
+    await openSettings(page, "langflow");
+
+    await expect(
+      page.getByText(/Follow the MAX_WORKERS mode and limits/i),
+    ).toBeVisible();
+    await page.getByRole("button", { name: "Automatic" }).click();
+    await page.getByLabel("Fallback workers").fill("3");
+    await page.getByLabel("Automatic maximum").fill("5");
+    await page.getByRole("button", { name: "Save ingest settings" }).click();
+
+    await expect.poll(() => settings.posts.length).toBe(1);
+    expect(settings.posts[0]).toMatchObject({
+      ingestion_concurrency_mode: "auto",
+      ingestion_worker_fallback: 3,
+      ingestion_worker_max: 5,
+    });
   });
 
   test("keeps weighted untouched and activates Search mode only after switching to RRF", async ({

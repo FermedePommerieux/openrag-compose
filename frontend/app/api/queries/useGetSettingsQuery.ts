@@ -25,6 +25,10 @@ export interface KnowledgeSettings {
   picture_descriptions?: boolean;
   picture_description_vlm_configured?: boolean;
   disable_ingest_with_langflow?: boolean;
+  ingestion_concurrency_mode?: "deployment" | "auto" | "manual";
+  ingestion_manual_workers?: number;
+  ingestion_worker_fallback?: number;
+  ingestion_worker_max?: number;
   retrieval_strategy?: "weighted" | "rrf";
   retrieval_mode?: "hybrid" | "lexical" | "vector";
   retrieval_lexical_candidates?: number;

@@ -357,6 +357,7 @@ async def run_startup(app: FastAPI):
     t1.add_done_callback(app.state.background_tasks.discard)
 
     # Start periodic task cleanup scheduler
+    services["task_service"].start_ingestion_capacity_monitor()
     services["task_service"].start_cleanup_scheduler()
 
     # Start periodic flow backup task (every 5 minutes)

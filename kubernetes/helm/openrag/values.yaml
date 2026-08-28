@@ -333,7 +333,13 @@ backend:
 
   # Concurrency
   uploadBatchSize: 25                     # Max files per batch when ingesting from a folder
-  maxWorkers: ""                          # Backend worker processes; empty = auto (min(4, CPU_COUNT // 2))
+  maxWorkers: ""                          # Ingestion slots: integer, "auto", or empty for legacy CPU-based default
+  maxWorkersFallback: 2                   # Used in auto mode when no reliable live-worker count is available
+  maxWorkersMin: 1                        # Lower bound for a detected positive worker count
+  maxWorkersMax: 6                        # Resource safety ceiling; never exceeded by auto mode
+  doclingMetricsUrl: "http://docling-serve.docling.svc.cluster.local:5001/metrics"
+  doclingWorkerRefreshSeconds: 15
+  doclingWorkerFailureThreshold: 3        # Keep last good count until this many consecutive scrape failures
 
   # Feature flags
   features:

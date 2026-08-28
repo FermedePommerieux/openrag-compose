@@ -24,6 +24,10 @@ export interface UpdateSettingsRequest {
   ocr_mojibake_fallback?: boolean;
   picture_descriptions?: boolean;
   disable_ingest_with_langflow?: boolean;
+  ingestion_concurrency_mode?: "deployment" | "auto" | "manual";
+  ingestion_manual_workers?: number;
+  ingestion_worker_fallback?: number;
+  ingestion_worker_max?: number;
   embedding_model?: string;
   embedding_provider?: string;
   archive_sources_enabled?: boolean;

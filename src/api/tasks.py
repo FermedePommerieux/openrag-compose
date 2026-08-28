@@ -51,6 +51,14 @@ async def all_tasks_enhanced(
     return JSONResponse({"tasks": tasks})
 
 
+async def ingestion_capacity(
+    task_service=Depends(get_task_service),
+    _user: User = Depends(get_current_user),
+):
+    """Expose effective ingestion concurrency and Docling detection state."""
+    return JSONResponse(task_service.get_ingestion_capacity_status())
+
+
 class RetryTaskBody(BaseModel):
     file_paths: list[str] | None = Field(
         default=None,

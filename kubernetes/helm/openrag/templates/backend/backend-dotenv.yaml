@@ -180,10 +180,16 @@ stringData:
     LANGFLOW_SUPERUSER_PASSWORD={{ .Values.langflow.auth.superuserPassword | quote }}
     {{- end }}
 
-    # Optional workers
+    # Backend-owned ingestion concurrency (independent of Uvicorn workers)
     {{- if .Values.backend.maxWorkers }}
     MAX_WORKERS={{ .Values.backend.maxWorkers | quote }}
     {{- end }}
+    MAX_WORKERS_FALLBACK={{ .Values.backend.maxWorkersFallback | quote }}
+    MAX_WORKERS_MIN={{ .Values.backend.maxWorkersMin | quote }}
+    MAX_WORKERS_MAX={{ .Values.backend.maxWorkersMax | quote }}
+    DOCLING_METRICS_URL={{ .Values.backend.doclingMetricsUrl | quote }}
+    DOCLING_WORKER_REFRESH_SECONDS={{ .Values.backend.doclingWorkerRefreshSeconds | quote }}
+    DOCLING_WORKER_FAILURE_THRESHOLD={{ .Values.backend.doclingWorkerFailureThreshold | quote }}
 
     # OpenRAG Configuration
     {{- if .Values.global.imageTag }}

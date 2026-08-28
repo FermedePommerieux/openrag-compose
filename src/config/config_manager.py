@@ -188,6 +188,13 @@ class KnowledgeConfig:
     picture_descriptions: bool = False
     index_name: str = "documents"  # OpenSearch index name
     disable_ingest_with_langflow: bool = False
+    # ``deployment`` follows MAX_WORKERS from Helm/environment. Operators may
+    # persist an explicit hot-reloadable auto/manual override from the
+    # Knowledge Ingest settings without exposing cluster-only metrics details.
+    ingestion_concurrency_mode: str = "deployment"
+    ingestion_manual_workers: int = 2
+    ingestion_worker_fallback: int = 2
+    ingestion_worker_max: int = 6
     # RRF is the Standard retrieval baseline. ``weighted`` remains available
     # only as an explicit compatibility choice for existing deployments.
     retrieval_strategy: str = "rrf"

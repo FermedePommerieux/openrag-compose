@@ -26,6 +26,10 @@ class SettingsUpdateBody(BaseModel):
     ocr_mojibake_fallback: bool | None = None
     picture_descriptions: bool | None = None
     disable_ingest_with_langflow: bool | None = None
+    ingestion_concurrency_mode: str | None = Field(None, pattern="^(deployment|auto|manual)$")
+    ingestion_manual_workers: int | None = Field(None, ge=1, le=64)
+    ingestion_worker_fallback: int | None = Field(None, ge=1, le=64)
+    ingestion_worker_max: int | None = Field(None, ge=1, le=64)
     archive_sources_enabled: bool | None = None
     embedding_model: str | None = Field(None, min_length=1)
     embedding_provider: str | None = Field(None, pattern="^(openai|watsonx|ollama)$")
@@ -203,6 +207,10 @@ class KnowledgeConfig(BaseModel):
     picture_description_vlm_configured: bool = False
     index_name: str | None
     disable_ingest_with_langflow: bool | None
+    ingestion_concurrency_mode: str = "deployment"
+    ingestion_manual_workers: int = 2
+    ingestion_worker_fallback: int = 2
+    ingestion_worker_max: int = 6
     retrieval_strategy: str | None = None
     retrieval_mode: str | None = None
     retrieval_lexical_candidates: int | None = None

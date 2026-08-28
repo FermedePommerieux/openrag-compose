@@ -10,7 +10,12 @@ from typing import TYPE_CHECKING, Any, TypeVar
 
 from models.tasks import DoclingPhaseStatus, FileTask, IngestionPhase, TaskStatus, UploadTask
 from session_manager import AnonymousUser
-from utils.gpu_detection import get_worker_count
+from utils.ingestion_capacity import (
+    DoclingWorkerCapacityMonitor,
+    IngestionCapacityConfig,
+    ResizableAsyncLimiter,
+    resolve_ingestion_capacity_config,
+)
 from utils.ingestion_timeout import (
     adaptive_ingestion_timeout_seconds,
     local_file_size_bytes,
@@ -173,6 +178,8 @@ class TaskService:
         docling_service=None,
         docling_polling_service=None,
         session_manager=None,
+        ingestion_capacity_config: IngestionCapacityConfig | None = None,
+        ingestion_capacity_http_client=None,
     ):
         self.document_service = document_service
         self.models_service = models_service
@@ -184,7 +191,7 @@ class TaskService:
         # flow and falls back to the legacy single-call ingestion path.
         self.docling_polling_service = docling_polling_service
         self.task_store: dict[str, dict[str, UploadTask]] = {}  # user_id -> {task_id -> UploadTask}
-        self.background_tasks = set()
+        self.background_tasks: set[asyncio.Task[Any]] = set()
         self.ingestion_timeout = ingestion_timeout
         self.ingestion_timeout_per_mib = ingestion_timeout_per_mib
         self.ingestion_timeout_max = ingestion_timeout_max
@@ -192,10 +199,27 @@ class TaskService:
         # Locks for task counter updates, keyed by task_id
         # Kept separate from UploadTask to maintain serialization compatibility
         self._task_locks: dict[str, asyncio.Lock] = {}
-        # Global semaphore to limit concurrent file processing across all tasks.
-        # TaskService is a singleton, so this limits concurrency system-wide.
-        self._worker_count = get_worker_count()
-        self._processing_semaphore = asyncio.Semaphore(self._worker_count)
+        # TaskService is a singleton, so this limiter controls ingestion
+        # concurrency process-wide without changing Uvicorn worker count.
+        if ingestion_capacity_config is None:
+            from config.settings import get_openrag_config
+
+            ingestion_capacity_config = resolve_ingestion_capacity_config(
+                get_openrag_config().knowledge
+            )
+        self._capacity_config = ingestion_capacity_config
+        self._capacity_http_client = ingestion_capacity_http_client
+        self._processing_limiter = ResizableAsyncLimiter(ingestion_capacity_config.initial_capacity)
+        self._capacity_monitor_started = False
+        self._capacity_monitor = self._new_capacity_monitor(ingestion_capacity_config)
+        logger.info(
+            "Ingestion capacity configured",
+            mode=ingestion_capacity_config.mode,
+            effective_capacity=ingestion_capacity_config.initial_capacity,
+            fallback_capacity=ingestion_capacity_config.fallback,
+            minimum=ingestion_capacity_config.minimum,
+            maximum=ingestion_capacity_config.maximum,
+        )
         # Ordinary documents can use all Docling workers concurrently, but
         # large local sources are serialized. RQ stores uploaded bytes in the
         # Valkey job payload, so parallel 100+ MiB PDFs multiply memory before
@@ -204,6 +228,70 @@ class TaskService:
             1, int(os.getenv("OPENRAG_LARGE_INGEST_FILE_BYTES", 32 * 1024 * 1024))
         )
         self._large_file_semaphore = asyncio.Semaphore(1)
+
+    @property
+    def _worker_count(self) -> int:
+        """Compatibility value used by existing structured task logs."""
+        return self._processing_limiter.target_capacity
+
+    def _new_capacity_monitor(
+        self, config: IngestionCapacityConfig
+    ) -> DoclingWorkerCapacityMonitor | None:
+        if config.mode != "auto":
+            return None
+        return DoclingWorkerCapacityMonitor(
+            self._processing_limiter,
+            config,
+            http_client=self._capacity_http_client,
+        )
+
+    def start_ingestion_capacity_monitor(self) -> None:
+        """Start live Docling worker discovery after the event loop is running."""
+        self._capacity_monitor_started = True
+        if self._capacity_monitor is not None:
+            self._capacity_monitor.start()
+
+    async def stop_ingestion_capacity_monitor(self) -> None:
+        """Stop worker discovery without affecting active ingestion work."""
+        self._capacity_monitor_started = False
+        if self._capacity_monitor is not None:
+            await self._capacity_monitor.stop()
+
+    async def reconfigure_ingestion_capacity(self, knowledge_config: Any) -> None:
+        """Apply a persisted UI mode/capacity change without restarting OpenRAG."""
+        new_config = resolve_ingestion_capacity_config(knowledge_config)
+        old_config = self._capacity_config
+        monitor_should_run = self._capacity_monitor_started
+        await self.stop_ingestion_capacity_monitor()
+        self._capacity_config = new_config
+        previous = await self._processing_limiter.resize(new_config.initial_capacity)
+        self._capacity_monitor = self._new_capacity_monitor(new_config)
+        if monitor_should_run:
+            self.start_ingestion_capacity_monitor()
+        logger.info(
+            "Ingestion capacity configuration updated",
+            old_mode=old_config.mode,
+            new_mode=new_config.mode,
+            old_capacity=previous,
+            new_capacity=new_config.initial_capacity,
+            fallback_capacity=new_config.fallback,
+            maximum=new_config.maximum,
+        )
+
+    def get_ingestion_capacity_status(self) -> dict[str, Any]:
+        """Return operational state for the authenticated status endpoint."""
+        if self._capacity_monitor is not None:
+            return self._capacity_monitor.snapshot()
+        return {
+            "mode": "manual",
+            "effective_capacity": self._processing_limiter.target_capacity,
+            "active": self._processing_limiter.active,
+            "waiting": self._processing_limiter.waiting,
+            "detected_workers": None,
+            "detection_state": "healthy",
+            "consecutive_failures": 0,
+            "last_success_at": None,
+        }
 
     def _requires_large_file_slot(self, item: Any) -> bool:
         """Return whether a local source must use the serialized heavy lane."""
@@ -586,7 +674,7 @@ class TaskService:
                 async with AsyncExitStack() as stack:
                     if is_large_file:
                         await stack.enter_async_context(self._large_file_semaphore)
-                    await stack.enter_async_context(self._processing_semaphore)
+                    await stack.enter_async_context(self._processing_limiter)
                     file_task = upload_task.file_tasks[item_key]
                     file_task.status = TaskStatus.RUNNING
                     file_task.updated_at = time.time()
@@ -1606,6 +1694,8 @@ class TaskService:
         5. Shutting down the process pool
         """
         logger.info("Shutting down TaskService", background_tasks_count=len(self.background_tasks))
+
+        await self.stop_ingestion_capacity_monitor()
 
         # Cancel the periodic cleanup task
         if self._cleanup_task is not None and not self._cleanup_task.done():

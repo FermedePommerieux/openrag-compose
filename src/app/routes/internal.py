@@ -96,6 +96,12 @@ def register_internal_routes(app: FastAPI):
     app.add_api_route(
         "/tasks/enhanced", tasks.all_tasks_enhanced, methods=["GET"], tags=["internal"]
     )
+    app.add_api_route(
+        "/tasks/ingestion-capacity",
+        tasks.ingestion_capacity,
+        methods=["GET"],
+        tags=["internal"],
+    )
     app.add_api_route("/tasks/{task_id}", tasks.task_status, methods=["GET"], tags=["internal"])
     app.add_api_route(
         "/tasks/{task_id}/enhanced",

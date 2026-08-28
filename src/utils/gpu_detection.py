@@ -1,5 +1,4 @@
-import multiprocessing
-import os
+from utils.ingestion_capacity import load_ingestion_capacity_config
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -28,27 +27,19 @@ def detect_gpu_devices():
 
 
 def get_worker_count():
-    """Get optimal worker count based on downstream service capacity.
+    """Return initial ingestion capacity for legacy callers.
 
-    The worker count controls concurrent ingestion requests to Langflow/Docling.
-    The bottleneck is not the backend CPU (which is I/O-bound waiting on HTTP),
-    but rather Langflow and Docling's processing capacity (default: 1 worker each).
-
-    Uses min(4, cpu_count // 2) for both GPU and CPU modes to maintain a
-    reasonable ratio with downstream services (4 backend : 1 Langflow worker).
+    Dynamic updates are owned by ``TaskService``. In ``auto`` mode this value
+    is the deployment fallback used before the first successful metrics read.
     """
     has_gpu_devices, gpu_count = detect_gpu_devices()
-
-    # Same formula for both modes: cap at 4, use half of available CPUs
-    default_worker_count = max(1, min(4, multiprocessing.cpu_count() // 2))
-    worker_count = max(1, int(os.getenv("MAX_WORKERS", default_worker_count)))
+    capacity = load_ingestion_capacity_config()
     mode = "GPU" if has_gpu_devices else "CPU-only"
 
     logger.info(
         f"{mode} mode enabled",
         gpu_count=gpu_count,
-        worker_count=worker_count,
-        default_worker_count=default_worker_count,
+        worker_count=capacity.initial_capacity,
+        ingestion_capacity_mode=capacity.mode,
     )
-
-    return worker_count
+    return capacity.initial_capacity

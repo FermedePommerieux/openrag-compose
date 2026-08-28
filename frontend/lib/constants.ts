@@ -20,6 +20,10 @@ export const DEFAULT_KNOWLEDGE_SETTINGS = {
   ocr: false,
   ocr_mojibake_fallback: false,
   picture_descriptions: false,
+  ingestion_concurrency_mode: "deployment",
+  ingestion_manual_workers: 2,
+  ingestion_worker_fallback: 2,
+  ingestion_worker_max: 6,
 } as const;
 
 /**
