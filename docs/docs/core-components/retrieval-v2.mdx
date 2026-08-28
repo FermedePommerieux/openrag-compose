@@ -39,6 +39,12 @@ The normal path has two deliberately separate planes:
    reached inside the caller-visible graph. One representative chunk for each
    newly related document is appended after the direct plane.
 
+Candidate depths improve ranking recall but are not findings. Consensus fusion,
+per-document diversity, reranking and the requested direct-result limit run
+before graph expansion. Only the direct documents that survive those steps seed
+PROV-O. A rejected nearest neighbour can therefore never import its unrelated
+mail component into a small result request.
+
 `contained_in` is intentionally ignored: documents sharing a mailbox or an
 archive are not necessarily about the same subject.
 

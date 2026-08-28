@@ -19,7 +19,6 @@ from services.search_service import (
     PROVENANCE_TRAVERSAL_PREDICATES,
     SearchService,
     _build_document_graph,
-    _propagate_provenance_paths,
     _provenance_relation_paths,
     _provenance_relation_target_query,
 )
@@ -205,29 +204,6 @@ def test_shared_target_graph_projection_preserves_both_prov_assertions():
             ],
         }
     ]
-
-
-def test_provenance_path_survives_when_rrf_keeps_a_vector_copy():
-    vector_hit = _hit("vector-chunk", "related", "Nous soutenons votre projet")
-    provenance_hit = _hit("provenance-chunk", "related", "Nous soutenons votre projet")
-    provenance_hit["_source"]["retrieval_relation_paths"] = [
-        {
-            "from_document_id": "anchor",
-            "to_document_id": "related",
-            "relation_role": "reply_to",
-        }
-    ]
-    retrieval_results = {
-        "vector:model": {"hits": {"hits": [vector_hit]}},
-        "provenance": {"hits": {"hits": [provenance_hit]}},
-    }
-
-    _propagate_provenance_paths(retrieval_results, [provenance_hit])
-
-    assert (
-        vector_hit["_source"]["retrieval_relation_paths"]
-        == provenance_hit["_source"]["retrieval_relation_paths"]
-    )
 
 
 @pytest.mark.asyncio
@@ -652,7 +628,8 @@ def test_settings_normalize_invalid_or_unbounded_values():
 async def test_search_service_consensus_fuses_lanes_preserves_provenance_and_emits_debug(
     monkeypatch,
 ):
-    """Standard retrieval converges rank and normalized score policies."""
+    """Standard retrieval ranks first and expands PROV-O from accepted results only."""
+    from auth_context import set_search_limit
     from services import search_service
 
     knowledge = SimpleNamespace(
@@ -792,9 +769,13 @@ async def test_search_service_consensus_fuses_lanes_preserves_provenance_and_emi
     session_manager.get_user_opensearch_client.return_value = opensearch_client
     service = SearchService(session_manager=session_manager)
 
-    result = await service.search_tool("shared text")
+    set_search_limit(1)
+    try:
+        result = await service.search_tool("shared text")
+    finally:
+        set_search_limit(10)
 
-    assert [item["chunk_id"] for item in result["results"]] == ["shared", "lexical", "related"]
+    assert [item["chunk_id"] for item in result["results"]] == ["shared", "related"]
     assert result["results"][0]["source_url"] == "https://example.test/b"
     assert result["results"][0]["document_id"] == "document-b"
     assert result["results"][0]["connector_file_id"] == "drive-file-b"
@@ -835,6 +816,7 @@ async def test_search_service_consensus_fuses_lanes_preserves_provenance_and_emi
         for body in lane_bodies
     )
     assert result["provenance_retrieval"]["fixpoint_reached"] is True
+    assert result["provenance_retrieval"]["seed_documents"] == 1
     assert result["provenance_retrieval"]["canonical_field"] == (
         "source_provenance.relations.prov_predicate"
     )
@@ -843,10 +825,10 @@ async def test_search_service_consensus_fuses_lanes_preserves_provenance_and_emi
         "purpose": "qualify_same_predicate_context",
         "excluded": ["contained_in"],
     }
-    assert result["retrieval_planes"]["direct"]["documents"] == 2
+    assert result["retrieval_planes"]["direct"]["documents"] == 1
     assert result["retrieval_planes"]["direct"]["ranking"] == "rrf_normalized_consensus"
     assert result["retrieval_planes"]["context"]["documents"] == 1
-    assert result["results"][2]["retrieval_plane"] == "context"
-    assert result["results"][2]["retrieval_relation_depth"] == 1
-    assert result["results"][2]["retrieval_relevance"]["level"] == "contextual"
+    assert result["results"][1]["retrieval_plane"] == "context"
+    assert result["results"][1]["retrieval_relation_depth"] == 1
+    assert result["results"][1]["retrieval_relevance"]["level"] == "contextual"
     assert result["noise_accounting"]["excluded_relation_documents"] == 0

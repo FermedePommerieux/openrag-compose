@@ -267,26 +267,6 @@ def _provenance_relation_paths(
     return paths
 
 
-def _propagate_provenance_paths(
-    retrieval_results: dict[str, dict[str, Any]],
-    provenance_hits: list[dict[str, Any]],
-) -> None:
-    """Attach a graph proof even when RRF keeps another lane's chunk copy."""
-    paths_by_document = {
-        str(hit.get("_source", {}).get("document_id")): hit.get("_source", {}).get(
-            "retrieval_relation_paths", []
-        )
-        for hit in provenance_hits
-        if hit.get("_source", {}).get("document_id")
-    }
-    for result in retrieval_results.values():
-        for hit in result.get("hits", {}).get("hits", []):
-            source = hit.get("_source", {})
-            paths = paths_by_document.get(str(source.get("document_id") or ""))
-            if paths:
-                source["retrieval_relation_paths"] = paths
-
-
 def _retrieval_discovery_channels(
     retrieval_results: dict[str, dict[str, Any]],
 ) -> dict[str, set[str]]:
@@ -1671,44 +1651,7 @@ class SearchService:
         else:
             results = await execute_search(search_body, "weighted")
 
-        direct_lane_results = list(retrieval_results.values()) if retrieval_results else [results]
-        direct_hits = [
-            hit
-            for lane_result in direct_lane_results
-            for hit in lane_result.get("hits", {}).get("hits", [])
-        ]
-        retrieval_progress_service.update(
-            progress_id,
-            phase="ranking",
-            message="Combining direct document rankings",
-            counters={
-                "search_lanes_complete": len(retrieval_results) or 1,
-                "direct_documents": len(_hits_by_document(direct_hits)),
-            },
-        )
-
         raw_hits = results.get("hits", {}).get("hits", [])
-        # PROV-O is a native retrieval plane for every query strategy. Seed it
-        # from the direct lexical/vector lanes (or the legacy weighted lane),
-        # traverse the accessible high-signal component to a fixed point, and
-        # keep the result separate from direct relevance ranking.
-        provenance_seed_hits = (
-            [
-                hit
-                for result in retrieval_results.values()
-                for hit in result.get("hits", {}).get("hits", [])
-            ]
-            if retrieval_results
-            else list(raw_hits)
-        )
-        if provenance_seed_hits and not is_wildcard_match_all:
-            provenance_result_for_graph, provenance_metadata = await execute_provenance_closure(
-                provenance_seed_hits
-            )
-            _propagate_provenance_paths(
-                retrieval_results,
-                provenance_result_for_graph.get("hits", {}).get("hits", []),
-            )
         if retrieval_results:
             ranked_lists = [
                 lane_result.get("hits", {}).get("hits", [])
@@ -1728,11 +1671,46 @@ class SearchService:
             ).rerank(retrieval_query, raw_hits)
             raw_hits = raw_hits[:result_limit]
 
+        # Candidate depths exist only to make direct ranking robust. They are
+        # not user-visible findings and must not seed graph expansion: one
+        # rejected semantic neighbour could otherwise pull a large unrelated
+        # mail component into a small request. Rank, diversify and apply the
+        # requested limit first, then traverse PROV-O to a fixed point from
+        # exactly those accepted direct documents.
+        direct_hits = list(raw_hits)
+        accepted_direct_document_ids = set(_hits_by_document(direct_hits))
+        retrieval_progress_service.update(
+            progress_id,
+            phase="ranking",
+            message="Combining direct document rankings",
+            counters={
+                "search_lanes_complete": len(retrieval_results) or 1,
+                "direct_documents": len(accepted_direct_document_ids),
+            },
+        )
+        if direct_hits and not is_wildcard_match_all:
+            provenance_result_for_graph, provenance_metadata = await execute_provenance_closure(
+                direct_hits
+            )
+
+        # Only accepted direct documents retain lexical/semantic discovery
+        # channels in the graph. A relation-only document may have appeared in
+        # a deeper candidate tail, but that does not promote it to direct proof.
+        graph_direct_results: dict[str, dict[str, Any]] = {}
+        for lane, lane_result in (retrieval_results or {"weighted": results}).items():
+            lane_hits = [
+                hit
+                for hit in lane_result.get("hits", {}).get("hits", [])
+                if str(hit.get("_source", {}).get("document_id") or "")
+                in accepted_direct_document_ids
+            ]
+            graph_direct_results[lane] = {"hits": {"hits": lane_hits}}
+
         # The relation plane is exhaustive for the disclosed high-signal
         # PROV-O component but is not a direct relevance score. Append one
         # representative hit per related document after the ranked plane,
         # keeping context visible without letting it displace direct hits.
-        direct_document_ids = set(_hits_by_document(raw_hits))
+        direct_document_ids = set(accepted_direct_document_ids)
         for related_hit in provenance_result_for_graph.get("hits", {}).get("hits", []):
             related_document_id = str(related_hit.get("_source", {}).get("document_id") or "")
             if related_document_id and related_document_id not in direct_document_ids:
@@ -1808,7 +1786,7 @@ class SearchService:
         document_register: list[dict[str, Any]] = []
         document_graph: dict[str, Any] | None = None
         if raw_hits:
-            graph_retrieval_results = dict(retrieval_results or {"weighted": results})
+            graph_retrieval_results = dict(graph_direct_results)
             graph_retrieval_results["provenance"] = provenance_result_for_graph
             document_register, document_graph = _build_document_graph(
                 chunks, graph_retrieval_results
