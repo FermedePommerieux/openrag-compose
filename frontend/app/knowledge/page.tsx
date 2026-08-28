@@ -822,13 +822,31 @@ function SearchPage() {
     if (rowsToDelete.length === 0) return;
 
     try {
-      const deleteResults = await Promise.allSettled(
-        rowsToDelete.map((row) =>
-          deleteDocumentMutation.mutateAsync({
-            filename: resolveDeleteFilename(row),
-          }),
-        ),
-      );
+      // OpenSearch runs on a resource-constrained document node. A large
+      // selection used to create one request per row simultaneously, causing
+      // otherwise valid deletes to time out. Small bounded batches keep the
+      // operation predictable without requiring a second bulk API contract.
+      const deleteResults: PromiseSettledResult<
+        Awaited<ReturnType<typeof deleteDocumentMutation.mutateAsync>>
+      >[] = [];
+      const concurrency = 2;
+      for (
+        let offset = 0;
+        offset < rowsToDelete.length;
+        offset += concurrency
+      ) {
+        const batch = rowsToDelete.slice(offset, offset + concurrency);
+        deleteResults.push(
+          ...(await Promise.allSettled(
+            batch.map((row) =>
+              deleteDocumentMutation.mutateAsync({
+                filename: resolveDeleteFilename(row),
+                deferInvalidation: true,
+              }),
+            ),
+          )),
+        );
+      }
 
       await Promise.all([
         refreshTasks(),

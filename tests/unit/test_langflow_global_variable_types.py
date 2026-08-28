@@ -10,6 +10,7 @@ from api.settings.langflow_sync import (
 
 def test_ingest_run_id_is_generic_routing_metadata():
     assert _langflow_global_variable_type("OPENRAG_INGEST_RUN_ID") == "Generic"
+    assert _langflow_global_variable_type("OPENRAG_INGEST_URL") == "Generic"
     assert _langflow_global_variable_type("OPENRAG_INGEST_TOKEN") == "Credential"
 
 
@@ -33,3 +34,4 @@ def test_startup_migrates_ingest_run_id_even_before_first_request(monkeypatch):
     values = _required_generic_global_values(config)
 
     assert values["OPENRAG_INGEST_RUN_ID"] == "OPENRAG_INGEST_RUN_ID"
+    assert values["OPENRAG_INGEST_URL"] == "OPENRAG_INGEST_URL"

@@ -4,6 +4,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 interface DeleteDocumentRequest {
   filename: string;
+  deferInvalidation?: boolean;
 }
 
 interface DeleteDocumentResponse {
@@ -38,7 +39,8 @@ export const useDeleteDocument = () => {
   return useMutation({
     mutationFn: ({ filename }: DeleteDocumentRequest) =>
       deleteDocumentByFilename(filename),
-    onSettled: () => {
+    onSettled: (_data, _error, variables) => {
+      if (variables.deferInvalidation) return;
       // Invalidate and refetch search queries to update the UI
       setTimeout(() => {
         queryClient.invalidateQueries({ queryKey: ["search"] });
