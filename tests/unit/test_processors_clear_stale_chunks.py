@@ -157,6 +157,73 @@ async def test_invalid_internal_chunking_strategy_fails_clearly(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_direct_pdf_pipeline_retries_bad_text_with_forced_ocr(monkeypatch):
+    """Folder ingestion applies the same deterministic guard as Langflow."""
+    processor, opensearch_client = _make_processor_with_mocks()
+    opensearch_client.search = AsyncMock(return_value={"hits": {"hits": []}})
+    _patch_embedding_pipeline(monkeypatch, chunk_count=1, write_client=opensearch_client)
+
+    class _Writer:
+        async def index_chunks(self, _context, chunks, *, final=False):
+            return {"indexed_chunks": len(chunks), "final": final}
+
+    processor.document_service.document_index_writer = _Writer()
+
+    from models import processors as processors_mod
+
+    corrupt = "Tous les pins et les chênes ĚĞ ƋƵĂůŝƚĠ ďŽŝƐ Ě͛ƈƵǀƌĞ͕ ƐƵƉĠƌŝĞƵƌƐ ă ϯϱ Đŵ ĚĞ ĚŝĂŵğƚƌĞ."
+    clean = "Tous les pins et les chênes de qualité bois d’œuvre."
+    first_document = {"origin": {}, "texts": [{"text": corrupt}]}
+    second_document = {"origin": {}, "texts": [{"text": clean}]}
+    processor.docling_service.convert_file = AsyncMock(
+        side_effect=[first_document, second_document]
+    )
+    monkeypatch.setattr(
+        processors_mod,
+        "extract_relevant",
+        lambda document: {
+            "id": "doc",
+            "filename": "contract.pdf",
+            "mimetype": "application/pdf",
+            "chunks": [{"page": 1, "text": document["texts"][0]["text"]}],
+        },
+    )
+    monkeypatch.setattr(
+        processors_mod,
+        "get_openrag_config",
+        lambda: SimpleNamespace(
+            knowledge=SimpleNamespace(
+                embedding_model="text-embedding-3-small",
+                chunk_size=1000,
+                chunk_overlap=200,
+                chunking_strategy="character",
+                ocr_mojibake_fallback=True,
+            )
+        ),
+    )
+
+    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+        tmp.write(b"pdf")
+        tmp_path = tmp.name
+
+    try:
+        result = await processor.process_document_standard(
+            file_path=tmp_path,
+            file_hash="pdf-hash",
+            owner_user_id="alice",
+            ocr=True,
+        )
+    finally:
+        Path(tmp_path).unlink(missing_ok=True)
+
+    assert result["status"] == "indexed"
+    assert processor.docling_service.convert_file.await_count == 2
+    second_call = processor.docling_service.convert_file.await_args_list[1]
+    assert second_call.kwargs["ocr"] is True
+    assert second_call.kwargs["force_ocr"] is True
+
+
+@pytest.mark.asyncio
 async def test_stale_chunks_are_cleared_only_after_new_generation_is_indexed(monkeypatch):
     """Stale chunks are deleted through primary ids after new generation writes.
 

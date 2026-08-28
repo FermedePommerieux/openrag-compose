@@ -547,6 +547,7 @@ class DoclingService:
         auth_header: str | None = None,
         *,
         ocr: bool | None = None,
+        force_ocr: bool = False,
         picture_descriptions: bool | None = None,
         timeout: float | None = None,
     ) -> dict[str, Any]:
@@ -561,6 +562,7 @@ class DoclingService:
             user_id=user_id,
             auth_header=auth_header,
             ocr=ocr,
+            force_ocr=force_ocr,
             picture_descriptions=picture_descriptions,
         )
         effective_timeout = timeout

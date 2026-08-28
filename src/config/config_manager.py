@@ -183,7 +183,7 @@ class KnowledgeConfig:
     table_structure: bool = True
     ocr: bool = False
     # When enabled, a PDF extraction with a high-confidence broken character
-    # map is retried once with full-page OCR before any chunks are indexed.
+    # map or no usable text is retried once with full-page OCR before indexing.
     ocr_mojibake_fallback: bool = False
     picture_descriptions: bool = False
     index_name: str = "documents"  # OpenSearch index name

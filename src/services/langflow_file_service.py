@@ -968,8 +968,10 @@ class LangflowFileService:
         filename, content, _ = file_tuple
 
         ocr_override = settings.get("ocr") if isinstance(settings, dict) else None
-        mojibake_ocr_fallback = bool(
-            settings.get("ocrMojibakeFallback", False) if isinstance(settings, dict) else False
+        mojibake_ocr_fallback = (
+            settings.get("ocrMojibakeFallback", False) is True
+            if isinstance(settings, dict)
+            else False
         )
         pic_desc_override = (
             settings.get("pictureDescriptions") if isinstance(settings, dict) else None
@@ -1044,25 +1046,30 @@ class LangflowFileService:
                 )
 
             if mojibake_ocr_fallback and filename.lower().endswith(".pdf"):
-                from services.text_quality import docling_document_has_mojibake
+                from services.text_quality import docling_pdf_ocr_retry_reason
 
-                corrupt_text = bool(
-                    poll_result.document_json
-                    and docling_document_has_mojibake(poll_result.document_json)
+                retry_reason = (
+                    docling_pdf_ocr_retry_reason(poll_result.document_json)
+                    if poll_result.document_json is not None
+                    else None
                 )
-                if corrupt_text and not force_ocr:
+                if retry_reason is not None and not force_ocr:
                     logger.warning(
-                        "[LF] Broken PDF character map detected; retrying with forced OCR",
-                        extra={"task_id": task_id, "filename": filename},
+                        "[LF] PDF text quality check failed; retrying with forced OCR",
+                        extra={
+                            "task_id": task_id,
+                            "filename": filename,
+                            "reason": retry_reason,
+                        },
                     )
                     force_ocr = True
                     continue
-                if corrupt_text:
+                if retry_reason is not None:
                     if file_task is not None:
                         file_task.docling_status = DoclingPhaseStatus.FAILED
                     raise Exception(
-                        "Docling full-page OCR still produced corrupt PDF text; "
-                        "refusing to index it"
+                        "Docling full-page OCR did not produce trustworthy PDF text "
+                        f"({retry_reason}); refusing to index it"
                     )
 
             if file_task is not None:

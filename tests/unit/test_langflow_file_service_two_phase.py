@@ -131,6 +131,36 @@ async def test_mojibake_fallback_retries_pdf_once_with_forced_ocr(
 
 
 @pytest.mark.asyncio
+async def test_empty_pdf_fallback_retries_once_with_forced_ocr(
+    langflow_service, mock_docling_service, mock_polling_service, file_tuple, file_task
+):
+    mock_docling_service.upload_to_docling_direct_async.side_effect = [
+        "task-empty-text-layer",
+        "task-full-page-ocr",
+    ]
+    mock_polling_service.poll_until_ready.side_effect = [
+        DoclingPollResult(outcome=PollOutcome.SUCCESS, document_json={"texts": []}),
+        DoclingPollResult(
+            outcome=PollOutcome.SUCCESS,
+            document_json={"texts": [{"text": "Texte OCR lisible"}]},
+        ),
+    ]
+
+    result = await langflow_service.upload_and_ingest_file(
+        file_tuple=file_tuple,
+        settings={"ocr": True, "ocrMojibakeFallback": True},
+        docling_polling_service=mock_polling_service,
+        file_task=file_task,
+    )
+
+    assert mock_docling_service.upload_to_docling_direct_async.await_count == 2
+    second = mock_docling_service.upload_to_docling_direct_async.await_args_list[1]
+    assert second.kwargs["ocr"] is True
+    assert second.kwargs["force_ocr"] is True
+    assert result["docling_task_id"] == "task-full-page-ocr"
+
+
+@pytest.mark.asyncio
 async def test_langflow_not_invoked_on_docling_failure(
     langflow_service, mock_polling_service, file_tuple, file_task
 ):

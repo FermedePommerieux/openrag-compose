@@ -639,11 +639,12 @@ export function IngestSettingsSection() {
                   htmlFor="ocr-mojibake-fallback"
                   className="text-base font-medium cursor-pointer pb-3"
                 >
-                  Corrupt PDF text fallback
+                  PDF full-page OCR fallback
                 </Label>
                 <div className="text-sm text-muted-foreground">
                   Retries a PDF with full-page OCR only when its embedded text
-                  has a high-confidence broken character-map signature.
+                  is empty or has a high-confidence broken character-map
+                  signature.
                 </div>
               </div>
               <Switch

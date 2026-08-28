@@ -2,6 +2,9 @@
 
 from services.text_quality import (
     docling_document_has_mojibake,
+    docling_document_has_usable_text,
+    docling_document_text,
+    docling_pdf_ocr_retry_reason,
     has_pdf_character_map_mojibake,
 )
 
@@ -25,3 +28,16 @@ def test_accepts_normal_french_and_sparse_extended_characters() -> None:
     )
     assert not has_pdf_character_map_mojibake(text)
     assert not docling_document_has_mojibake({"texts": [{"text": text}]})
+
+
+def test_docling_text_collection_and_empty_detection() -> None:
+    document = {
+        "texts": [{"text": "  "}, {"text": "Texte lisible"}],
+        "tables": [{"data": {"table_cells": [{"text": "Cellule"}]}}],
+    }
+
+    assert docling_document_text(document) == "  \nTexte lisible\nCellule"
+    assert docling_document_has_usable_text(document)
+    assert not docling_document_has_usable_text({"texts": [{"text": " \n "}]})
+    assert docling_pdf_ocr_retry_reason({"texts": []}) == "no usable extracted text"
+    assert docling_pdf_ocr_retry_reason(document) is None

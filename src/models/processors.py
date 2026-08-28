@@ -849,6 +849,42 @@ class TaskProcessor:
                 ocr=ocr,
                 picture_descriptions=picture_descriptions,
             )
+
+            # A PDF may expose a broken or effectively empty text layer. A
+            # normal Docling OCR pass preserves that layer, so it can still
+            # yield mojibake or no chunks. When the operator enables the
+            # fallback, retry the original bytes once with full-page OCR,
+            # which replaces the PDF text layer instead of supplementing it.
+            # This deterministic gate is shared by direct/folder ingestion;
+            # it does not use an LLM and never attempts heuristic text repair.
+            if (
+                getattr(config.knowledge, "ocr_mojibake_fallback", False) is True
+                and file_ext == ".pdf"
+            ):
+                from services.text_quality import docling_pdf_ocr_retry_reason
+
+                retry_reason = docling_pdf_ocr_retry_reason(full_doc)
+
+                if retry_reason is not None:
+                    logger.warning(
+                        "PDF text quality check failed; retrying with forced OCR",
+                        file_path=file_path,
+                        reason=retry_reason,
+                    )
+                    full_doc = await self.docling_service.convert_file(
+                        file_path,
+                        user_id=owner_user_id,
+                        auth_header=jwt_token,
+                        ocr=True,
+                        force_ocr=True,
+                        picture_descriptions=picture_descriptions,
+                    )
+                    remaining_issue = docling_pdf_ocr_retry_reason(full_doc)
+                    if remaining_issue is not None:
+                        raise ValueError(
+                            "Docling full-page OCR did not produce trustworthy PDF text "
+                            f"({remaining_issue}); refusing to index it"
+                        )
             slim_doc = extract_relevant(full_doc)
             slim_doc["parser"] = DOCLING_PARSER_LABEL
 
@@ -1702,8 +1738,8 @@ class ConnectorFileProcessor(TaskProcessor):
                         dict(self.ingest_settings) if self.ingest_settings else {}
                     )
                     effective_ingest_settings["ocr"] = config.knowledge.ocr
-                    effective_ingest_settings["ocrMojibakeFallback"] = (
-                        getattr(config.knowledge, "ocr_mojibake_fallback", False)
+                    effective_ingest_settings["ocrMojibakeFallback"] = getattr(
+                        config.knowledge, "ocr_mojibake_fallback", False
                     )
                     effective_ingest_settings["pictureDescriptions"] = (
                         config.knowledge.picture_descriptions

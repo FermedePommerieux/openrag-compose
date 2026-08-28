@@ -31,8 +31,8 @@ def has_pdf_character_map_mojibake(text: str) -> bool:
     return extended >= _MIN_EXTENDED_CHARACTERS and extended / visible >= _MIN_EXTENDED_RATIO
 
 
-def docling_document_has_mojibake(document: Mapping[str, Any]) -> bool:
-    """Inspect the textual fields of a Docling JSON document for mojibake."""
+def docling_document_text(document: Mapping[str, Any]) -> str:
+    """Return all user-visible text carried by a Docling JSON document."""
     text_parts: list[str] = []
 
     def collect(value: Any) -> None:
@@ -47,4 +47,23 @@ def docling_document_has_mojibake(document: Mapping[str, Any]) -> bool:
                 collect(nested)
 
     collect(document)
-    return has_pdf_character_map_mojibake("\n".join(text_parts))
+    return "\n".join(text_parts)
+
+
+def docling_document_has_usable_text(document: Mapping[str, Any]) -> bool:
+    """Return whether Docling extracted any non-whitespace document text."""
+    return bool(docling_document_text(document).strip())
+
+
+def docling_document_has_mojibake(document: Mapping[str, Any]) -> bool:
+    """Inspect the textual fields of a Docling JSON document for mojibake."""
+    return has_pdf_character_map_mojibake(docling_document_text(document))
+
+
+def docling_pdf_ocr_retry_reason(document: Mapping[str, Any]) -> str | None:
+    """Explain why a PDF needs one full-page OCR retry, if it does."""
+    if docling_document_has_mojibake(document):
+        return "broken character map"
+    if not docling_document_has_usable_text(document):
+        return "no usable extracted text"
+    return None
