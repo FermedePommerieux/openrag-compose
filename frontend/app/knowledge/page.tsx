@@ -113,6 +113,9 @@ function listFilesFilterParam(values?: string[]): string | undefined {
   return raw;
 }
 
+const DEFAULT_LIST_FILES_PAGE_SIZE = 100;
+const LIST_FILES_PAGE_SIZE_OPTIONS = [100, 500, 1000] as const;
+
 // Function to get the appropriate icon for a connector type
 function getSourceIcon(connectorType?: string) {
   if (connectorType) {
@@ -152,6 +155,10 @@ function SearchPage() {
   } = useKnowledgeFilter();
   const [selectedRows, setSelectedRows] = useState<File[]>([]);
   const [previewFile, setPreviewFile] = useState<File | null>(null);
+  const [listPage, setListPage] = useState(1);
+  const [listPageSize, setListPageSize] = useState(
+    DEFAULT_LIST_FILES_PAGE_SIZE,
+  );
 
   // Keep the filter context aware of checked rows so "Create New Filter"
   // can pre-populate its sources from the current selection.
@@ -322,6 +329,26 @@ function SearchPage() {
     queryOverride.trim() || parsedFilterData?.query?.trim() || "";
   const isWildcardQuery =
     effectiveSearchText === "" || effectiveSearchText === "*";
+  const listConnectorType = listFilesFilterParam(
+    parsedFilterData?.filters?.connector_types,
+  );
+  const listMimetype = listFilesFilterParam(
+    parsedFilterData?.filters?.document_types,
+  );
+  const listOwner = listFilesFilterParam(parsedFilterData?.filters?.owners);
+  const listScopeKey = [
+    effectiveSearchText,
+    listConnectorType ?? "",
+    listMimetype ?? "",
+    listOwner ?? "",
+  ].join("\0");
+
+  useEffect(() => {
+    // A server page belongs to one exact filter scope. Keeping the old page
+    // after changing the scope can otherwise produce an empty, misleading grid.
+    void listScopeKey;
+    setListPage(1);
+  }, [listScopeKey]);
 
   const {
     data: listFilesData,
@@ -330,13 +357,12 @@ function SearchPage() {
     isError: isListFilesError,
   } = useListFiles(
     {
-      pageSize: 100,
+      page: listPage,
+      pageSize: listPageSize,
       search: isWildcardQuery ? undefined : queryOverride,
-      connectorType: listFilesFilterParam(
-        parsedFilterData?.filters?.connector_types,
-      ),
-      mimetype: listFilesFilterParam(parsedFilterData?.filters?.document_types),
-      owner: listFilesFilterParam(parsedFilterData?.filters?.owners),
+      connectorType: listConnectorType,
+      mimetype: listMimetype,
+      owner: listOwner,
     },
     {
       refetchInterval: 5000,
@@ -363,6 +389,17 @@ function SearchPage() {
   const isLoading = isWildcardQuery ? isListFilesLoading : isSearchLoading;
   const error = isWildcardQuery ? listFilesError : searchError;
   const isError = isWildcardQuery ? isListFilesError : isSearchError;
+  const listTotal = listFilesData?.total ?? 0;
+  const listTotalPages = Math.max(1, Math.ceil(listTotal / listPageSize));
+
+  useEffect(() => {
+    // Deleting the last item of the last page reduces the server page count.
+    // Clamp once the refreshed total arrives instead of leaving the user on an
+    // out-of-range page.
+    if (listPage > listTotalPages) {
+      setListPage(listTotalPages);
+    }
+  }, [listPage, listTotalPages]);
 
   const isOpenragDocsRow = useCallback((file?: File) => {
     return (
@@ -1102,7 +1139,7 @@ function SearchPage() {
             onGridReady={handleGridReady}
             onGridPreDestroyed={handleGridPreDestroyed}
             onSelectionChanged={onSelectionChanged}
-            pagination={pagination}
+            pagination={isWildcardQuery ? false : pagination}
             paginationPageSize={paginationPageSize}
             paginationPageSizeSelector={paginationPageSizeSelector}
             headerHeight={64}
@@ -1138,7 +1175,7 @@ function SearchPage() {
             onGridReady={handleGridReady}
             onGridPreDestroyed={handleGridPreDestroyed}
             onSelectionChanged={onSelectionChanged}
-            pagination={pagination}
+            pagination={isWildcardQuery ? false : pagination}
             paginationPageSize={paginationPageSize}
             paginationPageSizeSelector={paginationPageSizeSelector}
             noRowsOverlayComponent={() => (
@@ -1152,6 +1189,51 @@ function SearchPage() {
               </div>
             )}
           />
+        )}
+        {isWildcardQuery && (
+          <div className="flex shrink-0 items-center justify-end gap-3 border-t px-3 py-2 text-sm text-muted-foreground">
+            <label className="flex items-center gap-2">
+              Rows
+              <select
+                className="h-8 rounded-md border bg-background px-2 text-foreground"
+                value={listPageSize}
+                onChange={(event) => {
+                  setListPageSize(Number(event.target.value));
+                  setListPage(1);
+                }}
+              >
+                {LIST_FILES_PAGE_SIZE_OPTIONS.map((pageSize) => (
+                  <option key={pageSize} value={pageSize}>
+                    {pageSize}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <span>
+              Page {listPage} / {listTotalPages} · {listTotal} document
+              {listTotal === 1 ? "" : "s"}
+            </span>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={listPage <= 1 || isListFilesLoading}
+              onClick={() => setListPage((page) => Math.max(1, page - 1))}
+            >
+              Previous
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={listPage >= listTotalPages || isListFilesLoading}
+              onClick={() =>
+                setListPage((page) => Math.min(listTotalPages, page + 1))
+              }
+            >
+              Next
+            </Button>
+          </div>
         )}
       </div>
 
