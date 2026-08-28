@@ -86,11 +86,33 @@ Results preserve `document_id`, `chunk_id`, `connector_file_id`, `source_url`,
 chat responses, and public v1 streaming SSE citations. Legacy documents may
 have null or absent provenance fields, but remain readable.
 
+## Chat retrieval contract
+
+The agent has one normal archive-search path for every grounded question. An
+“exhaustive”, “complete”, or “all documents” formulation runs that search in
+the same turn; it does not select a hidden mode, wait for confirmation, or
+start one complete read per candidate document. Ranked retrieval reports every
+returned source but cannot certify that nothing exists elsewhere in the index.
+
+Complete source-order reading remains available for one already identified
+document explicitly selected by the human. The tool then supplies its internal
+`read_document_id`, follows the authenticated continuation cursor, and reports
+coverage under the document's filename. Internal ids and cursors are never
+human-facing scope labels.
+
+The tool artifact retains full source and PROV-O metadata for source cards. A
+compact model-facing projection carries chunk text and citation/order fields
+plus one manifest row per document, avoiding repeated URL, ACL, and provenance
+payloads without weakening the UI or citation contract.
+
 ## Persisted Langflow flows
 
 At startup OpenRAG recognizes only the exact locked historical OpenRAG agent
 graph from lifecycle baseline `156f3664`, identified by its expected ID and a
-versioned canonical graph fingerprint. It writes a local backup, then uses
+versioned canonical graph fingerprint. The comparison normalizes only model and
+provider credential/endpoint fields that OpenRAG settings are designed to
+rewrite; prompt, code, topology, and every other value remain fingerprinted. It
+writes a local backup, then uses
 Langflow 0.11.2's supported `PATCH` API to unlock the system flow temporarily,
 replaces it with the bundled `OpenRAGBackendRetrievalComponent` graph, verifies
 the persisted wiring, and locks it again. The migration is idempotent. A
@@ -130,5 +152,6 @@ the other owner's chunks. After a partial delete, restoration checks the global
 bulk response and every item. An incomplete restore is a fatal error with the
 affected chunk IDs preserved for recovery.
 
-Deep retrieval, Exhaustive retrieval, query expansion, and a new reranker are
-not implemented in this baseline.
+Archive-wide deep retrieval, query expansion, and a new reranker are not
+implemented in this baseline. Complete selected-document reading is available
+through the backend-owned authenticated pagination contract described above.

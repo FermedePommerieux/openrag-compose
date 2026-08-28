@@ -254,6 +254,7 @@ async def test_exhaustive_read_paginates_one_immutable_snapshot(monkeypatch):
     assert first["coverage"]["complete"] is False
     assert first["coverage"]["covered_chunks"] == 2
     assert first["coverage"]["total_chunks"] == 3
+    assert first["coverage"]["filename"] == "large.pdf"
     assert [item["evidence_order"] for item in first["results"]] == [1, 2]
     assert first["results"][0]["source_entity_id"] == "urn:openrag:document:large"
     assert first["results"][0]["source_relation_roles"] == ["contained_in"]

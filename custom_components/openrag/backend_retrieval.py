@@ -19,6 +19,44 @@ from lfx.schema.data import Data
 UNTRUSTED_CHUNK_FENCE_START = "<<<UNTRUSTED_DOC_CHUNK>>>"
 UNTRUSTED_CHUNK_FENCE_END = "<<<END_UNTRUSTED_DOC_CHUNK>>>"
 
+# Tool artifacts feed OpenRAG's source cards and therefore retain the complete
+# trusted backend payload. Tool content is sent to the language model: repeat
+# only evidence needed to write and cite the answer, with document metadata in
+# one manifest entry instead of duplicating PROV-O on every chunk.
+MODEL_EVIDENCE_FIELDS = (
+    "chunk_id",
+    "document_id",
+    "page",
+    "chunk_index",
+    "evidence_order",
+    "score",
+    "text",
+)
+MODEL_DOCUMENT_FIELDS = (
+    "document_id",
+    "filename",
+    "mimetype",
+    "connector_type",
+    "source_entity_id",
+    "source_entity_type",
+    "source_entity_system",
+    "source_entity_alternate_ids",
+    "source_relation_target_ids",
+    "source_relation_roles",
+    "source_relative_path",
+    "source_path_ancestors",
+)
+MODEL_COVERAGE_FIELDS = (
+    "mode",
+    "complete",
+    "filename",
+    "covered_chunks",
+    "total_chunks",
+    "coverage_ratio",
+    "next_cursor",
+    "error",
+)
+
 
 def _as_text(value: Any) -> str:
     """Read plain, secret and Langflow Message values without logging them."""
@@ -36,6 +74,64 @@ def _fence_untrusted_text(text: str) -> str:
         UNTRUSTED_CHUNK_FENCE_START, "\\" + UNTRUSTED_CHUNK_FENCE_START
     ).replace(UNTRUSTED_CHUNK_FENCE_END, "\\" + UNTRUSTED_CHUNK_FENCE_END)
     return f"{UNTRUSTED_CHUNK_FENCE_START}\n{escaped}\n{UNTRUSTED_CHUNK_FENCE_END}"
+
+
+def _present_fields(
+    value: dict[str, Any],
+    fields: tuple[str, ...],
+    *,
+    keep_null: tuple[str, ...] = (),
+) -> dict[str, Any]:
+    """Copy present model-facing fields without manufacturing defaults."""
+    return {
+        field: value[field]
+        for field in fields
+        if field in value and (field in keep_null or value[field] not in (None, "", [], {}))
+    }
+
+
+def _model_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    """Project full retrieval output into compact, lossless answer evidence.
+
+    The model needs leaf text and citation ids, plus one human-readable record
+    per document. Source URLs, ACLs and complete provenance remain in the
+    artifact consumed by the UI and never need to spend model-context tokens.
+    """
+    results = [item for item in payload.get("results", []) if isinstance(item, dict)]
+    documents: list[dict[str, Any]] = []
+    documents_by_id: dict[str, dict[str, Any]] = {}
+    evidence: list[dict[str, Any]] = []
+
+    for item in results:
+        evidence.append(_present_fields(item, MODEL_EVIDENCE_FIELDS))
+        document_id = _as_text(item.get("document_id"))
+        if not document_id:
+            continue
+        document = documents_by_id.get(document_id)
+        if document is None:
+            document = _present_fields(item, MODEL_DOCUMENT_FIELDS)
+            documents_by_id[document_id] = document
+            documents.append(document)
+            continue
+        for field, value in _present_fields(item, MODEL_DOCUMENT_FIELDS).items():
+            document.setdefault(field, value)
+
+    compact: dict[str, Any] = {
+        "results": evidence,
+        "total": len(evidence),
+        "documents": documents,
+    }
+    coverage = payload.get("coverage")
+    if isinstance(coverage, dict):
+        compact["coverage"] = _present_fields(
+            coverage,
+            MODEL_COVERAGE_FIELDS,
+            keep_null=("next_cursor",),
+        )
+    for field in ("error", "warning", "retrieval_strategy"):
+        if field in payload and payload[field] not in (None, ""):
+            compact[field] = payload[field]
+    return compact
 
 
 class OpenRAGBackendRetrievalComponent(LCToolComponent):
@@ -186,24 +282,24 @@ class OpenRAGBackendRetrievalComponent(LCToolComponent):
     def build_tool(self) -> StructuredTool:
         def search_documents(
             search_query: str,
-            evidence_mode: str = "focused",
-            document_id: str = "",
+            read_document_id: str = "",
             cursor: str = "",
-            batch_size: int = 20,
         ) -> tuple[str, list[dict[str, Any]]]:
+            """Search normally, or continue one explicitly selected document read."""
+            resolved_document_id = _as_text(read_document_id)
             payload = self._retrieve_payload(
                 search_query,
-                evidence_mode=evidence_mode,
-                document_id=document_id,
+                evidence_mode="exhaustive" if resolved_document_id else "focused",
+                document_id=resolved_document_id,
                 cursor=cursor,
-                batch_size=batch_size,
+                batch_size=50 if resolved_document_id else 20,
             )
             artifact = payload["results"]
 
             # LangChain stores the second tuple element on ToolMessage.artifact.
-            # JSON content remains useful to the model, while the native artifact
-            # survives Langflow/OpenAI transport without relying on Data.__repr__.
-            return json.dumps(payload, ensure_ascii=False), artifact
+            # The native artifact retains full source cards. The compact JSON
+            # avoids paying repeatedly for URLs, ACLs and complete PROV-O JSON.
+            return json.dumps(_model_payload(payload), ensure_ascii=False), artifact
 
         return StructuredTool.from_function(
             func=search_documents,
@@ -212,11 +308,11 @@ class OpenRAGBackendRetrievalComponent(LCToolComponent):
                 "Search the indexed OpenRAG knowledge base. "
                 "Build queries from stable identifiers and established context only; never "
                 "add a candidate answer for the attribute being looked up. Use returned "
-                "chunk_id values for inline citations. Use evidence_mode='focused' for "
-                "ranked discovery. For exhaustive/list-all/compare/audit requests, first "
-                "discover document_id values, then call evidence_mode='exhaustive' once "
-                "per document and keep following coverage.next_cursor until complete=true. "
-                "Never claim exhaustive coverage while complete is false."
+                "chunk_id values for inline citations. With no read_document_id this always "
+                "performs the normal ranked archive search. Set read_document_id only when "
+                "the human explicitly selected one known document for complete reading; "
+                "continue with coverage.next_cursor until complete=true. Never expose an "
+                "internal document id as a human-facing scope label: use documents.filename."
             ),
             response_format="content_and_artifact",
         )

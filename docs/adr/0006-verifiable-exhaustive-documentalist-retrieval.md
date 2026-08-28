@@ -20,11 +20,14 @@ between relevant evidence discovery and complete corpus reading.
 
 ## Decision
 
-OpenRAG has two evidence modes.
+OpenRAG exposes one model-facing retrieval operation backed by two server-side
+primitives. This boundary is deliberate: ordinary archive search is always
+available, while complete source-order reading cannot be selected from vague
+topic wording.
 
-### Focused discovery
+### Normal archive search
 
-Focused mode combines lexical and vector lanes with reciprocal-rank fusion.
+Normal search combines lexical and vector lanes with reciprocal-rank fusion.
 It first allocates the configured base quota to every represented document,
 then lets large profiled documents contribute up to an adaptive square-root
 quota. This is a relevance mechanism. It must never be described as exhaustive.
@@ -36,19 +39,26 @@ The ingestion profile determines the adaptive quota:
 For example, with base `3` and ceiling `20`, documents containing 3, 100 and
 400 chunks can contribute 3, 10 and 20 focused results respectively.
 
-### Exhaustive evidence reading
+### Complete reading of a selected document
 
-Exhaustive mode reads every leaf chunk of one selected document in deterministic
+The backend can read every leaf chunk of one selected document in deterministic
 source order. It uses `search_after` pagination and returns a coverage object
-containing the immutable snapshot digest, chunks covered, total chunks,
-coverage ratio, continuation cursor and completion flag.
+containing the immutable snapshot digest, filename, chunks covered, total
+chunks, coverage ratio, continuation cursor and completion flag.
 
-An agent must follow `next_cursor` until `complete=true` for every document in
-scope before claiming that a result is complete. For a multi-document request,
-coverage is the conjunction of the independently completed document reads.
-If any read is incomplete, inaccessible, changes version, or contains an
-unverifiable legacy chunk, the answer must disclose incomplete coverage and
-must not use universal claims such as “all”, “none” or “exhaustive”.
+The chat tool exposes this primitive only as `read_document_id`, for one already
+identified document explicitly selected by the human. Words such as
+“exhaustive”, “complete” or “all” in an archive topic do not activate it. They
+trigger normal search immediately and never a confirmation round-trip. This
+prevents an LLM from expanding one prompt into an unbounded sequence of costly
+document reads.
+
+Once a selected-document read starts, the agent follows `next_cursor` in the
+same turn until `complete=true`. An incomplete, inaccessible, changed or
+unverifiable document is reported as incomplete. An API client may deliberately
+read several named documents, but coverage is then the conjunction of those
+independent reads; complete reading of one document says nothing about files
+excluded by ranked discovery.
 
 ## Ingestion analysis and snapshot identity
 
@@ -94,6 +104,17 @@ source card. This makes the model citation a reference request, while the
 authenticated index remains the sole authority for filename, text, page,
 document id, source URL and chunk metadata.
 
+The Langflow tool sends two representations of the same authenticated result.
+Its native artifact keeps every source field required by UI cards and citation
+hydration. Its model-facing JSON keeps leaf text, citation and ordering fields,
+plus one compact manifest entry per document. Repeated source URLs, ACL data and
+full PROV-O JSON are not copied into every model-visible chunk. This reduces
+token use without removing any evidence or source navigation from the user.
+
+Document ids and cursors remain machine coordinates. Human-facing coverage is
+labelled by the authenticated filename or source title, never a raw id such as
+`EksI7_kmm2p9LEP7ki74nw_z`.
+
 ## Truth contract
 
 OpenRAG distinguishes these outcomes:
@@ -101,7 +122,7 @@ OpenRAG distinguishes these outcomes:
 - **supported**: the answer is backed by exact cited leaf chunks;
 - **not found under complete coverage**: all in-scope source chunks were read
   and no matching evidence was found;
-- **not retrieved**: focused search found no supporting evidence, without a
+- **not retrieved**: ranked search found no supporting evidence, without a
   claim about absence from the corpus;
 - **coverage incomplete**: the system cannot safely conclude and says why;
 - **contradiction**: sources disagree; the answer reports every conflicting
@@ -113,17 +134,22 @@ maps should be added to the same evidence ledger as they become available.
 ## Operational consequences
 
 - Existing documents without profile version 1 must be reindexed before they
-  can use exhaustive mode.
+  can use complete selected-document reading.
 - New OpenAI ingestion defaults to `text-embedding-3-large`. Existing chunks
   retain their recorded embedding model until they are explicitly reindexed;
   vectors from different models are never relabelled as interchangeable.
-- `retrieval_max_chunks_per_document` is the focused-search base diversity
+- `retrieval_max_chunks_per_document` is the normal-search base diversity
   quota, not a document-wide limit.
-- `retrieval_adaptive_max_chunks_per_document` is only the focused-search
+- `retrieval_adaptive_max_chunks_per_document` is only the normal-search
   ceiling. It never truncates exhaustive reads.
 - The database retains every leaf chunk. No summary replaces source evidence.
 - Langflow remains an orchestration client. The backend owns pagination,
   snapshot validation, ACL-scoped access and coverage accounting.
+- Flow migration fingerprints ignore only provider fields owned by OpenRAG's
+  settings synchronization (`model` and provider credential/endpoint
+  references). Prompt, code, nodes, edges and all other values remain covered,
+  so selecting a model does not break a safe upgrade and a customized graph is
+  still rejected.
 - All backend replicas must share the same production `SESSION_SECRET`; it
   authenticates continuation cursors. A secret rotation invalidates active
   cursors and forces a safe restart of the evidence read.

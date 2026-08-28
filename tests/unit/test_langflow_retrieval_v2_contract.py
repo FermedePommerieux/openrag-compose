@@ -6,6 +6,7 @@ repository's unit environment does not install ``lfx``.
 """
 
 import importlib.util
+import inspect
 import json
 import sys
 import types
@@ -57,7 +58,9 @@ def test_default_agent_uses_versioned_documentalist_prompt():
     assert agent["data"]["node"]["template"]["system_prompt"]["value"] == prompt
     assert DEFAULT_SYSTEM_PROMPT == prompt
     assert "coverage.complete=true" in prompt
-    assert "never prove" in prompt
+    assert "one normal archive-search path" in prompt
+    assert "never print the raw id as the scope" in prompt
+    assert "never requires confirmation" in prompt
 
 
 def test_gpt_56_tool_agent_uses_openai_responses_transport():
@@ -147,6 +150,10 @@ def test_backend_tool_forwards_request_and_preserves_provenance(monkeypatch):
         "chunk_id": "chunk-42",
         "connector_file_id": "drive-file-42",
         "source_url": "/api/source-files/document-42.token",
+        "source_provenance": {
+            "schema_version": "1.0",
+            "entity": {"id": "urn:openrag:document:42", "type": "document"},
+        },
         "filename": "archive.pdf",
         "page": 3,
         "chunk_index": 7,
@@ -203,14 +210,28 @@ def test_backend_tool_forwards_request_and_preserves_provenance(monkeypatch):
     }
     assert "<<<UNTRUSTED_DOC_CHUNK>>>" in result[0].text
     citations = parse_knowledge_chunks({"artifact": [{"data": result[0].__dict__}]})
-    assert {key: citations[0][key] for key in search_result if key != "text"} == {
-        key: value for key, value in search_result.items() if key != "text"
+    citation_fields = {
+        key: value
+        for key, value in search_result.items()
+        if key not in {"text", "source_provenance"}
     }
+    assert {key: citations[0][key] for key in citation_fields} == citation_fields
 
     built_tool = tool.build_tool()
     assert built_tool["response_format"] == "content_and_artifact"
+    assert list(inspect.signature(built_tool["func"]).parameters) == [
+        "search_query",
+        "read_document_id",
+        "cursor",
+    ]
     content, artifact = built_tool["func"]("where is the archive?")
-    assert json.loads(content)["results"][0]["chunk_id"] == "chunk-42"
+    model_payload = json.loads(content)
+    assert model_payload["results"][0]["chunk_id"] == "chunk-42"
+    assert "source_url" not in model_payload["results"][0]
+    assert "source_provenance" not in model_payload["results"][0]
+    assert model_payload["documents"] == [
+        {"document_id": "document-42", "filename": "archive.pdf"}
+    ]
     assert artifact == [
         {
             **search_result,
@@ -219,6 +240,7 @@ def test_backend_tool_forwards_request_and_preserves_provenance(monkeypatch):
             ),
         }
     ]
+    assert artifact[0]["source_provenance"] == search_result["source_provenance"]
     assert "JSON(text_key=" not in content
 
 
@@ -240,7 +262,10 @@ def test_backend_tool_forwards_exhaustive_cursor_and_coverage(monkeypatch):
                     }
                 ],
                 "coverage": {
+                    "mode": "exhaustive",
                     "complete": False,
+                    "document_id": "document-42",
+                    "filename": "archive.pdf",
                     "covered_chunks": 20,
                     "total_chunks": 80,
                     "next_cursor": "next-page",
@@ -271,14 +296,57 @@ def test_backend_tool_forwards_exhaustive_cursor_and_coverage(monkeypatch):
     built_tool = tool.build_tool()
     content, artifact = built_tool["func"](
         "audit the document",
-        evidence_mode="exhaustive",
-        document_id="document-42",
+        read_document_id="document-42",
         cursor="cursor-1",
-        batch_size=25,
     )
 
     assert captured["payload"]["evidenceMode"] == "exhaustive"
     assert captured["payload"]["documentId"] == "document-42"
     assert captured["payload"]["cursor"] == "cursor-1"
-    assert json.loads(content)["coverage"]["complete"] is False
+    assert captured["payload"]["batchSize"] == 50
+    model_coverage = json.loads(content)["coverage"]
+    assert model_coverage["complete"] is False
+    assert model_coverage["filename"] == "archive.pdf"
+    assert "document_id" not in model_coverage
     assert artifact[0]["chunk_id"] == "chunk-42"
+
+
+def test_archive_exhaustive_wording_cannot_select_document_read(monkeypatch):
+    """Topic wording must not reactivate the removed model-controlled mode."""
+    module = _load_component_with_langflow_stubs(monkeypatch)
+    captured: dict = {}
+
+    class _Response:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {"results": []}
+
+    class _Client:
+        def __init__(self, **_kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def post(self, _url, *, headers, json):
+            captured.update(headers=headers, payload=json)
+            return _Response()
+
+    monkeypatch.setattr(module.httpx, "Client", _Client)
+    tool = module.OpenRAGBackendRetrievalComponent.__new__(module.OpenRAGBackendRetrievalComponent)
+    tool.openrag_retrieval_url = "http://openrag-backend:8000/search"
+    tool.jwt_token = "user-jwt"
+    tool.filter_expression = ""
+    tool.number_of_results = 10
+
+    built_tool = tool.build_tool()
+    built_tool["func"]("recherche exhaustive complète sur toute l'archive TVA 2017")
+
+    assert captured["payload"]["evidenceMode"] == "focused"
+    assert captured["payload"]["documentId"] is None
+    assert captured["payload"]["batchSize"] == 20

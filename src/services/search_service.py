@@ -1197,6 +1197,7 @@ class SearchService:
             snapshot_sha256 = snapshots[0]
 
         chunks: list[dict[str, Any]] = []
+        document_filename: str | None = None
         for hit in raw_hits:
             source = hit.get("_source", {})
             if source.get("document_content_sha256") != snapshot_sha256:
@@ -1218,6 +1219,12 @@ class SearchService:
             expected_chunk_index = covered_before + len(chunks)
             if source.get("chunk_index") != expected_chunk_index:
                 raise RuntimeError("Exhaustive retrieval encountered a non-contiguous source order")
+            filename = source.get("filename")
+            if isinstance(filename, str) and filename.strip():
+                if document_filename is None:
+                    document_filename = filename.strip()
+                elif document_filename != filename.strip():
+                    raise RuntimeError("Exhaustive retrieval mixed document filenames")
             chunks.append(
                 {
                     **source,
@@ -1245,6 +1252,7 @@ class SearchService:
         coverage = {
             "mode": "exhaustive",
             "document_id": resolved_document_id,
+            "filename": document_filename,
             "snapshot_sha256": snapshot_sha256,
             "covered_chunks": covered_chunks,
             "total_chunks": total_chunks,

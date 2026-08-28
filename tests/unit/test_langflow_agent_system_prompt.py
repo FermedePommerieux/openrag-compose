@@ -1,4 +1,5 @@
 import json
+import subprocess
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
@@ -52,6 +53,7 @@ def test_agent_prompt_requires_neutral_retrieval_queries():
 def test_default_agent_prompt_requires_document_wide_role_evidence():
     from config.config_manager import (
         DEFAULT_SYSTEM_PROMPT,
+        LEGACY_SYSTEM_PROMPT_SHA256,
         LEGACY_SYSTEM_PROMPTS,
         AgentConfig,
     )
@@ -62,12 +64,28 @@ def test_default_agent_prompt_requires_document_wide_role_evidence():
     assert "never merge fields across documents" in DEFAULT_SYSTEM_PROMPT
     assert "relationships or roles" in DEFAULT_SYSTEM_PROMPT
     assert "never infer from mention order or prominence" in DEFAULT_SYSTEM_PROMPT
-    assert "expose that limitation" in DEFAULT_SYSTEM_PROMPT
+    assert "Expose insufficient or ambiguous evidence" in DEFAULT_SYSTEM_PROMPT
     assert "never guess" in DEFAULT_SYSTEM_PROMPT
     assert len(DEFAULT_SYSTEM_PROMPT) <= 5000
     assert len(LEGACY_SYSTEM_PROMPTS) == 6
+    assert LEGACY_SYSTEM_PROMPT_SHA256 == frozenset(
+        {"33533d917dacea6cc7293d2d93a3b79f52f025937610d86e6731e2660f515d94"}
+    )
+    previous_prompt = subprocess.check_output(
+        [
+            "git",
+            "show",
+            "c4d3c7395863c157c3be17c8eaa03fa9b3e90f06:"
+            "flows/components/openrag_agent_system_prompt.md",
+        ],
+        cwd=_REPO_ROOT,
+        text=True,
+    ).rstrip("\n")
+    assert AgentConfig(system_prompt=previous_prompt).system_prompt == DEFAULT_SYSTEM_PROMPT
     for legacy_prompt in LEGACY_SYSTEM_PROMPTS:
         assert AgentConfig(system_prompt=legacy_prompt).system_prompt == DEFAULT_SYSTEM_PROMPT
+    custom_prompt = DEFAULT_SYSTEM_PROMPT + "\nOperator customization."
+    assert AgentConfig(system_prompt=custom_prompt).system_prompt == custom_prompt
 
     from services.flows_service import FlowsService
 

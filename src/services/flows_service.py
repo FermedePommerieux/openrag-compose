@@ -35,8 +35,25 @@ _LEGACY_RETRIEVAL_COMPONENT = (
     "ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra"
 )
 _BACKEND_RETRIEVAL_COMPONENT = "ext:openrag:OpenRAGBackendRetrievalComponent@extra"
-_RETRIEVAL_FLOW_MIGRATION_VERSION = 6
+_RETRIEVAL_FLOW_MIGRATION_VERSION = 7
 _LEGACY_SYSTEM_FLOW_ID = "1098eea1-6649-4e1d-aed1-b77249fb8dd0"
+# These fields are rewritten by OpenRAG's settings synchronization and by
+# Langflow's provider refresh endpoint. Their values and option lists are
+# configuration state, not flow-graph customization. Every other field,
+# including component code, prompt, nodes and edges, remains fingerprinted.
+_RUNTIME_MANAGED_RETRIEVAL_COMPONENTS = frozenset(
+    {AGENT_COMPONENT_DISPLAY_NAME, "Embedding Model", "Language Model"}
+)
+_RUNTIME_MANAGED_RETRIEVAL_FIELDS = frozenset(
+    {
+        "api_key",
+        "api_base",
+        "ollama_base_url",
+        "base_url_ibm_watsonx",
+        "project_id",
+        "model",
+    }
+)
 # SHA-256 of ``flows/openrag_agent.json`` at lifecycle baseline 156f3664,
 # calculated over canonical ``data`` JSON.  Flow IDs and a lock alone are not
 # sufficient proof that startup owns a graph: a customised system flow must be
@@ -72,6 +89,22 @@ _PREVIOUS_VERSIONED_EVIDENCE_FIRST_GRAPH_SHA256 = (
 # It authorizes that one upgrade only; any operator edit still fails closed.
 _PREVIOUS_VERSIONED_FOCUSED_RETRIEVAL_GRAPH_SHA256 = (
     "4e4a839c17ffa6b36ee5ee4ac93e60c83fd43b8d16af96c1dda8c94cc1b91621"
+)
+# Exact fingerprints of Retrieval v2 version 6 before the chat tool stopped
+# exposing its internal evidence-mode switch. They authorize only the narrow
+# repository-owned v6 -> v7 replacement; altered Langflow graphs still fail
+# closed and require operator review.
+_PREVIOUS_DOCUMENTALIST_RETRIEVAL_GRAPH_SHA256 = (
+    "94f6ef27a2d585dbc848b4c44e3a223d04635a651a88586d46cc7f6ec8c153f3"
+)
+_PREVIOUS_VERSIONED_DOCUMENTALIST_RETRIEVAL_GRAPH_SHA256 = (
+    "d1434e9f42495a4f8485c1296b2ed57ee5b0dbe288b310cce8eb0e9422a6a8ee"
+)
+# The same v6 graph after replacing only settings-managed provider fields with
+# sentinels. This recognizes a configured repository-owned flow while still
+# rejecting changes to prompts, code, topology, retrieval, or any other field.
+_PREVIOUS_VERSIONED_DOCUMENTALIST_RUNTIME_GRAPH_SHA256 = (
+    "deda60c4c3957fbdd5a8d6ba00bef685d32e8fde78ef2ef9497f221dcf9a81cc"
 )
 
 
@@ -1184,6 +1217,37 @@ class FlowsService:
         canonical = json.dumps(graph, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
         return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
+    @staticmethod
+    def _runtime_normalized_graph_fingerprint(flow_data: dict[str, Any]) -> str | None:
+        """Fingerprint a graph while ignoring only settings-owned provider values."""
+        graph = flow_data.get("data") if isinstance(flow_data, dict) else None
+        if not isinstance(graph, dict):
+            return None
+        normalized = copy.deepcopy(graph)
+        nodes = normalized.get("nodes", [])
+        if not isinstance(nodes, list):
+            return None
+        for node in nodes:
+            if not isinstance(node, dict):
+                continue
+            node_data = node.get("data", {})
+            if not isinstance(node_data, dict):
+                continue
+            component = node_data.get("node", {})
+            if not isinstance(component, dict):
+                continue
+            if component.get("display_name") not in _RUNTIME_MANAGED_RETRIEVAL_COMPONENTS:
+                continue
+            template = component.get("template", {})
+            if not isinstance(template, dict):
+                continue
+            for field in _RUNTIME_MANAGED_RETRIEVAL_FIELDS.intersection(template):
+                template[field] = {"runtime_managed": field}
+        canonical = json.dumps(
+            normalized, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+        )
+        return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
     def _is_known_legacy_retrieval_flow(self, flow_data: dict[str, Any]) -> bool:
         """Recognise exactly the immutable 156f3664 system agent graph.
 
@@ -1218,7 +1282,8 @@ class FlowsService:
         return (
             flow_data.get("name") == expected.get("name")
             and flow_data.get("description") == expected.get("description")
-            and self._graph_fingerprint(flow_data) == self._graph_fingerprint(expected)
+            and self._runtime_normalized_graph_fingerprint(flow_data)
+            == self._runtime_normalized_graph_fingerprint(expected)
         )
 
     def _is_known_unversioned_retrieval_v2_flow(self, flow_data: dict[str, Any]) -> bool:
@@ -1259,6 +1324,7 @@ class FlowsService:
                 _PREVIOUS_RETRIEVAL_GRAPH_SHA256,
                 _PREVIOUS_ROLE_EVIDENCE_GRAPH_SHA256,
                 _PREVIOUS_EVIDENCE_FIRST_GRAPH_SHA256,
+                _PREVIOUS_DOCUMENTALIST_RETRIEVAL_GRAPH_SHA256,
             }
             if marker is None
             else {
@@ -1270,9 +1336,17 @@ class FlowsService:
             if marker == 4
             else {_PREVIOUS_VERSIONED_FOCUSED_RETRIEVAL_GRAPH_SHA256}
             if marker == 5
+            else {_PREVIOUS_VERSIONED_DOCUMENTALIST_RETRIEVAL_GRAPH_SHA256}
+            if marker == 6
             else set()
         )
-        return self._graph_fingerprint(flow_data) in expected
+        exact_match = self._graph_fingerprint(flow_data) in expected
+        if marker != 6:
+            return exact_match
+        return exact_match or (
+            self._runtime_normalized_graph_fingerprint(flow_data)
+            == _PREVIOUS_VERSIONED_DOCUMENTALIST_RUNTIME_GRAPH_SHA256
+        )
 
     def _migrate_known_legacy_retrieval_flow(
         self, flow_data: dict[str, Any]

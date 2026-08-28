@@ -1,5 +1,6 @@
 """Configuration management for OpenRAG."""
 
+import hashlib
 import os
 import re
 from dataclasses import asdict, dataclass, field
@@ -226,7 +227,13 @@ class AgentConfig:
 
     def __post_init__(self):
         legacy_prompts = globals().get("LEGACY_SYSTEM_PROMPTS", (self._v060_system_prompt,))
-        if self.system_prompt in legacy_prompts:
+        legacy_hashes = globals().get("LEGACY_SYSTEM_PROMPT_SHA256", frozenset())
+        prompt_sha256 = (
+            hashlib.sha256(self.system_prompt.encode("utf-8")).hexdigest()
+            if isinstance(self.system_prompt, str)
+            else ""
+        )
+        if self.system_prompt in legacy_prompts or prompt_sha256 in legacy_hashes:
             self.system_prompt = DEFAULT_SYSTEM_PROMPT
 
 
@@ -358,6 +365,14 @@ except OSError:
         path=str(_DOCUMENTALIST_PROMPT_PATH),
     )
     DEFAULT_SYSTEM_PROMPT = _RETRIEVAL_V5_FOCUSED_SYSTEM_PROMPT
+
+# Exact digest of the previous repository-owned documentalist prompt. Keeping
+# only its digest avoids embedding a second 4 KiB prompt while still allowing
+# deployed default configurations to migrate. Operator-edited prompts remain
+# untouched because even a one-character change produces a different digest.
+LEGACY_SYSTEM_PROMPT_SHA256 = frozenset(
+    {"33533d917dacea6cc7293d2d93a3b79f52f025937610d86e6731e2660f515d94"}
+)
 
 # Recognize every shipped default so an in-place upgrade can safely synchronize
 # security, query-neutrality, role-evidence, and document-reference rules.
