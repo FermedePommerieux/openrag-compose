@@ -155,6 +155,13 @@ _PREVIOUS_VERSIONED_UNGATED_EXPANSION_GRAPH_SHA256 = (
 _PREVIOUS_VERSIONED_HIERARCHICAL_AUDIT_GRAPH_SHA256 = (
     "56fab883b1f6e948cb9c7af15b3eb4fd35130f4946446b2c5a5edb2714165cc6"
 )
+# The GitOps bootstrap intentionally persists repository flow files without a
+# runtime marker. This is the exact locked v17 source graph deployed as v2.42.
+# Recognizing both forms is safe because the complete canonical graph is
+# hashed; a single operator edit still fails closed.
+_PREVIOUS_UNVERSIONED_HIERARCHICAL_AUDIT_GRAPH_SHA256 = (
+    "f9a223d2d4f6ffdecbb56dcdfc58f80f6890b4255fe1c97d89296797b16cd46f"
+)
 
 
 class FlowsService:
@@ -1341,6 +1348,7 @@ class FlowsService:
                 _PREVIOUS_RETRIEVAL_GRAPH_SHA256,
                 _PREVIOUS_ROLE_EVIDENCE_GRAPH_SHA256,
                 _PREVIOUS_EVIDENCE_FIRST_GRAPH_SHA256,
+                _PREVIOUS_UNVERSIONED_HIERARCHICAL_AUDIT_GRAPH_SHA256,
             }
             if marker is None
             else {

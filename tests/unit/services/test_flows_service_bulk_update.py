@@ -296,6 +296,20 @@ def _unversioned_retrieval_v2_flow() -> dict:
     return json.loads((ROOT / "flows" / "openrag_agent.json").read_text())
 
 
+def _unversioned_retrieval_v17_flow() -> dict:
+    """Load the exact versionless graph deployed by GitOps as v2.42."""
+    raw = subprocess.check_output(
+        [
+            "git",
+            "show",
+            "6a77b031e583885287eea38d6e99189d3f71a156:flows/openrag_agent.json",
+        ],
+        cwd=ROOT,
+        text=True,
+    )
+    return json.loads(raw)
+
+
 def _versioned_retrieval_v5_flow() -> dict:
     """Load the exact deployed repository graph and add its runtime marker."""
     raw = subprocess.check_output(
@@ -642,6 +656,29 @@ async def test_migrate_unversioned_retrieval_v2_flow_synchronized_by_gitops():
         in agent_node["data"]["node"]["template"]["system_prompt"]["value"]
     )
     assert backup.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_migrate_exact_unversioned_v17_graph_synchronized_by_gitops():
+    """The production v2.42 source graph upgrades without weakening fail-closed checks."""
+    service = FlowsService()
+    transport = _RetrievalMigrationTransport()
+    transport.flow = _unversioned_retrieval_v17_flow()
+
+    with (
+        patch("services.flows_service.clients.langflow_request", side_effect=transport.__call__),
+        patch.object(
+            service,
+            "_backup_flow",
+            new_callable=AsyncMock,
+            return_value="/tmp/flow.json",
+        ),
+    ):
+        result = await service.migrate_persisted_retrieval_flow()
+
+    assert result["status"] == "migrated"
+    assert transport.flow["data"]["openrag_retrieval_version"] == 18
+    assert transport.flow["locked"] is True
 
 
 @pytest.mark.asyncio
