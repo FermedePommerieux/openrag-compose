@@ -96,6 +96,45 @@ def _normalize_source_provenances(
     return normalized
 
 
+def _folder_upload_provenances(
+    upload_files: list[UploadFile],
+    relative_paths: list[str] | None,
+    collection_label: str | None,
+    scope_key: str,
+    explicit_provenances: list[SourceProvenance | None],
+) -> list[SourceProvenance | None]:
+    """Create provenance only when a browser supplies real folder paths.
+
+    A normal file picker exposes no trustworthy local path. A directory picker
+    does expose ``webkitRelativePath``; the frontend sends its path relative to
+    the selected directory plus that directory's label. Never infer this from
+    temporary upload paths or filenames.
+    """
+    if not relative_paths:
+        if collection_label:
+            raise ValueError(
+                "source_collection_label requires one source_relative_path per file"
+            )
+        return explicit_provenances
+    if len(relative_paths) != len(upload_files):
+        raise ValueError(
+            "source_relative_path must be omitted or provided once for each uploaded file"
+        )
+    if not collection_label:
+        raise ValueError("source_collection_label is required for a folder upload")
+    if any(provenance is not None for provenance in explicit_provenances):
+        raise ValueError(
+            "source_relative_path cannot be combined with source_provenance"
+        )
+
+    from services.local_source_service import build_browser_folder_provenance
+
+    return [
+        build_browser_folder_provenance(path, collection_label, scope_key)
+        for path in relative_paths
+    ]
+
+
 def _resolve_archive_source(value: str | None) -> bool:
     """Resolve an archive form value or fall back to the workspace setting."""
     from services.local_source_service import is_source_archiving_enabled
@@ -120,6 +159,8 @@ async def upload_ingest_router(
     preview: str = Form("false"),
     source_url: list[str] | None = Form(None),
     source_provenance: list[str] | None = Form(None),
+    source_relative_path: list[str] | None = Form(None),
+    source_collection_label: str | None = Form(None),
     archive_source: str | None = Form(None),
     document_service=Depends(get_document_service),
     langflow_file_service=Depends(get_langflow_file_service),
@@ -152,6 +193,12 @@ async def upload_ingest_router(
     # public v1 wrapper for its other Form-defaulted parameters.
     source_urls = source_url if isinstance(source_url, list) else None
     source_provenances = source_provenance if isinstance(source_provenance, list) else None
+    source_relative_paths = (
+        source_relative_path if isinstance(source_relative_path, list) else None
+    )
+    collection_label = (
+        source_collection_label if isinstance(source_collection_label, str) else None
+    )
     from config.settings import is_no_auth_mode
 
     if not is_no_auth_mode():
@@ -184,6 +231,8 @@ async def upload_ingest_router(
             preview_mode=preview_mode,
             source_urls=source_urls,
             source_provenances=source_provenances,
+            source_relative_paths=source_relative_paths,
+            source_collection_label=collection_label,
             archive_sources=archive_sources,
             session_manager=session_manager,
             task_service=task_service,
@@ -202,6 +251,8 @@ async def upload_ingest_router(
         preview_mode=preview_mode,
         source_urls=source_urls,
         source_provenances=source_provenances,
+        source_relative_paths=source_relative_paths,
+        source_collection_label=collection_label,
         archive_sources=archive_sources,
         langflow_file_service=langflow_file_service,
         session_manager=session_manager,
@@ -221,6 +272,8 @@ async def _traditional_upload_ingest_task(
     settings_json: str | None = None,
     source_urls: list[str] | None = None,
     source_provenances: list[str] | None = None,
+    source_relative_paths: list[str] | None = None,
+    source_collection_label: str | None = None,
     archive_sources: bool = False,
 ):
     """Task-based traditional upload and ingest for single/multiple files"""
@@ -232,6 +285,13 @@ async def _traditional_upload_ingest_task(
             normalized_source_urls = _normalize_source_urls(upload_files, source_urls)
             normalized_source_provenances = _normalize_source_provenances(
                 upload_files, source_provenances
+            )
+            normalized_source_provenances = _folder_upload_provenances(
+                upload_files,
+                source_relative_paths,
+                source_collection_label,
+                user.user_id,
+                normalized_source_provenances,
             )
         except ValueError as e:
             return JSONResponse({"error": str(e)}, status_code=400)
@@ -306,6 +366,7 @@ async def _traditional_upload_ingest_task(
                 source_urls=source_urls_by_path,
                 source_provenances=source_provenances_by_path,
                 archive_sources=archive_sources,
+                dedupe_by_filename=not bool(source_relative_paths),
             )
 
             return JSONResponse(
@@ -352,6 +413,8 @@ async def _langflow_upload_ingest_task(
     user: User,
     source_urls: list[str] | None = None,
     source_provenances: list[str] | None = None,
+    source_relative_paths: list[str] | None = None,
+    source_collection_label: str | None = None,
     archive_sources: bool = False,
 ):
     """Task-based langflow upload and ingest for single/multiple files"""
@@ -363,6 +426,13 @@ async def _langflow_upload_ingest_task(
             normalized_source_urls = _normalize_source_urls(upload_files, source_urls)
             normalized_source_provenances = _normalize_source_provenances(
                 upload_files, source_provenances
+            )
+            normalized_source_provenances = _folder_upload_provenances(
+                upload_files,
+                source_relative_paths,
+                source_collection_label,
+                user.user_id,
+                normalized_source_provenances,
             )
         except ValueError as e:
             return JSONResponse({"error": str(e)}, status_code=400)
@@ -444,6 +514,7 @@ async def _langflow_upload_ingest_task(
                 source_urls=source_urls_by_path,
                 source_provenances=source_provenances_by_path,
                 archive_sources=archive_sources,
+                dedupe_by_filename=not bool(source_relative_paths),
             )
 
             return JSONResponse(

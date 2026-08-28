@@ -40,7 +40,8 @@ class DocumentsClient:
             filename: Filename to use when providing file object.
             source_url: Optional absolute HTTP(S) URL for the authoritative file.
             source_provenance: Optional versioned W3C PROV-O profile identifying
-                the source entity and its directed relations.
+                the source entity, optional ingestion-relative path, and its
+                directed relations.
             archive_source: Override source retention for this upload. When omitted,
                 the workspace Archiving setting applies. Use False with source_url
                 for an authoritative remote source.

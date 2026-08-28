@@ -29,6 +29,26 @@ from pydantic import (
 PROV_NAMESPACE = "http://www.w3.org/ns/prov#"
 SOURCE_PROVENANCE_SCHEMA_VERSION = "1.0"
 MAX_SOURCE_RELATIONS = 256
+MAX_SOURCE_RELATIVE_PATH_LENGTH = 4096
+
+
+def normalize_source_relative_path(value: str) -> str:
+    """Return one portable ingestion-relative path or fail explicitly."""
+    if any(ord(character) < 32 or ord(character) == 127 for character in value):
+        raise ValueError("relative_path must not contain control characters")
+    normalized = value.strip().replace("\\", "/")
+    if not normalized:
+        raise ValueError("relative_path must not be empty")
+    if normalized.startswith("/") or (
+        len(normalized) >= 3
+        and normalized[0].isalpha()
+        and normalized[1:3] == ":/"
+    ):
+        raise ValueError("relative_path must not be absolute")
+    parts = normalized.split("/")
+    if any(part in {"", ".", ".."} for part in parts):
+        raise ValueError("relative_path must be a normalized path without traversal")
+    return "/".join(parts)
 
 
 class SourceRelationRole(StrEnum):
@@ -127,10 +147,24 @@ class SourceProvenance(BaseModel):
 
     schema_version: Literal["1.0"] = "1.0"
     entity: SourceEntity
+    # POSIX path relative to the directory selected as the ingestion point.
+    # Absolute host/container paths are deliberately forbidden: provenance
+    # must remain portable and must not disclose deployment internals.
+    relative_path: str | None = Field(
+        default=None,
+        max_length=MAX_SOURCE_RELATIVE_PATH_LENGTH,
+    )
     relations: list[SourceRelation] = Field(
         default_factory=list,
         max_length=MAX_SOURCE_RELATIONS,
     )
+
+    @field_validator("relative_path")
+    @classmethod
+    def validate_relative_path(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return normalize_source_relative_path(value)
 
     @field_validator("relations")
     @classmethod
@@ -153,6 +187,11 @@ class SourceProvenance(BaseModel):
         reverse traversal efficient, while ``source_provenance`` preserves the
         target/role pairing needed for proof and export.
         """
+        relative_path = self.relative_path or ""
+        path_parts = relative_path.split("/") if relative_path else []
+        path_ancestors = [
+            "/".join(path_parts[:end]) for end in range(1, len(path_parts))
+        ]
         return {
             "source_provenance": self.model_dump(mode="json", exclude_none=True),
             "source_entity_id": self.entity.id,
@@ -161,6 +200,8 @@ class SourceProvenance(BaseModel):
             "source_entity_alternate_ids": list(self.entity.alternate_ids),
             "source_relation_target_ids": [relation.target.id for relation in self.relations],
             "source_relation_roles": [relation.role.value for relation in self.relations],
+            "source_relative_path": relative_path,
+            "source_path_ancestors": path_ancestors,
         }
 
 
@@ -186,6 +227,10 @@ def source_provenance_mapping() -> dict[str, Any]:
     return {
         "properties": {
             "schema_version": {"type": "keyword"},
+            "relative_path": {
+                "type": "keyword",
+                "ignore_above": MAX_SOURCE_RELATIVE_PATH_LENGTH,
+            },
             "entity": {"properties": entity_properties},
             # Nested mapping preserves the role/target pairing. Flattened
             # top-level keyword arrays serve reverse traversal without a

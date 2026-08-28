@@ -82,6 +82,8 @@ export interface ToolCallResult {
   source_entity_alternate_ids?: string[];
   source_relation_target_ids?: string[];
   source_relation_roles?: string[];
+  source_relative_path?: string;
+  source_path_ancestors?: string[];
   text?: string;
   embedding_model?: string;
   parser?: string;

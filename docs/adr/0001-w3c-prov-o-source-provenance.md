@@ -23,12 +23,27 @@ OpenRAG implements a strict profile of the
 
 - `source_url` remains the optional, mutable address used to inspect a source;
 - `source_provenance.entity` identifies the current `prov:Entity`;
+- `source_provenance.relative_path` records a normalized path relative to the
+  selected ingestion point, never an absolute deployment path;
 - `source_provenance.relations` stores directed, typed relationships;
 - every OpenRAG role has exactly one full PROV-O predicate URI;
 - arbitrary JSON-LD and arbitrary predicates are rejected at ingestion;
 - relationship targets are source entities, not OpenSearch chunk IDs;
 - inverse links are queried from directed relations and are not copied into a
   mutable `source_linked` field on parent documents.
+
+Local folder ingestion creates one stable `directory_collection` entity for
+the selected ingestion point. Every discovered file is a separate entity with
+its own `relative_path` and a `member_of` relation to that collection. This is
+the minimum structure needed to reconnect files from one folder ingestion
+without asserting an unsupported semantic or derivation relationship. This
+automatic construction applies only when the ingestion point is known: the
+configured `openrag-documents` boundary or a browser folder picker that
+provides `webkitRelativePath` for every file. The latter is scoped by user and
+selected root label, and stores only the path below that root. A normal browser
+file picker, onboarding downloads, multipart staging paths and connectors must
+leave `relative_path` absent unless their source system knows the real
+source-relative path.
 
 The initial OpenRAG roles are:
 
@@ -49,6 +64,10 @@ retrieved chunk must remain independently verifiable. The canonical envelope
 retains relation pairing; flattened arrays exist only for filtering and
 reverse traversal.
 
+`source_relative_path` and `source_path_ancestors` are derived keyword fields.
+The latter contains every directory prefix in order, so OpenSearch can group
+or filter folder members without parsing path strings at query time.
+
 ## Email thread rules
 
 - Keep each email as an independently citable document.
@@ -68,6 +87,8 @@ reverse traversal.
 - Provenance never grants access. Every related document is independently
   filtered by the current OpenSearch/DLS identity.
 - Identifiers are length-bounded and reject control characters.
+- Relative paths are POSIX-normalized, length-bounded, non-absolute and reject
+  traversal, empty segments and control characters.
 - Relation count and alternate identifiers are bounded to protect token,
   request, and mapping size.
 - Re-ingestion replaces the provenance for the new document generation; it

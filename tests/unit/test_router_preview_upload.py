@@ -7,10 +7,12 @@ import pytest
 from fastapi import UploadFile
 
 from api.router import (
+    _folder_upload_provenances,
     _langflow_upload_ingest_task,
     _normalize_source_provenances,
     _normalize_source_urls,
     _resolve_archive_source,
+    _traditional_upload_ingest_task,
     upload_ingest_router,
 )
 from session_manager import User
@@ -75,6 +77,47 @@ async def test_langflow_upload_passes_preview_mode_to_task_service():
 
     body = json.loads(response.body.decode())
     assert body["preview_mode"] is True
+
+
+@pytest.mark.asyncio
+async def test_browser_folder_upload_forwards_tree_and_disables_filename_dedupe():
+    mock_file = MagicMock(spec=UploadFile)
+    mock_file.filename = "agreement.pdf"
+    mock_file.content_type = "application/pdf"
+    mock_file.read = AsyncMock(return_value=b"%PDF-sample")
+    task_service = MagicMock()
+    task_service.create_upload_task = AsyncMock(return_value="task-folder-1")
+    temp_file = MagicMock()
+    temp_file.name = "/tmp/agreement.pdf"
+
+    with (
+        patch("api.router.tempfile.NamedTemporaryFile", return_value=temp_file),
+        patch("api.router.open", create=True),
+        patch("utils.file_utils.safe_unlink"),
+        patch("api.documents._ensure_index_exists", new=AsyncMock()),
+    ):
+        response = await _traditional_upload_ingest_task(
+            upload_files=[mock_file],
+            replace_duplicates=False,
+            create_filter=False,
+            preview_mode=False,
+            session_manager=MagicMock(),
+            task_service=task_service,
+            user=User(
+                user_id="user-1",
+                email="u@example.com",
+                name="User",
+                jwt_token="Bearer tok",
+            ),
+            source_relative_paths=["contracts/2024/agreement.pdf"],
+            source_collection_label="project",
+        )
+
+    assert response.status_code == 202
+    kwargs = task_service.create_upload_task.await_args.kwargs
+    provenance = kwargs["source_provenances"]["/tmp/agreement.pdf"]
+    assert provenance.relative_path == "contracts/2024/agreement.pdf"
+    assert kwargs["dedupe_by_filename"] is False
 
 
 @pytest.mark.asyncio
@@ -278,6 +321,76 @@ def test_source_provenance_rejects_unknown_json_fields():
 
     with pytest.raises(ValueError, match="invalid source_provenance"):
         _normalize_source_provenances(files, [json.dumps(payload)])
+
+
+def test_browser_folder_paths_create_linked_provenance():
+    files = [MagicMock(spec=UploadFile), MagicMock(spec=UploadFile)]
+
+    provenances = _folder_upload_provenances(
+        files,
+        ["contracts/2024/agreement.pdf", "letters/reply.pdf"],
+        "project",
+        "user-1",
+        [None, None],
+    )
+
+    first, second = provenances
+    assert first is not None
+    assert second is not None
+    assert first.relative_path == "contracts/2024/agreement.pdf"
+    assert second.relative_path == "letters/reply.pdf"
+    assert first.entity.source_system == "browser_folder"
+    assert first.relations[0].target.id == second.relations[0].target.id
+
+
+@pytest.mark.parametrize(
+    ("relative_paths", "collection_label", "error"),
+    [
+        (["one.pdf"], "project", "once for each"),
+        (["../one.pdf", "two.pdf"], "project", "relative_path"),
+        (["one.pdf", "two.pdf"], None, "required"),
+        (["one.pdf", "two.pdf"], "../project", "portable folder"),
+    ],
+)
+def test_browser_folder_provenance_rejects_incomplete_or_unsafe_context(
+    relative_paths, collection_label, error
+):
+    files = [MagicMock(spec=UploadFile), MagicMock(spec=UploadFile)]
+
+    with pytest.raises(ValueError, match=error):
+        _folder_upload_provenances(
+            files,
+            relative_paths,
+            collection_label,
+            "user-1",
+            [None, None],
+        )
+
+
+def test_browser_folder_hint_cannot_override_explicit_provenance():
+    files = [MagicMock(spec=UploadFile)]
+    explicit = _normalize_source_provenances(
+        files,
+        [
+            json.dumps(
+                {
+                    "entity": {
+                        "id": "urn:example:known-source",
+                        "type": "document",
+                    }
+                }
+            )
+        ],
+    )
+
+    with pytest.raises(ValueError, match="cannot be combined"):
+        _folder_upload_provenances(
+            files,
+            ["one.pdf"],
+            "project",
+            "user-1",
+            explicit,
+        )
 
 
 def test_manual_upload_uses_global_archiving_setting_when_form_field_is_absent(

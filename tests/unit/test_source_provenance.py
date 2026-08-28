@@ -28,6 +28,7 @@ def _provenance_payload() -> dict:
             "source_system": "imap",
             "alternate_ids": ["cid:invoice@example.test"],
         },
+        "relative_path": "administration/invoices/invoice.pdf",
         "relations": [
             {
                 "role": "attachment_of",
@@ -60,6 +61,13 @@ def test_source_provenance_resolves_predicates_and_builds_query_fields():
         "attachment_of",
         "member_of",
     ]
+    assert provenance.index_fields()["source_relative_path"] == (
+        "administration/invoices/invoice.pdf"
+    )
+    assert provenance.index_fields()["source_path_ancestors"] == [
+        "administration",
+        "administration/invoices",
+    ]
 
 
 @pytest.mark.parametrize(
@@ -89,12 +97,41 @@ def test_source_provenance_rejects_duplicate_role_target_pairs():
         SourceProvenance.model_validate(payload)
 
 
+@pytest.mark.parametrize(
+    "relative_path",
+    [
+        "/srv/openrag/secret.pdf",
+        "C:\\Users\\person\\secret.pdf",
+        "folder/../secret.pdf",
+        "folder//secret.pdf",
+        "folder/./secret.pdf",
+        "folder/secret.pdf\n",
+    ],
+)
+def test_source_provenance_rejects_non_portable_relative_paths(relative_path):
+    payload = _provenance_payload()
+    payload["relative_path"] = relative_path
+
+    with pytest.raises(ValidationError, match="relative_path"):
+        SourceProvenance.model_validate(payload)
+
+
+def test_source_provenance_normalizes_windows_relative_separator():
+    payload = _provenance_payload()
+    payload["relative_path"] = "folder\\subfolder\\invoice.pdf"
+
+    assert SourceProvenance.model_validate(payload).relative_path == (
+        "folder/subfolder/invoice.pdf"
+    )
+
+
 def test_source_provenance_mapping_keeps_relation_target_pairing():
     mapping = source_provenance_mapping()
 
     relations = mapping["properties"]["relations"]
     assert relations["type"] == "nested"
     assert relations["properties"]["target"]["properties"]["id"] == {"type": "keyword"}
+    assert mapping["properties"]["relative_path"]["type"] == "keyword"
 
 
 def test_document_writer_repeats_provenance_on_each_verifiable_chunk():
@@ -124,6 +161,11 @@ def test_document_writer_repeats_provenance_on_each_verifiable_chunk():
     assert document["source_url"] == "https://archive.example.test/invoice.pdf"
     assert document["source_entity_id"] == "urn:openrag:attachment:invoice-1"
     assert document["source_provenance"]["relations"][0]["role"] == "attachment_of"
+    assert document["source_relative_path"] == "administration/invoices/invoice.pdf"
+    assert document["source_path_ancestors"] == [
+        "administration",
+        "administration/invoices",
+    ]
 
 
 def test_langflow_signed_context_round_trips_provenance():
@@ -176,6 +218,7 @@ async def test_existing_index_receives_only_missing_provenance_mappings():
     body = client.indices.put_mapping.await_args.kwargs["body"]
     assert body["properties"]["source_provenance"]["properties"]["relations"]["type"] == ("nested")
     assert body["properties"]["source_entity_id"] == {"type": "keyword"}
+    assert body["properties"]["source_relative_path"]["type"] == "keyword"
 
 
 @pytest.mark.asyncio

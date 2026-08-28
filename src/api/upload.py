@@ -90,7 +90,12 @@ async def upload_path(
             status_code=403,
         )
 
-    from services.local_source_service import collect_ingest_files, resolve_ingestion_path
+    from services.local_source_service import (
+        build_local_file_provenance,
+        collect_ingest_files,
+        resolve_ingestion_path,
+        with_local_relative_path,
+    )
 
     resolved_path = resolve_ingestion_path(body.path)
     if resolved_path is None or not resolved_path.exists():
@@ -140,7 +145,20 @@ async def upload_path(
         except ValueError as error:
             return JSONResponse({"error": f"invalid source_provenance: {error}"}, status_code=400)
         if provenance is not None:
-            source_provenances[file_paths[0]] = provenance
+            generated = build_local_file_provenance(file_paths[0], resolved_path)
+            source_provenances[file_paths[0]] = with_local_relative_path(
+                provenance,
+                generated.relative_path or os.path.basename(file_paths[0]),
+            )
+
+    # Folder ingestion owns the relative filesystem context. When a caller did
+    # not provide a richer identity, synthesize a portable file entity and a
+    # shared directory-collection relation for every discovered source.
+    for file_path in file_paths:
+        source_provenances.setdefault(
+            file_path,
+            build_local_file_provenance(file_path, resolved_path),
+        )
 
     task_id = await task_service.create_upload_task(
         owner_user_id,

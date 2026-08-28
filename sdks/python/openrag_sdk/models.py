@@ -30,6 +30,8 @@ class Source(BaseModel):
     source_entity_alternate_ids: list[str] = Field(default_factory=list)
     source_relation_target_ids: list[str] = Field(default_factory=list)
     source_relation_roles: list[str] = Field(default_factory=list)
+    source_relative_path: str | None = None
+    source_path_ancestors: list[str] = Field(default_factory=list)
 
 
 class EvidenceCoverage(BaseModel):
@@ -105,6 +107,8 @@ class SearchResult(BaseModel):
     source_entity_alternate_ids: list[str] = Field(default_factory=list)
     source_relation_target_ids: list[str] = Field(default_factory=list)
     source_relation_roles: list[str] = Field(default_factory=list)
+    source_relative_path: str | None = None
+    source_path_ancestors: list[str] = Field(default_factory=list)
 
 
 class SearchResponse(BaseModel):

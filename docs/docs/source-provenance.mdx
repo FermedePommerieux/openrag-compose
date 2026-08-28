@@ -9,6 +9,8 @@ OpenRAG distinguishes a source's location from its provenance:
 
 - `source_url` is the optional URL used to open or download the source;
 - `source_provenance.entity` is its stable identity;
+- `source_provenance.relative_path` is its portable path from the selected
+  ingestion point;
 - `source_provenance.relations` connects it to emails, discussion threads,
   attachments, archives, or primary sources.
 
@@ -29,6 +31,7 @@ preserves the legacy request and response shapes.
     "source_system": "openarchiver",
     "label": "invoice.pdf"
   },
+  "relative_path": "administration/invoices/invoice.pdf",
   "relations": [
     {
       "role": "attachment_of",
@@ -78,11 +81,61 @@ single entity envelope cannot truthfully identify every member of a directory.
 The Python and TypeScript SDKs expose the same optional `source_provenance` /
 `sourceProvenance` argument and perform the multipart serialization.
 
+## Folder ingestion paths
+
+`POST /api/v1/documents/ingest-path` automatically creates provenance for
+every file when a directory is selected. The selected path is the ingestion
+point. OpenRAG stores only a normalized POSIX path relative to that point; it
+never stores the host or container absolute path.
+
+For an ingestion point `openrag-documents/project` and the source
+`openrag-documents/project/contracts/2024/agreement.pdf`, the canonical JSON
+contains:
+
+```json
+{
+  "relative_path": "contracts/2024/agreement.pdf"
+}
+```
+
+OpenRAG also creates one stable `directory_collection` entity for the selected
+ingestion point and gives every discovered file a `member_of` relation to that
+entity. Files from the same folder request can therefore be linked without
+claiming that their contents are derived from one another.
+
+Two flattened keyword fields support deterministic OpenSearch queries:
+
+- `source_relative_path` contains the complete relative path;
+- `source_path_ancestors` contains ordered directory prefixes, for example
+  `contracts` and `contracts/2024`.
+
+Absolute paths, `..`, empty path segments and control characters are rejected.
+For a single-file path request with caller-provided provenance, OpenRAG keeps
+the caller's entity and relations and adds the relative path only.
+
+This automatic construction is deliberately limited to two inputs that expose
+a truthful ingestion point:
+
+- a file or directory imported from the configured `openrag-documents`
+  directory;
+- the browser's **Folder** picker, when it supplies `webkitRelativePath` for
+  every selected file.
+
+The browser root directory name identifies the collection; OpenRAG stores only
+the portion below that selected root. Batching does not change the collection
+identity. A normal **File** picker exposes only the basename and deliberately
+hides its local path, so OpenRAG does not manufacture provenance for it.
+
+Onboarding downloads, temporary multipart files and connectors likewise do not
+infer a path from staging storage. They include `relative_path` only when the
+source system supplies a truthful source-relative path.
+
 Validated provenance is signed into the Langflow callback context, copied to
 every indexed chunk, and returned by search, chat-source, and file-listing
 responses. The canonical object preserves relation pairing; flattened fields
 such as `source_entity_id`, `source_relation_target_ids`, and
-`source_relation_roles` support filtering and reverse traversal.
+`source_relation_roles` support filtering and reverse traversal. Path fields
+support grouping files by their original ingestion tree.
 
 OpenRAG rejects malformed JSON, unknown keys, unsupported schema versions,
 unknown roles, duplicate role/target pairs, and a `prov_predicate` inconsistent

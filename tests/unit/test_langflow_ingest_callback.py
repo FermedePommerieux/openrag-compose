@@ -395,6 +395,9 @@ async def test_default_documents_use_callback_sample_classification_without_node
     assert result == "task-1"
     assert captured["connector_type"] == "openrag_docs"
     assert captured["tweaks"] is None
+    # A staging path used by onboarding is not evidence of the source's
+    # original folder tree, so it must not become provenance.
+    assert "source_provenances" not in captured
 
 
 @pytest.mark.parametrize("flow_path", ["flows/ingestion_flow.json", "flows/openrag_url_mcp.json"])

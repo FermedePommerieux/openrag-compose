@@ -662,6 +662,8 @@ class DocumentIndexWriter:
             "source_entity_alternate_ids": {"type": "keyword"},
             "source_relation_target_ids": {"type": "keyword"},
             "source_relation_roles": {"type": "keyword"},
+            "source_relative_path": {"type": "keyword", "ignore_above": 4096},
+            "source_path_ancestors": {"type": "keyword", "ignore_above": 4096},
         }
         mappings = await client.indices.get_mapping(index=index_name)
         properties: dict[str, Any] = {}

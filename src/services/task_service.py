@@ -306,6 +306,7 @@ class TaskService:
         archive_sources: bool = False,
         cleanup_files: bool = True,
         delete_source_after_success: bool = False,
+        dedupe_by_filename: bool = True,
     ) -> str:
         """Create a new upload task for bulk file processing"""
         # Use default DocumentFileProcessor with user context
@@ -326,6 +327,7 @@ class TaskService:
             source_provenances=source_provenances,
             archive_sources=archive_sources,
             delete_source_after_success=delete_source_after_success,
+            dedupe_by_filename=dedupe_by_filename,
         )
         return await self.create_custom_task(
             user_id,
@@ -357,6 +359,7 @@ class TaskService:
         source_urls: dict[str, str] | None = None,
         source_provenances: dict[str, "SourceProvenance"] | None = None,
         archive_sources: bool = False,
+        dedupe_by_filename: bool = True,
     ) -> str:
         """Create a new upload task for Langflow file processing with upload and ingest"""
         # Use LangflowFileProcessor with user context
@@ -378,6 +381,7 @@ class TaskService:
             source_urls=source_urls,
             source_provenances=source_provenances,
             archive_sources=archive_sources,
+            dedupe_by_filename=dedupe_by_filename,
         )
         return await self.create_custom_task(
             user_id,

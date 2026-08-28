@@ -32,6 +32,7 @@ export interface SourceRelation {
 export interface SourceProvenance {
   schema_version?: "1.0";
   entity: SourceEntity;
+  relative_path?: string | null;
   relations?: SourceRelation[];
 }
 
@@ -43,6 +44,8 @@ export interface SourceProvenanceFields {
   source_entity_alternate_ids?: string[];
   source_relation_target_ids?: string[];
   source_relation_roles?: string[];
+  source_relative_path?: string | null;
+  source_path_ancestors?: string[];
 }
 
 // Chat types

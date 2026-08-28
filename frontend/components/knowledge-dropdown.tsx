@@ -48,6 +48,7 @@ import {
   getConnectorDescriptor,
   getConnectorDescriptors,
 } from "@/lib/connectors/registry";
+import type { FolderUploadProvenance } from "@/lib/upload-utils";
 import {
   duplicateCheck,
   uploadFiles,
@@ -84,6 +85,32 @@ const isDuplicateFile = async (file: File): Promise<boolean> => {
     }),
   );
   return checks.some(Boolean);
+};
+
+const getFolderProvenance = (
+  files: File[],
+): FolderUploadProvenance | undefined => {
+  let collectionLabel: string | undefined;
+  const relativePaths: string[] = [];
+
+  for (const file of files) {
+    const browserPath = file.webkitRelativePath?.replaceAll("\\", "/");
+    const parts = browserPath?.split("/");
+    if (
+      !parts ||
+      parts.length < 2 ||
+      parts.some((part) => !part || part === "." || part === "..")
+    ) {
+      return undefined;
+    }
+    if (collectionLabel && collectionLabel !== parts[0]) {
+      return undefined;
+    }
+    collectionLabel = parts[0];
+    relativePaths.push(parts.slice(1).join("/"));
+  }
+
+  return collectionLabel ? { collectionLabel, relativePaths } : undefined;
 };
 
 const FileIconWithColor = ({ className }: { className?: string }) => (
@@ -387,7 +414,12 @@ export function KnowledgeDropdown() {
 
     for (const batch of batches) {
       try {
-        const result = await uploadFiles(batch, replace);
+        const result = await uploadFiles(
+          batch,
+          replace,
+          undefined,
+          getFolderProvenance(batch),
+        );
         addTask(result.taskId, { source: "folder" });
       } catch (error) {
         trackProcessFailure({
@@ -511,32 +543,32 @@ export function KnowledgeDropdown() {
 
       toast.info(`Processing ${filteredFiles.length} file(s)...`);
 
-      // Create clean File objects (strip folder path from names)
-      const cleanFiles = filteredFiles.map((originalFile) => {
-        const fileName =
-          originalFile.name.split("/").pop() || originalFile.name;
-        return new File([originalFile], fileName, {
-          type: originalFile.type,
-          lastModified: originalFile.lastModified,
-        });
-      });
+      // Keep the original File objects: ``name`` is already a basename, while
+      // ``webkitRelativePath`` is the only truthful folder context available
+      // to a browser and is required to build optional PROV-O provenance.
+      const cleanFiles = filteredFiles;
 
-      // Check all files for duplicates in parallel
-      const duplicateResults = await Promise.all(
-        cleanFiles.map(async (file) => {
-          try {
-            const exists = await isDuplicateFile(file);
-            return { file, isDuplicate: exists };
-          } catch (error) {
-            console.error(
-              `[Folder Upload] Duplicate check failed for ${file.name}:`,
-              error,
-            );
-            // On error, include the file (let the server handle it)
-            return { file, isDuplicate: false };
-          }
-        }),
-      );
+      // Filename-only duplicate checks are not valid for a folder: two
+      // distinct paths may legitimately share a basename. When the browser
+      // supplies the tree, let the backend identify documents by content and
+      // provenance. Retain the legacy check only for browsers that omit it.
+      const duplicateResults = getFolderProvenance(cleanFiles)
+        ? cleanFiles.map((file) => ({ file, isDuplicate: false }))
+        : await Promise.all(
+            cleanFiles.map(async (file) => {
+              try {
+                const exists = await isDuplicateFile(file);
+                return { file, isDuplicate: exists };
+              } catch (error) {
+                console.error(
+                  `[Folder Upload] Duplicate check failed for ${file.name}:`,
+                  error,
+                );
+                // On error, include the file (let the server handle it)
+                return { file, isDuplicate: false };
+              }
+            }),
+          );
 
       const nonDuplicateFiles = duplicateResults
         .filter((r) => !r.isDuplicate)

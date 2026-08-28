@@ -69,6 +69,8 @@ def _extract_sources(item: dict) -> list[dict]:
                 "source_entity_alternate_ids",
                 "source_relation_target_ids",
                 "source_relation_roles",
+                "source_relative_path",
+                "source_path_ancestors",
             ):
                 if field in result:
                     source[field] = result[field]

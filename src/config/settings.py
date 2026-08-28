@@ -14,6 +14,7 @@ from opensearchpy._async.http_aiohttp import AIOHttpConnection
 
 from config.embedding_constants import OPENAI_DEFAULT_EMBEDDING_MODEL
 from config.paths import get_flows_path
+from utils.agentd_compat import ensure_agentd_openai_event_compatibility
 from utils.container_utils import determine_docling_host, get_container_host
 from utils.embedding_fields import build_knn_vector_field
 from utils.env_utils import get_env_float, get_env_int, get_env_set
@@ -26,6 +27,11 @@ load_dotenv(override=False)
 load_dotenv("../", override=False)
 
 logger = get_logger(__name__)
+
+# AgentD's patched Responses client is instantiated lazily below, but its
+# event factories are module globals. Apply the guarded SDK compatibility
+# adapter once before any client is patched.
+ensure_agentd_openai_event_compatibility()
 
 
 # Local source storage

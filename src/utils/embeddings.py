@@ -59,6 +59,8 @@ async def create_index_body(
         "source_entity_alternate_ids": {"type": "keyword"},
         "source_relation_target_ids": {"type": "keyword"},
         "source_relation_roles": {"type": "keyword"},
+        "source_relative_path": {"type": "keyword", "ignore_above": 4096},
+        "source_path_ancestors": {"type": "keyword", "ignore_above": 4096},
         "connector_type": {"type": "keyword"},
         "parser": {"type": "keyword"},
         "chunk_size": {"type": "integer"},

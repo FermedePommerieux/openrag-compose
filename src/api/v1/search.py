@@ -118,6 +118,8 @@ async def search_endpoint(
                 "source_entity_alternate_ids": item.get("source_entity_alternate_ids", []),
                 "source_relation_target_ids": item.get("source_relation_target_ids", []),
                 "source_relation_roles": item.get("source_relation_roles", []),
+                "source_relative_path": item.get("source_relative_path"),
+                "source_path_ancestors": item.get("source_path_ancestors", []),
             }
             for item in result.get("results", [])
         ]

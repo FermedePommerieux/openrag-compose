@@ -46,6 +46,10 @@ async def test_upload_path_archives_sources_without_temporary_cleanup(tmp_path, 
     assert kwargs["archive_sources"] is True
     assert kwargs["cleanup_files"] is False
     assert kwargs["delete_source_after_success"] is True
+    provenance = kwargs["source_provenances"][str(source.resolve())]
+    assert provenance.relative_path == "message.eml"
+    assert provenance.entity.type == "file"
+    assert provenance.relations[0].role.value == "member_of"
     ensure_index.assert_awaited_once_with("Bearer token")
 
 
@@ -163,7 +167,47 @@ async def test_upload_path_passes_structured_optional_provenance(tmp_path, monke
 
     assert response.status_code == 201
     provenances = task_service.create_upload_task.await_args.kwargs["source_provenances"]
-    assert provenances[str(source.resolve())].entity.id == "urn:openrag:email:message-1"
+    provenance = provenances[str(source.resolve())]
+    assert provenance.entity.id == "urn:openrag:email:message-1"
+    assert provenance.relative_path == "message.eml"
+
+
+@pytest.mark.asyncio
+async def test_upload_path_links_folder_members_and_preserves_relative_tree(tmp_path, monkeypatch):
+    monkeypatch.setattr("config.settings.is_no_auth_mode", lambda: True)
+    documents = tmp_path / "documents"
+    project = documents / "project"
+    first = project / "contracts" / "2024" / "agreement.pdf"
+    second = project / "contracts" / "2025" / "renewal.pdf"
+    first.parent.mkdir(parents=True)
+    second.parent.mkdir(parents=True)
+    first.write_bytes(b"first")
+    second.write_bytes(b"second")
+    monkeypatch.setenv("OPENRAG_DOCUMENTS_PATH", str(documents))
+    monkeypatch.setattr("api.documents._ensure_index_exists", AsyncMock())
+    task_service = MagicMock()
+    task_service.create_upload_task = AsyncMock(return_value="task-tree")
+
+    response = await upload_path(
+        UploadPathBody(path=str(project)),
+        task_service=task_service,
+        session_manager=MagicMock(),
+        user=User(
+            user_id="user-1",
+            email="user@example.com",
+            name="User",
+            jwt_token="Bearer token",
+        ),
+    )
+
+    assert response.status_code == 201
+    provenances = task_service.create_upload_task.await_args.kwargs["source_provenances"]
+    first_provenance = provenances[str(first.resolve())]
+    second_provenance = provenances[str(second.resolve())]
+    assert first_provenance.relative_path == "contracts/2024/agreement.pdf"
+    assert second_provenance.relative_path == "contracts/2025/renewal.pdf"
+    assert first_provenance.entity.id != second_provenance.entity.id
+    assert first_provenance.relations[0].target.id == second_provenance.relations[0].target.id
 
 
 @pytest.mark.asyncio

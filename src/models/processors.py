@@ -1106,6 +1106,7 @@ class DocumentFileProcessor(TaskProcessor):
         source_provenances: dict[str, "SourceProvenance"] | None = None,
         archive_sources: bool = False,
         delete_source_after_success: bool = False,
+        dedupe_by_filename: bool = True,
     ):
         super().__init__(
             document_service,
@@ -1128,6 +1129,7 @@ class DocumentFileProcessor(TaskProcessor):
         self.source_provenances = source_provenances or {}
         self.archive_sources = archive_sources
         self.delete_source_after_success = delete_source_after_success
+        self.dedupe_by_filename = dedupe_by_filename
         if self.session_manager is None:
             raise ValueError("session_manager is required for DocumentFileProcessor")
 
@@ -1154,7 +1156,7 @@ class DocumentFileProcessor(TaskProcessor):
             # process_document_standard. A matching filename alone must not
             # discard a different document from the shared ingestion folder.
             duplicate_action = "proceed"
-            if not self.delete_source_after_success:
+            if self.dedupe_by_filename and not self.delete_source_after_success:
                 duplicate_action = await self.resolve_duplicate_filename(
                     original_filename,
                     opensearch_client,
@@ -1967,6 +1969,7 @@ class LangflowFileProcessor(TaskProcessor):
         source_urls: dict[str, str] | None = None,
         source_provenances: dict[str, "SourceProvenance"] | None = None,
         archive_sources: bool = False,
+        dedupe_by_filename: bool = True,
     ):
         super().__init__()
         self.langflow_file_service = langflow_file_service
@@ -1984,6 +1987,7 @@ class LangflowFileProcessor(TaskProcessor):
         self.source_urls = source_urls or {}
         self.source_provenances = source_provenances or {}
         self.archive_sources = archive_sources
+        self.dedupe_by_filename = dedupe_by_filename
 
     async def process_item(self, upload_task: UploadTask, item: str, file_task: FileTask) -> None:
         """Process a file path using LangflowFileService upload_and_ingest_file"""
@@ -2003,15 +2007,17 @@ class LangflowFileProcessor(TaskProcessor):
                 self.owner_user_id, self.jwt_token
             )
 
-            duplicate_action = await self.resolve_duplicate_filename(
-                original_filename,
-                opensearch_client,
-                replace=self.replace_duplicates,
-                owner_user_id=self.owner_user_id,
-            )
-            if duplicate_action == "skip":
-                self.mark_duplicate_skipped(upload_task, file_task)
-                return
+            duplicate_action = "proceed"
+            if self.dedupe_by_filename:
+                duplicate_action = await self.resolve_duplicate_filename(
+                    original_filename,
+                    opensearch_client,
+                    replace=self.replace_duplicates,
+                    owner_user_id=self.owner_user_id,
+                )
+                if duplicate_action == "skip":
+                    self.mark_duplicate_skipped(upload_task, file_task)
+                    return
 
             # Read file content for processing
             with open(item, "rb") as f:

@@ -62,6 +62,11 @@ export interface UploadFileResult {
   taskId?: string;
 }
 
+export interface FolderUploadProvenance {
+  collectionLabel: string;
+  relativePaths: string[];
+}
+
 export async function duplicateCheck(
   file: File,
 ): Promise<DuplicateCheckResponse> {
@@ -83,10 +88,29 @@ export async function uploadFiles(
   files: File[],
   replace = false,
   archiveSource?: boolean,
+  folderProvenance?: FolderUploadProvenance,
 ): Promise<{ taskId: string; fileCount: number }> {
+  if (
+    folderProvenance &&
+    folderProvenance.relativePaths.length !== files.length
+  ) {
+    throw new Error("Folder provenance must contain one path per file");
+  }
   const formData = new FormData();
-  for (const file of files) {
+  for (const [index, file] of files.entries()) {
     formData.append("file", file);
+    if (folderProvenance) {
+      formData.append(
+        "source_relative_path",
+        folderProvenance.relativePaths[index],
+      );
+    }
+  }
+  if (folderProvenance) {
+    formData.append(
+      "source_collection_label",
+      folderProvenance.collectionLabel,
+    );
   }
   formData.append("replace_duplicates", replace.toString());
   if (archiveSource !== undefined) {

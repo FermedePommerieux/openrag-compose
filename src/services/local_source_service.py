@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import errno
+import hashlib
 import mimetypes
 import os
 import re
@@ -11,8 +12,11 @@ import shutil
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, TypedDict
+from typing import TYPE_CHECKING, Any, TypedDict
 from urllib.parse import quote, unquote, urlsplit
+
+if TYPE_CHECKING:
+    from models.source_provenance import SourceProvenance
 
 DOCUMENT_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{16,128}$")
 SOURCE_ID_PATTERN = re.compile(r"^(?P<document_id>[A-Za-z0-9_-]{16,128})\.(?P<nonce>[a-f0-9]{32})$")
@@ -273,6 +277,132 @@ def collect_ingest_files(directory: str | os.PathLike[str]) -> list[str]:
             files.append(str(candidate))
 
     return sorted(files)
+
+
+def build_local_file_provenance(
+    file_path: str | os.PathLike[str],
+    ingestion_point: str | os.PathLike[str],
+) -> SourceProvenance:
+    """Build portable PROV-O identity for one local folder-ingestion member.
+
+    ``relative_path`` is computed from the exact file or directory selected by
+    the user, not from a temporary or archived path. All files collected by
+    the same request share a stable ``member_of`` target, which links them
+    without inventing content relationships.
+    """
+    from config.settings import get_documents_path
+    source = Path(file_path).expanduser().resolve()
+    point = Path(ingestion_point).expanduser().resolve()
+    configured_root = Path(get_documents_path()).expanduser().resolve()
+    if not _is_relative_to(source, configured_root) or not _is_relative_to(
+        point, configured_root
+    ):
+        raise ValueError("Local provenance paths must stay inside OPENRAG_DOCUMENTS_PATH")
+
+    if point.is_dir():
+        try:
+            relative_path = source.relative_to(point).as_posix()
+        except ValueError as error:
+            raise ValueError("Source must be inside the selected ingestion point") from error
+    elif source == point:
+        relative_path = source.name
+    else:
+        raise ValueError("File ingestion point must identify the source file")
+
+    point_key = "." if point == configured_root else point.relative_to(configured_root).as_posix()
+    collection_label = point.name if point != configured_root else "ingestion-root"
+
+    return _build_folder_member_provenance(
+        relative_path=relative_path,
+        collection_key=point_key,
+        collection_label=collection_label,
+        source_system="local",
+    )
+
+
+def build_browser_folder_provenance(
+    relative_path: str,
+    collection_label: str,
+    scope_key: str,
+) -> SourceProvenance:
+    """Build provenance from a browser folder selection.
+
+    Browsers deliberately hide absolute local paths, but a directory picker
+    supplies a truthful path relative to the selected folder. The caller's
+    workspace/user scope prevents identical folder names from sharing an
+    entity namespace across security principals.
+    """
+    label = collection_label.strip()
+    if (
+        not label
+        or label in {".", ".."}
+        or "/" in label
+        or "\\" in label
+        or len(label) > 512
+        or any(ord(character) < 32 or ord(character) == 127 for character in label)
+    ):
+        raise ValueError("source_collection_label must be one portable folder name")
+    return _build_folder_member_provenance(
+        relative_path=relative_path,
+        collection_key=f"{scope_key}\0{label}",
+        collection_label=label,
+        source_system="browser_folder",
+    )
+
+
+def _build_folder_member_provenance(
+    *,
+    relative_path: str,
+    collection_key: str,
+    collection_label: str,
+    source_system: str,
+) -> SourceProvenance:
+    """Create the common PROV-O representation of one folder member."""
+    from models.source_provenance import (
+        SourceEntity,
+        SourceProvenance,
+        SourceRelation,
+        SourceRelationRole,
+        normalize_source_relative_path,
+    )
+
+    normalized_path = normalize_source_relative_path(relative_path)
+    point_digest = hashlib.sha256(collection_key.encode("utf-8")).hexdigest()
+    file_digest = hashlib.sha256(normalized_path.encode("utf-8")).hexdigest()
+    collection_id = f"urn:openrag:{source_system}-ingestion:{point_digest}"
+    entity_id = f"urn:openrag:{source_system}-file:{point_digest}:{file_digest}"
+
+    return SourceProvenance(
+        entity=SourceEntity(
+            id=entity_id,
+            type="file",
+            source_system=source_system,
+            label=normalized_path.rsplit("/", 1)[-1],
+        ),
+        relative_path=normalized_path,
+        relations=[
+            SourceRelation(
+                role=SourceRelationRole.MEMBER_OF,
+                target=SourceEntity(
+                    id=collection_id,
+                    type="directory_collection",
+                    source_system=source_system,
+                    label=collection_label,
+                ),
+            )
+        ],
+    )
+
+
+def with_local_relative_path(
+    provenance: SourceProvenance, relative_path: str
+) -> SourceProvenance:
+    """Add the selected local path while preserving caller-owned PROV links."""
+    from models.source_provenance import SourceProvenance
+
+    payload = provenance.model_dump(mode="json", exclude_none=True)
+    payload["relative_path"] = relative_path
+    return SourceProvenance.model_validate(payload)
 
 
 def delete_ingested_source(file_path: str | os.PathLike[str]) -> bool:
