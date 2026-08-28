@@ -465,7 +465,13 @@ async def test_document_search_paginates_collapsed_results_with_server_total(mon
                     ]
                 },
                 "aggregations": {
-                    "document_total": {"value": 245},
+                    "document_names": {
+                        "buckets": [
+                            {"key": f"document-{index}.pdf", "doc_count": 1}
+                            for index in range(245)
+                        ],
+                        "sum_other_doc_count": 0,
+                    },
                     "data_sources": {"buckets": []},
                 },
             }
@@ -494,15 +500,18 @@ async def test_document_search_paginates_collapsed_results_with_server_total(mon
     assert result["total_documents"] == 245
     assert result["page"] == 2
     assert result["page_size"] == 100
+    assert result["total_documents_capped"] is False
+    assert "document_names" not in result["aggregations"]
     assert [item["filename"] for item in result["results"]] == ["a.pdf", "b.pdf"]
     search_body = client.bodies[-1]
     assert search_body["from"] == 100
     assert search_body["size"] == 100
     assert search_body["collapse"] == {"field": "filename"}
-    assert search_body["aggs"]["document_total"] == {
-        "cardinality": {
+    assert search_body["aggs"]["document_names"] == {
+        "terms": {
             "field": "filename",
-            "precision_threshold": 40_000,
+            "size": 10_000,
+            "shard_size": 10_000,
         }
     }
     knn = search_body["query"]["bool"]["should"][0]["dis_max"]["queries"][0][

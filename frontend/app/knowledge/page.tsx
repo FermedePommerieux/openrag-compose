@@ -400,6 +400,7 @@ function SearchPage() {
   const resultTotal = isWildcardQuery
     ? (listFilesData?.total ?? 0)
     : (searchData.total ?? searchFiles.length);
+  const resultTotalCapped = !isWildcardQuery && searchData.totalCapped === true;
   const resultTotalPages = Math.max(1, Math.ceil(resultTotal / listPageSize));
 
   useEffect(() => {
@@ -1206,7 +1207,8 @@ function SearchPage() {
             </select>
           </label>
           <span>
-            Page {listPage} / {resultTotalPages} · {resultTotal} document
+            Page {listPage} / {resultTotalPages} · {resultTotal}
+            {resultTotalCapped ? "+" : ""} document
             {resultTotal === 1 ? "" : "s"}
           </span>
           <Button

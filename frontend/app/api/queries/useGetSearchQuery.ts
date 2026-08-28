@@ -106,6 +106,7 @@ export interface SearchResult {
   files: File[];
   warnings: SearchWarning[];
   total?: number;
+  totalCapped?: boolean;
   page?: number;
   page_size?: number;
 }
@@ -318,6 +319,7 @@ export const useGetSearchQuery = (
           typeof data.total_documents === "number"
             ? data.total_documents
             : files.length,
+        totalCapped: data.total_documents_capped === true,
         page: typeof data.page === "number" ? data.page : 1,
         page_size:
           typeof data.page_size === "number" ? data.page_size : files.length,

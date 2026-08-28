@@ -757,10 +757,10 @@ class SearchService:
         }
         if group_by_document:
             # The Knowledge table is a document browser, not a chunk browser.
-            # Collapse keeps the best matching chunk as the representative row,
-            # while the cardinality aggregation supplies a document total for
-            # server-side pagination. A precision threshold above the current
-            # corpus size avoids confusing chunk totals with document totals.
+            # Collapse keeps the best matching chunk as the representative row.
+            # A terms aggregation enumerates the same ranked document window so
+            # the total is deterministic; cardinality aggregations are only
+            # approximate and made the displayed total drift between pages.
             search_body.update(
                 {
                     "from": document_offset,
@@ -768,10 +768,11 @@ class SearchService:
                     "collapse": {"field": "filename"},
                 }
             )
-            search_body["aggs"]["document_total"] = {
-                "cardinality": {
+            search_body["aggs"]["document_names"] = {
+                "terms": {
                     "field": "filename",
-                    "precision_threshold": 40_000,
+                    "size": DOCUMENT_SEARCH_RESULT_WINDOW,
+                    "shard_size": DOCUMENT_SEARCH_RESULT_WINDOW,
                 }
             }
 
@@ -1043,10 +1044,17 @@ class SearchService:
                 if isinstance(chunk.get("filename"), str)
             }
         )
+        raw_aggregations = results.get("aggregations", {})
+        document_names_aggregation = raw_aggregations.get("document_names", {})
+        public_aggregations = {
+            name: value
+            for name, value in raw_aggregations.items()
+            if name != "document_names"
+        }
         chunks, aggregations = _apply_exact_match_file_filter(
             query,
             chunks,
-            _normalize_file_facet_aggregations(results.get("aggregations", {})),
+            _normalize_file_facet_aggregations(public_aggregations),
             is_wildcard_match_all=is_wildcard_match_all,
         )
 
@@ -1059,11 +1067,6 @@ class SearchService:
             "total": len(chunks),
         }
         if group_by_document:
-            document_total = int(
-                results.get("aggregations", {})
-                .get("document_total", {})
-                .get("value", len(chunks))
-            )
             post_filter_document_count = len(
                 {
                     chunk.get("filename")
@@ -1071,14 +1074,24 @@ class SearchService:
                     if isinstance(chunk.get("filename"), str)
                 }
             )
+            document_name_buckets = document_names_aggregation.get("buckets")
+            document_total = (
+                len(document_name_buckets)
+                if isinstance(document_name_buckets, list)
+                else post_filter_document_count
+            )
+            document_total_capped = bool(
+                document_names_aggregation.get("sum_other_doc_count", 0)
+            )
             # Identifier-like searches can deliberately narrow the returned
             # page to verbatim matches after OpenSearch ranking. In that small
-            # special case, do not expose the broader pre-filter cardinality.
+            # special case, do not expose the broader pre-filter document count.
             if post_filter_document_count < pre_filter_document_count:
                 document_total = post_filter_document_count
             response.update(
                 {
                     "total_documents": document_total,
+                    "total_documents_capped": document_total_capped,
                     "page": document_page,
                     "page_size": document_page_size,
                 }
