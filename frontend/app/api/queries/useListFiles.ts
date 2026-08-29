@@ -151,7 +151,10 @@ export const useListFiles = (
       placeholderData: (prev: ListFilesResponse | undefined) => prev,
       queryFn: fetchFiles,
       retry: false,
-      staleTime: 5000,
+      // The response already contains five look-ahead pages. Keep that bounded
+      // block fresh long enough to avoid repeatedly transferring up to 6,000
+      // rows when the user explicitly selects the 1,000-row view.
+      staleTime: 30_000,
       ...options,
     },
     queryClient,

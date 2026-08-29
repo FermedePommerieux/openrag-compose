@@ -59,7 +59,8 @@ documents. Documents with the same filename remain distinct through their
 10,000-document window, the server returns and the browser caches exactly five
 look-ahead pages together with the visible page. This is 300 document rows at
 the default size of 50 and is bounded to 6,000 rows at the maximum size of
-1,000.
+1,000. The browser reuses this block for 30 seconds; ingestion progress remains
+available independently through the task status UI.
 
 Semantic search results are grouped by document before pagination, so the
 displayed total counts documents rather than matching chunks. They are ranked

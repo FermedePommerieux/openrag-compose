@@ -383,7 +383,10 @@ function SearchPage() {
         listPage > 1 ? listCursorCacheRef.current.get(listPage) : undefined,
     },
     {
-      refetchInterval: 5000,
+      // Ingestion progress is rendered from the task stream. The persisted
+      // document list only needs a modest refresh cadence, especially because
+      // each response intentionally preloads five following pages.
+      refetchInterval: 30_000,
       enabled: isWildcardQuery,
     },
   );
