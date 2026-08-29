@@ -34,6 +34,10 @@ async def list_files(
         None,
         description="Filter by one or more exact filenames",
     ),
+    cursor: str | None = Query(
+        None,
+        description="Opaque search_after cursor returned by the previous page",
+    ),
     file_service=Depends(_get_file_service),
     user: User = Depends(get_current_user),
 ):
@@ -51,8 +55,11 @@ async def list_files(
             owner=owner,
             search=search,
             data_sources=data_sources,
+            cursor=cursor,
         )
         return JSONResponse(result)
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
     except Exception as e:
         logger.error("Failed to list files", error=str(e))
         from utils.opensearch_utils import AUTH_ERROR_MESSAGE, is_opensearch_auth_error
@@ -72,6 +79,10 @@ async def search_files(
     connector_type: str | None = Query(None, description="Filter by connector type"),
     mimetype: str | None = Query(None, description="Filter by MIME type"),
     owner: str | None = Query(None, description="Filter by owner"),
+    cursor: str | None = Query(
+        None,
+        description="Opaque search_after cursor returned by the previous page",
+    ),
     file_service=Depends(_get_file_service),
     user: User = Depends(get_current_user),
 ):
@@ -86,8 +97,11 @@ async def search_files(
             connector_type=connector_type,
             mimetype=mimetype,
             owner=owner,
+            cursor=cursor,
         )
         return JSONResponse(result)
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
     except Exception as e:
         logger.error("Failed to search files", error=str(e))
         from utils.opensearch_utils import AUTH_ERROR_MESSAGE, is_opensearch_auth_error

@@ -48,11 +48,23 @@ To search all documents, enter a search string in the search field, and then pre
 
 Both the complete list and semantic search results are paginated by the
 server. The default is 50 documents per page, and you can display 50, 100, 500,
-or 1,000. The selected size is retained for the current browser session. Search results
-are grouped by document before pagination, so the displayed total counts
-documents rather than matching chunks. Semantic results are ranked within a
-stable 10,000-document window; a `+` after the total makes that bound explicit
-when the query reaches it.
+or 1,000. The selected size is retained for the current browser session.
+
+The complete list queries only the representative first chunk of each
+document. OpenSearch returns the exact document total and only the rows needed
+for the visible page. Next and previous navigation uses stable cursors, so all
+documents remain reachable even when the collection contains more than 10,000
+documents. Documents with the same filename remain distinct through their
+`document_id`. To keep navigation responsive without fetching an arbitrary
+10,000-document window, the server returns and the browser caches exactly five
+look-ahead pages together with the visible page. This is 300 document rows at
+the default size of 50 and is bounded to 6,000 rows at the maximum size of
+1,000.
+
+Semantic search results are grouped by document before pagination, so the
+displayed total counts documents rather than matching chunks. They are ranked
+within a stable 10,000-document window; a `+` after the total makes that bound
+explicit when the query reaches it.
 
 Opening a document loads its chunks with an exact source-name filter. This
 keeps the document view independent from the size and ranking window of the

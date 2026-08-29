@@ -1,16 +1,69 @@
-"""
-Service for file-level listing and search via OpenSearch aggregations.
+"""Server-side document listing and filename search.
 
-Aggregates document chunks by filename to produce file-level views,
-with support for pagination, filtering, sorting, and fuzzy search.
+The documents index stores one OpenSearch hit per chunk.  A completed
+ingestion gives every document exactly one representative chunk with
+``chunk_index == 0`` and copies document-level metadata onto that chunk.  The
+Knowledge browser queries only those representatives: OpenSearch therefore
+returns exactly the requested UI page and ``track_total_hits`` provides the
+exact document count without a 10,000-bucket aggregation.
+
+Pages use an opaque ``search_after`` cursor.  This avoids OpenSearch's
+``index.max_result_window`` limit while retaining stable next/previous
+navigation over collections of any size.
 """
 
+import base64
+import json
 from typing import Any
 
 from config.settings import get_index_name
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
+
+# Fetch the visible page plus five bounded look-ahead pages.  The frontend
+# caches those pages, which keeps ordinary next-page navigation instant without
+# returning an arbitrary 10,000-document window.  At the largest supported UI
+# page size this remains bounded to 6,000 lightweight representative chunks.
+FILE_PAGE_LOOKAHEAD = 5
+
+_FILE_SOURCE_FIELDS = [
+    "document_id",
+    "filename",
+    "mimetype",
+    "file_size",
+    "source_url",
+    "source_provenance",
+    "source_entity_id",
+    "source_entity_type",
+    "source_entity_system",
+    "source_entity_alternate_ids",
+    "source_relation_target_ids",
+    "source_relation_roles",
+    "source_relative_path",
+    "source_path_ancestors",
+    "owner",
+    "owner_name",
+    "owner_email",
+    "connector_type",
+    "embedding_model",
+    "embedding_dimensions",
+    "indexed_time",
+    "document_chunk_count",
+    "allowed_users",
+    "allowed_groups",
+    "allowed_principal_labels",
+]
+
+_SORT_FIELDS = {
+    "filename": "filename",
+    "file_size": "file_size",
+    "mimetype": "mimetype",
+    "indexed_time": "indexed_time",
+    "connector_type": "connector_type",
+    "chunk_count": "document_chunk_count",
+    "owner": "owner",
+}
 
 
 class FileService:
@@ -32,12 +85,14 @@ class FileService:
         owner: str | None = None,
         search: str | None = None,
         data_sources: list[str] | None = None,
+        cursor: str | None = None,
     ) -> dict[str, Any]:
         """
         List ingested files with server-side pagination, filtering, and sorting.
 
-        Aggregates chunks by filename using OpenSearch terms aggregation,
-        then paginates and sorts the resulting file list in-memory.
+        Query only the representative chunk for each document and return one
+        bounded page.  ``cursor`` is the prior page's opaque ``search_after``
+        value; page 1 intentionally has no cursor.
         """
         opensearch_client = self.session_manager.get_user_opensearch_client(user_id, jwt_token)
 
@@ -49,12 +104,44 @@ class FileService:
             search,
             data_sources,
         )
-        agg_body = self._build_file_aggregation(query)
+        representative_filters = query["bool"].setdefault("filter", [])
+        representative_filters.append({"term": {"chunk_index": 0}})
+
+        resolved_sort_field = _SORT_FIELDS.get(sort_by, "filename")
+        resolved_sort_order = "desc" if sort_order.lower() == "desc" else "asc"
+        body: dict[str, Any] = {
+            "size": page_size * (FILE_PAGE_LOOKAHEAD + 1),
+            "track_total_hits": True,
+            "query": query,
+            "_source": _FILE_SOURCE_FIELDS,
+            "sort": [
+                {
+                    resolved_sort_field: {
+                        "order": resolved_sort_order,
+                        "missing": "_last",
+                    }
+                },
+                {"document_id": {"order": "asc"}},
+            ],
+        }
+        if cursor:
+            body["search_after"] = self._decode_cursor(cursor)
+        elif page > 1:
+            # Backward compatibility for API clients that have not adopted
+            # cursors yet.  The Knowledge UI always uses search_after, so its
+            # navigation is not constrained by max_result_window.
+            offset = (page - 1) * page_size
+            if offset + page_size > 10_000:
+                raise ValueError("A cursor is required beyond OpenSearch's 10,000-result window")
+            # Legacy offset clients receive only the requested page. They do
+            # not provide the stable boundary required for safe look-ahead.
+            body["size"] = page_size
+            body["from"] = offset
 
         try:
             result = await opensearch_client.search(
                 index=get_index_name(),
-                body=agg_body,
+                body=body,
             )
         except Exception as e:
             logger.error("Failed to list files", error=str(e))
@@ -64,21 +151,53 @@ class FileService:
 
             if is_opensearch_auth_error(e):
                 raise
-            return {"files": [], "total": 0, "page": page, "page_size": page_size}
+            return {
+                "files": [],
+                "total": 0,
+                "page": page,
+                "page_size": page_size,
+                "next_cursor": None,
+                "prefetched_pages": [],
+            }
 
-        files = self._parse_aggregation_buckets(result)
-        files = self._sort_files(files, sort_by, sort_order)
+        hits_block = result.get("hits", {})
+        hits = hits_block.get("hits", [])
+        total_value = hits_block.get("total", 0)
+        total = total_value.get("value", 0) if isinstance(total_value, dict) else total_value
+        current_hits = hits[:page_size]
+        files = [self._parse_representative_hit(hit) for hit in current_hits]
+        has_next_page = page * page_size < int(total or 0)
+        next_cursor = None
+        if has_next_page and current_hits:
+            next_cursor = self._cursor_from_hit(current_hits[-1])
 
-        total = len(files)
-        start = (page - 1) * page_size
-        end = start + page_size
-        paginated = files[start:end]
+        prefetched_pages = []
+        for lookahead in range(1, FILE_PAGE_LOOKAHEAD + 1):
+            start = lookahead * page_size
+            page_hits = hits[start : start + page_size]
+            if not page_hits:
+                break
+            prefetched_page_number = page + lookahead
+            prefetched_page_cursor = self._cursor_from_hit(hits[start - 1])
+            prefetched_next_cursor = None
+            if prefetched_page_number * page_size < int(total or 0):
+                prefetched_next_cursor = self._cursor_from_hit(page_hits[-1])
+            prefetched_pages.append(
+                {
+                    "page": prefetched_page_number,
+                    "cursor": prefetched_page_cursor,
+                    "files": [self._parse_representative_hit(hit) for hit in page_hits],
+                    "next_cursor": prefetched_next_cursor,
+                }
+            )
 
         return {
-            "files": paginated,
-            "total": total,
+            "files": files,
+            "total": int(total or 0),
             "page": page,
             "page_size": page_size,
+            "next_cursor": next_cursor,
+            "prefetched_pages": prefetched_pages,
         }
 
     async def search_files(
@@ -91,12 +210,12 @@ class FileService:
         connector_type: str | None = None,
         mimetype: str | None = None,
         owner: str | None = None,
+        cursor: str | None = None,
     ) -> dict[str, Any]:
         """
         Search files by name with fuzzy/prefix matching.
 
-        Uses wildcard, match_phrase_prefix, and fuzzy queries on the
-        filename field, then aggregates matching chunks into file-level results.
+        Uses wildcard and prefix queries on the representative filename.
         """
         return await self.list_files(
             user_id=user_id,
@@ -109,6 +228,7 @@ class FileService:
             mimetype=mimetype,
             owner=owner,
             search=query,
+            cursor=cursor,
         )
 
     def _build_filter_query(
@@ -159,122 +279,58 @@ class FileService:
 
         return query
 
-    def _build_file_aggregation(self, query: dict[str, Any]) -> dict[str, Any]:
-        """Build the OpenSearch aggregation body for file-level grouping."""
+    @staticmethod
+    def _parse_representative_hit(hit: dict[str, Any]) -> dict[str, Any]:
+        """Convert one document's representative chunk into a file row."""
+        source = hit.get("_source", {})
         return {
-            "size": 0,
-            "query": query,
-            "aggs": {
-                "files": {
-                    "terms": {
-                        "field": "filename",
-                        "size": 10000,
-                    },
-                    "aggs": {
-                        "file_metadata": {
-                            "top_hits": {
-                                "size": 1,
-                                "_source": [
-                                    "document_id",
-                                    "filename",
-                                    "mimetype",
-                                    "file_size",
-                                    "source_url",
-                                    "source_provenance",
-                                    "source_entity_id",
-                                    "source_entity_type",
-                                    "source_entity_system",
-                                    "source_entity_alternate_ids",
-                                    "source_relation_target_ids",
-                                    "source_relation_roles",
-                                    "source_relative_path",
-                                    "source_path_ancestors",
-                                    "owner",
-                                    "owner_name",
-                                    "owner_email",
-                                    "connector_type",
-                                    "embedding_model",
-                                    "embedding_dimensions",
-                                    "indexed_time",
-                                    "allowed_users",
-                                    "allowed_groups",
-                                    "allowed_principal_labels",
-                                ],
-                                "sort": [{"indexed_time": {"order": "desc"}}],
-                            }
-                        },
-                        "chunk_count": {"value_count": {"field": "_id"}},
-                    },
-                }
-            },
+            "filename": source.get("filename", ""),
+            "document_id": source.get("document_id", ""),
+            "mimetype": source.get("mimetype", ""),
+            "file_size": source.get("file_size", 0),
+            "source_url": source.get("source_url", ""),
+            "source_provenance": source.get("source_provenance"),
+            "source_entity_id": source.get("source_entity_id"),
+            "source_entity_type": source.get("source_entity_type"),
+            "source_entity_system": source.get("source_entity_system"),
+            "source_entity_alternate_ids": source.get("source_entity_alternate_ids", []),
+            "source_relation_target_ids": source.get("source_relation_target_ids", []),
+            "source_relation_roles": source.get("source_relation_roles", []),
+            "source_relative_path": source.get("source_relative_path"),
+            "source_path_ancestors": source.get("source_path_ancestors", []),
+            "owner": source.get("owner", ""),
+            "owner_name": source.get("owner_name", ""),
+            "owner_email": source.get("owner_email", ""),
+            "connector_type": source.get("connector_type", ""),
+            "embedding_model": source.get("embedding_model", ""),
+            "embedding_dimensions": source.get("embedding_dimensions"),
+            "indexed_time": source.get("indexed_time", ""),
+            "chunk_count": source.get("document_chunk_count", 0),
+            "allowed_users": source.get("allowed_users", []),
+            "allowed_groups": source.get("allowed_groups", []),
+            "allowed_principal_labels": source.get("allowed_principal_labels", []),
         }
 
-    def _parse_aggregation_buckets(self, result: dict[str, Any]) -> list[dict[str, Any]]:
-        """Parse OpenSearch aggregation buckets into file dicts."""
-        buckets = result.get("aggregations", {}).get("files", {}).get("buckets", [])
+    @staticmethod
+    def _encode_cursor(sort_values: list[Any]) -> str:
+        payload = json.dumps(sort_values, ensure_ascii=False, separators=(",", ":"))
+        return base64.urlsafe_b64encode(payload.encode()).decode().rstrip("=")
 
-        files = []
-        for bucket in buckets:
-            hits = bucket.get("file_metadata", {}).get("hits", {}).get("hits", [])
-            if not hits:
-                continue
+    @classmethod
+    def _cursor_from_hit(cls, hit: dict[str, Any]) -> str:
+        sort_values = hit.get("sort")
+        if not isinstance(sort_values, list):
+            raise RuntimeError("OpenSearch omitted sort values required for pagination")
+        return cls._encode_cursor(sort_values)
 
-            source = hits[0].get("_source", {})
-            files.append(
-                {
-                    "filename": bucket["key"],
-                    "document_id": source.get("document_id", ""),
-                    "mimetype": source.get("mimetype", ""),
-                    "file_size": source.get("file_size", 0),
-                    "source_url": source.get("source_url", ""),
-                    "source_provenance": source.get("source_provenance"),
-                    "source_entity_id": source.get("source_entity_id"),
-                    "source_entity_type": source.get("source_entity_type"),
-                    "source_entity_system": source.get("source_entity_system"),
-                    "source_entity_alternate_ids": source.get("source_entity_alternate_ids", []),
-                    "source_relation_target_ids": source.get("source_relation_target_ids", []),
-                    "source_relation_roles": source.get("source_relation_roles", []),
-                    "source_relative_path": source.get("source_relative_path"),
-                    "source_path_ancestors": source.get("source_path_ancestors", []),
-                    "owner": source.get("owner", ""),
-                    "owner_name": source.get("owner_name", ""),
-                    "owner_email": source.get("owner_email", ""),
-                    "connector_type": source.get("connector_type", ""),
-                    "embedding_model": source.get("embedding_model", ""),
-                    "embedding_dimensions": source.get("embedding_dimensions"),
-                    "indexed_time": source.get("indexed_time", ""),
-                    "chunk_count": bucket.get("chunk_count", {}).get("value", 0),
-                    "allowed_users": source.get("allowed_users", []),
-                    "allowed_groups": source.get("allowed_groups", []),
-                    "allowed_principal_labels": source.get("allowed_principal_labels", []),
-                }
-            )
-
-        return files
-
-    def _sort_files(
-        self,
-        files: list[dict[str, Any]],
-        sort_by: str,
-        sort_order: str,
-    ) -> list[dict[str, Any]]:
-        """Sort file list by the given field."""
-        valid_sort_fields = {
-            "filename",
-            "file_size",
-            "mimetype",
-            "indexed_time",
-            "connector_type",
-            "chunk_count",
-            "owner",
-        }
-        if sort_by not in valid_sort_fields:
-            sort_by = "filename"
-
-        reverse = sort_order.lower() == "desc"
-
-        return sorted(
-            files,
-            key=lambda f: f.get(sort_by) or "",
-            reverse=reverse,
-        )
+    @staticmethod
+    def _decode_cursor(cursor: str) -> list[Any]:
+        try:
+            padding = "=" * (-len(cursor) % 4)
+            decoded = base64.urlsafe_b64decode((cursor + padding).encode()).decode()
+            sort_values = json.loads(decoded)
+        except (ValueError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise ValueError("Invalid file pagination cursor") from exc
+        if not isinstance(sort_values, list) or len(sort_values) != 2:
+            raise ValueError("Invalid file pagination cursor")
+        return sort_values

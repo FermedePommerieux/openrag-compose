@@ -160,6 +160,7 @@ function SearchPage() {
   const [listPageSize, setListPageSize] = useState(
     DEFAULT_LIST_FILES_PAGE_SIZE,
   );
+  const listCursorCacheRef = useRef<Map<number, string>>(new Map());
 
   useEffect(() => {
     const storedPageSize = Number(
@@ -361,6 +362,7 @@ function SearchPage() {
     // A server page belongs to one exact filter scope. Keeping the old page
     // after changing the scope can otherwise produce an empty, misleading grid.
     void listScopeKey;
+    listCursorCacheRef.current.clear();
     setListPage(1);
   }, [listScopeKey]);
 
@@ -377,6 +379,8 @@ function SearchPage() {
       connectorType: listConnectorType,
       mimetype: listMimetype,
       owner: listOwner,
+      cursor:
+        listPage > 1 ? listCursorCacheRef.current.get(listPage) : undefined,
     },
     {
       refetchInterval: 5000,
@@ -418,6 +422,21 @@ function SearchPage() {
     : (searchData.total ?? searchFiles.length);
   const resultTotalCapped = !isWildcardQuery && searchData.totalCapped === true;
   const resultTotalPages = Math.max(1, Math.ceil(resultTotal / listPageSize));
+
+  useEffect(() => {
+    if (!isWildcardQuery || !listFilesData || listFilesData.page !== listPage) {
+      return;
+    }
+    if (listFilesData.next_cursor) {
+      listCursorCacheRef.current.set(listPage + 1, listFilesData.next_cursor);
+    }
+    for (const prefetchedPage of listFilesData.prefetched_pages ?? []) {
+      listCursorCacheRef.current.set(
+        prefetchedPage.page,
+        prefetchedPage.cursor,
+      );
+    }
+  }, [isWildcardQuery, listFilesData, listPage]);
 
   useEffect(() => {
     // Deleting the last item of the last page reduces the server page count.
@@ -1217,6 +1236,7 @@ function SearchPage() {
                   KNOWLEDGE_PAGE_SIZE_SESSION_KEY,
                   String(pageSize),
                 );
+                listCursorCacheRef.current.clear();
                 setListPage(1);
               }}
             >
@@ -1245,10 +1265,18 @@ function SearchPage() {
             type="button"
             variant="outline"
             size="sm"
-            disabled={listPage >= resultTotalPages || isLoading}
-            onClick={() =>
-              setListPage((page) => Math.min(resultTotalPages, page + 1))
+            disabled={
+              listPage >= resultTotalPages ||
+              isLoading ||
+              (isWildcardQuery && !listFilesData?.next_cursor)
             }
+            onClick={() => {
+              const nextCursor = listFilesData?.next_cursor;
+              if (isWildcardQuery && nextCursor) {
+                listCursorCacheRef.current.set(listPage + 1, nextCursor);
+              }
+              setListPage((page) => Math.min(resultTotalPages, page + 1));
+            }}
           >
             Next
           </Button>

@@ -8,11 +8,23 @@ export interface KnowledgeSourceOption {
 }
 
 export function getKnowledgeFileIdentity(file?: {
+  document_id?: string;
+  source_entity_id?: string;
   filename?: string;
   source_url?: string;
 }) {
   if (!file) {
     return "";
+  }
+
+  const sourceEntityId = file.source_entity_id?.trim();
+  if (sourceEntityId) {
+    return sourceEntityId;
+  }
+
+  const documentId = file.document_id?.trim();
+  if (documentId) {
+    return documentId;
   }
 
   const normalizedFilename = file.filename?.trim();
