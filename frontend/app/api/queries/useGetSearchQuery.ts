@@ -111,6 +111,11 @@ export interface SearchResult {
   page_size?: number;
 }
 
+interface SearchRequestOptions {
+  documentPagination?: { page: number; pageSize: number };
+  exactDataSources?: string[];
+}
+
 const EMPTY_SEARCH_RESULT: SearchResult = { files: [], warnings: [] };
 
 export { EMPTY_SEARCH_RESULT };
@@ -142,7 +147,7 @@ export const useGetSearchQuery = (
     UseQueryOptions<SearchResult, Error, SearchResult, unknown[]>,
     "queryKey" | "queryFn"
   >,
-  documentPagination?: { page: number; pageSize: number },
+  requestOptions?: SearchRequestOptions,
 ) => {
   const queryClient = useQueryClient();
 
@@ -171,6 +176,7 @@ export const useGetSearchQuery = (
         ? Math.min(baseScoreThreshold, 1.0)
         : baseScoreThreshold;
 
+      const documentPagination = requestOptions?.documentPagination;
       const searchPayload: SearchPayload = {
         query: effectiveQuery,
         limit: documentPagination?.pageSize ?? searchLimit,
@@ -181,9 +187,19 @@ export const useGetSearchQuery = (
         searchPayload.page = documentPagination.page;
         searchPayload.pageSize = documentPagination.pageSize;
       }
-      if (queryData?.filters) {
-        searchPayload.filters =
-          buildSearchPayloadFilters(queryData.filters) ?? undefined;
+      const queryFilters = queryData?.filters
+        ? buildSearchPayloadFilters(queryData.filters)
+        : undefined;
+      const exactDataSources = requestOptions?.exactDataSources?.filter(
+        (source) => source.trim().length > 0,
+      );
+      if (queryFilters || exactDataSources?.length) {
+        searchPayload.filters = {
+          ...queryFilters,
+          ...(exactDataSources?.length
+            ? { data_sources: exactDataSources }
+            : {}),
+        };
       }
 
       const response = await fetch(`/api/search`, {
@@ -252,9 +268,7 @@ export const useGetSearchQuery = (
         } else {
           fileMap.set(fileIdentity, {
             filename:
-              chunk.filename?.trim() ||
-              chunk.source_url?.trim() ||
-              "Untitled source",
+              chunk.filename || chunk.source_url?.trim() || "Untitled source",
             mimetype: chunk.mimetype,
             chunks: [chunk],
             totalScore: chunk.score,
@@ -333,7 +347,7 @@ export const useGetSearchQuery = (
 
   return useQuery(
     {
-      queryKey: ["search", queryData, query, documentPagination],
+      queryKey: ["search", queryData, query, requestOptions],
       placeholderData: (prev) => prev,
       staleTime: 0,
       queryFn: getFiles,

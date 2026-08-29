@@ -382,8 +382,10 @@ function SearchPage() {
       enabled: !isWildcardQuery,
     },
     {
-      page: listPage,
-      pageSize: listPageSize,
+      documentPagination: {
+        page: listPage,
+        pageSize: listPageSize,
+      },
     },
   );
 

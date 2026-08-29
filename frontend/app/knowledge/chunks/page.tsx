@@ -26,7 +26,6 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
 import { trackButton } from "@/lib/analytics";
 import { formatFileSize, getFileTypeLabel } from "@/lib/file-format";
 import { getDownloadSourceUrl, getSourcePreviewKind } from "@/lib/source-url";
@@ -41,7 +40,6 @@ import {
 function ChunksPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { parsedFilterData, queryOverride } = useKnowledgeFilter();
   const filename = searchParams.get("filename");
   const [previewOpen, setPreviewOpen] = useState(false);
   const [chunks, setChunks] = useState<ChunkResult[]>([]);
@@ -63,10 +61,19 @@ function ChunksPageContent() {
 
   // const [selectAll, setSelectAll] = useState(false);
 
-  // Use the same search query as the knowledge page, but we'll filter for the specific file
-  const { data = EMPTY_SEARCH_RESULT, isFetching } = useGetSearchQuery(
-    queryOverride,
-    parsedFilterData,
+  // Fetch this document directly. Replaying the Knowledge page's broad search
+  // could omit the selected file once the corpus exceeded its result window.
+  const {
+    data = EMPTY_SEARCH_RESULT,
+    isFetching,
+    isError,
+    error,
+    refetch,
+  } = useGetSearchQuery(
+    "*",
+    null,
+    { enabled: Boolean(filename) },
+    { exactDataSources: filename ? [filename] : [] },
   );
   const searchFiles = (data as SearchResult).files;
 
@@ -81,7 +88,10 @@ function ChunksPageContent() {
     setTimeout(() => setActiveCopiedChunkIndex(null), 10 * 1000); // 10 seconds
   }, []);
 
-  const fileData = searchFiles.find((file: File) => file.filename === filename);
+  const normalizedFilename = filename?.trim();
+  const fileData = searchFiles.find(
+    (file: File) => file.filename.trim() === normalizedFilename,
+  );
   const downloadSourceUrl = getDownloadSourceUrl(fileData?.source_url);
   const previewKind = filename
     ? getSourcePreviewKind(filename, fileData?.mimetype)
@@ -190,12 +200,32 @@ function ChunksPageContent() {
                 </p>
               </div>
             </div>
+          ) : isError ? (
+            <div className="flex items-center justify-center h-64">
+              <div className="text-center">
+                <p className="text-xl font-semibold mb-2">
+                  Unable to load knowledge
+                </p>
+                <p className="text-sm text-secondary-foreground mb-4">
+                  {error instanceof Error
+                    ? error.message
+                    : "The document could not be loaded."}
+                </p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => refetch()}
+                >
+                  Retry
+                </Button>
+              </div>
+            </div>
           ) : chunks.length === 0 ? (
             <div className="flex items-center justify-center h-64">
               <div className="text-center">
                 <p className="text-xl font-semibold mb-2">No knowledge</p>
                 <p className="text-sm text-secondary-foreground">
-                  Clear the knowledge filter or return to the knowledge page
+                  This document is no longer present or is not accessible.
                 </p>
               </div>
             </div>

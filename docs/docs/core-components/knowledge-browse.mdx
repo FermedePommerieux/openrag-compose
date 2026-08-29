@@ -53,6 +53,10 @@ documents rather than matching chunks. Semantic results are ranked within a
 stable 10,000-document window; a `+` after the total makes that bound explicit
 when the query reaches it.
 
+Opening a document loads its chunks with an exact source-name filter. This
+keeps the document view independent from the size and ranking window of the
+Knowledge search that led to it.
+
 To apply a [knowledge filter](/knowledge-filters), select the filter from the **Knowledge Filters** list.
 The filter settings pane opens, and the filter appears in the search field.
 To remove the filter, close the filter settings pane or clear the filter from the search field.
