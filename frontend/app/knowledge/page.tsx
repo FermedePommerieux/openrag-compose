@@ -113,8 +113,9 @@ function listFilesFilterParam(values?: string[]): string | undefined {
   return raw;
 }
 
-const DEFAULT_LIST_FILES_PAGE_SIZE = 100;
-const LIST_FILES_PAGE_SIZE_OPTIONS = [100, 500, 1000] as const;
+const DEFAULT_LIST_FILES_PAGE_SIZE = 50;
+const LIST_FILES_PAGE_SIZE_OPTIONS = [50, 100, 500, 1000] as const;
+const KNOWLEDGE_PAGE_SIZE_SESSION_KEY = "openrag.knowledge.page-size";
 
 // Function to get the appropriate icon for a connector type
 function getSourceIcon(connectorType?: string) {
@@ -159,6 +160,19 @@ function SearchPage() {
   const [listPageSize, setListPageSize] = useState(
     DEFAULT_LIST_FILES_PAGE_SIZE,
   );
+
+  useEffect(() => {
+    const storedPageSize = Number(
+      sessionStorage.getItem(KNOWLEDGE_PAGE_SIZE_SESSION_KEY),
+    );
+    if (
+      LIST_FILES_PAGE_SIZE_OPTIONS.includes(
+        storedPageSize as (typeof LIST_FILES_PAGE_SIZE_OPTIONS)[number],
+      )
+    ) {
+      setListPageSize(storedPageSize);
+    }
+  }, []);
 
   // Keep the filter context aware of checked rows so "Create New Filter"
   // can pre-populate its sources from the current selection.
@@ -1197,7 +1211,12 @@ function SearchPage() {
               className="h-8 rounded-md border bg-background px-2 text-foreground"
               value={listPageSize}
               onChange={(event) => {
-                setListPageSize(Number(event.target.value));
+                const pageSize = Number(event.target.value);
+                setListPageSize(pageSize);
+                sessionStorage.setItem(
+                  KNOWLEDGE_PAGE_SIZE_SESSION_KEY,
+                  String(pageSize),
+                );
                 setListPage(1);
               }}
             >
