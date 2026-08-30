@@ -19,10 +19,10 @@ from lfx.schema.data import Data
 UNTRUSTED_CHUNK_FENCE_START = "<<<UNTRUSTED_DOC_CHUNK>>>"
 UNTRUSTED_CHUNK_FENCE_END = "<<<END_UNTRUSTED_DOC_CHUNK>>>"
 
-# Tool artifacts feed OpenRAG's source cards and therefore retain the complete
-# trusted backend payload. Tool content is sent to the language model: repeat
-# only evidence needed to write and cite the answer, with document metadata in
-# one manifest entry instead of duplicating PROV-O on every chunk.
+# Tool artifacts feed OpenRAG's source cards. For scope-exhaustive retrieval the
+# backend transport profile guarantees this list is the bounded model projection,
+# never the complete verified scope. Tool content repeats only evidence needed
+# to write and cite the answer, with one manifest entry per document occurrence.
 MODEL_EVIDENCE_FIELDS = (
     "chunk_id",
     "document_id",
@@ -68,6 +68,16 @@ MODEL_COVERAGE_FIELDS = (
     "graph_frontier_empty",
     "graph_limit_reached",
     "graph_stop_reason",
+    "graph_error",
+    "graph_forward_hits",
+    "graph_reverse_hits",
+    "graph_forward_pages",
+    "graph_reverse_pages",
+    "graph_forward_verification_pages",
+    "graph_reverse_verification_pages",
+    "graph_distinct_results",
+    "graph_stability_verified",
+    "graph_stability_observations",
     "documents_discovered",
     "documents_complete",
     "documents_incomplete",
@@ -289,6 +299,7 @@ class OpenRAGBackendRetrievalComponent(LCToolComponent):
                     "documentId": resolved_document_id or None,
                     "cursor": _as_text(cursor),
                     "batchSize": min(50, max(1, int(batch_size))),
+                    "responseProfile": "langflow",
                 },
             )
             response.raise_for_status()
@@ -352,8 +363,9 @@ class OpenRAGBackendRetrievalComponent(LCToolComponent):
             artifact = payload["results"]
 
             # LangChain stores the second tuple element on ToolMessage.artifact.
-            # The native artifact retains full source cards. The compact JSON
-            # avoids paying repeatedly for URLs, ACLs and complete PROV-O JSON.
+            # It retains full source-card fields only for the bounded evidence
+            # selected by the backend. The compact JSON avoids paying repeatedly
+            # for URLs, ACLs and complete PROV-O JSON.
             return json.dumps(_model_payload(payload), ensure_ascii=False), artifact
 
         return StructuredTool.from_function(

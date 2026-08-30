@@ -207,6 +207,7 @@ def test_backend_tool_forwards_request_and_preserves_provenance(monkeypatch):
             "documentId": None,
             "cursor": "",
             "batchSize": 20,
+            "responseProfile": "langflow",
         },
     }
     assert "<<<UNTRUSTED_DOC_CHUNK>>>" in result[0].text
@@ -304,6 +305,7 @@ def test_backend_tool_forwards_exhaustive_cursor_and_coverage(monkeypatch):
     assert captured["payload"]["documentId"] == "document-42"
     assert captured["payload"]["cursor"] == "cursor-1"
     assert captured["payload"]["batchSize"] == 50
+    assert captured["payload"]["responseProfile"] == "langflow"
     model_coverage = json.loads(content)["coverage"]
     assert model_coverage["complete"] is False
     assert model_coverage["filename"] == "archive.pdf"
@@ -350,6 +352,7 @@ def test_archive_exhaustive_wording_cannot_select_document_read(monkeypatch):
     assert captured["payload"]["evidenceMode"] == "focused"
     assert captured["payload"]["documentId"] is None
     assert captured["payload"]["batchSize"] == 20
+    assert captured["payload"]["responseProfile"] == "langflow"
 
 
 def test_explicit_scope_investigation_routes_to_scope_exhaustive(monkeypatch):
@@ -402,4 +405,5 @@ def test_explicit_scope_investigation_routes_to_scope_exhaustive(monkeypatch):
 
     assert captured["payload"]["evidenceMode"] == "scope_exhaustive"
     assert captured["payload"]["documentId"] is None
+    assert captured["payload"]["responseProfile"] == "langflow"
     assert json.loads(content)["coverage"]["stop_reason"] == "max_depth"

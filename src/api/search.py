@@ -12,6 +12,7 @@ from dependencies import (
 from session_manager import User
 from utils.logging_config import get_logger
 from utils.opensearch_utils import DISK_SPACE_ERROR_MESSAGE, OpenSearchDiskSpaceError
+from utils.retrieval_transport import project_scope_exhaustive_for_langflow
 
 logger = get_logger(__name__)
 
@@ -30,6 +31,9 @@ class SearchBody(BaseModel):
     groupByDocument: bool = Field(default=False, alias="groupByDocument")
     page: int = Field(default=1, ge=1)
     pageSize: int = Field(default=100, ge=1, le=1000, alias="pageSize")
+    responseProfile: Literal["default", "langflow"] = Field(
+        default="default", alias="responseProfile"
+    )
 
     model_config = {"populate_by_name": True}
 
@@ -64,6 +68,7 @@ async def search(
             group_by_document=body.groupByDocument,
             page=body.page,
             page_size=body.pageSize,
+            response_profile=body.responseProfile,
         )
 
         result = await search_service.search(
@@ -81,6 +86,8 @@ async def search(
             page=body.page,
             page_size=body.pageSize,
         )
+        if body.evidenceMode == "scope_exhaustive" and body.responseProfile == "langflow":
+            result = project_scope_exhaustive_for_langflow(result)
         return JSONResponse(result, status_code=200)
     except ValueError as e:
         return JSONResponse({"error": str(e)}, status_code=400)
