@@ -19,6 +19,11 @@ from typing import Any
 
 import httpx
 
+from services.scope_traversal_policy import (
+    DEFAULT_SCOPE_TRAVERSAL_POLICY,
+    ScopeRelationSemantics,
+    ScopeTraversalPolicy,
+)
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -26,16 +31,6 @@ logger = get_logger(__name__)
 EXHAUSTIVE_PROFILE_VERSION = 1
 EXHAUSTIVE_BATCH_MAX = 50
 PROVENANCE_GRAPH_PAGE_SIZE = 500
-DEFAULT_SCOPE_RELATION_ROLES = (
-    "attachment_of",
-    "contained_in",
-    "derived_from",
-    "member_of",
-    "occurrence_of",
-    "primary_source",
-    "references",
-    "reply_to",
-)
 
 SCOPE_COVERAGE_MESSAGES = {
     "complete": (
@@ -50,6 +45,10 @@ SCOPE_COVERAGE_MESSAGES = {
     ),
     "graph_limit_reached": "A provenance graph traversal limit stopped closure.",
     "graph_traversal_failed": "Provenance graph traversal failed before closure.",
+    "scope_policy_unclassified_relation": (
+        "At least one visible provenance relation could not be classified by the "
+        "declared documentary scope policy."
+    ),
     "document_limit_reached": "The document discovery limit stopped closure.",
     "document_read_incomplete": "At least one discovered document was not read completely.",
     "legacy_document": "At least one document has no verifiable ingestion profile.",
@@ -89,6 +88,7 @@ class ScopeCertificationFacts:
     total_chunks: int
     document_failure_codes: tuple[str, ...] = ()
     seed_failure_code: str | None = None
+    unclassified_relations: int = 0
 
 
 def certify_scope_coverage(facts: ScopeCertificationFacts) -> dict[str, Any]:
@@ -124,6 +124,8 @@ def certify_scope_coverage(facts: ScopeCertificationFacts) -> dict[str, Any]:
                 failures.add("graph_limit_reached")
         elif not facts.graph_frontier_empty:
             failures.add("graph_traversal_failed")
+        if facts.unclassified_relations > 0:
+            failures.add("scope_policy_unclassified_relation")
 
         recognized_document_failures = {
             code
@@ -147,6 +149,7 @@ def certify_scope_coverage(facts: ScopeCertificationFacts) -> dict[str, Any]:
             facts.documents_complete,
             facts.covered_chunks,
             facts.total_chunks,
+            facts.unclassified_relations,
         )
         < 0
         or facts.valid_provenance_seed_documents + facts.invalid_provenance_seed_documents
@@ -537,8 +540,11 @@ def _provenance_record(hit: dict[str, Any]) -> dict[str, Any] | None:
         "source_url": source.get("source_url"),
         "connector_file_id": source.get("connector_file_id"),
         "source_entity_id": entity_id.strip(),
-        "source_entity_type": source.get("source_entity_type"),
-        "source_entity_system": source.get("source_entity_system"),
+        "source_entity_type": source.get("source_entity_type")
+        or (entity.get("type") if isinstance(entity, dict) else None),
+        "source_entity_system": source.get("source_entity_system")
+        or (entity.get("source_system") if isinstance(entity, dict) else None),
+        "source_entity_label": entity.get("label") if isinstance(entity, dict) else None,
         "source_entity_alternate_ids": sorted(
             {value.strip() for value in alternate_ids if isinstance(value, str) and value.strip()}
         ),
@@ -552,43 +558,72 @@ def _provenance_record(hit: dict[str, Any]) -> dict[str, Any] | None:
 def _graph_query_body(
     entity_ids: list[str],
     *,
-    allowed_roles: tuple[str, ...],
     reverse: bool,
     size: int,
+    reverse_rules: tuple[tuple[str, str, str, tuple[str, ...]], ...] = (),
     filter_clauses: tuple[dict[str, Any], ...] = (),
 ) -> dict[str, Any]:
-    """Build one deterministic forward or role-safe reverse graph query."""
+    """Build one deterministic forward or typed-policy reverse graph query."""
     if reverse:
-        identity_query: dict[str, Any] = {
-            "nested": {
-                "path": "source_provenance.relations",
-                "query": {
+        if not reverse_rules:
+            raise ValueError("A reverse provenance query requires typed policy rules")
+        reverse_should: list[dict[str, Any]] = []
+        for role, source_type, target_type, target_ids in reverse_rules:
+            reverse_should.append(
+                {
                     "bool": {
                         "filter": [
-                            {"terms": {"source_provenance.relations.role": list(allowed_roles)}},
+                            {"term": {"source_entity_type": source_type}},
                             {
-                                "bool": {
-                                    "should": [
-                                        {
-                                            "terms": {
-                                                "source_provenance.relations.target.id": entity_ids
-                                            }
-                                        },
-                                        {
-                                            "terms": {
-                                                "source_provenance.relations.target.alternate_ids": (
-                                                    entity_ids
-                                                )
-                                            }
-                                        },
-                                    ],
-                                    "minimum_should_match": 1,
+                                "nested": {
+                                    "path": "source_provenance.relations",
+                                    "query": {
+                                        "bool": {
+                                            "filter": [
+                                                {
+                                                    "term": {
+                                                        "source_provenance.relations.role": role
+                                                    }
+                                                },
+                                                {
+                                                    "term": {
+                                                        "source_provenance.relations.target.type": (
+                                                            target_type
+                                                        )
+                                                    }
+                                                },
+                                                {
+                                                    "bool": {
+                                                        "should": [
+                                                            {
+                                                                "terms": {
+                                                                    "source_provenance.relations.target.id": list(
+                                                                        target_ids
+                                                                    )
+                                                                }
+                                                            },
+                                                            {
+                                                                "terms": {
+                                                                    "source_provenance.relations.target.alternate_ids": list(
+                                                                        target_ids
+                                                                    )
+                                                                }
+                                                            },
+                                                        ],
+                                                        "minimum_should_match": 1,
+                                                    }
+                                                },
+                                            ]
+                                        }
+                                    },
                                 }
                             },
                         ]
                     }
-                },
-            }
+                }
+            )
+        identity_query: dict[str, Any] = {
+            "bool": {"should": reverse_should, "minimum_should_match": 1}
         }
     else:
         identity_query = {
@@ -652,24 +687,21 @@ async def expand_provenance_graph(
     index_name: str,
     seed_entity_ids: Iterable[str],
     seed_documents: Iterable[dict[str, Any]] = (),
-    allowed_roles: Iterable[str] = DEFAULT_SCOPE_RELATION_ROLES,
+    policy: ScopeTraversalPolicy = DEFAULT_SCOPE_TRAVERSAL_POLICY,
     max_depth: int = 8,
     max_entities: int = 500,
     max_documents: int = 250,
     filter_clauses: Iterable[dict[str, Any]] = (),
 ) -> dict[str, Any]:
-    """Close the accessible PROV-O graph around seed entities.
+    """Close the DLS-visible documentary graph under a declared typed policy.
 
-    ``client`` must be the current user's DLS-scoped OpenSearch client. Both
-    directions are queried at every depth. Reverse lookup deliberately uses a
-    nested query so a role can never be paired with another relation's target.
-    The returned traversal certificate is deterministic and explicitly marks
-    every safety-limit stop as incomplete.
+    Forward representatives expose typed relation targets.  Reverse queries
+    are then built only for policy-approved role/source/target triples, so
+    contextual archives and ingestion collections are never scanned as scope.
+    Every observed direction still uses stable ``_search + search_after``
+    double observation and every unclassified visible relation fails closed.
     """
-    roles = tuple(sorted({str(role) for role in allowed_roles if str(role)}))
     scoped_filters = tuple(dict(clause) for clause in filter_clauses if isinstance(clause, dict))
-    if not roles:
-        raise ValueError("At least one provenance relation role is required")
     resolved_max_depth = max(1, int(max_depth))
     resolved_max_entities = max(1, int(max_entities))
     resolved_max_documents = max(1, int(max_documents))
@@ -677,54 +709,108 @@ async def expand_provenance_graph(
     seed_document_values = [
         dict(document) for document in seed_documents if isinstance(document, dict)
     ]
-    # ``document_id`` identifies content and can legitimately be shared by a
-    # local import and an OpenArchiver attachment. Provenance closure operates
-    # on source occurrences, so keep those occurrences distinct. A repeated
-    # ingest of the *same* occurrence still shares this key and is detected by
-    # the immutable document read below if its snapshot changed.
     documents: dict[tuple[str, str], dict[str, Any]] = {}
 
     def occurrence_key(record: dict[str, Any]) -> tuple[str, str]:
         return (str(record["document_id"]), str(record["source_entity_id"]))
 
-    for document in seed_document_values:
-        record = _provenance_record({"_source": document})
-        if record is not None:
-            documents.setdefault(occurrence_key(record), document)
-
-    frontier = {
-        value.strip() for value in seed_entity_ids if isinstance(value, str) and value.strip()
-    }
-    queried_ids: set[str] = set()
+    # Frontier intent keeps aliases identity-only unless a policy-approved
+    # relation explicitly requires forward resolution through that alias.
+    intents: dict[str, dict[str, bool]] = {}
+    identifier_types: dict[str, set[str]] = {}
+    queried_forward: set[str] = set()
+    queried_reverse: set[str] = set()
     primary_entities: set[str] = set()
-    identifier_owner: dict[str, str] = {}
+    primary_records: dict[str, dict[str, Any]] = {}
+    identifier_owners: dict[str, set[str]] = {}
     pending_edges: set[tuple[str, str, str]] = set()
+    context_edges: dict[tuple[str, str, str], dict[str, Any]] = {}
+    accounting: dict[str, set[tuple[str, str, str, str, str, str, str]]] = {
+        "traversed": set(),
+        "context_only": set(),
+        "excluded": set(),
+        "unclassified": set(),
+    }
+    resolved_shared_aliases: set[str] = set()
+    blocked_identifiers: set[str] = set()
     depth = 0
     stop_reason = "frontier_empty"
     limit_reached = False
 
+    def add_intent(
+        identifier: object,
+        *,
+        entity_type: object = "",
+        forward: bool,
+        reverse: bool,
+    ) -> None:
+        if not isinstance(identifier, str) or not identifier.strip():
+            return
+        normalized = identifier.strip()
+        intent = intents.setdefault(normalized, {"forward": False, "reverse": False})
+        intent["forward"] = intent["forward"] or forward
+        intent["reverse"] = intent["reverse"] or reverse
+        if isinstance(entity_type, str) and entity_type.strip():
+            identifier_types.setdefault(normalized, set()).add(entity_type.strip())
+
+    def alternate_entity_type(identifier: str, primary_type: str) -> str:
+        if identifier.startswith("urn:openrag:rfc5322:message-id:"):
+            return "email_message_identifier"
+        return primary_type
+
+    def account(
+        bucket: str,
+        *,
+        role: str,
+        source_type: str,
+        target_type: str,
+        direction: str,
+        semantics: ScopeRelationSemantics,
+        source_id: str,
+        target_id: str,
+    ) -> None:
+        accounting[bucket].add(
+            (
+                role,
+                source_type,
+                target_type,
+                direction,
+                semantics.value,
+                source_id,
+                target_id,
+            )
+        )
+
     def register_identity(record: dict[str, Any]) -> bool:
-        """Register one accessible entity; reject aliases that would merge identities."""
+        """Register owners while keeping legitimate duplicate occurrences distinct."""
         nonlocal stop_reason, limit_reached
-        primary = record["source_entity_id"]
-        identifiers = [primary, *record["source_entity_alternate_ids"]]
-        for identifier in identifiers:
-            owner = identifier_owner.get(identifier)
-            if owner is not None and owner != primary:
-                stop_reason = "ambiguous_alternate_id"
-                limit_reached = True
-                return False
+        primary = str(record["source_entity_id"])
         if primary not in primary_entities and len(primary_entities) >= resolved_max_entities:
             stop_reason = "max_entities"
             limit_reached = True
+            blocked_identifiers.add(primary)
             return False
         primary_entities.add(primary)
-        for identifier in identifiers:
-            identifier_owner[identifier] = primary
+        primary_records.setdefault(primary, record)
+
+        for identifier in [primary, *record["source_entity_alternate_ids"]]:
+            owners = identifier_owners.setdefault(identifier, set())
+            owners.add(primary)
+            if len(owners) <= 1:
+                continue
+            owner_records = tuple(primary_records[owner] for owner in sorted(owners))
+            if identifier == primary or not policy.allows_shared_alternate_identity(
+                identifier, owner_records
+            ):
+                stop_reason = "ambiguous_alternate_id"
+                limit_reached = True
+                blocked_identifiers.add(identifier)
+                return False
+            resolved_shared_aliases.add(identifier)
         return True
 
-    def add_record(record: dict[str, Any], next_frontier: set[str]) -> None:
-        """Add one DLS-visible record and its unresolved relation identifiers."""
+    def add_record(record: dict[str, Any], reverse_target_ids: set[str]) -> None:
+        """Add one visible occurrence and classify all of its typed relations."""
         nonlocal stop_reason, limit_reached
         if not register_identity(record):
             return
@@ -733,48 +819,156 @@ async def expand_provenance_graph(
             if len(documents) >= resolved_max_documents:
                 stop_reason = "max_documents"
                 limit_reached = True
+                blocked_identifiers.add(str(record["source_entity_id"]))
                 return
-            documents[key] = record
+        primary = str(record["source_entity_id"])
+        source_type = str(record.get("source_entity_type") or "")
+        add_intent(primary, entity_type=source_type, forward=False, reverse=True)
+        for alternate in record["source_entity_alternate_ids"]:
+            add_intent(
+                alternate,
+                entity_type=alternate_entity_type(alternate, source_type),
+                forward=False,
+                reverse=True,
+            )
 
-        primary = record["source_entity_id"]
-        next_frontier.update([primary, *record["source_entity_alternate_ids"]])
         provenance = record.get("source_provenance")
         relations = provenance.get("relations", []) if isinstance(provenance, dict) else []
+        compact_context: list[dict[str, Any]] = []
         for relation in relations if isinstance(relations, list) else []:
-            if not isinstance(relation, dict) or relation.get("role") not in roles:
+            if not isinstance(relation, dict):
                 continue
+            role = str(relation.get("role") or "")
             target = relation.get("target")
             target_id = target.get("id") if isinstance(target, dict) else None
             if not isinstance(target_id, str) or not target_id.strip():
-                continue
+                target_id = ""
             normalized_target = target_id.strip()
-            pending_edges.add((primary, str(relation["role"]), normalized_target))
-            next_frontier.add(normalized_target)
-            alternate_targets = target.get("alternate_ids", [])
+            target_type = str(target.get("type") or "") if isinstance(target, dict) else ""
+            decision = policy.classify(
+                role=role,
+                source_type=source_type,
+                target_type=target_type,
+            )
+            target_identifiers = {normalized_target} if normalized_target else set()
+            alternate_targets = target.get("alternate_ids", []) if isinstance(target, dict) else []
             if isinstance(alternate_targets, list):
-                normalized_alternates = {
+                target_identifiers.update(
                     value.strip()
                     for value in alternate_targets
                     if isinstance(value, str) and value.strip()
-                }
-                next_frontier.update(normalized_alternates)
-                pending_edges.update(
-                    (primary, str(relation["role"]), value) for value in normalized_alternates
                 )
 
-    # Seed manifests come from the same DLS-scoped ranked retrieval and may
-    # already provide a complete canonical identity without another query.
-    initial_frontier: set[str] = set(frontier)
+            for direction in ("forward", "reverse"):
+                if not decision.certifiable:
+                    account(
+                        "unclassified",
+                        role=role,
+                        source_type=source_type,
+                        target_type=target_type,
+                        direction=direction,
+                        semantics=decision.semantics,
+                        source_id=primary,
+                        target_id=normalized_target,
+                    )
+                elif not decision.follows(direction):
+                    account(
+                        "excluded",
+                        role=role,
+                        source_type=source_type,
+                        target_type=target_type,
+                        direction=direction,
+                        semantics=decision.semantics,
+                        source_id=primary,
+                        target_id=normalized_target,
+                    )
+
+            if decision.semantics in {
+                ScopeRelationSemantics.CONTEXTUAL,
+                ScopeRelationSemantics.INFRASTRUCTURE,
+            }:
+                account(
+                    "context_only",
+                    role=role,
+                    source_type=source_type,
+                    target_type=target_type,
+                    direction="forward",
+                    semantics=decision.semantics,
+                    source_id=primary,
+                    target_id=normalized_target,
+                )
+                context_value = {
+                    "role": role,
+                    "target_entity_id": normalized_target,
+                    "target_entity_type": target_type,
+                    "semantics": decision.semantics.value,
+                }
+                if isinstance(target, dict):
+                    for source_field, output_field in (
+                        ("source_system", "target_source_system"),
+                        ("label", "target_label"),
+                    ):
+                        value = target.get(source_field)
+                        if value not in (None, ""):
+                            context_value[output_field] = value
+                compact_context.append(context_value)
+                context_edges[(primary, role, normalized_target)] = {
+                    "source_entity_id": primary,
+                    **context_value,
+                }
+
+            if decision.follow_forward:
+                account(
+                    "traversed",
+                    role=role,
+                    source_type=source_type,
+                    target_type=target_type,
+                    direction="forward",
+                    semantics=decision.semantics,
+                    source_id=primary,
+                    target_id=normalized_target,
+                )
+                for identifier in target_identifiers:
+                    add_intent(
+                        identifier,
+                        entity_type=target_type,
+                        forward=True,
+                        reverse=decision.follow_reverse,
+                    )
+                    pending_edges.add((primary, role, identifier))
+
+            if decision.follow_reverse and target_identifiers & reverse_target_ids:
+                account(
+                    "traversed",
+                    role=role,
+                    source_type=source_type,
+                    target_type=target_type,
+                    direction="reverse",
+                    semantics=decision.semantics,
+                    source_id=primary,
+                    target_id=normalized_target,
+                )
+
+        stored_record = dict(record)
+        if compact_context:
+            stored_record["scope_context_relations"] = sorted(
+                compact_context,
+                key=lambda value: (
+                    value["role"],
+                    value["target_entity_type"],
+                    value["target_entity_id"],
+                ),
+            )
+        documents.setdefault(key, stored_record)
+
+    # Ranked seeds are already DLS-visible.  Primary ids may resolve forward;
+    # their alternate ids are registered only for policy-approved reverse use.
+    for identifier in seed_entity_ids:
+        add_intent(identifier, forward=True, reverse=False)
     for document in seed_document_values:
         record = _provenance_record({"_source": document})
         if record is not None:
-            add_record(record, initial_frontier)
-    frontier = initial_frontier
-
-    if len(documents) > resolved_max_documents:
-        documents = dict(sorted(documents.items())[:resolved_max_documents])
-        stop_reason = "max_documents"
-        limit_reached = True
+            add_record(record, set())
 
     pagination_pages = 0
     traversal_stats: dict[str, dict[str, int]] = {
@@ -784,26 +978,22 @@ async def expand_provenance_graph(
     distinct_result_ids: set[str] = set()
     stability_observations = 0
 
-    async def search_records(entity_ids: list[str]) -> list[dict[str, Any]]:
-        """Read and verify both directions using only DLS-compatible searches.
-
-        OpenSearch Security filter-level DLS rejects PIT creation. Each
-        direction is therefore observed twice with ordinary ``_search`` plus
-        ``search_after``. Exact totals are required on every page and the two
-        canonical observations must match before any record is accepted.
-        """
+    async def search_records(
+        entity_ids: list[str],
+        *,
+        direction: str,
+        reverse_rules: tuple[tuple[str, str, str, tuple[str, ...]], ...] = (),
+    ) -> list[dict[str, Any]]:
+        """Double-observe one DLS-compatible paginated graph direction."""
         nonlocal pagination_pages, stability_observations
-        bodies = [
-            _graph_query_body(
-                entity_ids,
-                allowed_roles=roles,
-                reverse=reverse,
-                size=PROVENANCE_GRAPH_PAGE_SIZE,
-                filter_clauses=scoped_filters,
-            )
-            for reverse in (False, True)
-        ]
-        records: dict[tuple[str, str], dict[str, Any]] = {}
+        reverse = direction == "reverse"
+        base_body = _graph_query_body(
+            entity_ids,
+            reverse=reverse,
+            reverse_rules=reverse_rules,
+            size=PROVENANCE_GRAPH_PAGE_SIZE,
+            filter_clauses=scoped_filters,
+        )
 
         async def observe(
             base_body: dict[str, Any],
@@ -846,9 +1036,7 @@ async def expand_provenance_graph(
                 if expected_total is None:
                     expected_total = total_value
                 elif total_value != expected_total:
-                    raise RuntimeError(
-                        "Provenance traversal hit total changed during pagination"
-                    )
+                    raise RuntimeError("Provenance traversal hit total changed during pagination")
                 if len(hits) > PROVENANCE_GRAPH_PAGE_SIZE:
                     raise RuntimeError("Provenance traversal page exceeded its requested size")
                 if not hits and returned_hits < expected_total:
@@ -919,102 +1107,169 @@ async def expand_provenance_graph(
             digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
             return observed_records, digest, expected_total or 0, pages, seen_hit_ids
 
-        for reverse, base_body in zip((False, True), bodies, strict=True):
-            direction = "reverse" if reverse else "forward"
-            _first_records, first_digest, first_total, first_pages, first_ids = await observe(
-                base_body
-            )
-            second_records, second_digest, second_total, second_pages, second_ids = await observe(
-                base_body
-            )
-            if (
-                first_digest != second_digest
-                or first_total != second_total
-                or first_ids != second_ids
-            ):
-                raise RuntimeError(
-                    "Provenance traversal changed between stability observations"
-                )
+        _first_records, first_digest, first_total, first_pages, first_ids = await observe(base_body)
+        second_records, second_digest, second_total, second_pages, second_ids = await observe(
+            base_body
+        )
+        if first_digest != second_digest or first_total != second_total or first_ids != second_ids:
+            raise RuntimeError("Provenance traversal changed between stability observations")
 
-            stability_observations += 1
-            traversal_stats[direction]["hits"] += second_total
-            traversal_stats[direction]["pages"] += first_pages
-            traversal_stats[direction]["verification_pages"] += second_pages
-            distinct_result_ids.update(second_ids)
-            for record in second_records:
-                records[(record["source_entity_id"], record["document_id"])] = record
-
-            logger.info(
-                "Completed paginated provenance direction",
-                direction=direction,
-                frontier_entities=len(entity_ids),
-                pages=first_pages,
-                verification_pages=second_pages,
-                hits=second_total,
-                stability_verified=True,
-            )
+        stability_observations += 1
+        traversal_stats[direction]["hits"] += second_total
+        traversal_stats[direction]["pages"] += first_pages
+        traversal_stats[direction]["verification_pages"] += second_pages
+        distinct_result_ids.update(second_ids)
+        records = {
+            (record["source_entity_id"], record["document_id"]): record for record in second_records
+        }
+        logger.info(
+            "Completed paginated provenance direction",
+            direction=direction,
+            frontier_entities=len(entity_ids),
+            pages=first_pages,
+            verification_pages=second_pages,
+            hits=second_total,
+            stability_verified=True,
+            scope_policy_id=policy.policy_id,
+            scope_policy_version=policy.version,
+        )
         return [records[key] for key in sorted(records)]
 
+    def reverse_query_rules(
+        identifiers: list[str],
+    ) -> tuple[tuple[str, str, str, tuple[str, ...]], ...]:
+        grouped: dict[tuple[str, str, str], set[str]] = {}
+        for identifier in identifiers:
+            for target_type in identifier_types.get(identifier, set()):
+                for rule in policy.reverse_rules_for_target(target_type):
+                    grouped.setdefault((rule.role, rule.source_type, rule.target_type), set()).add(
+                        identifier
+                    )
+        return tuple(
+            (*key, tuple(sorted(values))) for key, values in sorted(grouped.items()) if values
+        )
+
+    def remaining_identifiers() -> set[str]:
+        remaining = {
+            identifier
+            for identifier, intent in intents.items()
+            if (intent["forward"] and identifier not in queried_forward)
+            or (intent["reverse"] and identifier not in queried_reverse)
+        }
+        return remaining | blocked_identifiers
+
     async def traverse() -> None:
-        nonlocal depth, frontier, limit_reached, stop_reason
-        while frontier and not limit_reached:
-            current = sorted(frontier - queried_ids)
-            if not current:
-                frontier = set()
-                break
+        nonlocal depth, limit_reached, stop_reason
+        while remaining_identifiers() and not limit_reached:
+            forward_ids = sorted(
+                identifier
+                for identifier, intent in intents.items()
+                if intent["forward"] and identifier not in queried_forward
+            )
+            forward_records = (
+                await search_records(forward_ids, direction="forward") if forward_ids else []
+            )
 
-            # At the exact depth boundary, probe visibility only. Hidden relation
-            # targets must not turn natural DLS closure into a false limit.
-            if depth >= resolved_max_depth:
-                boundary_records = await search_records(current)
-                requires_expansion = any(
-                    record["source_entity_id"] not in primary_entities
-                    or occurrence_key(record) not in documents
-                    for record in boundary_records
+            # Forward representatives provide the actual entity types needed
+            # to authorize reverse queries for previously untyped seed ids.
+            for record in forward_records:
+                primary = str(record["source_entity_id"])
+                source_type = str(record.get("source_entity_type") or "")
+                add_intent(primary, entity_type=source_type, forward=False, reverse=True)
+                for alternate in record["source_entity_alternate_ids"]:
+                    add_intent(
+                        alternate,
+                        entity_type=alternate_entity_type(alternate, source_type),
+                        forward=False,
+                        reverse=True,
+                    )
+
+            reverse_ids = sorted(
+                identifier
+                for identifier, intent in intents.items()
+                if intent["reverse"] and identifier not in queried_reverse
+            )
+            typed_reverse_rules = reverse_query_rules(reverse_ids)
+            reverse_records = (
+                await search_records(
+                    reverse_ids,
+                    direction="reverse",
+                    reverse_rules=typed_reverse_rules,
                 )
-                if requires_expansion:
-                    stop_reason = "max_depth"
-                    limit_reached = True
-                    frontier = set(current)
-                else:
-                    queried_ids.update(current)
-                    frontier = set()
+                if typed_reverse_rules
+                else []
+            )
+
+            all_records = {
+                (record["source_entity_id"], record["document_id"]): record
+                for record in [*forward_records, *reverse_records]
+            }
+            requires_expansion = any(
+                record["source_entity_id"] not in primary_entities
+                or occurrence_key(record) not in documents
+                for record in all_records.values()
+            )
+            if depth >= resolved_max_depth and requires_expansion:
+                stop_reason = "max_depth"
+                limit_reached = True
                 break
 
-            queried_ids.update(current)
-            records = await search_records(current)
-            next_frontier: set[str] = set()
-            for record in records:
-                add_record(record, next_frontier)
+            queried_forward.update(forward_ids)
+            queried_reverse.update(reverse_ids)
+            if depth >= resolved_max_depth:
+                break
+
+            reverse_target_ids = set(reverse_ids)
+            for key in sorted(all_records):
+                add_record(all_records[key], reverse_target_ids)
                 if limit_reached:
                     break
             depth += 1
-            if limit_reached:
-                frontier = next_frontier or set(current)
-                break
-            frontier = next_frontier - queried_ids
 
-    if frontier and not limit_reached:
+    if remaining_identifiers() and not limit_reached:
         await traverse()
 
     visible_edges: dict[tuple[str, str, str], dict[str, str]] = {}
     for source, role, target_identifier in pending_edges:
-        target = identifier_owner.get(target_identifier)
-        if target is None:
-            continue
-        edge_key = (source, role, target)
-        visible_edges[edge_key] = {
-            "source_entity_id": source,
-            "role": role,
-            "target_entity_id": target,
+        for target in identifier_owners.get(target_identifier, set()):
+            edge_key = (source, role, target)
+            visible_edges[edge_key] = {
+                "source_entity_id": source,
+                "role": role,
+                "target_entity_id": target,
+            }
+
+    def accounting_summary(
+        values: set[tuple[str, str, str, str, str, str, str]],
+    ) -> dict[str, Any]:
+        grouped: dict[tuple[str, str, str, str, str], int] = {}
+        for role, source_type, target_type, direction, semantics, _source, _target in values:
+            key = (role, source_type, target_type, direction, semantics)
+            grouped[key] = grouped.get(key, 0) + 1
+        return {
+            "total": len(values),
+            "by_classification": [
+                {
+                    "role": key[0],
+                    "source_type": key[1],
+                    "target_type": key[2],
+                    "direction": key[3],
+                    "semantics": key[4],
+                    "count": count,
+                }
+                for key, count in sorted(grouped.items())
+            ],
         }
 
-    remaining_frontier = sorted(frontier)
+    remaining_frontier = sorted(remaining_identifiers())
     return {
         "documents": [documents[key] for key in sorted(documents)],
-        "entities": sorted(identifier_owner),
+        "entities": sorted(identifier_owners),
         "edges": [visible_edges[key] for key in sorted(visible_edges)],
+        "context_edges": [context_edges[key] for key in sorted(context_edges)],
         "coverage": {
+            "scope_policy_id": policy.policy_id,
+            "scope_policy_version": policy.version,
             "entities_visited": len(primary_entities),
             "documents_discovered": len(documents),
             "depth_reached": depth,
@@ -1027,15 +1282,16 @@ async def expand_provenance_graph(
             "reverse_hits": traversal_stats["reverse"]["hits"],
             "forward_pages": traversal_stats["forward"]["pages"],
             "reverse_pages": traversal_stats["reverse"]["pages"],
-            "forward_verification_pages": traversal_stats["forward"][
-                "verification_pages"
-            ],
-            "reverse_verification_pages": traversal_stats["reverse"][
-                "verification_pages"
-            ],
+            "forward_verification_pages": traversal_stats["forward"]["verification_pages"],
+            "reverse_verification_pages": traversal_stats["reverse"]["verification_pages"],
             "distinct_results": len(distinct_result_ids),
             "stability_verified": stability_observations > 0,
             "stability_observations": stability_observations,
+            "relations_traversed": accounting_summary(accounting["traversed"]),
+            "relations_context_only": accounting_summary(accounting["context_only"]),
+            "relations_excluded_by_policy": accounting_summary(accounting["excluded"]),
+            "relations_unclassified": accounting_summary(accounting["unclassified"]),
+            "identity_shared_aliases_resolved": len(resolved_shared_aliases),
         },
     }
 

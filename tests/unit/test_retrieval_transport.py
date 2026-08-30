@@ -29,6 +29,14 @@ def _scope_payload(chunk_count: int, *, complete: bool = False) -> dict:
             {
                 "document_id": f"doc-{index}",
                 "source_entity_id": f"occurrence-{index}",
+                "scope_context_relations": [
+                    {
+                        "role": "contained_in",
+                        "target_entity_id": "archive-OA1",
+                        "target_entity_type": "email_archive",
+                        "semantics": "contextual",
+                    }
+                ],
                 "filename": f"document-{index}.pdf",
                 "complete": True,
                 "status_code": "complete",
@@ -44,6 +52,8 @@ def _scope_payload(chunk_count: int, *, complete: bool = False) -> dict:
         },
         "coverage": {
             "mode": "scope_exhaustive",
+            "scope_policy_id": "documentary-prov-o",
+            "scope_policy_version": 1,
             "complete": complete,
             "status_code": "complete" if complete else "document_limit_reached",
             "status_message": "certificate authored by the backend",
@@ -68,9 +78,12 @@ def test_langflow_scope_projection_preserves_backend_coverage_and_occurrences(co
 
     assert compact["coverage"] == payload["coverage"]
     assert compact["coverage"] is not payload["coverage"]
+    assert compact["coverage"]["scope_policy_id"] == "documentary-prov-o"
+    assert compact["coverage"]["scope_policy_version"] == 1
     assert len(compact["results"]) == 96
     assert compact["documents"][0]["source_entity_id"] == "occurrence-0"
     assert compact["documents"][1]["source_entity_id"] == "occurrence-1"
+    assert compact["documents"][0]["scope_context_relations"][0]["semantics"] == "contextual"
     assert "coverage" not in compact["documents"][0]
     assert "source_provenance" not in compact["documents"][0]
     assert "model_results" not in compact

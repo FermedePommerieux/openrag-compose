@@ -103,6 +103,22 @@ RRF seeds, closes their accessible PROV-O graph forward and backward, then
 reads every discovered document through the verified pagination primitive.
 This needs no confirmation.
 
+Graph closure uses the deterministic `documentary-prov-o` scope policy version
+`1`. PROV-O provenance and documentary scope are deliberately different:
+
+* `email → member_of → email_thread` is `scope-defining`; forward and reverse
+  traversal reconstruct the accessible thread.
+* `attachment → attachment_of → email_message`, message-compatible `reply_to`,
+  and RFC 5322 `references` are also `scope-defining` for their exact types.
+* `email → contained_in → email_archive` is `contextual`, and
+  `file → member_of → directory_collection` is `infrastructure`. These links
+  remain visible in compact context/provenance metadata but never open every
+  archive or ingestion-root member.
+
+The policy classifies typed relations before constructing reverse OpenSearch
+queries. Unknown role/type combinations are not traversed and are not silently
+certified: they produce `scope_policy_unclassified_relation`.
+
 Complete source-order reading remains available for one already identified
 document explicitly selected by the human. The tool then supplies its internal
 `read_document_id`, follows the authenticated continuation cursor, and reports
@@ -117,11 +133,17 @@ documents into the model while the complete leaf artifact remains available to
 the UI. Generated summaries never replace citable leaf evidence.
 
 Scope coverage is true only when seed discovery succeeds, the graph frontier
-empties without a guard being reached, and every discovered document completes
-its immutable-snapshot read. Nested reverse queries keep each relation role
-paired with its own target. Every query uses the caller's DLS client. Complete
-closure describes only accessible indexed entities; it says nothing about
-documents never ingested or hidden by permissions.
+empties without a guard being reached under the declared policy, no visible
+relation remains unclassified, and every discovered document completes its
+immutable-snapshot read. Nested reverse queries keep each relation role, source
+type, target type and target identifier paired. Every query uses the caller's
+DLS client. Complete closure describes only accessible indexed entities; it
+says nothing about documents never ingested or hidden by permissions.
+
+Coverage exposes `scope_policy_id`, `scope_policy_version`, and compact
+`relations_traversed`, `relations_context_only`,
+`relations_excluded_by_policy`, and `relations_unclassified` summaries. These
+are bounded classifications, not a dump of every graph relation.
 
 The machine contract is fail-closed. `coverage.status_code` is `complete` only
 after valid provenance on every seed, natural forward/reverse graph closure,
@@ -131,6 +153,11 @@ each final document snapshot SHA-256. `status_message` is human-readable and
 graph errors, safety limits, ambiguous alternate identities, legacy profiles,
 snapshot changes, invalid cursors, access errors and profile corruption all
 keep `complete=false`. Partial verified evidence remains available.
+
+Alternate IDs are identity-only. They can resolve the endpoint of an allowed
+message relation but do not merge primary source occurrences. Duplicate RFC
+5322 occurrences are accepted only with matching message evidence and distinct
+explicit source containers; unresolved ownership remains `identity_ambiguous`.
 
 `coverage_ratio` is retained for compatibility and
 `document_read_coverage_ratio` names its exact meaning: document leaf-read

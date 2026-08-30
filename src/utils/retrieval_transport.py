@@ -15,6 +15,7 @@ LANGFLOW_DOCUMENT_FIELDS = (
     "source_relation_roles",
     "source_relative_path",
     "source_path_ancestors",
+    "scope_context_relations",
     "generated_at_time",
     "complete",
     "status_code",

@@ -62,28 +62,51 @@ excluded by ranked discovery.
 An explicit request for all exchanges, all related documents, or a complete
 chronology can select `scope_exhaustive`. The server first reuses normal
 Retrieval v2 to obtain broad lexical/vector/RRF seeds. It then closes the
-accessible provenance graph from their primary and alternate entity ids:
+accessible documentary graph from their PROV-O entities under the explicit
+`documentary-prov-o` scope policy, version `1`:
 
 - outgoing relations are read from each entity's canonical provenance object;
-- incoming relations use a nested OpenSearch query, ensuring the allowed role
-  and target id belong to the same relation;
+- incoming relations use a typed nested OpenSearch query, ensuring role,
+  source type, target type and target id belong to the same policy rule;
 - every OpenSearch request uses the current user's DLS-scoped client;
 - visited identifiers, frontier and results are ordered deterministically;
 - cycles terminate and forward/reverse traversal continues to an empty
   frontier or an explicit safety bound.
 
-The default traversable roles are `reply_to`, `references`, `attachment_of`,
-`member_of`, `contained_in`, `occurrence_of`, `derived_from` and
-`primary_source`. Every discovered document is then read by repeatedly calling
-the existing selected-document primitive. Ranked seed chunks are discovery
-evidence, never proof that the document was read completely.
+The PROV-O provenance graph is not the documentary scope graph. Policy v1
+classifies every visible typed relation as `scope-defining`, `contextual`,
+`identity-only`, `infrastructure`, or unclassified. Its initial matrix is:
 
-Scope coverage is complete only when seed discovery found at least one
+| Role | Source type | Target type | Forward | Reverse | Transitive | Semantics |
+| --- | --- | --- | --- | --- | --- | --- |
+| `attachment_of` | `email_attachment` | `email_message` | yes | yes | controlled | scope-defining |
+| `member_of` | `email_message`, `email_attachment` | `email_thread` | yes | yes | yes | scope-defining |
+| `reply_to` | `email_message` | `email_message`, `email_message_identifier` | yes | yes | yes | scope-defining |
+| `references` | `email_message` | `email_message`, `email_message_identifier` | yes | yes | yes | scope-defining |
+| `contained_in` | `email_message`, `email_attachment` | `email_archive` | no | no | no | contextual |
+| `member_of` | `file` | `directory_collection` | no | no | no | infrastructure |
+
+For example, `email → contained_in → email_archive` remains provenance context
+and is returned in compact context metadata, but the archive is never reverse
+expanded. Conversely, `email → member_of → email_thread` is scope-defining and
+reverse expansion reconstructs the complete accessible thread. Classification
+happens before reverse search, so excluded archive and ingestion-root hubs are
+not scanned and discarded afterward.
+
+Every discovered document is then read by repeatedly calling the existing
+selected-document primitive. Ranked seed chunks are discovery evidence, never
+proof that the document was read completely.
+
+The certificate exposes `scope_policy_id` and `scope_policy_version`, plus
+compact counters for relations traversed, retained as context, excluded by the
+policy, and unclassified. Scope coverage is complete only when seed discovery found at least one
 PROV-O-identifiable document, every seed can participate in provenance closure,
 graph traversal ended with an empty frontier without reaching a bound, and
 every discovered document completed its verified immutable-snapshot read. A legacy profile,
 snapshot change, cursor failure, inaccessible read or any graph/document limit
-makes coverage incomplete with an explicit stop reason.
+makes coverage incomplete with an explicit stop reason. A known non-expansive
+relation is compatible with completion. An unknown role/type triple is not: it
+produces `scope_policy_unclassified_relation` and prevents certification.
 
 #### Coverage certification invariants
 
@@ -96,7 +119,8 @@ produced by one fail-closed decision function and requires all of these facts:
 2. at least one seed document has valid canonical `source_provenance`;
 3. every seed document has valid provenance, including agreement between the
    canonical object and denormalized identity fields;
-4. forward and nested reverse traversal ended at a natural empty frontier;
+4. forward and nested reverse traversal ended at a natural empty frontier under
+   the declared versioned `ScopeTraversalPolicy`;
 5. no depth, entity, document, result-window or identity-ambiguity guard was
    encountered;
 6. every DLS-visible discovered document was read in contiguous source order;
@@ -114,13 +138,22 @@ The certificate exposes stable `status_code`, `status_message` and ordered
 `failure_codes` fields. Current incomplete codes are
 `incomplete_seed_discovery`, `search_error`, `no_provenance_seed`,
 `seed_missing_provenance`, `graph_limit_reached`,
-`graph_traversal_failed`, `document_limit_reached`,
+`graph_traversal_failed`, `scope_policy_unclassified_relation`,
+`document_limit_reached`,
 `document_read_incomplete`, `legacy_document`, `snapshot_changed`,
 `cursor_invalid`, `access_error`, `profile_invalid` and
 `identity_ambiguous`. Partial verified chunks and per-document statuses remain
 in the response when another read fails. `coverage_ratio` and
 `document_read_coverage_ratio` measure leaf-reading progress only; even a value
 of `1.0` is not proof of graph closure or valid seed discovery.
+
+Alternate identifiers are an identity layer, not an independent scope edge.
+They resolve targets of policy-approved message relations and may support
+incoming relation lookup, but never merge primary owners by themselves. A
+shared RFC 5322 Message-ID is accepted as several legitimate occurrences only
+when all owners are typed messages with the same timestamp and subject and each
+belongs to a distinct explicit source container. The primary entities remain
+separate. Missing or conflicting evidence stays `identity_ambiguous`.
 
 The full response artifact retains every verified leaf chunk for provenance and
 the UI. To keep one investigation from blindly filling the LLM context with

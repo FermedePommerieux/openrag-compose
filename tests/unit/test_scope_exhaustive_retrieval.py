@@ -23,18 +23,46 @@ def _record(
     *,
     relations: list[tuple[str, str]] | None = None,
     alternate_ids: list[str] | None = None,
+    entity_type: str = "email_message",
+    source_system: str = "openarchiver",
+    label: str | None = None,
+    generated_at_time: str | None = "2024-01-01T00:00:00Z",
+    container_id: str | None = None,
     document_id: str | None = None,
     ingest_run_id: str | None = None,
     chunk_id: str | None = None,
     record_id: str | None = None,
 ) -> dict:
-    relation_values = [
-        {
-            "role": role,
-            "target": {"id": target, "type": "document"},
-        }
-        for role, target in (relations or [])
-    ]
+    target_types = {
+        "attachment_of": "email_message",
+        "contained_in": "email_archive",
+        "member_of": "directory_collection" if entity_type == "file" else "email_thread",
+        "references": "email_message",
+        "reply_to": "email_message",
+    }
+    relation_values = []
+    for role, target in relations or []:
+        relation_values.append(
+            {
+                "role": role,
+                "target": {
+                    "id": target,
+                    "type": target_types.get(role, "unknown"),
+                    "source_system": source_system,
+                },
+            }
+        )
+    if container_id:
+        relation_values.append(
+            {
+                "role": "contained_in",
+                "target": {
+                    "id": container_id,
+                    "type": "email_archive",
+                    "source_system": source_system,
+                },
+            }
+        )
     resolved_document_id = document_id or f"doc-{entity_id}"
     resolved_ingest_run_id = ingest_run_id or f"run-{entity_id}"
     resolved_chunk_id = chunk_id or f"chunk-{entity_id}"
@@ -47,13 +75,18 @@ def _record(
             "ingest_run_id": resolved_ingest_run_id,
             "chunk_id": resolved_chunk_id,
             "source_entity_id": entity_id,
+            "source_entity_type": entity_type,
+            "source_entity_system": source_system,
             "source_entity_alternate_ids": alternate_ids or [],
             "source_provenance": {
                 "schema_version": "1.0",
                 "entity": {
                     "id": entity_id,
-                    "type": "email",
+                    "type": entity_type,
+                    "source_system": source_system,
+                    "label": label or entity_id,
                     "alternate_ids": alternate_ids or [],
+                    "generated_at_time": generated_at_time,
                 },
                 "relations": relation_values,
             },
@@ -98,20 +131,26 @@ class _GraphClient:
         assert params == {"terminate_after": 0}
         self.bodies.append(deepcopy(body))
         identity = body["query"]["bool"]["must"][0]
-        reverse = "nested" in identity
+        identity_should = identity["bool"]["should"]
+        reverse = bool(identity_should and "bool" in identity_should[0])
         if reverse:
-            nested_filters = identity["nested"]["query"]["bool"]["filter"]
-            roles = set(nested_filters[0]["terms"]["source_provenance.relations.role"])
-            target_should = nested_filters[1]["bool"]["should"]
-            target_ids = set()
-            for clause in target_should:
-                target_ids.update(next(iter(clause["terms"].values())))
+            reverse_rules = []
+            for policy_clause in identity_should:
+                policy_filters = policy_clause["bool"]["filter"]
+                source_type = policy_filters[0]["term"]["source_entity_type"]
+                nested = policy_filters[1]["nested"]
+                nested_filters = nested["query"]["bool"]["filter"]
+                role = nested_filters[0]["term"]["source_provenance.relations.role"]
+                target_type = nested_filters[1]["term"]["source_provenance.relations.target.type"]
+                target_ids = set()
+                for clause in nested_filters[2]["bool"]["should"]:
+                    target_ids.update(next(iter(clause["terms"].values())))
+                reverse_rules.append((role, source_type, target_type, target_ids))
         else:
-            should = identity["bool"]["should"]
             target_ids = set()
-            for clause in should:
+            for clause in identity_should:
                 target_ids.update(next(iter(clause["terms"].values())))
-            roles = set()
+            reverse_rules = []
 
         hits = []
         for hit in self.records:
@@ -122,11 +161,14 @@ class _GraphClient:
             if reverse:
                 relations = source["source_provenance"].get("relations", [])
                 matched = any(
-                    relation["role"] in roles
+                    source.get("source_entity_type") == source_type
+                    and relation["role"] == role
+                    and relation["target"].get("type") == target_type
                     and (
-                        relation["target"]["id"] in target_ids
-                        or bool(set(relation["target"].get("alternate_ids", [])) & target_ids)
+                        relation["target"]["id"] in rule_target_ids
+                        or bool(set(relation["target"].get("alternate_ids", [])) & rule_target_ids)
                     )
+                    for role, source_type, target_type, rule_target_ids in reverse_rules
                     for relation in relations
                 )
             else:
@@ -200,12 +242,13 @@ async def test_graph_traversal_forward_reverse_chain_and_cycle():
 
 
 @pytest.mark.asyncio
-async def test_reverse_query_keeps_role_and_target_in_same_nested_relation():
+async def test_reverse_query_keeps_role_target_type_and_id_in_same_nested_relation():
     client = _GraphClient(
         [
             _record(
                 "A",
-                relations=[("references", "wanted"), ("reply_to", "other")],
+                entity_type="email_attachment",
+                relations=[("attachment_of", "other"), ("member_of", "wanted")],
             ),
             _record("wanted"),
         ]
@@ -215,18 +258,24 @@ async def test_reverse_query_keeps_role_and_target_in_same_nested_relation():
         client,
         index_name="documents",
         seed_entity_ids=["wanted"],
-        allowed_roles=["reply_to"],
     )
 
     assert {item["document_id"] for item in result["documents"]} == {"doc-wanted"}
-    reverse_body = next(
-        body for body in client.bodies if "nested" in body["query"]["bool"]["must"][0]
+    reverse_body = next(body for body in client.bodies if _graph_direction(body) == "reverse")
+    policy_clauses = reverse_body["query"]["bool"]["must"][0]["bool"]["should"]
+    attachment_clause = next(
+        clause
+        for clause in policy_clauses
+        if clause["bool"]["filter"][0] == {"term": {"source_entity_type": "email_attachment"}}
     )
-    nested = reverse_body["query"]["bool"]["must"][0]["nested"]
+    nested = attachment_clause["bool"]["filter"][1]["nested"]
     assert nested["path"] == "source_provenance.relations"
     nested_filters = nested["query"]["bool"]["filter"]
-    assert nested_filters[0] == {"terms": {"source_provenance.relations.role": ["reply_to"]}}
-    assert nested_filters[1]["bool"]["minimum_should_match"] == 1
+    assert nested_filters[0] == {"term": {"source_provenance.relations.role": "attachment_of"}}
+    assert nested_filters[1] == {
+        "term": {"source_provenance.relations.target.type": "email_message"}
+    }
+    assert nested_filters[2]["bool"]["minimum_should_match"] == 1
 
 
 @pytest.mark.asyncio
@@ -405,7 +454,8 @@ async def test_graph_output_is_deterministic_for_reordered_hits():
 
 def _graph_direction(body: dict) -> str:
     identity = body["query"]["bool"]["must"][0]
-    return "reverse" if "nested" in identity else "forward"
+    first_clause = identity["bool"]["should"][0]
+    return "reverse" if "bool" in first_clause else "forward"
 
 
 @pytest.mark.asyncio
@@ -720,7 +770,7 @@ async def test_graph_stability_detects_insertion_during_paginated_scan(monkeypat
 
 
 @pytest.mark.asyncio
-async def test_graph_paginates_forward_and_reverse_queries(monkeypatch):
+async def test_graph_paginates_policy_filtered_reverse_queries(monkeypatch):
     from services import retrieval_service
 
     monkeypatch.setattr(retrieval_service, "PROVENANCE_GRAPH_PAGE_SIZE", 2)
@@ -733,7 +783,7 @@ async def test_graph_paginates_forward_and_reverse_queries(monkeypatch):
     paginated_directions = {
         _graph_direction(body) for body in client.bodies if "search_after" in body
     }
-    assert paginated_directions == {"forward", "reverse"}
+    assert paginated_directions == {"reverse"}
     assert result["coverage"]["frontier_empty"] is True
     assert len(result["documents"]) == 5
     assert result["coverage"]["forward_pages"] >= 1
@@ -843,8 +893,7 @@ async def test_graph_opensearch_error_fails_instead_of_returning_partial_closure
 async def test_graph_failure_in_either_direction_fails_closed(failed_direction):
     class DirectionalFailureClient(_GraphClient):
         async def search(self, *, index, body, params):
-            identity = body["query"]["bool"]["must"][0]
-            direction = "reverse" if "nested" in identity else "forward"
+            direction = _graph_direction(body)
             if direction == failed_direction:
                 raise TimeoutError(f"{direction} timeout")
             return await super().search(index=index, body=body, params=params)
@@ -855,6 +904,312 @@ async def test_graph_failure_in_either_direction_fails_closed(failed_direction):
             index_name="documents",
             seed_entity_ids=["A"],
         )
+
+
+@pytest.mark.asyncio
+async def test_context_archive_is_visible_but_never_reverse_expands():
+    archive_id = "archive-OA1"
+    records = [
+        _record("seed", relations=[("contained_in", archive_id)]),
+        *[
+            _record(f"archive-{index}", relations=[("contained_in", archive_id)])
+            for index in range(50)
+        ],
+    ]
+    client = _GraphClient(records)
+
+    result = await expand_provenance_graph(
+        client,
+        index_name="documents",
+        seed_entity_ids=["seed"],
+    )
+
+    assert [document["source_entity_id"] for document in result["documents"]] == ["seed"]
+    assert result["coverage"]["frontier_empty"] is True
+    assert result["coverage"]["relations_context_only"]["total"] == 1
+    assert result["coverage"]["relations_unclassified"]["total"] == 0
+    assert result["context_edges"] == [
+        {
+            "source_entity_id": "seed",
+            "role": "contained_in",
+            "target_entity_id": archive_id,
+            "target_entity_type": "email_archive",
+            "target_source_system": "openarchiver",
+            "semantics": "contextual",
+        }
+    ]
+    assert result["documents"][0]["scope_context_relations"][0]["target_entity_id"] == archive_id
+    assert all(
+        "email_archive"
+        not in {
+            rule["term"].get("source_provenance.relations.target.type")
+            for clause in body["query"]["bool"]["must"][0]["bool"]["should"]
+            if "bool" in clause
+            for policy_filter in clause["bool"]["filter"]
+            if "nested" in policy_filter
+            for rule in policy_filter["nested"]["query"]["bool"]["filter"]
+            if "term" in rule
+        }
+        for body in client.bodies
+        if _graph_direction(body) == "reverse"
+    )
+
+
+@pytest.mark.asyncio
+async def test_directory_ingestion_root_is_context_not_scope():
+    directory_id = "ingestion-root"
+    records = [
+        _record(
+            "seed-file",
+            entity_type="file",
+            source_system="local",
+            relations=[("member_of", directory_id)],
+        ),
+        *[
+            _record(
+                f"file-{index}",
+                entity_type="file",
+                source_system="local",
+                relations=[("member_of", directory_id)],
+            )
+            for index in range(275)
+        ],
+    ]
+
+    result = await expand_provenance_graph(
+        _GraphClient(records),
+        index_name="documents",
+        seed_entity_ids=["seed-file"],
+    )
+
+    assert len(result["documents"]) == 1
+    assert result["coverage"]["frontier_empty"] is True
+    assert result["context_edges"][0]["semantics"] == "infrastructure"
+    assert result["coverage"]["relations_excluded_by_policy"]["total"] == 2
+
+
+@pytest.mark.asyncio
+async def test_rfc5322_identifier_reconstructs_reference_chain():
+    identifier = "urn:openrag:rfc5322:message-id:%3Cmessage-b%40example.test%3E"
+    source = _record("A", relations=[("references", identifier)])
+    source["_source"]["source_provenance"]["relations"][0]["target"]["type"] = (
+        "email_message_identifier"
+    )
+    target = _record("B", alternate_ids=[identifier])
+
+    result = await expand_provenance_graph(
+        _GraphClient([source, target]),
+        index_name="documents",
+        seed_entity_ids=["A"],
+    )
+
+    assert {document["source_entity_id"] for document in result["documents"]} == {"A", "B"}
+    assert result["coverage"]["relations_unclassified"]["total"] == 0
+    assert result["coverage"]["frontier_empty"] is True
+
+
+@pytest.mark.asyncio
+async def test_unknown_relation_closes_graph_but_fails_policy_certifiability():
+    result = await expand_provenance_graph(
+        _GraphClient([_record("A", relations=[("new_relation", "B")])]),
+        index_name="documents",
+        seed_entity_ids=["A"],
+    )
+
+    assert result["coverage"]["frontier_empty"] is True
+    assert result["coverage"]["limit_reached"] is False
+    assert result["coverage"]["relations_unclassified"]["total"] == 2
+    assert result["documents"][0]["source_entity_id"] == "A"
+
+
+@pytest.mark.asyncio
+async def test_surface_pastorale_synthetic_archive_thread_and_attachment_regression():
+    archive_id = "OA1"
+    thread_id = "surface-thread"
+    seed = _record(
+        "seed-message",
+        relations=[("member_of", thread_id), ("contained_in", archive_id)],
+    )
+    thread_messages = [
+        _record(
+            f"thread-message-{index}",
+            relations=[("member_of", thread_id), ("contained_in", archive_id)],
+        )
+        for index in range(7)
+    ]
+    attachment = _record(
+        "seed-attachment",
+        entity_type="email_attachment",
+        relations=[
+            ("attachment_of", "seed-message"),
+            ("member_of", thread_id),
+            ("contained_in", archive_id),
+        ],
+    )
+    archive_members = [
+        _record(
+            f"archive-only-{index}",
+            relations=[("contained_in", archive_id)],
+        )
+        for index in range(30_000)
+    ]
+
+    result = await expand_provenance_graph(
+        _GraphClient([seed, attachment, *thread_messages, *archive_members]),
+        index_name="documents",
+        seed_entity_ids=["seed-message", "seed-attachment"],
+    )
+
+    discovered = {document["source_entity_id"] for document in result["documents"]}
+    assert discovered == {
+        "seed-message",
+        "seed-attachment",
+        *(f"thread-message-{index}" for index in range(7)),
+    }
+    assert not any(entity.startswith("archive-only-") for entity in discovered)
+    assert result["coverage"]["frontier_empty"] is True
+    assert result["coverage"]["limit_reached"] is False
+    assert result["coverage"]["relations_unclassified"]["total"] == 0
+    assert result["coverage"]["documents_discovered"] == 9
+
+
+def _rfc_duplicate(
+    primary: str,
+    alias: str,
+    *,
+    container: str,
+    source_system: str = "openarchiver",
+    label: str = "Same message",
+    generated_at_time: str = "2024-01-01T00:00:00Z",
+) -> dict:
+    return _record(
+        primary,
+        alternate_ids=[alias],
+        source_system=source_system,
+        label=label,
+        generated_at_time=generated_at_time,
+        container_id=container,
+    )
+
+
+@pytest.mark.asyncio
+async def test_cross_container_rfc_duplicate_occurrences_remain_distinct():
+    alias = "urn:openrag:rfc5322:message-id:%3Cshared%40example.test%3E"
+    result = await expand_provenance_graph(
+        _GraphClient(
+            [
+                _rfc_duplicate("OA1-message", alias, container="OA1"),
+                _rfc_duplicate("OA2-message", alias, container="OA2"),
+            ]
+        ),
+        index_name="documents",
+        seed_entity_ids=[alias],
+    )
+
+    assert {document["source_entity_id"] for document in result["documents"]} == {
+        "OA1-message",
+        "OA2-message",
+    }
+    assert result["coverage"]["identity_shared_aliases_resolved"] == 1
+    assert result["coverage"]["limit_reached"] is False
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "records",
+    [
+        # Same alternate id claimed twice inside one source container.
+        lambda alias: [
+            _rfc_duplicate("A", alias, container="OA1"),
+            _rfc_duplicate("B", alias, container="OA1"),
+        ],
+        # Distinct source occurrences with conflicting message evidence.
+        lambda alias: [
+            _rfc_duplicate("A", alias, container="OA1", source_system="source-A"),
+            _rfc_duplicate(
+                "B",
+                alias,
+                container="OA2",
+                source_system="source-B",
+                label="Different message",
+            ),
+        ],
+        # True collision: matching subject but conflicting timestamp.
+        lambda alias: [
+            _rfc_duplicate("A", alias, container="OA1"),
+            _rfc_duplicate(
+                "B",
+                alias,
+                container="OA2",
+                generated_at_time="2024-01-02T00:00:00Z",
+            ),
+        ],
+    ],
+)
+async def test_ambiguous_alternate_owners_still_fail_closed(records):
+    alias = "urn:openrag:rfc5322:message-id:%3Ccollision%40example.test%3E"
+    result = await expand_provenance_graph(
+        _GraphClient(records(alias)),
+        index_name="documents",
+        seed_entity_ids=[alias],
+    )
+
+    assert result["coverage"]["limit_reached"] is True
+    assert result["coverage"]["stop_reason"] == "ambiguous_alternate_id"
+
+
+@pytest.mark.asyncio
+async def test_cross_source_identical_message_is_a_legitimate_duplicate_occurrence():
+    alias = "urn:openrag:rfc5322:message-id:%3Ccross-source%40example.test%3E"
+    result = await expand_provenance_graph(
+        _GraphClient(
+            [
+                _rfc_duplicate(
+                    "source-A-message",
+                    alias,
+                    container="source-A-container",
+                    source_system="source-A",
+                ),
+                _rfc_duplicate(
+                    "source-B-message",
+                    alias,
+                    container="source-B-container",
+                    source_system="source-B",
+                ),
+            ]
+        ),
+        index_name="documents",
+        seed_entity_ids=[alias],
+    )
+
+    assert result["coverage"]["limit_reached"] is False
+    assert len(result["documents"]) == 2
+    assert len({document["source_entity_id"] for document in result["documents"]}) == 2
+
+
+@pytest.mark.asyncio
+async def test_reingested_same_occurrence_does_not_create_identity_ambiguity():
+    alias = "urn:openrag:rfc5322:message-id:%3Creingest%40example.test%3E"
+    records = [
+        _rfc_duplicate("same-primary", alias, container="OA1"),
+        _record(
+            "same-primary",
+            alternate_ids=[alias],
+            container_id="OA1",
+            ingest_run_id="second-run",
+            record_id="second-physical-hit",
+        ),
+    ]
+
+    result = await expand_provenance_graph(
+        _GraphClient(records),
+        index_name="documents",
+        seed_entity_ids=[alias],
+    )
+
+    assert result["coverage"]["limit_reached"] is False
+    assert result["coverage"]["identity_shared_aliases_resolved"] == 0
+    assert len(result["documents"]) == 1
 
 
 def _scope_service() -> SearchService:
@@ -931,6 +1286,12 @@ async def test_scope_reads_every_discovered_document_and_certifies_only_all_comp
     )
 
     assert result["coverage"]["complete"] is True
+    assert result["coverage"]["scope_policy_id"] == "documentary-prov-o"
+    assert result["coverage"]["scope_policy_version"] == 1
+    assert result["coverage"]["relations_unclassified"] == {
+        "total": 0,
+        "by_classification": [],
+    }
     assert result["coverage"]["documents_complete"] == 2
     assert result["coverage"]["covered_chunks"] == 2
     assert [item["document_id"] for item in result["results"]] == ["doc-A", "doc-B"]
@@ -1360,6 +1721,30 @@ def test_document_ratio_alone_never_certifies_scope():
 
     assert decision["complete"] is False
     assert decision["status_code"] == "graph_limit_reached"
+
+
+def test_unclassified_relation_has_a_stable_policy_failure_code():
+    decision = certify_scope_coverage(
+        ScopeCertificationFacts(
+            seed_discovery_complete=True,
+            seed_documents=1,
+            valid_provenance_seed_documents=1,
+            invalid_provenance_seed_documents=0,
+            graph_frontier_empty=True,
+            graph_limit_reached=False,
+            graph_stop_reason="frontier_empty",
+            graph_failed=False,
+            documents_discovered=1,
+            documents_complete=1,
+            covered_chunks=1,
+            total_chunks=1,
+            unclassified_relations=1,
+        )
+    )
+
+    assert decision["complete"] is False
+    assert decision["status_code"] == "scope_policy_unclassified_relation"
+    assert decision["failure_codes"] == ["scope_policy_unclassified_relation"]
 
 
 def test_impossible_coverage_counters_fail_closed():

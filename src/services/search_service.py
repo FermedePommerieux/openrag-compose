@@ -13,7 +13,6 @@ from config.embedding_constants import get_declared_default_embedding_model
 from config.settings import clients, get_embedding_model, get_index_name, get_openrag_config
 from models.source_provenance import parse_source_provenance
 from services.retrieval_service import (
-    DEFAULT_SCOPE_RELATION_ROLES,
     EXHAUSTIVE_BATCH_MAX,
     EXHAUSTIVE_PROFILE_VERSION,
     HttpReranker,
@@ -29,6 +28,7 @@ from services.retrieval_service import (
     limit_chunks_per_document,
     reciprocal_rank_fusion,
 )
+from services.scope_traversal_policy import DEFAULT_SCOPE_TRAVERSAL_POLICY
 from utils.container_utils import transform_localhost_url
 from utils.logging_config import get_logger
 from utils.rrf_mapping import RRFMappingError, require_sortable_chunk_id_mapping
@@ -1469,6 +1469,8 @@ class SearchService:
         return {
             "mode": "scope_exhaustive",
             "query": query,
+            "scope_policy_id": DEFAULT_SCOPE_TRAVERSAL_POLICY.policy_id,
+            "scope_policy_version": DEFAULT_SCOPE_TRAVERSAL_POLICY.version,
             "seed_discovery_complete": False,
             "seed_documents": 0,
             "valid_provenance_seed_documents": 0,
@@ -1477,6 +1479,10 @@ class SearchService:
             "total_chunks": 0,
             "document_read_coverage_ratio": 0.0,
             "coverage_ratio": 0.0,
+            "relations_traversed": {"total": 0, "by_classification": []},
+            "relations_context_only": {"total": 0, "by_classification": []},
+            "relations_excluded_by_policy": {"total": 0, "by_classification": []},
+            "relations_unclassified": {"total": 0, "by_classification": []},
             "error": error,
             **decision,
             "stop_reason": decision["status_code"],
@@ -1531,6 +1537,7 @@ class SearchService:
         seed_results = [item for item in seed_response.get("results", []) if isinstance(item, dict)]
         seed_documents: dict[str, dict[str, Any]] = {}
         seed_entities: set[str] = set()
+        seed_primary_entities: set[str] = set()
         seed_provenance_validity: dict[str, bool] = {}
         seed_entity_ids_by_document: dict[str, set[str]] = {}
         for result in seed_results:
@@ -1566,6 +1573,7 @@ class SearchService:
                 seed_entity_ids_by_document.setdefault(normalized_document_id, set()).update(
                     entity_ids
                 )
+                seed_primary_entities.add(provenance.entity.id)
 
         valid_provenance_seed_documents = {
             document_id for document_id, valid in seed_provenance_validity.items() if valid
@@ -1580,9 +1588,9 @@ class SearchService:
             graph = await expand_provenance_graph(
                 user_client,
                 index_name=get_index_name(),
-                seed_entity_ids=seed_entities,
+                seed_entity_ids=seed_primary_entities,
                 seed_documents=seed_documents.values(),
-                allowed_roles=DEFAULT_SCOPE_RELATION_ROLES,
+                policy=DEFAULT_SCOPE_TRAVERSAL_POLICY,
                 max_depth=settings.max_depth,
                 max_entities=settings.max_entities,
                 max_documents=settings.max_documents,
@@ -1595,7 +1603,10 @@ class SearchService:
                 "documents": [seed_documents[key] for key in sorted(seed_documents)],
                 "entities": [],
                 "edges": [],
+                "context_edges": [],
                 "coverage": {
+                    "scope_policy_id": DEFAULT_SCOPE_TRAVERSAL_POLICY.policy_id,
+                    "scope_policy_version": DEFAULT_SCOPE_TRAVERSAL_POLICY.version,
                     "entities_visited": 0,
                     "documents_discovered": len(seed_documents),
                     "depth_reached": 0,
@@ -1603,6 +1614,13 @@ class SearchService:
                     "limit_reached": False,
                     "stop_reason": "graph_traversal_failed",
                     "error": str(exc),
+                    "relations_traversed": {"total": 0, "by_classification": []},
+                    "relations_context_only": {"total": 0, "by_classification": []},
+                    "relations_excluded_by_policy": {
+                        "total": 0,
+                        "by_classification": [],
+                    },
+                    "relations_unclassified": {"total": 0, "by_classification": []},
                 },
             }
 
@@ -1739,11 +1757,20 @@ class SearchService:
                 covered_chunks=covered_chunks,
                 total_chunks=total_chunks,
                 document_failure_codes=tuple(document_failure_codes),
+                unclassified_relations=int(
+                    graph_coverage.get("relations_unclassified", {}).get("total", 0)
+                ),
             )
         )
         coverage = {
             "mode": "scope_exhaustive",
             "query": query,
+            "scope_policy_id": graph_coverage.get(
+                "scope_policy_id", DEFAULT_SCOPE_TRAVERSAL_POLICY.policy_id
+            ),
+            "scope_policy_version": graph_coverage.get(
+                "scope_policy_version", DEFAULT_SCOPE_TRAVERSAL_POLICY.version
+            ),
             "seed_discovery_complete": True,
             "seed_documents": len(seed_documents),
             "seed_entities": len(seed_entities),
@@ -1759,15 +1786,26 @@ class SearchService:
             "graph_reverse_hits": graph_coverage.get("reverse_hits", 0),
             "graph_forward_pages": graph_coverage.get("forward_pages", 0),
             "graph_reverse_pages": graph_coverage.get("reverse_pages", 0),
-            "graph_forward_verification_pages": graph_coverage.get(
-                "forward_verification_pages", 0
-            ),
-            "graph_reverse_verification_pages": graph_coverage.get(
-                "reverse_verification_pages", 0
-            ),
+            "graph_forward_verification_pages": graph_coverage.get("forward_verification_pages", 0),
+            "graph_reverse_verification_pages": graph_coverage.get("reverse_verification_pages", 0),
             "graph_distinct_results": graph_coverage.get("distinct_results", 0),
             "graph_stability_verified": graph_coverage.get("stability_verified", False),
             "graph_stability_observations": graph_coverage.get("stability_observations", 0),
+            "relations_traversed": graph_coverage.get(
+                "relations_traversed", {"total": 0, "by_classification": []}
+            ),
+            "relations_context_only": graph_coverage.get(
+                "relations_context_only", {"total": 0, "by_classification": []}
+            ),
+            "relations_excluded_by_policy": graph_coverage.get(
+                "relations_excluded_by_policy", {"total": 0, "by_classification": []}
+            ),
+            "relations_unclassified": graph_coverage.get(
+                "relations_unclassified", {"total": 0, "by_classification": []}
+            ),
+            "identity_shared_aliases_resolved": graph_coverage.get(
+                "identity_shared_aliases_resolved", 0
+            ),
             "documents_discovered": len(documents),
             "documents_complete": complete_documents,
             "documents_incomplete": incomplete_documents,
@@ -1826,7 +1864,11 @@ class SearchService:
             "total": len(evidence),
             "documents": document_manifest,
             "evidence_batches": evidence_batches,
-            "graph": {"entities": graph["entities"], "edges": graph["edges"]},
+            "graph": {
+                "entities": graph["entities"],
+                "edges": graph["edges"],
+                "context_edges": graph.get("context_edges", []),
+            },
             "coverage": coverage,
         }
 
