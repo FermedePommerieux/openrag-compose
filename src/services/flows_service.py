@@ -35,7 +35,7 @@ _LEGACY_RETRIEVAL_COMPONENT = (
     "ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra"
 )
 _BACKEND_RETRIEVAL_COMPONENT = "ext:openrag:OpenRAGBackendRetrievalComponent@extra"
-_RETRIEVAL_FLOW_MIGRATION_VERSION = 8
+_RETRIEVAL_FLOW_MIGRATION_VERSION = 9
 _LEGACY_SYSTEM_FLOW_ID = "1098eea1-6649-4e1d-aed1-b77249fb8dd0"
 # These fields are rewritten by OpenRAG's settings synchronization and by
 # Langflow's provider refresh endpoint. Their values and option lists are
@@ -114,6 +114,15 @@ _PREVIOUS_VERSIONED_SCOPELESS_RETRIEVAL_GRAPH_SHA256 = (
 )
 _PREVIOUS_VERSIONED_SCOPELESS_RUNTIME_GRAPH_SHA256 = (
     "5b856087395752a8bd0f146a5eab8d09a72135955e743813996ac3befbb6ae67"
+)
+# Exact fingerprints of the frozen Phase 1 Retrieval v2 version 8 graph.
+# They authorize only the repository-owned artifact-boundary replacement;
+# custom code, prompts, topology or other operator edits still fail closed.
+_PREVIOUS_VERSIONED_SCOPE_ARTIFACT_GRAPH_SHA256 = (
+    "700c41e04b14631c0fb1e19a751ecde0ca9af90d95577d6eb40944b412dd7066"
+)
+_PREVIOUS_VERSIONED_SCOPE_ARTIFACT_RUNTIME_GRAPH_SHA256 = (
+    "93c5ad3b275a94705229298c38db0f22d7adbbf3555b2ce49eff008a478b4293"
 )
 
 
@@ -1388,15 +1397,19 @@ class FlowsService:
             if marker == 6
             else {_PREVIOUS_VERSIONED_SCOPELESS_RETRIEVAL_GRAPH_SHA256}
             if marker == 7
+            else {_PREVIOUS_VERSIONED_SCOPE_ARTIFACT_GRAPH_SHA256}
+            if marker == 8
             else set()
         )
         exact_match = self._graph_fingerprint(flow_data) in expected
-        if marker not in {6, 7}:
+        if marker not in {6, 7, 8}:
             return exact_match
         expected_runtime = (
             _PREVIOUS_VERSIONED_DOCUMENTALIST_RUNTIME_GRAPH_SHA256
             if marker == 6
             else _PREVIOUS_VERSIONED_SCOPELESS_RUNTIME_GRAPH_SHA256
+            if marker == 7
+            else _PREVIOUS_VERSIONED_SCOPE_ARTIFACT_RUNTIME_GRAPH_SHA256
         )
         return (
             exact_match or self._runtime_normalized_graph_fingerprint(flow_data) == expected_runtime
