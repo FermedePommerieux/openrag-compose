@@ -35,7 +35,7 @@ _LEGACY_RETRIEVAL_COMPONENT = (
     "ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra"
 )
 _BACKEND_RETRIEVAL_COMPONENT = "ext:openrag:OpenRAGBackendRetrievalComponent@extra"
-_RETRIEVAL_FLOW_MIGRATION_VERSION = 10
+_RETRIEVAL_FLOW_MIGRATION_VERSION = 11
 _LEGACY_SYSTEM_FLOW_ID = "1098eea1-6649-4e1d-aed1-b77249fb8dd0"
 # These fields are rewritten by OpenRAG's settings synchronization and by
 # Langflow's provider refresh endpoint. Their values and option lists are
@@ -132,6 +132,15 @@ _PREVIOUS_VERSIONED_RUNTIME_SAFE_GRAPH_SHA256 = (
 )
 _PREVIOUS_VERSIONED_RUNTIME_SAFE_RUNTIME_GRAPH_SHA256 = (
     "53ea921ab9e9363fdd63d21fa44c2aff419bbf14b409d5ce142ded887e2675b8"
+)
+# Exact fingerprints of the frozen Phase 2 Retrieval v2 version 10 graph.
+# They authorize only the repository-owned deterministic agent-guard upgrade;
+# prompt, component code, topology and other operator changes still fail closed.
+_PREVIOUS_VERSIONED_SCOPE_POLICY_GRAPH_SHA256 = (
+    "e864388b7a98d4422ad7725cc93c72eea3ab1ee8c341d08300dbbf76b0d22622"
+)
+_PREVIOUS_VERSIONED_SCOPE_POLICY_RUNTIME_GRAPH_SHA256 = (
+    "b49c2e5317fa124b3576b7c26bf40622481da82690e3a769ab6f6be07ad67f69"
 )
 
 
@@ -1410,10 +1419,12 @@ class FlowsService:
             if marker == 8
             else {_PREVIOUS_VERSIONED_RUNTIME_SAFE_GRAPH_SHA256}
             if marker == 9
+            else {_PREVIOUS_VERSIONED_SCOPE_POLICY_GRAPH_SHA256}
+            if marker == 10
             else set()
         )
         exact_match = self._graph_fingerprint(flow_data) in expected
-        if marker not in {6, 7, 8, 9}:
+        if marker not in {6, 7, 8, 9, 10}:
             return exact_match
         expected_runtime = (
             _PREVIOUS_VERSIONED_DOCUMENTALIST_RUNTIME_GRAPH_SHA256
@@ -1423,6 +1434,8 @@ class FlowsService:
             else _PREVIOUS_VERSIONED_SCOPE_ARTIFACT_RUNTIME_GRAPH_SHA256
             if marker == 8
             else _PREVIOUS_VERSIONED_RUNTIME_SAFE_RUNTIME_GRAPH_SHA256
+            if marker == 9
+            else _PREVIOUS_VERSIONED_SCOPE_POLICY_RUNTIME_GRAPH_SHA256
         )
         return (
             exact_match or self._runtime_normalized_graph_fingerprint(flow_data) == expected_runtime

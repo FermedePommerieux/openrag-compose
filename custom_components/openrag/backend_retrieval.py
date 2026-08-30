@@ -7,6 +7,7 @@ OpenSearch query logic so the chat agent cannot drift from ``SearchService``.
 
 from __future__ import annotations
 
+import hashlib
 import json
 from typing import Any
 
@@ -18,6 +19,7 @@ from lfx.schema.data import Data
 
 UNTRUSTED_CHUNK_FENCE_START = "<<<UNTRUSTED_DOC_CHUNK>>>"
 UNTRUSTED_CHUNK_FENCE_END = "<<<END_UNTRUSTED_DOC_CHUNK>>>"
+RETRIEVAL_GUARD_METADATA_KEY = "openrag_retrieval_guard"
 
 # Tool artifacts feed OpenRAG's source cards. For scope-exhaustive retrieval the
 # backend transport profile guarantees this list is the bounded model projection,
@@ -114,6 +116,30 @@ def _fence_untrusted_text(text: str) -> str:
         UNTRUSTED_CHUNK_FENCE_END, "\\" + UNTRUSTED_CHUNK_FENCE_END
     )
     return f"{UNTRUSTED_CHUNK_FENCE_START}\n{escaped}\n{UNTRUSTED_CHUNK_FENCE_END}"
+
+
+def _retrieval_guard_metadata(
+    filters: dict[str, Any], limit: int, score_threshold: float
+) -> dict[str, Any]:
+    """Expose only a stable effective-filter fingerprint to agent middleware."""
+    canonical = json.dumps(
+        {
+            "filters": filters,
+            "limit": limit,
+            "scoreThreshold": score_threshold,
+        },
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return {
+        RETRIEVAL_GUARD_METADATA_KEY: {
+            "version": 1,
+            "filter_fingerprint": hashlib.sha256(canonical.encode("utf-8")).hexdigest(),
+            "scope_policy_id": "documentary-prov-o",
+            "scope_policy_version": 1,
+        }
+    }
 
 
 def _present_fields(
@@ -345,6 +371,8 @@ class OpenRAGBackendRetrievalComponent(LCToolComponent):
         return [Data(**item) for item in payload["results"]]
 
     def build_tool(self) -> StructuredTool:
+        filters, limit, score_threshold = self._request_context()
+
         def search_documents(
             search_query: str,
             read_document_id: str = "",
@@ -393,4 +421,5 @@ class OpenRAGBackendRetrievalComponent(LCToolComponent):
                 "internal document id as a human-facing scope label: use documents.filename."
             ),
             response_format="content_and_artifact",
+            metadata=_retrieval_guard_metadata(filters, limit, score_threshold),
         )

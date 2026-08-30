@@ -1,7 +1,12 @@
 from __future__ import annotations
 
+import hashlib
+import json
+import re
+import unicodedata
 import uuid
 from contextlib import contextmanager
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, cast
 
@@ -11,6 +16,8 @@ from langchain.agents.middleware import (
     ModelCallLimitMiddleware,
     ToolRetryMiddleware,
 )
+from langchain.agents.middleware.types import AgentMiddleware
+from langchain_core.messages import ToolMessage
 from langgraph.types import Command
 
 from lfx.components.models_and_agents.agent_helpers.graph_event_adapter import (
@@ -64,6 +71,554 @@ from lfx.schema.dotdict import dotdict
 from lfx.schema.message import Message
 from lfx.schema.table import EditMode
 from lfx.utils.constants import MESSAGE_SENDER_AI
+
+
+_RETRIEVAL_TOOL_NAME = "search_documents"
+_RETRIEVAL_GUARD_METADATA_KEY = "openrag_retrieval_guard"
+_RETRIEVAL_GUARD_RESULT_KEY = "openrag_retrieval_guard"
+_RETRIEVAL_GUARD_VERSION = 1
+_RETRIEVAL_SCOPE_POLICY_ID = "documentary-prov-o"
+_RETRIEVAL_SCOPE_POLICY_VERSION = 1
+_RETRIEVAL_COVERAGE_FIELDS = (
+    "mode",
+    "complete",
+    "next_cursor",
+    "seed_discovery_complete",
+    "seed_provenance_complete",
+    "scope_policy_id",
+    "scope_policy_version",
+    "graph_frontier_empty",
+    "graph_limit_reached",
+    "graph_stop_reason",
+    "graph_stability_verified",
+    "documents_discovered",
+    "documents_complete",
+    "documents_incomplete",
+    "stop_reason",
+    "status_code",
+    "failure_codes",
+)
+_RETRIEVAL_INTENT_STOP_WORDS = frozenset(
+    {
+        "a",
+        "all",
+        "au",
+        "aux",
+        "avec",
+        "d",
+        "de",
+        "des",
+        "du",
+        "et",
+        "every",
+        "l",
+        "la",
+        "le",
+        "les",
+        "leur",
+        "leurs",
+        "lie",
+        "liee",
+        "liees",
+        "lies",
+        "n",
+        "no",
+        "numero",
+        "of",
+        "pour",
+        "sur",
+        "the",
+        "to",
+        "tous",
+        "toutes",
+    }
+)
+
+
+def _canonical_hash(value: Any) -> str:
+    canonical = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _normalize_retrieval_intent(query: Any) -> str:
+    """Return a stable, domain-agnostic intent hash without retaining user text."""
+    text = unicodedata.normalize("NFKD", str(query or "").lower())
+    text = "".join(character for character in text if not unicodedata.combining(character))
+    tokens: list[str] = []
+    for token in re.findall(r"[a-z0-9]+", text):
+        if token in _RETRIEVAL_INTENT_STOP_WORDS:
+            continue
+        # A deliberately small plural fold improves order/number stability
+        # without embedding business vocabulary or guessing synonyms.
+        if token.isalpha() and len(token) > 4 and token.endswith("s"):
+            token = token[:-1]
+        tokens.append(token)
+    # Stable identifiers are stronger intent anchors than surrounding wording.
+    # Restrict this fold to long/mixed identifiers so ordinary years do not
+    # collapse unrelated investigations. Evidence progress remains the final
+    # arbiter, so different facts for one identifier can still add new chunks.
+    identifiers = [
+        token
+        for token in tokens
+        if any(character.isdigit() for character in token)
+        and (len(token) >= 6 or any(character.isalpha() for character in token))
+    ]
+    normalized = identifiers or tokens
+    return _canonical_hash({"tokens": sorted(set(normalized))})
+
+
+def _message_value(message: Any, name: str, default: Any = None) -> Any:
+    if isinstance(message, dict):
+        return message.get(name, default)
+    return getattr(message, name, default)
+
+
+def _message_tool_calls(message: Any) -> list[dict[str, Any]]:
+    calls = _message_value(message, "tool_calls", [])
+    return [call for call in calls if isinstance(call, dict)] if isinstance(calls, list) else []
+
+
+def _is_current_run_user_message(message: Any) -> bool:
+    role = str(_message_value(message, "role", "") or "").lower()
+    message_type = str(_message_value(message, "type", "") or "").lower()
+    return role == "user" or message_type in {"human", "user"}
+
+
+def _current_run_messages(messages: list[Any]) -> list[Any]:
+    last_user_index = 0
+    for index, message in enumerate(messages):
+        if _is_current_run_user_message(message):
+            last_user_index = index
+    return messages[last_user_index:]
+
+
+def _retrieval_mode(args: dict[str, Any]) -> str:
+    if str(args.get("read_document_id") or "").strip():
+        return "exhaustive"
+    if args.get("scope_exhaustive") is True:
+        return "scope_exhaustive"
+    return "focused"
+
+
+def _tool_name(tool: Any) -> str:
+    if isinstance(tool, dict):
+        function = tool.get("function")
+        if isinstance(function, dict) and function.get("name"):
+            return str(function["name"])
+        return str(tool.get("name") or "")
+    return str(getattr(tool, "name", "") or "")
+
+
+def _retrieval_guard_context(tool: Any) -> dict[str, Any]:
+    metadata = tool.get("metadata", {}) if isinstance(tool, dict) else getattr(tool, "metadata", {})
+    metadata = metadata if isinstance(metadata, dict) else {}
+    context = metadata.get(_RETRIEVAL_GUARD_METADATA_KEY, {})
+    context = context if isinstance(context, dict) else {}
+    return {
+        "filter_fingerprint": str(context.get("filter_fingerprint") or "default"),
+        "scope_policy_id": str(
+            context.get("scope_policy_id") or _RETRIEVAL_SCOPE_POLICY_ID
+        ),
+        "scope_policy_version": context.get(
+            "scope_policy_version", _RETRIEVAL_SCOPE_POLICY_VERSION
+        ),
+    }
+
+
+def _find_retrieval_guard_context(tools: list[Any]) -> dict[str, Any]:
+    for tool in tools:
+        if _tool_name(tool) == _RETRIEVAL_TOOL_NAME:
+            return _retrieval_guard_context(tool)
+    return _retrieval_guard_context({})
+
+
+def _parse_tool_payload(content: Any) -> dict[str, Any]:
+    if isinstance(content, dict):
+        return content
+    if isinstance(content, list):
+        text_parts = [
+            str(item.get("text") or "")
+            for item in content
+            if isinstance(item, dict) and item.get("type") == "text"
+        ]
+        content = "".join(text_parts)
+    if not isinstance(content, str):
+        return {}
+    try:
+        payload = json.loads(content)
+    except (TypeError, json.JSONDecodeError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _evidence_identities(payload: dict[str, Any]) -> frozenset[str]:
+    identities: set[str] = set()
+    for payload_field, prefix in (("results", "evidence"), ("documents", "document")):
+        items = payload.get(payload_field, [])
+        if not isinstance(items, list):
+            continue
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            identity = {
+                key: item.get(key)
+                for key in ("document_id", "source_entity_id", "occurrence_id", "chunk_id")
+                if item.get(key) not in (None, "")
+            }
+            if identity:
+                identities.add(f"{prefix}:{_canonical_hash(identity)}")
+    return frozenset(identities)
+
+
+def _coverage_state(payload: dict[str, Any]) -> dict[str, Any]:
+    coverage = payload.get("coverage", {})
+    if not isinstance(coverage, dict):
+        return {}
+    state = {
+        field: coverage[field]
+        for field in _RETRIEVAL_COVERAGE_FIELDS
+        if field in coverage
+    }
+    if isinstance(state.get("failure_codes"), list):
+        state["failure_codes"] = sorted(str(code) for code in state["failure_codes"])
+    return state
+
+
+def _call_args(call: dict[str, Any]) -> dict[str, Any]:
+    args = call.get("args", {})
+    if isinstance(args, str):
+        try:
+            args = json.loads(args)
+        except json.JSONDecodeError:
+            args = {}
+    return args if isinstance(args, dict) else {}
+
+
+@dataclass
+class _RetrievalRecord:
+    call_id: str
+    wave: int
+    normalized_intent: str
+    mode: str
+    exact_call_fingerprint: str
+    effective_scope_fingerprint: str
+    terminal_scope_fingerprint: str
+    result_fingerprint: str
+    retrieval_fingerprint: str
+    evidence: frozenset[str]
+    coverage: dict[str, Any]
+    guard_reason: str | None = None
+    progress: bool = False
+
+
+@dataclass
+class _RetrievalGuardSnapshot:
+    records: list[_RetrievalRecord] = field(default_factory=list)
+    terminal_scopes: set[str] = field(default_factory=set)
+    exact_calls: set[str] = field(default_factory=set)
+    exhaustive_scope_satisfied: bool = False
+    stalled: bool = False
+    latest_wave: int | None = None
+    latest_wave_progress: bool | None = None
+    latest_result_fingerprint: str = ""
+    latest_normalized_intent: str = ""
+    guard_reason: str | None = None
+
+
+def _retrieval_call_keys(
+    call: dict[str, Any], context: dict[str, Any]
+) -> tuple[str, str, str, str, str]:
+    args = _call_args(call)
+    normalized_intent = _normalize_retrieval_intent(args.get("search_query"))
+    mode = _retrieval_mode(args)
+    policy = {
+        "scope_policy_id": context["scope_policy_id"],
+        "scope_policy_version": context["scope_policy_version"],
+    }
+    effective_scope = {
+        "tool": _RETRIEVAL_TOOL_NAME,
+        "mode": mode,
+        "filter_fingerprint": context["filter_fingerprint"],
+        "document_id": str(args.get("read_document_id") or ""),
+        **policy,
+    }
+    exact_call = {
+        **effective_scope,
+        "query": " ".join(str(args.get("search_query") or "").lower().split()),
+        "cursor": str(args.get("cursor") or ""),
+    }
+    terminal_scope = {
+        "tool": _RETRIEVAL_TOOL_NAME,
+        "normalized_intent": normalized_intent,
+        "filter_fingerprint": context["filter_fingerprint"],
+        **policy,
+    }
+    return (
+        normalized_intent,
+        mode,
+        _canonical_hash(exact_call),
+        _canonical_hash(effective_scope),
+        _canonical_hash(terminal_scope),
+    )
+
+
+def _build_retrieval_guard_snapshot(
+    messages: list[Any], context: dict[str, Any]
+) -> _RetrievalGuardSnapshot:
+    snapshot = _RetrievalGuardSnapshot()
+    pending: dict[str, tuple[dict[str, Any], int]] = {}
+    wave = 0
+    for message in _current_run_messages(messages):
+        retrieval_calls = [
+            call
+            for call in _message_tool_calls(message)
+            if str(call.get("name") or "") == _RETRIEVAL_TOOL_NAME
+        ]
+        if retrieval_calls:
+            wave += 1
+            for call in retrieval_calls:
+                call_id = str(call.get("id") or "")
+                if call_id:
+                    pending[call_id] = (call, wave)
+            continue
+
+        call_id = str(_message_value(message, "tool_call_id", "") or "")
+        pending_call = pending.get(call_id)
+        if pending_call is None:
+            continue
+        call, call_wave = pending_call
+        payload = _parse_tool_payload(_message_value(message, "content", ""))
+        guard = payload.get(_RETRIEVAL_GUARD_RESULT_KEY, {})
+        guard = guard if isinstance(guard, dict) else {}
+        coverage = _coverage_state(payload)
+        evidence = _evidence_identities(payload)
+        normalized_intent, mode, exact_call, effective_scope, terminal_scope = (
+            _retrieval_call_keys(call, context)
+        )
+        result_fingerprint = _canonical_hash(
+            {"evidence": sorted(evidence), "coverage": coverage}
+        )
+        retrieval_fingerprint = _canonical_hash(
+            {
+                "tool": _RETRIEVAL_TOOL_NAME,
+                "mode": mode,
+                "normalized_intent": normalized_intent,
+                "filter_fingerprint": context["filter_fingerprint"],
+                "scope_policy_id": context["scope_policy_id"],
+                "scope_policy_version": context["scope_policy_version"],
+                "effective_scope_fingerprint": effective_scope,
+                "result_fingerprint": result_fingerprint,
+            }
+        )
+        snapshot.records.append(
+            _RetrievalRecord(
+                call_id=call_id,
+                wave=call_wave,
+                normalized_intent=normalized_intent,
+                mode=mode,
+                exact_call_fingerprint=exact_call,
+                effective_scope_fingerprint=effective_scope,
+                terminal_scope_fingerprint=terminal_scope,
+                result_fingerprint=result_fingerprint,
+                retrieval_fingerprint=retrieval_fingerprint,
+                evidence=evidence,
+                coverage=coverage,
+                guard_reason=str(guard.get("reason") or "") or None,
+            )
+        )
+
+    seen_evidence: dict[str, set[str]] = {}
+    seen_coverage: dict[str, set[str]] = {}
+    wave_progress: dict[int, bool] = {}
+    wave_guard: dict[int, str] = {}
+    for record in snapshot.records:
+        scope_evidence = seen_evidence.setdefault(record.effective_scope_fingerprint, set())
+        scope_coverage = seen_coverage.setdefault(record.effective_scope_fingerprint, set())
+        coverage_fingerprint = _canonical_hash(record.coverage)
+        first_scope_result = not scope_evidence and not scope_coverage
+        new_evidence = set(record.evidence) - scope_evidence
+        coverage_changed = bool(scope_coverage) and coverage_fingerprint not in scope_coverage
+        record.progress = bool(first_scope_result or new_evidence or coverage_changed)
+        wave_progress[record.wave] = wave_progress.get(record.wave, False) or record.progress
+        scope_evidence.update(record.evidence)
+        scope_coverage.add(coverage_fingerprint)
+        snapshot.exact_calls.add(record.exact_call_fingerprint)
+        if record.guard_reason:
+            wave_guard[record.wave] = record.guard_reason
+        if (
+            record.mode == "scope_exhaustive"
+            and record.coverage.get("complete") is True
+            and record.coverage.get("status_code") == "complete"
+        ):
+            snapshot.exhaustive_scope_satisfied = True
+            snapshot.terminal_scopes.add(record.terminal_scope_fingerprint)
+
+    if snapshot.records:
+        latest = snapshot.records[-1]
+        snapshot.latest_wave = latest.wave
+        snapshot.latest_wave_progress = wave_progress.get(latest.wave, False)
+        snapshot.latest_result_fingerprint = latest.result_fingerprint
+        snapshot.latest_normalized_intent = latest.normalized_intent
+        if latest.wave in wave_guard:
+            snapshot.stalled = True
+            snapshot.guard_reason = wave_guard[latest.wave]
+        elif snapshot.latest_wave_progress is False:
+            snapshot.stalled = True
+            snapshot.guard_reason = "retrieval_no_progress"
+    return snapshot
+
+
+def _retrieval_guard_reason(
+    snapshot: _RetrievalGuardSnapshot,
+    call: dict[str, Any],
+    context: dict[str, Any],
+) -> str | None:
+    _intent, mode, exact_call, _effective_scope, terminal_scope = _retrieval_call_keys(
+        call, context
+    )
+    if snapshot.stalled:
+        return snapshot.guard_reason or "retrieval_no_progress"
+    if mode == "scope_exhaustive" and terminal_scope in snapshot.terminal_scopes:
+        return "scope_already_complete"
+    if exact_call in snapshot.exact_calls:
+        return "duplicate_evidence"
+    return None
+
+
+def _blocked_retrieval_message(
+    call: dict[str, Any], reason: str, normalized_intent: str
+) -> ToolMessage:
+    content = {
+        _RETRIEVAL_GUARD_RESULT_KEY: {
+            "version": _RETRIEVAL_GUARD_VERSION,
+            "reason": reason,
+            "retrieval_phase": "stalled",
+            "normalized_intent": normalized_intent,
+            "message": (
+                "Document retrieval is closed for this investigation because it would add "
+                "no new evidence. Do not call search_documents again. Use the available "
+                "evidence, call non-retrieval tools such as the calculator if useful, and "
+                "answer with the existing coverage limitations preserved."
+            ),
+        },
+        "results": [],
+    }
+    return ToolMessage(
+        content=json.dumps(content, ensure_ascii=False),
+        tool_call_id=str(call.get("id") or ""),
+        name=_RETRIEVAL_TOOL_NAME,
+        status="success",
+    )
+
+
+def _compute_agent_recursion_budget(max_iterations: Any, graph_node_names: set[str]) -> int:
+    """Derive the safety budget from max_iterations and compiled middleware nodes."""
+    run_limit = max(1, int(max_iterations)) if max_iterations is not None else 15
+    before_model = sum(name.endswith(".before_model") for name in graph_node_names)
+    after_model = sum(name.endswith(".after_model") for name in graph_node_names)
+    one_shot_hooks = sum(
+        name.endswith((".before_agent", ".after_agent")) for name in graph_node_names
+    )
+    steps_per_iteration = 2 + before_model + after_model
+    terminal_overhead = 2 + one_shot_hooks
+    return run_limit * steps_per_iteration + terminal_overhead
+
+
+class OpenRAGRetrievalGuardMiddleware(AgentMiddleware):
+    """Close exhausted retrieval phases and disable search after no progress.
+
+    State is reconstructed from ToolMessages, making the guard deterministic,
+    per-run, checkpoint-safe and safe for parallel tool batches. Wrappers add no
+    graph node, preserving the audited four-step loop topology.
+    """
+
+    @staticmethod
+    def _messages_from_request(request: Any) -> list[Any]:
+        state = getattr(request, "state", {})
+        messages = _message_value(state, "messages", [])
+        return messages if isinstance(messages, list) else []
+
+    @staticmethod
+    def _guard_model_request(request: Any) -> Any:
+        tools = list(getattr(request, "tools", []) or [])
+        context = _find_retrieval_guard_context(tools)
+        snapshot = _build_retrieval_guard_snapshot(
+            OpenRAGRetrievalGuardMiddleware._messages_from_request(request), context
+        )
+        if not snapshot.stalled:
+            return request
+        filtered_tools = [tool for tool in tools if _tool_name(tool) != _RETRIEVAL_TOOL_NAME]
+        logger.info(
+            "retrieval.guard "
+            f"retrieval_phase=stalled normalized_intent={snapshot.latest_normalized_intent} "
+            f"result_fingerprint={snapshot.latest_result_fingerprint} progress=false "
+            f"guard_reason={snapshot.guard_reason}"
+        )
+        return request.override(tools=filtered_tools, tool_choice=None)
+
+    def wrap_model_call(self, request: Any, handler: Any) -> Any:
+        return handler(self._guard_model_request(request))
+
+    async def awrap_model_call(self, request: Any, handler: Any) -> Any:
+        return await handler(self._guard_model_request(request))
+
+    @staticmethod
+    def _guard_tool_call(
+        request: Any,
+    ) -> tuple[_RetrievalGuardSnapshot, dict[str, Any], str | None]:
+        context = _retrieval_guard_context(getattr(request, "tool", None))
+        snapshot = _build_retrieval_guard_snapshot(
+            OpenRAGRetrievalGuardMiddleware._messages_from_request(request), context
+        )
+        reason = _retrieval_guard_reason(snapshot, request.tool_call, context)
+        if reason:
+            normalized_intent = _retrieval_call_keys(request.tool_call, context)[0]
+            logger.info(
+                "retrieval.guard "
+                f"retrieval_phase=stalled normalized_intent={normalized_intent} "
+                f"result_fingerprint={snapshot.latest_result_fingerprint} progress=false "
+                f"guard_reason={reason}"
+            )
+        return snapshot, context, reason
+
+    @staticmethod
+    def _log_result(request: Any, result: Any, context: dict[str, Any]) -> None:
+        if not isinstance(result, ToolMessage):
+            return
+        messages = [*OpenRAGRetrievalGuardMiddleware._messages_from_request(request), result]
+        snapshot = _build_retrieval_guard_snapshot(messages, context)
+        if not snapshot.records:
+            return
+        latest = snapshot.records[-1]
+        phase = "scope_closed" if snapshot.exhaustive_scope_satisfied else "evidence"
+        logger.info(
+            "retrieval.guard "
+            f"retrieval_phase={phase} normalized_intent={latest.normalized_intent} "
+            f"result_fingerprint={latest.result_fingerprint} "
+            f"progress={str(latest.progress).lower()} guard_reason=none"
+        )
+
+    def wrap_tool_call(self, request: Any, handler: Any) -> Any:
+        if str(request.tool_call.get("name") or "") != _RETRIEVAL_TOOL_NAME:
+            return handler(request)
+        _snapshot, context, reason = self._guard_tool_call(request)
+        if reason:
+            normalized_intent = _retrieval_call_keys(request.tool_call, context)[0]
+            return _blocked_retrieval_message(request.tool_call, reason, normalized_intent)
+        result = handler(request)
+        self._log_result(request, result, context)
+        return result
+
+    async def awrap_tool_call(self, request: Any, handler: Any) -> Any:
+        if str(request.tool_call.get("name") or "") != _RETRIEVAL_TOOL_NAME:
+            return await handler(request)
+        _snapshot, context, reason = self._guard_tool_call(request)
+        if reason:
+            normalized_intent = _retrieval_call_keys(request.tool_call, context)[0]
+            return _blocked_retrieval_message(request.tool_call, reason, normalized_intent)
+        result = await handler(request)
+        self._log_result(request, result, context)
+        return result
 
 
 def set_advanced_true(component_input):
@@ -574,16 +1129,23 @@ class AgentComponent(ToolApprovalMixin, ToolCallingAgentComponent):
             checkpointer=checkpointer,
         )
 
-    def _compute_recursion_limit(self) -> int:
-        """Derive the LangGraph recursion_limit from the user-set max_iterations.
-
-        Mirrors the clamp in `_build_middleware` (max(1, max_iterations)) so a
-        saved 0 or negative value cannot under-cap the graph below one full
-        iteration. The +5 buffer covers start/end/router overhead.
-        """
+    def _compute_recursion_limit(self, agent: Any | None = None) -> int:
+        """Derive the safety limit from max_iterations and the compiled graph."""
         raw = getattr(self, "max_iterations", None)
-        run_limit = max(1, int(raw)) if raw is not None else 15
-        return run_limit * 2 + 5
+        default_nodes = {
+            "model",
+            "tools",
+            "ModelCallLimitMiddleware.before_model",
+            "ModelCallLimitMiddleware.after_model",
+        }
+        node_names = default_nodes
+        if agent is not None:
+            try:
+                graph_nodes = agent.get_graph().nodes
+                node_names = set(graph_nodes) if graph_nodes else default_nodes
+            except (AttributeError, TypeError, ValueError):
+                node_names = default_nodes
+        return _compute_agent_recursion_budget(raw, node_names)
 
     def _build_middleware(self, llm: Any, *, allow_interrupts: bool = True) -> list:
         # `llm` is passed in (rather than re-fetched via `self._get_llm()`)
@@ -598,6 +1160,7 @@ class AgentComponent(ToolApprovalMixin, ToolCallingAgentComponent):
         # crashing the flow.
         if self.tools:
             middleware.append(ToolCallIDMiddleware())
+            middleware.append(OpenRAGRetrievalGuardMiddleware())
         max_iterations = getattr(self, "max_iterations", None)
         if max_iterations is not None:
             # `max_iterations` is a safety cap, not an "unlimited" toggle. A saved
@@ -656,13 +1219,10 @@ class AgentComponent(ToolApprovalMixin, ToolCallingAgentComponent):
         if getattr(self, "_event_manager", None):
             on_token_callback = cast("OnTokenFunctionType", self._event_manager.on_token)
 
-        # Align LangGraph's `recursion_limit` with `max_iterations` so the
-        # middleware cap (ModelCallLimitMiddleware) is what bounds the loop —
-        # not LangGraph's default 25-step guard, which fires at ~12 model+tool
-        # iterations and raises a raw GraphRecursionError (QA UI-009/UI-010).
-        # Each iteration is ~2 graph steps (model node + tools node); add 5
-        # for start/end overhead.
-        recursion_limit = self._compute_recursion_limit()
+        # ModelCallLimit remains the semantic cap. Derive the LangGraph safety
+        # net from the actual compiled middleware nodes so a valid final answer
+        # cannot be discarded between after_model and END.
+        recursion_limit = self._compute_recursion_limit(agent)
 
         agent_config: dict[str, Any] = {
             "callbacks": [

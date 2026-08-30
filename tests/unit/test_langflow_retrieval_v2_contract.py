@@ -221,6 +221,15 @@ def test_backend_tool_forwards_request_and_preserves_provenance(monkeypatch):
 
     built_tool = tool.build_tool()
     assert built_tool["response_format"] == "content_and_artifact"
+    guard_metadata = built_tool["metadata"]["openrag_retrieval_guard"]
+    assert guard_metadata == {
+        "version": 1,
+        "filter_fingerprint": guard_metadata["filter_fingerprint"],
+        "scope_policy_id": "documentary-prov-o",
+        "scope_policy_version": 1,
+    }
+    assert len(guard_metadata["filter_fingerprint"]) == 64
+    assert "user-1" not in json.dumps(guard_metadata)
     assert list(inspect.signature(built_tool["func"]).parameters) == [
         "search_query",
         "read_document_id",
@@ -443,8 +452,6 @@ def test_explicit_scope_investigation_routes_to_scope_exhaustive(monkeypatch):
     assert compact["documents"] == [
         {
             "document_id": "document-42",
-            "scope_context_relations": [
-                {"role": "contained_in", "target_type": "email_archive"}
-            ],
+            "scope_context_relations": [{"role": "contained_in", "target_type": "email_archive"}],
         }
     ]
