@@ -21,6 +21,17 @@ on:
         required: true
         default: v0.6.0-retrieval-v2
         type: string
+      image:
+        description: Image to publish (all preserves the historical behavior)
+        required: true
+        default: all
+        type: choice
+        options:
+          - all
+          - backend
+          - frontend
+          - langflow
+          - opensearch
 
 permissions:
   contents: read
@@ -52,12 +63,14 @@ jobs:
 
     steps:
       - name: Checkout requested source
+        if: ${{ inputs.image == 'all' || inputs.image == matrix.name }}
         uses: actions/checkout@v4
         with:
           ref: ${{ inputs.source_ref }}
           persist-credentials: false
 
       - name: Determine immutable image coordinates
+        if: ${{ inputs.image == 'all' || inputs.image == matrix.name }}
         id: image
         shell: bash
         run: |
@@ -81,6 +94,7 @@ jobs:
           echo "channel_tag=${channel_tag}" >> "${GITHUB_OUTPUT}"
 
       - name: Log in to GHCR
+        if: ${{ inputs.image == 'all' || inputs.image == matrix.name }}
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -88,9 +102,11 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Docker Buildx
+        if: ${{ inputs.image == 'all' || inputs.image == matrix.name }}
         uses: docker/setup-buildx-action@v3
 
       - name: Refuse to overwrite an existing release tag
+        if: ${{ inputs.image == 'all' || inputs.image == matrix.name }}
         shell: bash
         run: |
           image='${{ steps.image.outputs.name }}:${{ steps.image.outputs.release_tag }}'
@@ -100,6 +116,7 @@ jobs:
           fi
 
       - name: Build and push
+        if: ${{ inputs.image == 'all' || inputs.image == matrix.name }}
         id: build
         uses: docker/build-push-action@v6
         with:
@@ -119,6 +136,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=openrag-${{ matrix.name }}-arm64
 
       - name: Write build summary
+        if: ${{ inputs.image == 'all' || inputs.image == matrix.name }}
         shell: bash
         run: |
           {
