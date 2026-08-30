@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+from copy import deepcopy
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -22,6 +23,7 @@ def _record(
     *,
     relations: list[tuple[str, str]] | None = None,
     alternate_ids: list[str] | None = None,
+    document_id: str | None = None,
 ) -> dict:
     relation_values = [
         {
@@ -33,7 +35,7 @@ def _record(
     return {
         "_id": f"chunk-{entity_id}",
         "_source": {
-            "document_id": f"doc-{entity_id}",
+            "document_id": document_id or f"doc-{entity_id}",
             "filename": f"{entity_id}.eml",
             "chunk_index": 0,
             "source_entity_id": entity_id,
@@ -81,9 +83,20 @@ class _GraphClient:
         self.records = records
         self.accessible = accessible
         self.bodies: list[dict] = []
+        self.created_pits: list[tuple[str, dict]] = []
+        self.deleted_pits: list[dict] = []
 
-    async def search(self, *, index, body, params):
-        self.bodies.append(body)
+    async def create_pit(self, *, index, params):
+        self.created_pits.append((index, params))
+        return {"pit_id": "test-pit"}
+
+    async def delete_pit(self, *, body):
+        self.deleted_pits.append(body)
+        return {"pits": [{"pit_id": "test-pit", "successful": True}]}
+
+    async def search(self, *, body, params, index=None):
+        assert index is None
+        self.bodies.append(deepcopy(body))
         identity = body["query"]["bool"]["must"][0]
         reverse = "nested" in identity
         if reverse:
@@ -121,12 +134,39 @@ class _GraphClient:
                     set(source.get("source_entity_alternate_ids", [])) & target_ids
                 )
             if matched:
-                hits.append(hit)
+                hits.append(deepcopy(hit))
+
+        hits.sort(
+            key=lambda hit: (
+                hit["_source"]["source_entity_id"],
+                hit["_source"]["document_id"],
+                hit["_id"],
+            )
+        )
+        for ordinal, hit in enumerate(hits):
+            hit["sort"] = [
+                hit["_source"]["source_entity_id"],
+                hit["_source"]["document_id"],
+                ordinal,
+            ]
+        matched_total = len(hits)
+
+        search_after = body.get("search_after")
+        if search_after is not None:
+            matching_positions = [
+                position for position, hit in enumerate(hits) if hit["sort"] == search_after
+            ]
+            if len(matching_positions) != 1:
+                raise RuntimeError("invalid fake search_after")
+            hits = hits[matching_positions[0] + 1 :]
+
+        hits = hits[: int(body["size"])]
         return {
+            "pit_id": "test-pit",
             "hits": {
-                "total": {"value": len(hits), "relation": "eq"},
+                "total": {"value": matched_total, "relation": "eq"},
                 "hits": hits,
-            }
+            },
         }
 
 
@@ -362,9 +402,253 @@ async def test_graph_output_is_deterministic_for_reordered_hits():
     assert first == second
 
 
+def _graph_direction(body: dict) -> str:
+    identity = body["query"]["bool"]["must"][0]
+    return "reverse" if "nested" in identity else "forward"
+
+
+@pytest.mark.asyncio
+async def test_graph_pagination_single_page_closes_and_releases_pit(monkeypatch):
+    from services import retrieval_service
+
+    monkeypatch.setattr(retrieval_service, "PROVENANCE_GRAPH_PAGE_SIZE", 10)
+    client = _GraphClient([_record("A")])
+
+    result = await expand_provenance_graph(client, index_name="documents", seed_entity_ids=["A"])
+
+    assert result["coverage"]["frontier_empty"] is True
+    assert result["coverage"]["limit_reached"] is False
+    assert result["coverage"]["pagination_pages"] == 2
+    assert client.created_pits == [("documents", {"keep_alive": "2m"})]
+    assert client.deleted_pits == [{"pit_id": ["test-pit"]}]
+
+
+@pytest.mark.asyncio
+async def test_graph_pagination_multiple_pages_reaches_natural_closure(monkeypatch):
+    from services import retrieval_service
+
+    monkeypatch.setattr(retrieval_service, "PROVENANCE_GRAPH_PAGE_SIZE", 2)
+    client = _GraphClient([_record(entity_id) for entity_id in "ABCDE"])
+
+    result = await expand_provenance_graph(
+        client,
+        index_name="documents",
+        seed_entity_ids=list("ABCDE"),
+    )
+
+    forward_pages = [body for body in client.bodies if _graph_direction(body) == "forward"]
+    assert len(forward_pages) == 3
+    assert [body.get("search_after") for body in forward_pages] == [
+        None,
+        ["B", "doc-B", 1],
+        ["D", "doc-D", 3],
+    ]
+    assert result["coverage"]["frontier_empty"] is True
+    assert result["coverage"]["limit_reached"] is False
+    assert len(result["documents"]) == 5
+
+
+@pytest.mark.asyncio
+async def test_graph_pagination_exact_boundary_does_not_request_empty_page(monkeypatch):
+    from services import retrieval_service
+
+    monkeypatch.setattr(retrieval_service, "PROVENANCE_GRAPH_PAGE_SIZE", 2)
+    client = _GraphClient([_record(entity_id) for entity_id in "ABCD"])
+
+    await expand_provenance_graph(
+        client,
+        index_name="documents",
+        seed_entity_ids=list("ABCD"),
+    )
+
+    forward_pages = [body for body in client.bodies if _graph_direction(body) == "forward"]
+    assert len(forward_pages) == 2
+    assert forward_pages[-1]["search_after"] == ["B", "doc-B", 1]
+
+
+@pytest.mark.asyncio
+async def test_graph_pagination_intermediate_error_fails_closed_and_releases_pit(monkeypatch):
+    from services import retrieval_service
+
+    monkeypatch.setattr(retrieval_service, "PROVENANCE_GRAPH_PAGE_SIZE", 2)
+
+    class IntermediateFailureClient(_GraphClient):
+        async def search(self, *, body, params, index=None):
+            if _graph_direction(body) == "forward" and body.get("search_after"):
+                raise TimeoutError("intermediate page timeout")
+            return await super().search(body=body, params=params, index=index)
+
+    client = IntermediateFailureClient([_record(entity_id) for entity_id in "ABC"])
+    with pytest.raises(TimeoutError, match="intermediate page timeout"):
+        await expand_provenance_graph(
+            client,
+            index_name="documents",
+            seed_entity_ids=list("ABC"),
+        )
+
+    assert client.deleted_pits == [{"pit_id": ["test-pit"]}]
+
+
+@pytest.mark.asyncio
+async def test_graph_pagination_rejects_invalid_search_after(monkeypatch):
+    from services import retrieval_service
+
+    monkeypatch.setattr(retrieval_service, "PROVENANCE_GRAPH_PAGE_SIZE", 2)
+
+    class InvalidCursorClient(_GraphClient):
+        async def search(self, *, body, params, index=None):
+            response = await super().search(body=body, params=params, index=index)
+            if _graph_direction(body) == "forward" and body.get("search_after"):
+                response["hits"]["hits"][-1]["sort"] = ["invalid"]
+            return response
+
+    with pytest.raises(RuntimeError, match="invalid search_after cursor"):
+        await expand_provenance_graph(
+            InvalidCursorClient([_record(entity_id) for entity_id in "ABC"]),
+            index_name="documents",
+            seed_entity_ids=list("ABC"),
+        )
+
+
+@pytest.mark.asyncio
+async def test_graph_pagination_rejects_duplicate_between_pages(monkeypatch):
+    from services import retrieval_service
+
+    monkeypatch.setattr(retrieval_service, "PROVENANCE_GRAPH_PAGE_SIZE", 2)
+
+    class DuplicatePageClient(_GraphClient):
+        first_hit_id = ""
+
+        async def search(self, *, body, params, index=None):
+            response = await super().search(body=body, params=params, index=index)
+            if _graph_direction(body) != "forward":
+                return response
+            page_hits = response["hits"]["hits"]
+            if body.get("search_after") and page_hits:
+                page_hits[0]["_id"] = self.first_hit_id
+            elif page_hits:
+                self.first_hit_id = page_hits[0]["_id"]
+            return response
+
+    with pytest.raises(RuntimeError, match="duplicate paginated hit"):
+        await expand_provenance_graph(
+            DuplicatePageClient([_record(entity_id) for entity_id in "ABC"]),
+            index_name="documents",
+            seed_entity_ids=list("ABC"),
+        )
+
+
+@pytest.mark.asyncio
+async def test_graph_paginates_forward_and_reverse_queries(monkeypatch):
+    from services import retrieval_service
+
+    monkeypatch.setattr(retrieval_service, "PROVENANCE_GRAPH_PAGE_SIZE", 2)
+    client = _GraphClient(
+        [_record("A")] + [_record(f"X{index}", relations=[("reply_to", "A")]) for index in range(4)]
+    )
+
+    result = await expand_provenance_graph(client, index_name="documents", seed_entity_ids=["A"])
+
+    paginated_directions = {
+        _graph_direction(body) for body in client.bodies if "search_after" in body
+    }
+    assert paginated_directions == {"forward", "reverse"}
+    assert result["coverage"]["frontier_empty"] is True
+    assert len(result["documents"]) == 5
+
+
+@pytest.mark.asyncio
+async def test_graph_pagination_preserves_dls_and_active_filters_on_every_page(monkeypatch):
+    from services import retrieval_service
+
+    monkeypatch.setattr(retrieval_service, "PROVENANCE_GRAPH_PAGE_SIZE", 1)
+    active_filter = {"term": {"owner": "user-1"}}
+    client = _GraphClient(
+        [_record(entity_id) for entity_id in "ABCDE"],
+        accessible={"A", "B", "C"},
+    )
+
+    result = await expand_provenance_graph(
+        client,
+        index_name="documents",
+        seed_entity_ids=list("ABCDE"),
+        filter_clauses=[active_filter],
+    )
+
+    assert {item["source_entity_id"] for item in result["documents"]} == {"A", "B", "C"}
+    assert len(client.bodies) > 2
+    assert all(active_filter in body["query"]["bool"]["filter"] for body in client.bodies)
+    assert all(body["pit"]["id"] == "test-pit" for body in client.bodies)
+
+
+@pytest.mark.asyncio
+async def test_graph_business_limits_are_independent_from_technical_pages(monkeypatch):
+    from services import retrieval_service
+
+    monkeypatch.setattr(retrieval_service, "PROVENANCE_GRAPH_PAGE_SIZE", 1)
+    client = _GraphClient([_record(entity_id) for entity_id in "ABCDE"])
+
+    result = await expand_provenance_graph(
+        client,
+        index_name="documents",
+        seed_entity_ids=list("ABCDE"),
+        max_documents=3,
+    )
+
+    assert result["coverage"]["stop_reason"] == "max_documents"
+    assert result["coverage"]["limit_reached"] is True
+    assert len(result["documents"]) == 3
+    assert len([body for body in client.bodies if _graph_direction(body) == "forward"]) == 5
+
+
+@pytest.mark.asyncio
+async def test_graph_paginated_output_is_deterministic_between_executions(monkeypatch):
+    from services import retrieval_service
+
+    monkeypatch.setattr(retrieval_service, "PROVENANCE_GRAPH_PAGE_SIZE", 2)
+    records = [
+        _record("A", relations=[("reply_to", "B")]),
+        _record("B", relations=[("references", "C")]),
+        _record("C"),
+    ]
+
+    first = await expand_provenance_graph(
+        _GraphClient(records), index_name="documents", seed_entity_ids=["A"]
+    )
+    second = await expand_provenance_graph(
+        _GraphClient(list(reversed(records))),
+        index_name="documents",
+        seed_entity_ids=["A"],
+    )
+
+    assert first == second
+
+
+@pytest.mark.asyncio
+async def test_graph_keeps_same_content_document_as_distinct_source_occurrences():
+    result = await expand_provenance_graph(
+        _GraphClient(
+            [
+                _record("local-source", document_id="shared-document"),
+                _record("archive-source", document_id="shared-document"),
+            ]
+        ),
+        index_name="documents",
+        seed_entity_ids=["local-source", "archive-source"],
+    )
+
+    assert len(result["documents"]) == 2
+    assert {item["source_entity_id"] for item in result["documents"]} == {
+        "local-source",
+        "archive-source",
+    }
+
+
 @pytest.mark.asyncio
 async def test_graph_opensearch_error_fails_instead_of_returning_partial_closure():
     client = MagicMock()
+    client.create_pit = AsyncMock(return_value={"pit_id": "test-pit"})
+    client.delete_pit = AsyncMock()
     client.search = AsyncMock(side_effect=RuntimeError("OpenSearch unavailable"))
 
     with pytest.raises(RuntimeError, match="OpenSearch unavailable"):
@@ -375,7 +659,7 @@ async def test_graph_opensearch_error_fails_instead_of_returning_partial_closure
 @pytest.mark.parametrize("failed_direction", ["forward", "reverse"])
 async def test_graph_failure_in_either_direction_fails_closed(failed_direction):
     class DirectionalFailureClient(_GraphClient):
-        async def search(self, *, index, body, params):
+        async def search(self, *, body, params, index=None):
             identity = body["query"]["bool"]["must"][0]
             direction = "reverse" if "nested" in identity else "forward"
             if direction == failed_direction:
@@ -468,6 +752,97 @@ async def test_scope_reads_every_discovered_document_and_certifies_only_all_comp
     assert result["coverage"]["covered_chunks"] == 2
     assert [item["document_id"] for item in result["results"]] == ["doc-A", "doc-B"]
     assert service.read_document_chunks.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_scope_reads_same_content_document_per_source_occurrence(monkeypatch):
+    from services import search_service
+
+    service = _scope_service()
+    service.search_tool = AsyncMock(return_value={"results": [_seed("shared-doc", "local")]})
+    monkeypatch.setattr(
+        search_service,
+        "expand_provenance_graph",
+        AsyncMock(
+            return_value={
+                "documents": [
+                    {
+                        "document_id": "shared-doc",
+                        "filename": "local.pdf",
+                        "source_entity_id": "local",
+                    },
+                    {
+                        "document_id": "shared-doc",
+                        "filename": "archive.pdf",
+                        "source_entity_id": "archive",
+                    },
+                ],
+                "entities": ["archive", "local"],
+                "edges": [],
+                "coverage": {
+                    "entities_visited": 2,
+                    "documents_discovered": 2,
+                    "depth_reached": 1,
+                    "frontier_empty": True,
+                    "limit_reached": False,
+                    "stop_reason": "frontier_empty",
+                },
+            }
+        ),
+    )
+    observed_filters: list[dict] = []
+
+    async def read_occurrence(document_id, **kwargs):
+        occurrence = kwargs["filters"]["source_entity_id"][0]
+        observed_filters.append(kwargs["filters"])
+        text = f"evidence from {occurrence}"
+        chunk = {
+            "document_id": document_id,
+            "filename": f"{occurrence}.pdf",
+            "chunk_id": f"chunk-{occurrence}",
+            "chunk_index": 0,
+            "chunk_content_sha256": hashlib.sha256(text.encode()).hexdigest(),
+            "text": text,
+        }
+        return {
+            "results": [chunk],
+            "coverage": {
+                "mode": "exhaustive",
+                "document_id": document_id,
+                "filename": f"{occurrence}.pdf",
+                "covered_chunks": 1,
+                "total_chunks": 1,
+                "coverage_ratio": 1.0,
+                "snapshot_sha256": document_content_sha256_from_chunks([chunk]),
+                "complete": True,
+                "next_cursor": None,
+            },
+        }
+
+    service.read_document_chunks = AsyncMock(side_effect=read_occurrence)
+    result = await service.search_exhaustive_scope(
+        "all exchanges",
+        user_id="user-1",
+        jwt_token="jwt",
+        filters={"connector_types": ["filesystem", "openarchiver"]},
+        embedding_model=None,
+        settings=ScopeExhaustiveSettings(),
+    )
+
+    assert result["coverage"]["complete"] is True
+    assert result["coverage"]["documents_discovered"] == 2
+    assert result["coverage"]["documents_complete"] == 2
+    assert {item["chunk_id"] for item in result["results"]} == {
+        "chunk-local",
+        "chunk-archive",
+    }
+    assert {item["source_entity_id"][0] for item in observed_filters} == {
+        "local",
+        "archive",
+    }
+    assert all(
+        item["connector_types"] == ["filesystem", "openarchiver"] for item in observed_filters
+    )
 
 
 @pytest.mark.asyncio

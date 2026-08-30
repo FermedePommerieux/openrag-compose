@@ -8,7 +8,6 @@ becoming the source of truth for API/SDK search.
 
 from __future__ import annotations
 
-import asyncio
 import hashlib
 import hmac
 import json
@@ -26,6 +25,8 @@ logger = get_logger(__name__)
 
 EXHAUSTIVE_PROFILE_VERSION = 1
 EXHAUSTIVE_BATCH_MAX = 50
+PROVENANCE_GRAPH_PAGE_SIZE = 500
+PROVENANCE_GRAPH_PIT_KEEP_ALIVE = "2m"
 DEFAULT_SCOPE_RELATION_ROLES = (
     "attachment_of",
     "contained_in",
@@ -632,6 +633,10 @@ def _graph_query_body(
         "sort": [
             {"source_entity_id": {"order": "asc", "missing": "_last"}},
             {"document_id": {"order": "asc", "missing": "_last"}},
+            # PIT-local Lucene order is the unique deterministic tie-breaker
+            # required by search_after. Stable field values alone are not
+            # unique when one source occurrence has multiple ingest runs.
+            {"_shard_doc": "asc"},
         ],
     }
 
@@ -667,11 +672,20 @@ async def expand_provenance_graph(
     seed_document_values = [
         dict(document) for document in seed_documents if isinstance(document, dict)
     ]
-    documents: dict[str, dict[str, Any]] = {}
+    # ``document_id`` identifies content and can legitimately be shared by a
+    # local import and an OpenArchiver attachment. Provenance closure operates
+    # on source occurrences, so keep those occurrences distinct. A repeated
+    # ingest of the *same* occurrence still shares this key and is detected by
+    # the immutable document read below if its snapshot changed.
+    documents: dict[tuple[str, str], dict[str, Any]] = {}
+
+    def occurrence_key(record: dict[str, Any]) -> tuple[str, str]:
+        return (str(record["document_id"]), str(record["source_entity_id"]))
+
     for document in seed_document_values:
-        document_id = document.get("document_id")
-        if isinstance(document_id, str) and document_id.strip():
-            documents.setdefault(document_id.strip(), document)
+        record = _provenance_record({"_source": document})
+        if record is not None:
+            documents.setdefault(occurrence_key(record), document)
 
     frontier = {
         value.strip() for value in seed_entity_ids if isinstance(value, str) and value.strip()
@@ -709,13 +723,13 @@ async def expand_provenance_graph(
         nonlocal stop_reason, limit_reached
         if not register_identity(record):
             return
-        document_id = record["document_id"]
-        if document_id not in documents:
+        key = occurrence_key(record)
+        if key not in documents:
             if len(documents) >= resolved_max_documents:
                 stop_reason = "max_documents"
                 limit_reached = True
                 return
-            documents[document_id] = record
+            documents[key] = record
 
         primary = record["source_entity_id"]
         next_frontier.update([primary, *record["source_entity_alternate_ids"]])
@@ -757,79 +771,172 @@ async def expand_provenance_graph(
         stop_reason = "max_documents"
         limit_reached = True
 
+    pit_id = ""
+    pagination_pages = 0
+
     async def search_records(entity_ids: list[str]) -> list[dict[str, Any]]:
-        query_size = min(10_000, max(resolved_max_entities, resolved_max_documents) + 1)
+        """Read both graph directions completely from one DLS-scoped PIT."""
+        nonlocal pit_id, pagination_pages
         bodies = [
             _graph_query_body(
                 entity_ids,
                 allowed_roles=roles,
                 reverse=reverse,
-                size=query_size,
+                size=PROVENANCE_GRAPH_PAGE_SIZE,
                 filter_clauses=scoped_filters,
             )
             for reverse in (False, True)
         ]
-        responses = await asyncio.gather(
-            *(
-                client.search(index=index_name, body=body, params={"terminate_after": 0})
-                for body in bodies
-            )
-        )
         records: dict[tuple[str, str], dict[str, Any]] = {}
-        for response in responses:
-            hit_container = response.get("hits", {})
-            hits = hit_container.get("hits", [])
-            total = hit_container.get("total", 0)
-            if isinstance(total, dict):
-                if total.get("relation", "eq") != "eq":
-                    raise RuntimeError("Provenance traversal requires exact hit totals")
-                total_value = int(total.get("value", 0))
-            else:
-                total_value = int(total or 0)
-            if total_value > len(hits):
-                raise RuntimeError("Provenance traversal result window was truncated")
-            for hit in hits:
-                record = _provenance_record(hit)
-                if record is not None:
-                    records[(record["source_entity_id"], record["document_id"])] = record
+        for reverse, base_body in zip((False, True), bodies, strict=True):
+            expected_total: int | None = None
+            returned_hits = 0
+            search_after: list[Any] | None = None
+            seen_hit_ids: set[str] = set()
+            seen_cursors: set[str] = set()
+            direction_pages = 0
+
+            while expected_total is None or returned_hits < expected_total:
+                page_body = {
+                    **base_body,
+                    "pit": {"id": pit_id, "keep_alive": PROVENANCE_GRAPH_PIT_KEEP_ALIVE},
+                }
+                if search_after is not None:
+                    page_body["search_after"] = search_after
+                response = await client.search(body=page_body, params={"terminate_after": 0})
+                direction_pages += 1
+                pagination_pages += 1
+
+                refreshed_pit_id = response.get("pit_id")
+                if refreshed_pit_id is not None:
+                    if not isinstance(refreshed_pit_id, str) or not refreshed_pit_id:
+                        raise RuntimeError("Provenance traversal returned an invalid PIT cursor")
+                    pit_id = refreshed_pit_id
+
+                hit_container = response.get("hits", {})
+                hits = hit_container.get("hits", [])
+                if not isinstance(hits, list):
+                    raise RuntimeError("Provenance traversal returned an invalid result page")
+                total = hit_container.get("total", 0)
+                if isinstance(total, dict):
+                    if total.get("relation", "eq") != "eq":
+                        raise RuntimeError("Provenance traversal requires exact hit totals")
+                    total_value = int(total.get("value", 0))
+                else:
+                    total_value = int(total or 0)
+                if total_value < 0:
+                    raise RuntimeError("Provenance traversal returned an invalid hit total")
+                if expected_total is None:
+                    expected_total = total_value
+                elif total_value != expected_total:
+                    raise RuntimeError("Provenance traversal hit total changed within its PIT")
+                if len(hits) > PROVENANCE_GRAPH_PAGE_SIZE:
+                    raise RuntimeError("Provenance traversal page exceeded its requested size")
+                if not hits and returned_hits < expected_total:
+                    raise RuntimeError("Provenance traversal pagination stopped before completion")
+
+                for hit in hits:
+                    hit_id = hit.get("_id")
+                    if not isinstance(hit_id, str) or not hit_id:
+                        raise RuntimeError("Provenance traversal page has no stable hit identity")
+                    if hit_id in seen_hit_ids:
+                        raise RuntimeError(
+                            "Provenance traversal returned a duplicate paginated hit"
+                        )
+                    seen_hit_ids.add(hit_id)
+                    sort_values = hit.get("sort")
+                    if not isinstance(sort_values, list) or len(sort_values) != len(
+                        base_body["sort"]
+                    ):
+                        raise RuntimeError(
+                            "Provenance traversal returned an invalid search_after cursor"
+                        )
+                    cursor_key = json.dumps(sort_values, ensure_ascii=False, separators=(",", ":"))
+                    if cursor_key in seen_cursors:
+                        raise RuntimeError(
+                            "Provenance traversal returned a repeated search_after cursor"
+                        )
+                    seen_cursors.add(cursor_key)
+                    record = _provenance_record(hit)
+                    if record is not None:
+                        records[(record["source_entity_id"], record["document_id"])] = record
+
+                returned_hits += len(hits)
+                if returned_hits > expected_total:
+                    raise RuntimeError(
+                        "Provenance traversal pagination exceeded its exact hit total"
+                    )
+                if returned_hits == expected_total:
+                    break
+                if len(hits) < PROVENANCE_GRAPH_PAGE_SIZE:
+                    raise RuntimeError(
+                        "Provenance traversal returned an incomplete intermediate page"
+                    )
+                last_sort = hits[-1].get("sort")
+                if not isinstance(last_sort, list):
+                    raise RuntimeError("Provenance traversal page has no continuation cursor")
+                search_after = last_sort
+
+            logger.info(
+                "Completed paginated provenance direction",
+                direction="reverse" if reverse else "forward",
+                frontier_entities=len(entity_ids),
+                pages=direction_pages,
+                hits=expected_total or 0,
+            )
         return [records[key] for key in sorted(records)]
 
-    while frontier and not limit_reached:
-        current = sorted(frontier - queried_ids)
-        if not current:
-            frontier = set()
-            break
-
-        # At the exact depth boundary, probe visibility only. Hidden relation
-        # targets must not turn natural DLS closure into a false limit.
-        if depth >= resolved_max_depth:
-            boundary_records = await search_records(current)
-            requires_expansion = any(
-                record["source_entity_id"] not in primary_entities
-                or record["document_id"] not in documents
-                for record in boundary_records
-            )
-            if requires_expansion:
-                stop_reason = "max_depth"
-                limit_reached = True
-                frontier = set(current)
-            else:
-                queried_ids.update(current)
+    async def traverse() -> None:
+        nonlocal depth, frontier, limit_reached, stop_reason
+        while frontier and not limit_reached:
+            current = sorted(frontier - queried_ids)
+            if not current:
                 frontier = set()
-            break
-
-        queried_ids.update(current)
-        records = await search_records(current)
-        next_frontier: set[str] = set()
-        for record in records:
-            add_record(record, next_frontier)
-            if limit_reached:
                 break
-        depth += 1
-        if limit_reached:
-            frontier = next_frontier or set(current)
-            break
-        frontier = next_frontier - queried_ids
+
+            # At the exact depth boundary, probe visibility only. Hidden relation
+            # targets must not turn natural DLS closure into a false limit.
+            if depth >= resolved_max_depth:
+                boundary_records = await search_records(current)
+                requires_expansion = any(
+                    record["source_entity_id"] not in primary_entities
+                    or occurrence_key(record) not in documents
+                    for record in boundary_records
+                )
+                if requires_expansion:
+                    stop_reason = "max_depth"
+                    limit_reached = True
+                    frontier = set(current)
+                else:
+                    queried_ids.update(current)
+                    frontier = set()
+                break
+
+            queried_ids.update(current)
+            records = await search_records(current)
+            next_frontier: set[str] = set()
+            for record in records:
+                add_record(record, next_frontier)
+                if limit_reached:
+                    break
+            depth += 1
+            if limit_reached:
+                frontier = next_frontier or set(current)
+                break
+            frontier = next_frontier - queried_ids
+
+    if frontier and not limit_reached:
+        pit_response = await client.create_pit(
+            index=index_name,
+            params={"keep_alive": PROVENANCE_GRAPH_PIT_KEEP_ALIVE},
+        )
+        pit_id = pit_response.get("pit_id") if isinstance(pit_response, dict) else None
+        if not isinstance(pit_id, str) or not pit_id:
+            raise RuntimeError("Provenance traversal could not establish a stable PIT")
+        try:
+            await traverse()
+        finally:
+            await client.delete_pit(body={"pit_id": [pit_id]})
 
     visible_edges: dict[tuple[str, str, str], dict[str, str]] = {}
     for source, role, target_identifier in pending_edges:
@@ -856,6 +963,7 @@ async def expand_provenance_graph(
             "limit_reached": limit_reached,
             "stop_reason": stop_reason,
             "remaining_frontier": remaining_frontier,
+            "pagination_pages": pagination_pages,
         },
     }
 

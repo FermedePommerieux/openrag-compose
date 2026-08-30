@@ -1400,7 +1400,7 @@ class SearchService:
         return clauses
 
     @staticmethod
-    def _scope_document_sort_key(document: dict[str, Any]) -> tuple[str, str, str]:
+    def _scope_document_sort_key(document: dict[str, Any]) -> tuple[str, str, str, str]:
         """Prefer an asserted source date, then stable human/id tie-breakers."""
         generated_at = document.get("generated_at_time")
         provenance = document.get("source_provenance")
@@ -1412,6 +1412,7 @@ class SearchService:
             str(generated_at or "9999-12-31T23:59:59Z"),
             str(document.get("filename") or ""),
             str(document.get("document_id") or ""),
+            str(document.get("source_entity_id") or ""),
         )
 
     @staticmethod
@@ -1616,6 +1617,22 @@ class SearchService:
 
         for document in documents:
             document_id = str(document.get("document_id") or "")
+            # A content-derived document_id can have several legitimate source
+            # occurrences (for example a local file and the same attachment in
+            # OpenArchiver). Read and certify the exact PROV-O occurrence chosen
+            # by graph closure. A later ingest of that same occurrence still
+            # shares this filter and therefore remains subject to the existing
+            # snapshot_changed protection.
+            document_filters = copy.deepcopy(filters or {})
+            source_entity_id = document.get("source_entity_id")
+            if isinstance(source_entity_id, str) and source_entity_id.strip():
+                requested_entities = document_filters.get("source_entity_id")
+                if isinstance(requested_entities, list) and requested_entities:
+                    document_filters["source_entity_id"] = (
+                        [source_entity_id] if source_entity_id in requested_entities else []
+                    )
+                else:
+                    document_filters["source_entity_id"] = [source_entity_id]
             document_evidence: list[dict[str, Any]] = []
             cursor = ""
             seen_cursors: set[str] = set()
@@ -1631,7 +1648,7 @@ class SearchService:
                         document_id,
                         user_id=user_id,
                         jwt_token=jwt_token,
-                        filters=filters,
+                        filters=document_filters,
                         cursor=cursor,
                         batch_size=settings.batch_size,
                     )
