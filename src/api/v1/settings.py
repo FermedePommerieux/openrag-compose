@@ -37,6 +37,11 @@ class KnowledgeSettings(BaseModel):
     table_structure: bool | None = None
     ocr: bool | None = None
     picture_descriptions: bool | None = None
+    retrieval_scope_seed_count: int | None = None
+    retrieval_scope_max_depth: int | None = None
+    retrieval_scope_max_entities: int | None = None
+    retrieval_scope_max_documents: int | None = None
+    retrieval_scope_batch_size: int | None = None
 
 
 class ArchivingSettings(BaseModel):
@@ -73,6 +78,19 @@ async def get_settings_endpoint(
                 table_structure=config.knowledge.table_structure,
                 ocr=config.knowledge.ocr,
                 picture_descriptions=config.knowledge.picture_descriptions,
+                retrieval_scope_seed_count=getattr(
+                    config.knowledge, "retrieval_scope_seed_count", 100
+                ),
+                retrieval_scope_max_depth=getattr(config.knowledge, "retrieval_scope_max_depth", 8),
+                retrieval_scope_max_entities=getattr(
+                    config.knowledge, "retrieval_scope_max_entities", 500
+                ),
+                retrieval_scope_max_documents=getattr(
+                    config.knowledge, "retrieval_scope_max_documents", 250
+                ),
+                retrieval_scope_batch_size=getattr(
+                    config.knowledge, "retrieval_scope_batch_size", 50
+                ),
             ),
             archiving=ArchivingSettings(
                 available=local_archiving_available,

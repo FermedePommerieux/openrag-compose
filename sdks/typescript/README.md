@@ -206,9 +206,25 @@ for (;;) {
 if (allChunks.length !== totalChunks) throw new Error("Incomplete evidence set");
 ```
 
-Repeat this loop separately for each document when a conclusion spans several
-documents. Summaries and ranked matches help navigation; they are not proof of
-complete coverage.
+For a query-defined dossier, the backend can discover RRF seeds, close their
+accessible PROV-O graph and run that verified loop for every linked document:
+
+```typescript
+const scope = await client.search.query(
+  "all exchanges with the administration about Surface pastorale",
+  { evidenceMode: "scope_exhaustive" },
+);
+console.log(
+  scope.coverage?.complete,
+  scope.coverage?.status_code,
+  scope.coverage?.status_message,
+);
+// coverage_ratio is document-read progress, not independent proof of closure.
+console.log(scope.documents?.length, scope.results.length);
+```
+
+An incomplete certificate exposes the graph/document limit or verification
+failure; the response retains the leaf evidence, manifest and graph.
 
 ## Documents
 

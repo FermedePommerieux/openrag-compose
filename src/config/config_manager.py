@@ -209,6 +209,13 @@ class KnowledgeConfig:
     retrieval_reranker_url: str = ""
     retrieval_reranker_timeout: int = 5
     retrieval_debug: bool = False
+    # Dossier-level exhaustive investigation guards. These bounds protect the
+    # cluster; reaching any of them makes the coverage certificate incomplete.
+    retrieval_scope_seed_count: int = 100
+    retrieval_scope_max_depth: int = 8
+    retrieval_scope_max_entities: int = 500
+    retrieval_scope_max_documents: int = 250
+    retrieval_scope_batch_size: int = 50
 
 
 @dataclass

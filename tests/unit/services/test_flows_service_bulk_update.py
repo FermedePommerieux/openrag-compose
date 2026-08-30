@@ -328,6 +328,22 @@ def _versioned_retrieval_v6_flow() -> dict:
     return flow
 
 
+def _versioned_retrieval_v7_flow() -> dict:
+    """Load the exact focused-only graph preceding scope investigation."""
+    raw = subprocess.check_output(
+        [
+            "git",
+            "show",
+            "28332fd043522cdb43224db0b0f8a856c68f5a51:flows/openrag_agent.json",
+        ],
+        cwd=ROOT,
+        text=True,
+    )
+    flow = json.loads(raw)
+    flow["data"]["openrag_retrieval_version"] = 7
+    return flow
+
+
 def _previous_bundled_retrieval_flow() -> dict:
     """Load the pre-documentalist bundled graph for historical migrations."""
     flow = _versioned_retrieval_v5_flow()
@@ -461,21 +477,20 @@ async def test_migrate_unversioned_retrieval_v2_flow_synchronized_by_gitops():
     assert result["status"] == "migrated"
     assert result["backup_path"] == "/tmp/flow.json"
     assert transport.flow["locked"] is True
-    assert transport.flow["data"]["openrag_retrieval_version"] == 7
+    assert transport.flow["data"]["openrag_retrieval_version"] == 8
     agent_node = next(
         node
         for node in transport.flow["data"]["nodes"]
         if node.get("data", {}).get("node", {}).get("display_name") == "Agent"
     )
     assert (
-        "one normal archive-search path"
-        in agent_node["data"]["node"]["template"]["system_prompt"]["value"]
+        "three evidence paths" in agent_node["data"]["node"]["template"]["system_prompt"]["value"]
     )
     assert backup.await_count == 1
 
 
 @pytest.mark.asyncio
-async def test_migrate_exact_deployed_v5_graph_to_documentalist_v7():
+async def test_migrate_exact_deployed_v5_graph_to_scope_exhaustive_v8():
     """Repository-owned v5 upgrades without authorizing any edited graph."""
     service = FlowsService()
     transport = _RetrievalMigrationTransport()
@@ -496,7 +511,7 @@ async def test_migrate_exact_deployed_v5_graph_to_documentalist_v7():
         result = await service.migrate_persisted_retrieval_flow()
 
     assert result["status"] == "migrated"
-    assert transport.flow["data"]["openrag_retrieval_version"] == 7
+    assert transport.flow["data"]["openrag_retrieval_version"] == 8
     assert transport.flow["locked"] is True
 
 
@@ -526,7 +541,7 @@ def test_exact_repository_owned_version_6_graph_is_migration_eligible():
 def test_migrated_graph_accepts_settings_sync_but_rejects_prompt_edits():
     service = FlowsService()
     flow = _unversioned_retrieval_v2_flow()
-    flow["data"]["openrag_retrieval_version"] = 7
+    flow["data"]["openrag_retrieval_version"] = 8
     language_model = next(
         node
         for node in flow["data"]["nodes"]
@@ -573,7 +588,41 @@ def test_version_6_migration_preserves_settings_managed_model_values():
     assert migrated_template["api_key"]["value"] == "OPENAI_API_KEY"
     assert migrated_template["api_key"]["load_from_db"] is True
     assert migrated_template["model"]["value"][0]["name"] == "text-embedding-3-large"
-    assert migrated["data"]["openrag_retrieval_version"] == 7
+    assert migrated["data"]["openrag_retrieval_version"] == 8
+
+
+def test_exact_repository_owned_version_7_graph_is_migration_eligible():
+    service = FlowsService()
+    flow = _versioned_retrieval_v7_flow()
+
+    assert service._is_known_previous_retrieval_v2_flow(flow) is True
+
+    agent = next(
+        node
+        for node in flow["data"]["nodes"]
+        if node.get("data", {}).get("node", {}).get("display_name") == "Agent"
+    )
+    agent["data"]["node"]["template"]["system_prompt"]["value"] += " custom"
+    assert service._is_known_previous_retrieval_v2_flow(flow) is False
+
+
+@pytest.mark.asyncio
+async def test_migrate_exact_version_7_graph_to_scope_exhaustive_v8():
+    service = FlowsService()
+    transport = _RetrievalMigrationTransport()
+    transport.flow = _versioned_retrieval_v7_flow()
+
+    with (
+        patch("services.flows_service.clients.langflow_request", side_effect=transport.__call__),
+        patch.object(
+            service, "_backup_flow", new_callable=AsyncMock, return_value="/tmp/flow.json"
+        ),
+    ):
+        result = await service.migrate_persisted_retrieval_flow()
+
+    assert result["status"] == "migrated"
+    assert transport.flow["locked"] is True
+    assert transport.flow["data"]["openrag_retrieval_version"] == 8
 
 
 @pytest.mark.asyncio
@@ -602,8 +651,7 @@ async def test_migrate_first_versioned_retrieval_v2_prompt_revision():
         if node.get("data", {}).get("node", {}).get("display_name") == "Agent"
     )
     assert (
-        "one normal archive-search path"
-        in agent_node["data"]["node"]["template"]["system_prompt"]["value"]
+        "three evidence paths" in agent_node["data"]["node"]["template"]["system_prompt"]["value"]
     )
 
 
@@ -635,7 +683,7 @@ async def test_migrate_role_evidence_prompt_revision():
         result = await service.migrate_persisted_retrieval_flow()
 
     assert result["status"] == "migrated"
-    assert transport.flow["data"]["openrag_retrieval_version"] == 7
+    assert transport.flow["data"]["openrag_retrieval_version"] == 8
 
 
 @pytest.mark.asyncio
@@ -666,7 +714,7 @@ async def test_migrate_evidence_first_prompt_revision():
         result = await service.migrate_persisted_retrieval_flow()
 
     assert result["status"] == "migrated"
-    assert transport.flow["data"]["openrag_retrieval_version"] == 7
+    assert transport.flow["data"]["openrag_retrieval_version"] == 8
 
 
 @pytest.mark.asyncio
@@ -828,7 +876,7 @@ async def test_migrate_retrieval_flow_fails_closed_when_lock_cannot_be_restored(
     assert result["error"]
     assert result["lock_error"]
     assert result["flow_id"]
-    assert result["version"] == 7
+    assert result["version"] == 8
     assert result["flow_state"]["known_state"] in {"unlocked", "missing"}
 
 
@@ -857,9 +905,7 @@ async def test_check_flow_update_reports_installed_source_provenance(tmp_path, m
     flow_file = tmp_path / "openrag_agent.json"
     flow_file.write_text("{}")
     monkeypatch.setenv("OPENRAG_FLOWS_SOURCE_REPOSITORY", "FermedePommerieux/openrag-compose")
-    monkeypatch.setenv(
-        "OPENRAG_FLOWS_SOURCE_BRANCH", "pommerieux/v0.6.0-retrieval-v2"
-    )
+    monkeypatch.setenv("OPENRAG_FLOWS_SOURCE_BRANCH", "pommerieux/v0.6.0-retrieval-v2")
     monkeypatch.setenv(
         "OPENRAG_FLOWS_SOURCE_REVISION",
         "92a40e9922e12fd7aa06b53bf841b061b41d4818",

@@ -35,16 +35,37 @@ class Source(BaseModel):
 
 
 class EvidenceCoverage(BaseModel):
-    """Machine-verifiable progress for one exhaustive document snapshot."""
+    """Machine-verifiable progress for a document or documentary scope."""
 
-    mode: Literal["exhaustive"] = "exhaustive"
-    document_id: str
+    mode: Literal["exhaustive", "scope_exhaustive"] = "exhaustive"
+    document_id: str | None = None
     snapshot_sha256: str | None = None
     covered_chunks: int
     total_chunks: int
     coverage_ratio: float | None = None
+    document_read_coverage_ratio: float | None = None
     complete: bool
     next_cursor: str | None = None
+    query: str | None = None
+    seed_discovery_complete: bool | None = None
+    seed_documents: int | None = None
+    seed_entities: int | None = None
+    valid_provenance_seed_documents: int | None = None
+    invalid_provenance_seed_documents: int | None = None
+    seed_provenance_complete: bool | None = None
+    graph_entities_visited: int | None = None
+    graph_frontier_empty: bool | None = None
+    graph_limit_reached: bool | None = None
+    graph_stop_reason: str | None = None
+    documents_discovered: int | None = None
+    documents_complete: int | None = None
+    documents_incomplete: int | None = None
+    stop_reason: str | None = None
+    status_code: str | None = None
+    status_message: str | None = None
+    failure_codes: list[str] = Field(default_factory=list)
+    model_evidence_chunks: int | None = None
+    artifact_chunks: int | None = None
 
 
 class ChatResponse(BaseModel):
@@ -117,6 +138,9 @@ class SearchResponse(BaseModel):
     results: list[SearchResult]
     coverage: EvidenceCoverage | None = None
     error: str | None = None
+    documents: list[dict] = Field(default_factory=list)
+    evidence_batches: list[dict] = Field(default_factory=list)
+    graph: dict | None = None
 
 
 # Document models
@@ -205,6 +229,11 @@ class KnowledgeSettings(BaseModel):
     ocr: bool | None = None
     ocr_mojibake_fallback: bool | None = None
     picture_descriptions: bool | None = None
+    retrieval_scope_seed_count: int | None = None
+    retrieval_scope_max_depth: int | None = None
+    retrieval_scope_max_entities: int | None = None
+    retrieval_scope_max_documents: int | None = None
+    retrieval_scope_batch_size: int | None = None
 
 
 class ArchivingSettings(BaseModel):
@@ -246,6 +275,11 @@ class SettingsUpdateOptions(BaseModel):
     ocr_mojibake_fallback: bool | None = None
     picture_descriptions: bool | None = None
     archive_sources_enabled: bool | None = None
+    retrieval_scope_seed_count: int | None = None
+    retrieval_scope_max_depth: int | None = None
+    retrieval_scope_max_entities: int | None = None
+    retrieval_scope_max_documents: int | None = None
+    retrieval_scope_batch_size: int | None = None
 
 
 class SettingsUpdateResponse(BaseModel):

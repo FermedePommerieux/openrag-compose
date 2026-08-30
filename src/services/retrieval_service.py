@@ -8,6 +8,7 @@ becoming the source of truth for API/SDK search.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import hmac
 import json
@@ -25,6 +26,208 @@ logger = get_logger(__name__)
 
 EXHAUSTIVE_PROFILE_VERSION = 1
 EXHAUSTIVE_BATCH_MAX = 50
+DEFAULT_SCOPE_RELATION_ROLES = (
+    "attachment_of",
+    "contained_in",
+    "derived_from",
+    "member_of",
+    "occurrence_of",
+    "primary_source",
+    "references",
+    "reply_to",
+)
+
+SCOPE_COVERAGE_MESSAGES = {
+    "complete": (
+        "The accessible provenance-connected scope discovered from the ranked seeds "
+        "was closed and every discovered document snapshot was read and verified."
+    ),
+    "incomplete_seed_discovery": "Ranked seed discovery did not complete.",
+    "search_error": "Ranked seed discovery failed with a search error.",
+    "no_provenance_seed": "No valid provenance-bearing seed document was discovered.",
+    "seed_missing_provenance": (
+        "At least one discovered seed document has missing or invalid provenance."
+    ),
+    "graph_limit_reached": "A provenance graph traversal limit stopped closure.",
+    "graph_traversal_failed": "Provenance graph traversal failed before closure.",
+    "document_limit_reached": "The document discovery limit stopped closure.",
+    "document_read_incomplete": "At least one discovered document was not read completely.",
+    "legacy_document": "At least one document has no verifiable ingestion profile.",
+    "snapshot_changed": "At least one document snapshot changed while it was being read.",
+    "cursor_invalid": "At least one document continuation cursor was invalid.",
+    "access_error": "At least one discovered document could not be read in this access scope.",
+    "profile_invalid": "At least one document verification profile or coverage counter is invalid.",
+    "identity_ambiguous": (
+        "A provenance alternate identifier resolves to more than one accessible entity."
+    ),
+}
+
+SCOPE_COVERAGE_CODE_ORDER = tuple(SCOPE_COVERAGE_MESSAGES)
+
+
+@dataclass(frozen=True)
+class ScopeCertificationFacts:
+    """Measured facts consumed by the sole scope certification decision.
+
+    Counts and ratios describe work performed; they never certify coverage by
+    themselves. Completion additionally requires valid seeds, natural graph
+    closure and verified complete reads for every accessible discovered
+    document.
+    """
+
+    seed_discovery_complete: bool
+    seed_documents: int
+    valid_provenance_seed_documents: int
+    invalid_provenance_seed_documents: int
+    graph_frontier_empty: bool
+    graph_limit_reached: bool
+    graph_stop_reason: str | None
+    graph_failed: bool
+    documents_discovered: int
+    documents_complete: int
+    covered_chunks: int
+    total_chunks: int
+    document_failure_codes: tuple[str, ...] = ()
+    seed_failure_code: str | None = None
+
+
+def certify_scope_coverage(facts: ScopeCertificationFacts) -> dict[str, Any]:
+    """Return one deterministic, fail-closed scope coverage decision."""
+    failures: set[str] = set()
+    if facts.seed_failure_code:
+        failures.add(
+            facts.seed_failure_code
+            if facts.seed_failure_code in SCOPE_COVERAGE_MESSAGES
+            and facts.seed_failure_code != "complete"
+            else "search_error"
+        )
+    elif not facts.seed_discovery_complete:
+        failures.add("incomplete_seed_discovery")
+
+    if facts.seed_discovery_complete:
+        if facts.seed_documents <= 0 or facts.valid_provenance_seed_documents <= 0:
+            failures.add("no_provenance_seed")
+        elif (
+            facts.invalid_provenance_seed_documents > 0
+            or facts.valid_provenance_seed_documents != facts.seed_documents
+        ):
+            failures.add("seed_missing_provenance")
+
+        if facts.graph_failed:
+            failures.add("graph_traversal_failed")
+        if facts.graph_limit_reached:
+            if facts.graph_stop_reason == "max_documents":
+                failures.add("document_limit_reached")
+            elif facts.graph_stop_reason == "ambiguous_alternate_id":
+                failures.add("identity_ambiguous")
+            else:
+                failures.add("graph_limit_reached")
+        elif not facts.graph_frontier_empty:
+            failures.add("graph_traversal_failed")
+
+        recognized_document_failures = {
+            code
+            for code in facts.document_failure_codes
+            if code in SCOPE_COVERAGE_MESSAGES and code != "complete"
+        }
+        failures.update(recognized_document_failures)
+        if facts.document_failure_codes and not recognized_document_failures:
+            failures.add("document_read_incomplete")
+        if (
+            facts.documents_complete != facts.documents_discovered
+            and not facts.document_failure_codes
+        ):
+            failures.add("document_read_incomplete")
+    if (
+        min(
+            facts.seed_documents,
+            facts.valid_provenance_seed_documents,
+            facts.invalid_provenance_seed_documents,
+            facts.documents_discovered,
+            facts.documents_complete,
+            facts.covered_chunks,
+            facts.total_chunks,
+        )
+        < 0
+        or facts.valid_provenance_seed_documents + facts.invalid_provenance_seed_documents
+        != facts.seed_documents
+        or facts.documents_complete > facts.documents_discovered
+        or facts.covered_chunks > facts.total_chunks
+    ):
+        failures.add("profile_invalid")
+
+    ordered_failures = [code for code in SCOPE_COVERAGE_CODE_ORDER if code in failures]
+    complete = not ordered_failures
+    status_code = "complete" if complete else ordered_failures[0]
+    return {
+        "complete": complete,
+        "status_code": status_code,
+        "status_message": SCOPE_COVERAGE_MESSAGES[status_code],
+        "failure_codes": ordered_failures,
+    }
+
+
+def document_content_sha256_from_chunks(chunks: Iterable[dict[str, Any]]) -> str:
+    """Recompute the canonical ingestion digest from ordered verified chunks."""
+    digest = hashlib.sha256()
+    for expected_index, chunk in enumerate(chunks):
+        chunk_id = chunk.get("chunk_id")
+        chunk_digest = chunk.get("chunk_content_sha256")
+        chunk_index = chunk.get("chunk_index")
+        text = chunk.get("text")
+        if (
+            not isinstance(chunk_id, str)
+            or not chunk_id
+            or not isinstance(chunk_digest, str)
+            or len(chunk_digest) != 64
+            or chunk_index != expected_index
+            or not isinstance(text, str)
+        ):
+            raise ValueError("Document evidence cannot reproduce the ingestion profile")
+        recalculated = hashlib.sha256(text.encode("utf-8")).hexdigest()
+        if not hmac.compare_digest(recalculated, chunk_digest):
+            raise ValueError("Document evidence contains a chunk digest mismatch")
+        digest.update(chunk_id.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(chunk_digest.encode("ascii"))
+        digest.update(b"\0")
+        digest.update(str(chunk_index).encode("ascii"))
+        digest.update(b"\0")
+        page = chunk.get("page")
+        digest.update(str(page if page is not None else "").encode("utf-8"))
+        digest.update(b"\n")
+    return digest.hexdigest()
+
+
+@dataclass(frozen=True)
+class ScopeExhaustiveSettings:
+    """Safety bounds for dossier-level provenance investigation.
+
+    Reaching a bound never proves completion: callers must expose the bound as
+    the reason why the scope coverage certificate is incomplete.
+    """
+
+    seed_count: int = 100
+    max_depth: int = 8
+    max_entities: int = 500
+    max_documents: int = 250
+    batch_size: int = 50
+
+    @classmethod
+    def from_knowledge(cls, knowledge: Any) -> ScopeExhaustiveSettings:
+        def bounded(name: str, default: int, maximum: int) -> int:
+            try:
+                return min(maximum, max(1, int(getattr(knowledge, name, default))))
+            except (TypeError, ValueError):
+                return default
+
+        return cls(
+            seed_count=bounded("retrieval_scope_seed_count", 100, 500),
+            max_depth=bounded("retrieval_scope_max_depth", 8, 64),
+            max_entities=bounded("retrieval_scope_max_entities", 500, 5000),
+            max_documents=bounded("retrieval_scope_max_documents", 250, 1000),
+            batch_size=bounded("retrieval_scope_batch_size", 50, EXHAUSTIVE_BATCH_MAX),
+        )
 
 
 @dataclass(frozen=True)
@@ -306,6 +509,355 @@ def exhaustive_scope_sha256(*, user_id: str, filters: dict[str, Any] | None) -> 
         separators=(",", ":"),
     )
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _provenance_record(hit: dict[str, Any]) -> dict[str, Any] | None:
+    """Project one representative OpenSearch hit into a graph record."""
+    source = hit.get("_source")
+    if not isinstance(source, dict):
+        return None
+    document_id = source.get("document_id")
+    provenance = source.get("source_provenance")
+    entity = provenance.get("entity") if isinstance(provenance, dict) else None
+    entity_id = source.get("source_entity_id")
+    if not isinstance(entity_id, str) and isinstance(entity, dict):
+        entity_id = entity.get("id")
+    if not isinstance(document_id, str) or not document_id.strip():
+        return None
+    if not isinstance(entity_id, str) or not entity_id.strip():
+        return None
+    alternate_ids = source.get("source_entity_alternate_ids", [])
+    if not isinstance(alternate_ids, list):
+        alternate_ids = []
+    generated_at_time = entity.get("generated_at_time") if isinstance(entity, dict) else None
+    return {
+        "document_id": document_id.strip(),
+        "filename": source.get("filename"),
+        "mimetype": source.get("mimetype"),
+        "source_url": source.get("source_url"),
+        "connector_file_id": source.get("connector_file_id"),
+        "source_entity_id": entity_id.strip(),
+        "source_entity_type": source.get("source_entity_type"),
+        "source_entity_system": source.get("source_entity_system"),
+        "source_entity_alternate_ids": sorted(
+            {value.strip() for value in alternate_ids if isinstance(value, str) and value.strip()}
+        ),
+        "source_relative_path": source.get("source_relative_path"),
+        "source_path_ancestors": source.get("source_path_ancestors", []),
+        "generated_at_time": generated_at_time,
+        "source_provenance": provenance,
+    }
+
+
+def _graph_query_body(
+    entity_ids: list[str],
+    *,
+    allowed_roles: tuple[str, ...],
+    reverse: bool,
+    size: int,
+    filter_clauses: tuple[dict[str, Any], ...] = (),
+) -> dict[str, Any]:
+    """Build one deterministic forward or role-safe reverse graph query."""
+    if reverse:
+        identity_query: dict[str, Any] = {
+            "nested": {
+                "path": "source_provenance.relations",
+                "query": {
+                    "bool": {
+                        "filter": [
+                            {"terms": {"source_provenance.relations.role": list(allowed_roles)}},
+                            {
+                                "bool": {
+                                    "should": [
+                                        {
+                                            "terms": {
+                                                "source_provenance.relations.target.id": entity_ids
+                                            }
+                                        },
+                                        {
+                                            "terms": {
+                                                "source_provenance.relations.target.alternate_ids": (
+                                                    entity_ids
+                                                )
+                                            }
+                                        },
+                                    ],
+                                    "minimum_should_match": 1,
+                                }
+                            },
+                        ]
+                    }
+                },
+            }
+        }
+    else:
+        identity_query = {
+            "bool": {
+                "should": [
+                    {"terms": {"source_entity_id": entity_ids}},
+                    {"terms": {"source_entity_alternate_ids": entity_ids}},
+                ],
+                "minimum_should_match": 1,
+            }
+        }
+
+    return {
+        "query": {
+            "bool": {
+                "must": [identity_query],
+                # Provenance is copied onto every chunk. Selecting chunk zero
+                # yields one stable representative without a costly collapse.
+                "filter": [
+                    {"term": {"chunk_index": 0}},
+                    *filter_clauses,
+                ],
+            }
+        },
+        "_source": [
+            "document_id",
+            "filename",
+            "mimetype",
+            "source_url",
+            "connector_file_id",
+            "source_provenance",
+            "source_entity_id",
+            "source_entity_type",
+            "source_entity_system",
+            "source_entity_alternate_ids",
+            "source_relative_path",
+            "source_path_ancestors",
+        ],
+        "size": size,
+        "track_total_hits": True,
+        "sort": [
+            {"source_entity_id": {"order": "asc", "missing": "_last"}},
+            {"document_id": {"order": "asc", "missing": "_last"}},
+        ],
+    }
+
+
+async def expand_provenance_graph(
+    client: Any,
+    *,
+    index_name: str,
+    seed_entity_ids: Iterable[str],
+    seed_documents: Iterable[dict[str, Any]] = (),
+    allowed_roles: Iterable[str] = DEFAULT_SCOPE_RELATION_ROLES,
+    max_depth: int = 8,
+    max_entities: int = 500,
+    max_documents: int = 250,
+    filter_clauses: Iterable[dict[str, Any]] = (),
+) -> dict[str, Any]:
+    """Close the accessible PROV-O graph around seed entities.
+
+    ``client`` must be the current user's DLS-scoped OpenSearch client. Both
+    directions are queried at every depth. Reverse lookup deliberately uses a
+    nested query so a role can never be paired with another relation's target.
+    The returned traversal certificate is deterministic and explicitly marks
+    every safety-limit stop as incomplete.
+    """
+    roles = tuple(sorted({str(role) for role in allowed_roles if str(role)}))
+    scoped_filters = tuple(dict(clause) for clause in filter_clauses if isinstance(clause, dict))
+    if not roles:
+        raise ValueError("At least one provenance relation role is required")
+    resolved_max_depth = max(1, int(max_depth))
+    resolved_max_entities = max(1, int(max_entities))
+    resolved_max_documents = max(1, int(max_documents))
+
+    seed_document_values = [
+        dict(document) for document in seed_documents if isinstance(document, dict)
+    ]
+    documents: dict[str, dict[str, Any]] = {}
+    for document in seed_document_values:
+        document_id = document.get("document_id")
+        if isinstance(document_id, str) and document_id.strip():
+            documents.setdefault(document_id.strip(), document)
+
+    frontier = {
+        value.strip() for value in seed_entity_ids if isinstance(value, str) and value.strip()
+    }
+    queried_ids: set[str] = set()
+    primary_entities: set[str] = set()
+    identifier_owner: dict[str, str] = {}
+    pending_edges: set[tuple[str, str, str]] = set()
+    depth = 0
+    stop_reason = "frontier_empty"
+    limit_reached = False
+
+    def register_identity(record: dict[str, Any]) -> bool:
+        """Register one accessible entity; reject aliases that would merge identities."""
+        nonlocal stop_reason, limit_reached
+        primary = record["source_entity_id"]
+        identifiers = [primary, *record["source_entity_alternate_ids"]]
+        for identifier in identifiers:
+            owner = identifier_owner.get(identifier)
+            if owner is not None and owner != primary:
+                stop_reason = "ambiguous_alternate_id"
+                limit_reached = True
+                return False
+        if primary not in primary_entities and len(primary_entities) >= resolved_max_entities:
+            stop_reason = "max_entities"
+            limit_reached = True
+            return False
+        primary_entities.add(primary)
+        for identifier in identifiers:
+            identifier_owner[identifier] = primary
+        return True
+
+    def add_record(record: dict[str, Any], next_frontier: set[str]) -> None:
+        """Add one DLS-visible record and its unresolved relation identifiers."""
+        nonlocal stop_reason, limit_reached
+        if not register_identity(record):
+            return
+        document_id = record["document_id"]
+        if document_id not in documents:
+            if len(documents) >= resolved_max_documents:
+                stop_reason = "max_documents"
+                limit_reached = True
+                return
+            documents[document_id] = record
+
+        primary = record["source_entity_id"]
+        next_frontier.update([primary, *record["source_entity_alternate_ids"]])
+        provenance = record.get("source_provenance")
+        relations = provenance.get("relations", []) if isinstance(provenance, dict) else []
+        for relation in relations if isinstance(relations, list) else []:
+            if not isinstance(relation, dict) or relation.get("role") not in roles:
+                continue
+            target = relation.get("target")
+            target_id = target.get("id") if isinstance(target, dict) else None
+            if not isinstance(target_id, str) or not target_id.strip():
+                continue
+            normalized_target = target_id.strip()
+            pending_edges.add((primary, str(relation["role"]), normalized_target))
+            next_frontier.add(normalized_target)
+            alternate_targets = target.get("alternate_ids", [])
+            if isinstance(alternate_targets, list):
+                normalized_alternates = {
+                    value.strip()
+                    for value in alternate_targets
+                    if isinstance(value, str) and value.strip()
+                }
+                next_frontier.update(normalized_alternates)
+                pending_edges.update(
+                    (primary, str(relation["role"]), value) for value in normalized_alternates
+                )
+
+    # Seed manifests come from the same DLS-scoped ranked retrieval and may
+    # already provide a complete canonical identity without another query.
+    initial_frontier: set[str] = set(frontier)
+    for document in seed_document_values:
+        record = _provenance_record({"_source": document})
+        if record is not None:
+            add_record(record, initial_frontier)
+    frontier = initial_frontier
+
+    if len(documents) > resolved_max_documents:
+        documents = dict(sorted(documents.items())[:resolved_max_documents])
+        stop_reason = "max_documents"
+        limit_reached = True
+
+    async def search_records(entity_ids: list[str]) -> list[dict[str, Any]]:
+        query_size = min(10_000, max(resolved_max_entities, resolved_max_documents) + 1)
+        bodies = [
+            _graph_query_body(
+                entity_ids,
+                allowed_roles=roles,
+                reverse=reverse,
+                size=query_size,
+                filter_clauses=scoped_filters,
+            )
+            for reverse in (False, True)
+        ]
+        responses = await asyncio.gather(
+            *(
+                client.search(index=index_name, body=body, params={"terminate_after": 0})
+                for body in bodies
+            )
+        )
+        records: dict[tuple[str, str], dict[str, Any]] = {}
+        for response in responses:
+            hit_container = response.get("hits", {})
+            hits = hit_container.get("hits", [])
+            total = hit_container.get("total", 0)
+            if isinstance(total, dict):
+                if total.get("relation", "eq") != "eq":
+                    raise RuntimeError("Provenance traversal requires exact hit totals")
+                total_value = int(total.get("value", 0))
+            else:
+                total_value = int(total or 0)
+            if total_value > len(hits):
+                raise RuntimeError("Provenance traversal result window was truncated")
+            for hit in hits:
+                record = _provenance_record(hit)
+                if record is not None:
+                    records[(record["source_entity_id"], record["document_id"])] = record
+        return [records[key] for key in sorted(records)]
+
+    while frontier and not limit_reached:
+        current = sorted(frontier - queried_ids)
+        if not current:
+            frontier = set()
+            break
+
+        # At the exact depth boundary, probe visibility only. Hidden relation
+        # targets must not turn natural DLS closure into a false limit.
+        if depth >= resolved_max_depth:
+            boundary_records = await search_records(current)
+            requires_expansion = any(
+                record["source_entity_id"] not in primary_entities
+                or record["document_id"] not in documents
+                for record in boundary_records
+            )
+            if requires_expansion:
+                stop_reason = "max_depth"
+                limit_reached = True
+                frontier = set(current)
+            else:
+                queried_ids.update(current)
+                frontier = set()
+            break
+
+        queried_ids.update(current)
+        records = await search_records(current)
+        next_frontier: set[str] = set()
+        for record in records:
+            add_record(record, next_frontier)
+            if limit_reached:
+                break
+        depth += 1
+        if limit_reached:
+            frontier = next_frontier or set(current)
+            break
+        frontier = next_frontier - queried_ids
+
+    visible_edges: dict[tuple[str, str, str], dict[str, str]] = {}
+    for source, role, target_identifier in pending_edges:
+        target = identifier_owner.get(target_identifier)
+        if target is None:
+            continue
+        edge_key = (source, role, target)
+        visible_edges[edge_key] = {
+            "source_entity_id": source,
+            "role": role,
+            "target_entity_id": target,
+        }
+
+    remaining_frontier = sorted(frontier)
+    return {
+        "documents": [documents[key] for key in sorted(documents)],
+        "entities": sorted(identifier_owner),
+        "edges": [visible_edges[key] for key in sorted(visible_edges)],
+        "coverage": {
+            "entities_visited": len(primary_entities),
+            "documents_discovered": len(documents),
+            "depth_reached": depth,
+            "frontier_empty": not remaining_frontier,
+            "limit_reached": limit_reached,
+            "stop_reason": stop_reason,
+            "remaining_frontier": remaining_frontier,
+        },
+    }
 
 
 class HttpReranker:

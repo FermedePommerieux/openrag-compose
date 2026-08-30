@@ -47,6 +47,9 @@ export class SearchClient {
       results: data.results || [],
       coverage: data.coverage,
       error: data.error,
+      documents: data.documents || [],
+      evidence_batches: data.evidence_batches || [],
+      graph: data.graph,
     };
   }
 }

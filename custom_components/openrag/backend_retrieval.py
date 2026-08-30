@@ -45,6 +45,7 @@ MODEL_DOCUMENT_FIELDS = (
     "source_relation_roles",
     "source_relative_path",
     "source_path_ancestors",
+    "generated_at_time",
 )
 MODEL_COVERAGE_FIELDS = (
     "mode",
@@ -53,8 +54,29 @@ MODEL_COVERAGE_FIELDS = (
     "covered_chunks",
     "total_chunks",
     "coverage_ratio",
+    "document_read_coverage_ratio",
     "next_cursor",
     "error",
+    "query",
+    "seed_discovery_complete",
+    "seed_documents",
+    "seed_entities",
+    "valid_provenance_seed_documents",
+    "invalid_provenance_seed_documents",
+    "seed_provenance_complete",
+    "graph_entities_visited",
+    "graph_frontier_empty",
+    "graph_limit_reached",
+    "graph_stop_reason",
+    "documents_discovered",
+    "documents_complete",
+    "documents_incomplete",
+    "stop_reason",
+    "status_code",
+    "status_message",
+    "failure_codes",
+    "model_evidence_chunks",
+    "artifact_chunks",
 )
 
 
@@ -70,9 +92,9 @@ def _as_text(value: Any) -> str:
 
 
 def _fence_untrusted_text(text: str) -> str:
-    escaped = text.replace(
-        UNTRUSTED_CHUNK_FENCE_START, "\\" + UNTRUSTED_CHUNK_FENCE_START
-    ).replace(UNTRUSTED_CHUNK_FENCE_END, "\\" + UNTRUSTED_CHUNK_FENCE_END)
+    escaped = text.replace(UNTRUSTED_CHUNK_FENCE_START, "\\" + UNTRUSTED_CHUNK_FENCE_START).replace(
+        UNTRUSTED_CHUNK_FENCE_END, "\\" + UNTRUSTED_CHUNK_FENCE_END
+    )
     return f"{UNTRUSTED_CHUNK_FENCE_START}\n{escaped}\n{UNTRUSTED_CHUNK_FENCE_END}"
 
 
@@ -91,13 +113,14 @@ def _present_fields(
 
 
 def _model_payload(payload: dict[str, Any]) -> dict[str, Any]:
-    """Project full retrieval output into compact, lossless answer evidence.
+    """Project full retrieval output into compact, citable answer evidence.
 
-    The model needs leaf text and citation ids, plus one human-readable record
-    per document. Source URLs, ACLs and complete provenance remain in the
-    artifact consumed by the UI and never need to spend model-context tokens.
+    The model receives only backend-selected leaf evidence and one readable
+    record per document. Source URLs, ACLs, complete provenance and all other
+    verified leaves remain in the UI artifact without spending model tokens.
     """
-    results = [item for item in payload.get("results", []) if isinstance(item, dict)]
+    model_results = payload.get("model_results", payload.get("results", []))
+    results = [item for item in model_results if isinstance(item, dict)]
     documents: list[dict[str, Any]] = []
     documents_by_id: dict[str, dict[str, Any]] = {}
     evidence: list[dict[str, Any]] = []
@@ -115,6 +138,18 @@ def _model_payload(payload: dict[str, Any]) -> dict[str, Any]:
             continue
         for field, value in _present_fields(item, MODEL_DOCUMENT_FIELDS).items():
             document.setdefault(field, value)
+
+    supplied_documents = payload.get("documents")
+    if isinstance(supplied_documents, list):
+        documents = []
+        for item in supplied_documents:
+            if not isinstance(item, dict):
+                continue
+            document = _present_fields(item, MODEL_DOCUMENT_FIELDS)
+            for field in ("complete", "error"):
+                if field in item and item[field] not in (None, ""):
+                    document[field] = item[field]
+            documents.append(document)
 
     compact: dict[str, Any] = {
         "results": evidence,
@@ -224,8 +259,8 @@ class OpenRAGBackendRetrievalComponent(LCToolComponent):
         """Call the backend and retain results plus its coverage certificate."""
         query = _as_text(search_query)
         mode = _as_text(evidence_mode) or "focused"
-        if mode not in {"focused", "exhaustive"}:
-            raise ValueError("evidence_mode must be focused or exhaustive")
+        if mode not in {"focused", "exhaustive", "scope_exhaustive"}:
+            raise ValueError("evidence_mode must be focused, exhaustive, or scope_exhaustive")
         resolved_document_id = _as_text(document_id)
         if mode == "focused" and not query:
             return {"results": []}
@@ -241,7 +276,7 @@ class OpenRAGBackendRetrievalComponent(LCToolComponent):
             headers["Authorization"] = jwt if jwt.lower().startswith("bearer ") else f"Bearer {jwt}"
 
         filters, limit, score_threshold = self._request_context()
-        with httpx.Client(timeout=30.0) as client:
+        with httpx.Client(timeout=300.0) as client:
             response = client.post(
                 url,
                 headers=headers,
@@ -272,7 +307,18 @@ class OpenRAGBackendRetrievalComponent(LCToolComponent):
             item = dict(item)
             item["text"] = _fence_untrusted_text(str(item.get("text") or ""))
             fenced_results.append(item)
-        return {**payload, "results": fenced_results}
+        fenced_model_results: list[dict[str, Any]] = []
+        for item in payload.get("model_results", []):
+            if not isinstance(item, dict):
+                continue
+            item = dict(item)
+            item["text"] = _fence_untrusted_text(str(item.get("text") or ""))
+            fenced_model_results.append(item)
+        return {
+            **payload,
+            "results": fenced_results,
+            **({"model_results": fenced_model_results} if "model_results" in payload else {}),
+        }
 
     def search_documents(self, search_query: str) -> list[Data]:
         """Backward-compatible focused search used by component previews."""
@@ -284,12 +330,21 @@ class OpenRAGBackendRetrievalComponent(LCToolComponent):
             search_query: str,
             read_document_id: str = "",
             cursor: str = "",
+            scope_exhaustive: bool = False,
         ) -> tuple[str, list[dict[str, Any]]]:
-            """Search normally, or continue one explicitly selected document read."""
+            """Search normally, investigate a dossier, or read one selected document."""
             resolved_document_id = _as_text(read_document_id)
+            if resolved_document_id and scope_exhaustive:
+                raise ValueError("read_document_id and scope_exhaustive are mutually exclusive")
             payload = self._retrieve_payload(
                 search_query,
-                evidence_mode="exhaustive" if resolved_document_id else "focused",
+                evidence_mode=(
+                    "exhaustive"
+                    if resolved_document_id
+                    else "scope_exhaustive"
+                    if scope_exhaustive
+                    else "focused"
+                ),
                 document_id=resolved_document_id,
                 cursor=cursor,
                 batch_size=50 if resolved_document_id else 20,
@@ -308,8 +363,11 @@ class OpenRAGBackendRetrievalComponent(LCToolComponent):
                 "Search the indexed OpenRAG knowledge base. "
                 "Build queries from stable identifiers and established context only; never "
                 "add a candidate answer for the attribute being looked up. Use returned "
-                "chunk_id values for inline citations. With no read_document_id this always "
-                "performs the normal ranked archive search. Set read_document_id only when "
+                "chunk_id values for inline citations. Set scope_exhaustive=true for explicit "
+                "requests for all exchanges, all related documents, or a complete chronology; "
+                "it performs ranked seed discovery, accessible PROV-O graph closure and verified "
+                "full reads, and its coverage decides whether completeness may be claimed. "
+                "Otherwise it performs normal ranked archive search. Set read_document_id only when "
                 "the human explicitly selected one known document for complete reading; "
                 "continue with coverage.next_cursor until complete=true. Never expose an "
                 "internal document id as a human-facing scope label: use documents.filename."

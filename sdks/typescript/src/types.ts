@@ -110,20 +110,44 @@ export interface SearchResult extends SourceProvenanceFields {
 }
 
 export interface EvidenceCoverage {
-  mode: "exhaustive";
-  document_id: string;
+  mode: "exhaustive" | "scope_exhaustive";
+  document_id?: string;
   snapshot_sha256?: string | null;
   covered_chunks: number;
   total_chunks: number;
   coverage_ratio?: number | null;
+  document_read_coverage_ratio?: number | null;
   complete: boolean;
   next_cursor?: string | null;
+  query?: string;
+  seed_discovery_complete?: boolean;
+  seed_documents?: number;
+  seed_entities?: number;
+  valid_provenance_seed_documents?: number;
+  invalid_provenance_seed_documents?: number;
+  seed_provenance_complete?: boolean;
+  graph_entities_visited?: number;
+  graph_frontier_empty?: boolean;
+  graph_limit_reached?: boolean;
+  graph_stop_reason?: string;
+  documents_discovered?: number;
+  documents_complete?: number;
+  documents_incomplete?: number;
+  stop_reason?: string;
+  status_code?: string;
+  status_message?: string;
+  failure_codes?: string[];
+  model_evidence_chunks?: number;
+  artifact_chunks?: number;
 }
 
 export interface SearchResponse {
   results: SearchResult[];
   coverage?: EvidenceCoverage;
   error?: string;
+  documents?: Array<Record<string, unknown>>;
+  evidence_batches?: Array<Record<string, unknown>>;
+  graph?: Record<string, unknown>;
 }
 
 export interface SearchFilters {
@@ -216,6 +240,11 @@ export interface KnowledgeSettings {
   retrieval_reranker_url?: string | null;
   retrieval_reranker_timeout?: number | null;
   retrieval_debug?: boolean | null;
+  retrieval_scope_seed_count?: number | null;
+  retrieval_scope_max_depth?: number | null;
+  retrieval_scope_max_entities?: number | null;
+  retrieval_scope_max_documents?: number | null;
+  retrieval_scope_batch_size?: number | null;
 }
 
 export interface ArchivingSettings {
@@ -271,6 +300,11 @@ export interface SettingsUpdateOptions {
   retrieval_reranker_url?: string;
   retrieval_reranker_timeout?: number;
   retrieval_debug?: boolean;
+  retrieval_scope_seed_count?: number;
+  retrieval_scope_max_depth?: number;
+  retrieval_scope_max_entities?: number;
+  retrieval_scope_max_documents?: number;
+  retrieval_scope_batch_size?: number;
 }
 
 /** Response from settings update. */
@@ -390,8 +424,8 @@ export interface SearchQueryOptions {
   scoreThreshold?: number;
   /** Knowledge filter ID to apply to the search. */
   filterId?: string;
-  /** Ranked discovery or complete source-order evidence reading. */
-  evidenceMode?: "focused" | "exhaustive";
+  /** Ranked discovery, one-document reading, or dossier-level investigation. */
+  evidenceMode?: "focused" | "exhaustive" | "scope_exhaustive";
   /** Required for exhaustive mode. Obtain it from focused discovery. */
   documentId?: string;
   /** Opaque continuation cursor returned in coverage.next_cursor. */

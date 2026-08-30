@@ -277,15 +277,9 @@ async def get_settings(
                 ingestion_concurrency_mode=getattr(
                     knowledge_config, "ingestion_concurrency_mode", "deployment"
                 ),
-                ingestion_manual_workers=getattr(
-                    knowledge_config, "ingestion_manual_workers", 2
-                ),
-                ingestion_worker_fallback=getattr(
-                    knowledge_config, "ingestion_worker_fallback", 2
-                ),
-                ingestion_worker_max=getattr(
-                    knowledge_config, "ingestion_worker_max", 6
-                ),
+                ingestion_manual_workers=getattr(knowledge_config, "ingestion_manual_workers", 2),
+                ingestion_worker_fallback=getattr(knowledge_config, "ingestion_worker_fallback", 2),
+                ingestion_worker_max=getattr(knowledge_config, "ingestion_worker_max", 6),
                 retrieval_strategy=knowledge_config.retrieval_strategy,
                 retrieval_mode=knowledge_config.retrieval_mode,
                 retrieval_lexical_candidates=knowledge_config.retrieval_lexical_candidates,
@@ -298,6 +292,11 @@ async def get_settings(
                 retrieval_reranker_url=knowledge_config.retrieval_reranker_url,
                 retrieval_reranker_timeout=knowledge_config.retrieval_reranker_timeout,
                 retrieval_debug=knowledge_config.retrieval_debug,
+                retrieval_scope_seed_count=knowledge_config.retrieval_scope_seed_count,
+                retrieval_scope_max_depth=knowledge_config.retrieval_scope_max_depth,
+                retrieval_scope_max_entities=knowledge_config.retrieval_scope_max_entities,
+                retrieval_scope_max_documents=knowledge_config.retrieval_scope_max_documents,
+                retrieval_scope_batch_size=knowledge_config.retrieval_scope_batch_size,
             ),
             archiving=archiving_config,
             agent=AgentConfig(
@@ -675,6 +674,11 @@ async def update_settings(
             "retrieval_reranker_url",
             "retrieval_reranker_timeout",
             "retrieval_debug",
+            "retrieval_scope_seed_count",
+            "retrieval_scope_max_depth",
+            "retrieval_scope_max_entities",
+            "retrieval_scope_max_documents",
+            "retrieval_scope_batch_size",
         ]
         for field_name in retrieval_update_fields:
             value = getattr(body, field_name)
@@ -684,9 +688,7 @@ async def update_settings(
         ingestion_worker_fallback = getattr(
             working_config.knowledge, "ingestion_worker_fallback", 2
         )
-        ingestion_worker_max = getattr(
-            working_config.knowledge, "ingestion_worker_max", 6
-        )
+        ingestion_worker_max = getattr(working_config.knowledge, "ingestion_worker_max", 6)
         if ingestion_worker_fallback > ingestion_worker_max:
             raise HTTPException(
                 status_code=422,

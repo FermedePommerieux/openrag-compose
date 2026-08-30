@@ -31,7 +31,7 @@ class SearchV1Body(BaseModel):
     limit: int = 10
     score_threshold: float = 0
     filter_id: str | None = None
-    evidence_mode: Literal["focused", "exhaustive"] = "focused"
+    evidence_mode: Literal["focused", "exhaustive", "scope_exhaustive"] = "focused"
     document_id: str | None = None
     cursor: str = ""
     batch_size: int = Field(default=20, ge=1, le=50)
@@ -95,7 +95,7 @@ async def search_endpoint(
             batch_size=min(50, max(1, body.batch_size)),
         )
 
-        if body.evidence_mode == "exhaustive":
+        if body.evidence_mode in {"exhaustive", "scope_exhaustive"}:
             return JSONResponse(result)
 
         results = [

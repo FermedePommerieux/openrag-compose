@@ -38,6 +38,11 @@ const FALLBACK_RETRIEVAL = {
   rrfK: 60,
   maxChunksPerDocument: 3,
   adaptiveMaxChunksPerDocument: 20,
+  scopeSeedCount: 100,
+  scopeMaxDepth: 8,
+  scopeMaxEntities: 500,
+  scopeMaxDocuments: 250,
+  scopeBatchSize: 50,
 };
 
 function effectiveValues(knowledge?: KnowledgeSettings) {
@@ -57,6 +62,20 @@ function effectiveValues(knowledge?: KnowledgeSettings) {
     adaptiveMaxChunksPerDocument:
       knowledge?.retrieval_adaptive_max_chunks_per_document ??
       FALLBACK_RETRIEVAL.adaptiveMaxChunksPerDocument,
+    scopeSeedCount:
+      knowledge?.retrieval_scope_seed_count ??
+      FALLBACK_RETRIEVAL.scopeSeedCount,
+    scopeMaxDepth:
+      knowledge?.retrieval_scope_max_depth ?? FALLBACK_RETRIEVAL.scopeMaxDepth,
+    scopeMaxEntities:
+      knowledge?.retrieval_scope_max_entities ??
+      FALLBACK_RETRIEVAL.scopeMaxEntities,
+    scopeMaxDocuments:
+      knowledge?.retrieval_scope_max_documents ??
+      FALLBACK_RETRIEVAL.scopeMaxDocuments,
+    scopeBatchSize:
+      knowledge?.retrieval_scope_batch_size ??
+      FALLBACK_RETRIEVAL.scopeBatchSize,
   };
 }
 
@@ -109,6 +128,21 @@ export function RetrievalSettingsSection() {
   );
   const [adaptiveMaxChunksPerDocument, setAdaptiveMaxChunksPerDocument] =
     useState(FALLBACK_RETRIEVAL.adaptiveMaxChunksPerDocument);
+  const [scopeSeedCount, setScopeSeedCount] = useState(
+    FALLBACK_RETRIEVAL.scopeSeedCount,
+  );
+  const [scopeMaxDepth, setScopeMaxDepth] = useState(
+    FALLBACK_RETRIEVAL.scopeMaxDepth,
+  );
+  const [scopeMaxEntities, setScopeMaxEntities] = useState(
+    FALLBACK_RETRIEVAL.scopeMaxEntities,
+  );
+  const [scopeMaxDocuments, setScopeMaxDocuments] = useState(
+    FALLBACK_RETRIEVAL.scopeMaxDocuments,
+  );
+  const [scopeBatchSize, setScopeBatchSize] = useState(
+    FALLBACK_RETRIEVAL.scopeBatchSize,
+  );
   const [validationError, setValidationError] = useState<string | null>(null);
 
   const updateSettings = useUpdateSettingsMutation({
@@ -128,6 +162,11 @@ export function RetrievalSettingsSection() {
     setRrfK(values.rrfK);
     setMaxChunksPerDocument(values.maxChunksPerDocument);
     setAdaptiveMaxChunksPerDocument(values.adaptiveMaxChunksPerDocument);
+    setScopeSeedCount(values.scopeSeedCount);
+    setScopeMaxDepth(values.scopeMaxDepth);
+    setScopeMaxEntities(values.scopeMaxEntities);
+    setScopeMaxDocuments(values.scopeMaxDocuments);
+    setScopeBatchSize(values.scopeBatchSize);
   }, [settings.knowledge]);
 
   const saved = effectiveValues(settings.knowledge);
@@ -139,7 +178,12 @@ export function RetrievalSettingsSection() {
         vectorCandidates !== saved.vectorCandidates ||
         rrfK !== saved.rrfK ||
         maxChunksPerDocument !== saved.maxChunksPerDocument ||
-        adaptiveMaxChunksPerDocument !== saved.adaptiveMaxChunksPerDocument));
+        adaptiveMaxChunksPerDocument !== saved.adaptiveMaxChunksPerDocument)) ||
+    scopeSeedCount !== saved.scopeSeedCount ||
+    scopeMaxDepth !== saved.scopeMaxDepth ||
+    scopeMaxEntities !== saved.scopeMaxEntities ||
+    scopeMaxDocuments !== saved.scopeMaxDocuments ||
+    scopeBatchSize !== saved.scopeBatchSize;
 
   const save = () => {
     if (strategy === "rrf") {
@@ -171,10 +215,32 @@ export function RetrievalSettingsSection() {
         return;
       }
     }
+    if (
+      scopeSeedCount < 1 ||
+      scopeSeedCount > 500 ||
+      scopeMaxDepth < 1 ||
+      scopeMaxDepth > 64 ||
+      scopeMaxEntities < 1 ||
+      scopeMaxEntities > 5000 ||
+      scopeMaxDocuments < 1 ||
+      scopeMaxDocuments > 1000 ||
+      scopeBatchSize < 1 ||
+      scopeBatchSize > 50
+    ) {
+      setValidationError(
+        "Exhaustive scope safety limits are outside their allowed range.",
+      );
+      return;
+    }
 
     setValidationError(null);
     updateSettings.mutate({
       retrieval_strategy: strategy,
+      retrieval_scope_seed_count: scopeSeedCount,
+      retrieval_scope_max_depth: scopeMaxDepth,
+      retrieval_scope_max_entities: scopeMaxEntities,
+      retrieval_scope_max_documents: scopeMaxDocuments,
+      retrieval_scope_batch_size: scopeBatchSize,
       ...(strategy === "rrf"
         ? {
             retrieval_mode: mode,
@@ -320,6 +386,61 @@ export function RetrievalSettingsSection() {
             </section>
           </>
         ) : null}
+
+        <section className="space-y-4" aria-labelledby="scope-investigation">
+          <div>
+            <h3 id="scope-investigation" className="font-medium">
+              Exhaustive scope investigation
+            </h3>
+            <p className="text-sm text-muted-foreground">
+              Safety bounds for seed discovery, PROV-O graph closure and
+              verified full-document reads. Reaching a bound makes coverage
+              explicitly incomplete.
+            </p>
+          </div>
+          <div className="grid gap-4 md:grid-cols-2">
+            <NumericField
+              id="retrieval-scope-seed-count"
+              label="Seed results"
+              help="1–500 ranked Retrieval v2 seeds."
+              value={scopeSeedCount}
+              max={500}
+              onChange={setScopeSeedCount}
+            />
+            <NumericField
+              id="retrieval-scope-max-depth"
+              label="Maximum graph depth"
+              help="1–64 provenance traversal levels."
+              value={scopeMaxDepth}
+              max={64}
+              onChange={setScopeMaxDepth}
+            />
+            <NumericField
+              id="retrieval-scope-max-entities"
+              label="Maximum graph entities"
+              help="1–5000 accessible provenance identifiers."
+              value={scopeMaxEntities}
+              max={5000}
+              onChange={setScopeMaxEntities}
+            />
+            <NumericField
+              id="retrieval-scope-max-documents"
+              label="Maximum documents"
+              help="1–1000 documents read completely per investigation."
+              value={scopeMaxDocuments}
+              max={1000}
+              onChange={setScopeMaxDocuments}
+            />
+            <NumericField
+              id="retrieval-scope-batch-size"
+              label="Read batch size"
+              help="1–50 verified chunks per signed-cursor request."
+              value={scopeBatchSize}
+              max={50}
+              onChange={setScopeBatchSize}
+            />
+          </div>
+        </section>
 
         <section
           className="space-y-3 border-t pt-6"

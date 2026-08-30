@@ -39,6 +39,11 @@ export interface KnowledgeSettings {
   retrieval_reranker_url?: string;
   retrieval_reranker_timeout?: number;
   retrieval_debug?: boolean;
+  retrieval_scope_seed_count?: number;
+  retrieval_scope_max_depth?: number;
+  retrieval_scope_max_entities?: number;
+  retrieval_scope_max_documents?: number;
+  retrieval_scope_batch_size?: number;
 }
 
 export interface ProviderSettings {

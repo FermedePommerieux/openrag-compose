@@ -133,6 +133,11 @@ async def test_update_settings_persists_hybrid_and_rrf_configuration(monkeypatch
             retrieval_rrf_k=42,
             retrieval_max_chunks_per_document=4,
             retrieval_adaptive_max_chunks_per_document=25,
+            retrieval_scope_seed_count=120,
+            retrieval_scope_max_depth=12,
+            retrieval_scope_max_entities=800,
+            retrieval_scope_max_documents=300,
+            retrieval_scope_batch_size=40,
         ),
         session_manager=object(),
         user=None,
@@ -149,6 +154,11 @@ async def test_update_settings_persists_hybrid_and_rrf_configuration(monkeypatch
     assert saved.retrieval_rrf_k == 42
     assert saved.retrieval_max_chunks_per_document == 4
     assert saved.retrieval_adaptive_max_chunks_per_document == 25
+    assert saved.retrieval_scope_seed_count == 120
+    assert saved.retrieval_scope_max_depth == 12
+    assert saved.retrieval_scope_max_entities == 800
+    assert saved.retrieval_scope_max_documents == 300
+    assert saved.retrieval_scope_batch_size == 40
 
 
 @pytest.mark.parametrize(
@@ -164,6 +174,11 @@ async def test_update_settings_persists_hybrid_and_rrf_configuration(monkeypatch
         ("retrieval_max_chunks_per_document", 101),
         ("retrieval_adaptive_max_chunks_per_document", 0),
         ("retrieval_adaptive_max_chunks_per_document", 101),
+        ("retrieval_scope_seed_count", 501),
+        ("retrieval_scope_max_depth", 65),
+        ("retrieval_scope_max_entities", 5001),
+        ("retrieval_scope_max_documents", 1001),
+        ("retrieval_scope_batch_size", 51),
     ],
 )
 def test_retrieval_settings_reject_backend_out_of_range_values(field, value):

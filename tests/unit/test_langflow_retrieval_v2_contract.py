@@ -58,9 +58,10 @@ def test_default_agent_uses_versioned_documentalist_prompt():
     assert agent["data"]["node"]["template"]["system_prompt"]["value"] == prompt
     assert DEFAULT_SYSTEM_PROMPT == prompt
     assert "coverage.complete=true" in prompt
-    assert "one normal archive-search path" in prompt
+    assert "three evidence paths" in prompt
+    assert "scope_exhaustive=true" in prompt
     assert "never print the raw id as the scope" in prompt
-    assert "never requires confirmation" in prompt
+    assert "needs no confirmation" in prompt
 
 
 def test_gpt_56_tool_agent_uses_openai_responses_transport():
@@ -194,7 +195,7 @@ def test_backend_tool_forwards_request_and_preserves_provenance(monkeypatch):
     result = tool.search_documents("where is the archive?")
 
     assert captured == {
-        "timeout": 30.0,
+        "timeout": 300.0,
         "url": "http://openrag-backend:8000/search",
         "headers": {"Authorization": "Bearer user-jwt"},
         "payload": {
@@ -223,15 +224,14 @@ def test_backend_tool_forwards_request_and_preserves_provenance(monkeypatch):
         "search_query",
         "read_document_id",
         "cursor",
+        "scope_exhaustive",
     ]
     content, artifact = built_tool["func"]("where is the archive?")
     model_payload = json.loads(content)
     assert model_payload["results"][0]["chunk_id"] == "chunk-42"
     assert "source_url" not in model_payload["results"][0]
     assert "source_provenance" not in model_payload["results"][0]
-    assert model_payload["documents"] == [
-        {"document_id": "document-42", "filename": "archive.pdf"}
-    ]
+    assert model_payload["documents"] == [{"document_id": "document-42", "filename": "archive.pdf"}]
     assert artifact == [
         {
             **search_result,
@@ -312,7 +312,7 @@ def test_backend_tool_forwards_exhaustive_cursor_and_coverage(monkeypatch):
 
 
 def test_archive_exhaustive_wording_cannot_select_document_read(monkeypatch):
-    """Topic wording must not reactivate the removed model-controlled mode."""
+    """Topic wording never guesses one internal document id."""
     module = _load_component_with_langflow_stubs(monkeypatch)
     captured: dict = {}
 
@@ -350,3 +350,56 @@ def test_archive_exhaustive_wording_cannot_select_document_read(monkeypatch):
     assert captured["payload"]["evidenceMode"] == "focused"
     assert captured["payload"]["documentId"] is None
     assert captured["payload"]["batchSize"] == 20
+
+
+def test_explicit_scope_investigation_routes_to_scope_exhaustive(monkeypatch):
+    module = _load_component_with_langflow_stubs(monkeypatch)
+    captured: dict = {}
+
+    class _Response:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "results": [],
+                "model_results": [],
+                "documents": [],
+                "coverage": {
+                    "mode": "scope_exhaustive",
+                    "complete": False,
+                    "documents_discovered": 0,
+                    "stop_reason": "max_depth",
+                },
+            }
+
+    class _Client:
+        def __init__(self, **_kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def post(self, _url, *, headers, json):
+            captured.update(headers=headers, payload=json)
+            return _Response()
+
+    monkeypatch.setattr(module.httpx, "Client", _Client)
+    tool = module.OpenRAGBackendRetrievalComponent.__new__(module.OpenRAGBackendRetrievalComponent)
+    tool.openrag_retrieval_url = "http://openrag-backend:8000/search"
+    tool.jwt_token = "user-jwt"
+    tool.filter_expression = ""
+    tool.number_of_results = 10
+
+    built_tool = tool.build_tool()
+    content, _artifact = built_tool["func"](
+        "tous les échanges avec l'administration sur Surface pastorale",
+        scope_exhaustive=True,
+    )
+
+    assert captured["payload"]["evidenceMode"] == "scope_exhaustive"
+    assert captured["payload"]["documentId"] is None
+    assert json.loads(content)["coverage"]["stop_reason"] == "max_depth"

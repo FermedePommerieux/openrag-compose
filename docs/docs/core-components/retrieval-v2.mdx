@@ -27,6 +27,11 @@ knowledge:
   retrieval_vector_candidates: 50
   retrieval_rrf_k: 60
   retrieval_max_chunks_per_document: 3
+  retrieval_scope_seed_count: 100
+  retrieval_scope_max_depth: 8
+  retrieval_scope_max_entities: 500
+  retrieval_scope_max_documents: 250
+  retrieval_scope_batch_size: 50
 ```
 
 RRF ranks lexical and vector candidates independently and fuses ranks, avoiding
@@ -54,6 +59,9 @@ and apply immediately; they do not normally require reindexing.
 * **Lexical candidates** and **Vector candidates** control how many candidates
   each lane gathers before RRF fusion. **RRF k** is the fusion constant, not a
   final top-k. **Max chunks per document** preserves result diversity.
+* **Exhaustive scope investigation** exposes explicit safety bounds for broad
+  seed discovery, PROV-O graph depth/entities/documents and verified read batch
+  size. Reaching any bound makes coverage incomplete.
 
 The settings page intentionally does not expose `retrieval_reranker_url`.
 The optional reranker endpoint remains backend API/persisted-configuration only
@@ -88,11 +96,12 @@ have null or absent provenance fields, but remain readable.
 
 ## Chat retrieval contract
 
-The agent has one normal archive-search path for every grounded question. An
-“exhaustive”, “complete”, or “all documents” formulation runs that search in
-the same turn; it does not select a hidden mode, wait for confirmation, or
-start one complete read per candidate document. Ranked retrieval reports every
-returned source but cannot certify that nothing exists elsewhere in the index.
+The agent has three explicit evidence paths. Ordinary grounded questions use
+ranked discovery. A request for all exchanges, all related documents, or a
+complete chronology can set `scope_exhaustive=true`: Retrieval v2 obtains broad
+RRF seeds, closes their accessible PROV-O graph forward and backward, then
+reads every discovered document through the verified pagination primitive.
+This needs no confirmation.
 
 Complete source-order reading remains available for one already identified
 document explicitly selected by the human. The tool then supplies its internal
@@ -102,8 +111,33 @@ human-facing scope labels.
 
 The tool artifact retains full source and PROV-O metadata for source cards. A
 compact model-facing projection carries chunk text and citation/order fields
-plus one manifest row per document, avoiding repeated URL, ACL, and provenance
-payloads without weakening the UI or citation contract.
+from ranked seeds, at most one leaf from newly linked documents, and one
+manifest row per document. This avoids pushing every chunk from hundreds of
+documents into the model while the complete leaf artifact remains available to
+the UI. Generated summaries never replace citable leaf evidence.
+
+Scope coverage is true only when seed discovery succeeds, the graph frontier
+empties without a guard being reached, and every discovered document completes
+its immutable-snapshot read. Nested reverse queries keep each relation role
+paired with its own target. Every query uses the caller's DLS client. Complete
+closure describes only accessible indexed entities; it says nothing about
+documents never ingested or hidden by permissions.
+
+The machine contract is fail-closed. `coverage.status_code` is `complete` only
+after valid provenance on every seed, natural forward/reverse graph closure,
+complete contiguous reads of every discovered document, and recomputation of
+each final document snapshot SHA-256. `status_message` is human-readable and
+`failure_codes` retains every detected cause. Missing/invalid seeds, search or
+graph errors, safety limits, ambiguous alternate identities, legacy profiles,
+snapshot changes, invalid cursors, access errors and profile corruption all
+keep `complete=false`. Partial verified evidence remains available.
+
+`coverage_ratio` is retained for compatibility and
+`document_read_coverage_ratio` names its exact meaning: document leaf-read
+progress. Neither ratio certifies graph closure. DLS-invisible targets are
+excluded from documents, entities and edges and do not consume traversal
+limits. Reaching a configured bound exactly may still be complete when a
+visibility probe proves the accessible frontier is naturally empty.
 
 ## Persisted Langflow flows
 
@@ -153,6 +187,6 @@ the other owner's chunks. After a partial delete, restoration checks the global
 bulk response and every item. An incomplete restore is a fatal error with the
 affected chunk IDs preserved for recovery.
 
-Archive-wide deep retrieval, query expansion, and a new reranker are not
-implemented in this baseline. Complete selected-document reading is available
-through the backend-owned authenticated pagination contract described above.
+Query expansion beyond indexed PROV-O relations and a new reranker are not part
+of this change. Ranked discovery, scope investigation, and selected-document
+reading remain separate backend-owned contracts.

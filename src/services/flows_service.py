@@ -35,7 +35,7 @@ _LEGACY_RETRIEVAL_COMPONENT = (
     "ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra"
 )
 _BACKEND_RETRIEVAL_COMPONENT = "ext:openrag:OpenRAGBackendRetrievalComponent@extra"
-_RETRIEVAL_FLOW_MIGRATION_VERSION = 7
+_RETRIEVAL_FLOW_MIGRATION_VERSION = 8
 _LEGACY_SYSTEM_FLOW_ID = "1098eea1-6649-4e1d-aed1-b77249fb8dd0"
 # These fields are rewritten by OpenRAG's settings synchronization and by
 # Langflow's provider refresh endpoint. Their values and option lists are
@@ -105,6 +105,15 @@ _PREVIOUS_VERSIONED_DOCUMENTALIST_RETRIEVAL_GRAPH_SHA256 = (
 # rejecting changes to prompts, code, topology, retrieval, or any other field.
 _PREVIOUS_VERSIONED_DOCUMENTALIST_RUNTIME_GRAPH_SHA256 = (
     "deda60c4c3957fbdd5a8d6ba00bef685d32e8fde78ef2ef9497f221dcf9a81cc"
+)
+# Exact fingerprints of the focused-only Retrieval v2 version 7 graph. They
+# authorize only the repository-owned v7 -> v8 scope-exhaustive replacement;
+# prompt, tool code and topology edits remain ineligible for auto-migration.
+_PREVIOUS_VERSIONED_SCOPELESS_RETRIEVAL_GRAPH_SHA256 = (
+    "bbd64ea64748792a3f216e0d5f8c9a9fadd08911f16709ba9a3a88eed0630c36"
+)
+_PREVIOUS_VERSIONED_SCOPELESS_RUNTIME_GRAPH_SHA256 = (
+    "5b856087395752a8bd0f146a5eab8d09a72135955e743813996ac3befbb6ae67"
 )
 
 
@@ -1377,14 +1386,20 @@ class FlowsService:
             if marker == 5
             else {_PREVIOUS_VERSIONED_DOCUMENTALIST_RETRIEVAL_GRAPH_SHA256}
             if marker == 6
+            else {_PREVIOUS_VERSIONED_SCOPELESS_RETRIEVAL_GRAPH_SHA256}
+            if marker == 7
             else set()
         )
         exact_match = self._graph_fingerprint(flow_data) in expected
-        if marker != 6:
+        if marker not in {6, 7}:
             return exact_match
-        return exact_match or (
-            self._runtime_normalized_graph_fingerprint(flow_data)
-            == _PREVIOUS_VERSIONED_DOCUMENTALIST_RUNTIME_GRAPH_SHA256
+        expected_runtime = (
+            _PREVIOUS_VERSIONED_DOCUMENTALIST_RUNTIME_GRAPH_SHA256
+            if marker == 6
+            else _PREVIOUS_VERSIONED_SCOPELESS_RUNTIME_GRAPH_SHA256
+        )
+        return (
+            exact_match or self._runtime_normalized_graph_fingerprint(flow_data) == expected_runtime
         )
 
     def _migrate_known_legacy_retrieval_flow(

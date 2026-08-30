@@ -6,6 +6,7 @@ import pytest
 
 from services.retrieval_service import (
     RetrievalSettings,
+    ScopeExhaustiveSettings,
     adaptive_chunk_limit,
     decode_exhaustive_cursor,
     encode_exhaustive_cursor,
@@ -276,6 +277,54 @@ async def test_exhaustive_read_paginates_one_immutable_snapshot(monkeypatch):
     ]
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("mutation", "message"),
+    [
+        ({"chunk_id": None}, "unverifiable source chunk"),
+        ({"chunk_content_sha256": "0" * 64}, "chunk text digest mismatch"),
+        ({"chunk_index": 1}, "non-contiguous source order"),
+    ],
+)
+async def test_exhaustive_read_rejects_missing_corrupt_or_noncontiguous_chunk(
+    monkeypatch, mutation, message
+):
+    from services import search_service
+
+    text = "verified text"
+    snapshot = "b" * 64
+    source = {
+        "chunk_id": "logical-0",
+        "chunk_content_sha256": hashlib.sha256(text.encode()).hexdigest(),
+        "document_id": "document-1",
+        "document_content_sha256": snapshot,
+        "document_order_verified": True,
+        "document_chunk_count": 1,
+        "filename": "document.pdf",
+        "chunk_index": 0,
+        "text": text,
+        **mutation,
+    }
+
+    class OpenSearchClient:
+        async def search(self, *, index, body, params):
+            return {
+                "hits": {
+                    "total": {"value": 1, "relation": "eq"},
+                    "hits": [{"_id": "physical-0", "sort": [0], "_source": source}],
+                },
+                "aggregations": {"snapshots": {"buckets": [{"key": snapshot, "doc_count": 1}]}},
+            }
+
+    monkeypatch.setattr(search_service, "get_index_name", lambda: "documents")
+    session_manager = MagicMock()
+    session_manager.get_user_opensearch_client.return_value = OpenSearchClient()
+    service = SearchService(session_manager=session_manager)
+
+    with pytest.raises(RuntimeError, match=message):
+        await service.read_document_chunks("document-1", user_id="user-1", jwt_token="jwt")
+
+
 def test_settings_normalize_invalid_or_unbounded_values():
     knowledge = SimpleNamespace(
         retrieval_strategy="unexpected",
@@ -300,6 +349,21 @@ def test_settings_normalize_invalid_or_unbounded_values():
     assert settings.reranker_url == ""
     assert settings.reranker_timeout == 120
     assert settings.debug is True
+
+    scope_settings = ScopeExhaustiveSettings.from_knowledge(
+        SimpleNamespace(
+            retrieval_scope_seed_count=9999,
+            retrieval_scope_max_depth="bad",
+            retrieval_scope_max_entities=0,
+            retrieval_scope_max_documents=9999,
+            retrieval_scope_batch_size=9999,
+        )
+    )
+    assert scope_settings.seed_count == 500
+    assert scope_settings.max_depth == 8
+    assert scope_settings.max_entities == 1
+    assert scope_settings.max_documents == 1000
+    assert scope_settings.batch_size == 50
 
 
 @pytest.mark.asyncio
@@ -434,9 +498,7 @@ async def test_document_search_paginates_collapsed_results_with_server_total(mon
             if body.get("size") == 0:
                 return {
                     "aggregations": {
-                        "embedding_models": {
-                            "buckets": [{"key": "test-model", "doc_count": 245}]
-                        }
+                        "embedding_models": {"buckets": [{"key": "test-model", "doc_count": 245}]}
                     }
                 }
             return {
@@ -467,8 +529,7 @@ async def test_document_search_paginates_collapsed_results_with_server_total(mon
                 "aggregations": {
                     "document_names": {
                         "buckets": [
-                            {"key": f"document-{index}.pdf", "doc_count": 1}
-                            for index in range(245)
+                            {"key": f"document-{index}.pdf", "doc_count": 1} for index in range(245)
                         ],
                         "sum_other_doc_count": 0,
                     },
@@ -514,8 +575,8 @@ async def test_document_search_paginates_collapsed_results_with_server_total(mon
             "shard_size": 10_000,
         }
     }
-    knn = search_body["query"]["bool"]["should"][0]["dis_max"]["queries"][0][
-        "knn"
-    ]["chunk_embedding_test_model"]
+    knn = search_body["query"]["bool"]["should"][0]["dis_max"]["queries"][0]["knn"][
+        "chunk_embedding_test_model"
+    ]
     assert knn["k"] == 10_000
     assert knn["num_candidates"] == 10_000

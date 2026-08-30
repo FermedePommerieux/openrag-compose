@@ -180,9 +180,21 @@ while True:
 assert len(all_chunks) == page.coverage.total_chunks
 ```
 
-Repeat this loop separately for each document when a conclusion spans several
-documents. Summaries and ranked matches help navigation; they are not proof of
-complete coverage.
+For a query-defined dossier, let the backend discover RRF seeds, close their
+accessible PROV-O graph and run that verified loop for every linked document:
+
+```python
+scope = await client.search.query(
+    "all exchanges with the administration about Surface pastorale",
+    evidence_mode="scope_exhaustive",
+)
+print(scope.coverage.complete, scope.coverage.status_code, scope.coverage.status_message)
+# coverage_ratio is document-read progress, not independent proof of closure.
+print(len(scope.documents), len(scope.results))
+```
+
+`complete=False` identifies a graph/document bound or verification failure;
+the full leaf evidence, document manifest and graph remain in the response.
 
 ## Documents
 

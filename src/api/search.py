@@ -21,7 +21,9 @@ class SearchBody(BaseModel):
     filters: dict[str, Any] = Field(default_factory=dict)
     limit: int = 10
     scoreThreshold: float = Field(default=0, alias="scoreThreshold")
-    evidenceMode: Literal["focused", "exhaustive"] = Field(default="focused", alias="evidenceMode")
+    evidenceMode: Literal["focused", "exhaustive", "scope_exhaustive"] = Field(
+        default="focused", alias="evidenceMode"
+    )
     documentId: str | None = Field(default=None, alias="documentId")
     cursor: str = ""
     batchSize: int = Field(default=20, ge=1, le=50, alias="batchSize")

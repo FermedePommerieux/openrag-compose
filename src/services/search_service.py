@@ -11,14 +11,21 @@ from agentd.tool_decorator import tool
 from auth_context import get_auth_context
 from config.embedding_constants import get_declared_default_embedding_model
 from config.settings import clients, get_embedding_model, get_index_name, get_openrag_config
+from models.source_provenance import parse_source_provenance
 from services.retrieval_service import (
+    DEFAULT_SCOPE_RELATION_ROLES,
     EXHAUSTIVE_BATCH_MAX,
     EXHAUSTIVE_PROFILE_VERSION,
     HttpReranker,
     RetrievalSettings,
+    ScopeCertificationFacts,
+    ScopeExhaustiveSettings,
+    certify_scope_coverage,
     decode_exhaustive_cursor,
+    document_content_sha256_from_chunks,
     encode_exhaustive_cursor,
     exhaustive_scope_sha256,
+    expand_provenance_graph,
     limit_chunks_per_document,
     reciprocal_rank_fusion,
 )
@@ -603,9 +610,7 @@ class SearchService:
                 # document cardinality stable while the user moves between
                 # pages. Growing k with the requested page would make the
                 # displayed total change after every click.
-                knn_result_count = (
-                    DOCUMENT_SEARCH_RESULT_WINDOW if group_by_document else 50
-                )
+                knn_result_count = DOCUMENT_SEARCH_RESULT_WINDOW if group_by_document else 50
                 knn_queries.append(
                     {
                         "knn": {
@@ -1038,18 +1043,12 @@ class SearchService:
         # Preserve ordinary hybrid/RRF results. Exact narrowing is only for
         # identifier-like queries with an actual verbatim match.
         pre_filter_document_count = len(
-            {
-                chunk.get("filename")
-                for chunk in chunks
-                if isinstance(chunk.get("filename"), str)
-            }
+            {chunk.get("filename") for chunk in chunks if isinstance(chunk.get("filename"), str)}
         )
         raw_aggregations = results.get("aggregations", {})
         document_names_aggregation = raw_aggregations.get("document_names", {})
         public_aggregations = {
-            name: value
-            for name, value in raw_aggregations.items()
-            if name != "document_names"
+            name: value for name, value in raw_aggregations.items() if name != "document_names"
         }
         chunks, aggregations = _apply_exact_match_file_filter(
             query,
@@ -1080,9 +1079,7 @@ class SearchService:
                 if isinstance(document_name_buckets, list)
                 else post_filter_document_count
             )
-            document_total_capped = bool(
-                document_names_aggregation.get("sum_other_doc_count", 0)
-            )
+            document_total_capped = bool(document_names_aggregation.get("sum_other_doc_count", 0))
             # Identifier-like searches can deliberately narrow the returned
             # page to verbatim matches after OpenSearch ranking. In that small
             # special case, do not expose the broader pre-filter document count.
@@ -1352,6 +1349,456 @@ class SearchService:
         }
         return {"results": chunks, "total": len(chunks), "coverage": coverage}
 
+    @staticmethod
+    def _scope_seed_manifest(result: dict[str, Any]) -> dict[str, Any]:
+        """Keep one compact, human-readable representative per seed document."""
+        manifest = {
+            field: result.get(field)
+            for field in (
+                "document_id",
+                "filename",
+                "mimetype",
+                "source_url",
+                "connector_file_id",
+                "source_provenance",
+                "source_entity_id",
+                "source_entity_type",
+                "source_entity_system",
+                "source_entity_alternate_ids",
+                "source_relative_path",
+                "source_path_ancestors",
+            )
+            if result.get(field) not in (None, "", [], {})
+        }
+        provenance = result.get("source_provenance")
+        entity = provenance.get("entity") if isinstance(provenance, dict) else None
+        generated_at = entity.get("generated_at_time") if isinstance(entity, dict) else None
+        if generated_at not in (None, ""):
+            manifest["generated_at_time"] = generated_at
+        return manifest
+
+    @staticmethod
+    def _scope_filter_clauses(filters: dict[str, Any] | None) -> list[dict[str, Any]]:
+        """Translate public knowledge filters for provenance graph queries."""
+        field_mapping = {
+            "data_sources": "filename",
+            "document_types": "mimetype",
+            "owners": "owner",
+            "connector_types": "connector_type",
+        }
+        clauses: list[dict[str, Any]] = []
+        for filter_key, values in (filters or {}).items():
+            if not isinstance(values, list):
+                continue
+            field_name = field_mapping.get(filter_key, filter_key)
+            if not values:
+                clauses.append({"term": {field_name: "__IMPOSSIBLE_VALUE__"}})
+            elif len(values) == 1:
+                clauses.append({"term": {field_name: values[0]}})
+            else:
+                clauses.append({"terms": {field_name: values}})
+        return clauses
+
+    @staticmethod
+    def _scope_document_sort_key(document: dict[str, Any]) -> tuple[str, str, str]:
+        """Prefer an asserted source date, then stable human/id tie-breakers."""
+        generated_at = document.get("generated_at_time")
+        provenance = document.get("source_provenance")
+        if generated_at in (None, "") and isinstance(provenance, dict):
+            entity = provenance.get("entity")
+            if isinstance(entity, dict):
+                generated_at = entity.get("generated_at_time")
+        return (
+            str(generated_at or "9999-12-31T23:59:59Z"),
+            str(document.get("filename") or ""),
+            str(document.get("document_id") or ""),
+        )
+
+    @staticmethod
+    def _scope_document_failure_code(error: str) -> str:
+        """Classify document-read failures without leaking unstable exceptions."""
+        normalized = str(error or "").casefold()
+        if any(token in normalized for token in ("forbidden", "unauthorized", "access denied")):
+            return "access_error"
+        if "401" in normalized or "403" in normalized:
+            return "access_error"
+        if "cursor" in normalized:
+            return "cursor_invalid"
+        if "digest" in normalized:
+            return "profile_invalid"
+        if "snapshot" in normalized or "document changed" in normalized:
+            return "snapshot_changed"
+        if "no verifiable ingestion profile" in normalized or "reindex it" in normalized:
+            return "legacy_document"
+        if any(
+            token in normalized
+            for token in (
+                "profile",
+                "non-contiguous",
+                "unverified",
+                "unverifiable",
+                "coverage exceeded",
+                "exact snapshot chunk count",
+                "mixed document filenames",
+            )
+        ):
+            return "profile_invalid"
+        return "document_read_incomplete"
+
+    @staticmethod
+    def _scope_error_coverage(query: str, code: str, error: str) -> dict[str, Any]:
+        """Build the same fail-closed certificate for an early search failure."""
+        decision = certify_scope_coverage(
+            ScopeCertificationFacts(
+                seed_discovery_complete=False,
+                seed_documents=0,
+                valid_provenance_seed_documents=0,
+                invalid_provenance_seed_documents=0,
+                graph_frontier_empty=False,
+                graph_limit_reached=False,
+                graph_stop_reason=None,
+                graph_failed=False,
+                documents_discovered=0,
+                documents_complete=0,
+                covered_chunks=0,
+                total_chunks=0,
+                seed_failure_code=code,
+            )
+        )
+        return {
+            "mode": "scope_exhaustive",
+            "query": query,
+            "seed_discovery_complete": False,
+            "seed_documents": 0,
+            "valid_provenance_seed_documents": 0,
+            "invalid_provenance_seed_documents": 0,
+            "covered_chunks": 0,
+            "total_chunks": 0,
+            "document_read_coverage_ratio": 0.0,
+            "coverage_ratio": 0.0,
+            "error": error,
+            **decision,
+            "stop_reason": decision["status_code"],
+        }
+
+    async def search_exhaustive_scope(
+        self,
+        query: str,
+        *,
+        user_id: str,
+        jwt_token: str | None,
+        filters: dict[str, Any] | None,
+        embedding_model: str | None,
+        settings: ScopeExhaustiveSettings,
+    ) -> dict[str, Any]:
+        """Discover, close and verify one query-defined documentary scope.
+
+        Ranked Retrieval v2 supplies broad seeds. The user's DLS-scoped client
+        then closes the accessible PROV-O graph in both directions. Every
+        discovered document is finally read with ``read_document_chunks``;
+        ranked chunks are never mistaken for proof of complete reading.
+        """
+        from auth_context import set_score_threshold, set_search_limit
+
+        set_search_limit(settings.seed_count)
+        set_score_threshold(0)
+        try:
+            seed_response = await self.search_tool(query, embedding_model=embedding_model)
+        except Exception as exc:
+            logger.warning("Scope seed discovery failed", error=str(exc))
+            return {
+                "results": [],
+                "documents": [],
+                "graph": {"entities": [], "edges": []},
+                "error": f"Seed discovery failed: {exc}",
+                "coverage": self._scope_error_coverage(
+                    query, "search_error", f"Seed discovery failed: {exc}"
+                ),
+            }
+
+        if seed_response.get("error"):
+            return {
+                "results": [],
+                "documents": [],
+                "graph": {"entities": [], "edges": []},
+                "error": seed_response["error"],
+                "coverage": self._scope_error_coverage(
+                    query, "incomplete_seed_discovery", str(seed_response["error"])
+                ),
+            }
+
+        seed_results = [item for item in seed_response.get("results", []) if isinstance(item, dict)]
+        seed_documents: dict[str, dict[str, Any]] = {}
+        seed_entities: set[str] = set()
+        seed_provenance_validity: dict[str, bool] = {}
+        seed_entity_ids_by_document: dict[str, set[str]] = {}
+        for result in seed_results:
+            document_id = result.get("document_id")
+            if not isinstance(document_id, str) or not document_id.strip():
+                continue
+            normalized_document_id = document_id.strip()
+            seed_documents.setdefault(normalized_document_id, self._scope_seed_manifest(result))
+            try:
+                provenance = parse_source_provenance(result.get("source_provenance"))
+            except ValueError:
+                provenance = None
+            observation_valid = provenance is not None
+            if provenance is not None:
+                flattened_entity_id = result.get("source_entity_id")
+                if flattened_entity_id not in (None, "", provenance.entity.id):
+                    observation_valid = False
+                flattened_alternates = result.get("source_entity_alternate_ids")
+                if isinstance(flattened_alternates, list) and {
+                    str(value) for value in flattened_alternates
+                } != set(provenance.entity.alternate_ids):
+                    observation_valid = False
+                if observation_valid:
+                    seed_documents[normalized_document_id].update(provenance.index_fields())
+            seed_provenance_validity[normalized_document_id] = (
+                seed_provenance_validity.get(normalized_document_id, True) and observation_valid
+            )
+            if observation_valid and provenance is not None:
+                entity_ids = {
+                    provenance.entity.id,
+                    *provenance.entity.alternate_ids,
+                }
+                seed_entity_ids_by_document.setdefault(normalized_document_id, set()).update(
+                    entity_ids
+                )
+
+        valid_provenance_seed_documents = {
+            document_id for document_id, valid in seed_provenance_validity.items() if valid
+        }
+        for document_id in valid_provenance_seed_documents:
+            seed_entities.update(seed_entity_ids_by_document.get(document_id, set()))
+        invalid_provenance_seed_documents = set(seed_documents) - (valid_provenance_seed_documents)
+
+        user_client = self.session_manager.get_user_opensearch_client(user_id, jwt_token)
+        graph_failed = False
+        try:
+            graph = await expand_provenance_graph(
+                user_client,
+                index_name=get_index_name(),
+                seed_entity_ids=seed_entities,
+                seed_documents=seed_documents.values(),
+                allowed_roles=DEFAULT_SCOPE_RELATION_ROLES,
+                max_depth=settings.max_depth,
+                max_entities=settings.max_entities,
+                max_documents=settings.max_documents,
+                filter_clauses=self._scope_filter_clauses(filters),
+            )
+        except Exception as exc:
+            logger.warning("Scope provenance traversal failed", error=str(exc))
+            graph_failed = True
+            graph = {
+                "documents": [seed_documents[key] for key in sorted(seed_documents)],
+                "entities": [],
+                "edges": [],
+                "coverage": {
+                    "entities_visited": 0,
+                    "documents_discovered": len(seed_documents),
+                    "depth_reached": 0,
+                    "frontier_empty": False,
+                    "limit_reached": False,
+                    "stop_reason": "graph_traversal_failed",
+                    "error": str(exc),
+                },
+            }
+
+        documents = sorted(graph["documents"], key=self._scope_document_sort_key)
+        evidence: list[dict[str, Any]] = []
+        document_manifest: list[dict[str, Any]] = []
+        evidence_batches: list[dict[str, Any]] = []
+        covered_chunks = 0
+        total_chunks = 0
+        complete_documents = 0
+        document_failure_codes: list[str] = []
+
+        for document in documents:
+            document_id = str(document.get("document_id") or "")
+            document_evidence: list[dict[str, Any]] = []
+            cursor = ""
+            seen_cursors: set[str] = set()
+            final_coverage: dict[str, Any] = {
+                "mode": "exhaustive",
+                "document_id": document_id,
+                "complete": False,
+            }
+            read_error: str | None = None
+            try:
+                while True:
+                    page = await self.read_document_chunks(
+                        document_id,
+                        user_id=user_id,
+                        jwt_token=jwt_token,
+                        filters=filters,
+                        cursor=cursor,
+                        batch_size=settings.batch_size,
+                    )
+                    document_evidence.extend(page.get("results", []))
+                    page_coverage = page.get("coverage")
+                    if isinstance(page_coverage, dict):
+                        final_coverage = page_coverage
+                    if page.get("error"):
+                        read_error = str(page["error"])
+                        break
+                    if final_coverage.get("complete") is True:
+                        break
+                    next_cursor = final_coverage.get("next_cursor")
+                    if not isinstance(next_cursor, str) or not next_cursor:
+                        read_error = "Document read stopped without a continuation cursor"
+                        break
+                    if next_cursor in seen_cursors:
+                        read_error = "Document read returned a repeated continuation cursor"
+                        break
+                    seen_cursors.add(next_cursor)
+                    cursor = next_cursor
+            except Exception as exc:
+                read_error = str(exc)
+
+            if read_error is None and final_coverage.get("complete") is True:
+                try:
+                    expected_snapshot = final_coverage.get("snapshot_sha256")
+                    if not isinstance(expected_snapshot, str) or len(expected_snapshot) != 64:
+                        raise ValueError("Document verification profile has no snapshot digest")
+                    if len(document_evidence) != int(final_coverage.get("total_chunks", -1)):
+                        raise ValueError("Document evidence count does not match its profile")
+                    recalculated_snapshot = document_content_sha256_from_chunks(document_evidence)
+                    if not hmac.compare_digest(recalculated_snapshot, expected_snapshot):
+                        raise ValueError("Document snapshot digest mismatch")
+                except (TypeError, ValueError) as exc:
+                    read_error = str(exc)
+
+            evidence.extend(document_evidence)
+            document_covered = int(final_coverage.get("covered_chunks", len(document_evidence)))
+            document_total = int(final_coverage.get("total_chunks", document_covered))
+            covered_chunks += document_covered
+            total_chunks += document_total
+            document_complete = final_coverage.get("complete") is True and read_error is None
+            if document_complete:
+                complete_documents += 1
+                document_status_code = "complete"
+            else:
+                document_status_code = self._scope_document_failure_code(
+                    read_error or "Document read did not report complete coverage"
+                )
+                document_failure_codes.append(document_status_code)
+            manifest_item = {
+                **document,
+                "coverage": final_coverage,
+                "complete": document_complete,
+                "status_code": document_status_code,
+            }
+            if read_error:
+                manifest_item["error"] = read_error
+            document_manifest.append(manifest_item)
+            evidence_batches.append(
+                {
+                    "document_id": document_id,
+                    "filename": final_coverage.get("filename") or document.get("filename"),
+                    "chunk_ids": [
+                        item.get("chunk_id") for item in document_evidence if item.get("chunk_id")
+                    ],
+                    "complete": document_complete,
+                    "status_code": document_status_code,
+                }
+            )
+
+        graph_coverage = graph["coverage"]
+        seed_provenance_complete = bool(seed_documents) and not (invalid_provenance_seed_documents)
+        incomplete_documents = len(documents) - complete_documents
+        decision = certify_scope_coverage(
+            ScopeCertificationFacts(
+                seed_discovery_complete=True,
+                seed_documents=len(seed_documents),
+                valid_provenance_seed_documents=len(valid_provenance_seed_documents),
+                invalid_provenance_seed_documents=len(invalid_provenance_seed_documents),
+                graph_frontier_empty=graph_coverage.get("frontier_empty") is True,
+                graph_limit_reached=graph_coverage.get("limit_reached") is True,
+                graph_stop_reason=graph_coverage.get("stop_reason"),
+                graph_failed=graph_failed,
+                documents_discovered=len(documents),
+                documents_complete=complete_documents,
+                covered_chunks=covered_chunks,
+                total_chunks=total_chunks,
+                document_failure_codes=tuple(document_failure_codes),
+            )
+        )
+        coverage = {
+            "mode": "scope_exhaustive",
+            "query": query,
+            "seed_discovery_complete": True,
+            "seed_documents": len(seed_documents),
+            "seed_entities": len(seed_entities),
+            "valid_provenance_seed_documents": len(valid_provenance_seed_documents),
+            "invalid_provenance_seed_documents": len(invalid_provenance_seed_documents),
+            "seed_provenance_complete": seed_provenance_complete,
+            "graph_entities_visited": graph_coverage.get("entities_visited", 0),
+            "graph_frontier_empty": graph_coverage.get("frontier_empty", False),
+            "graph_limit_reached": graph_coverage.get("limit_reached", False),
+            "graph_stop_reason": graph_coverage.get("stop_reason"),
+            "documents_discovered": len(documents),
+            "documents_complete": complete_documents,
+            "documents_incomplete": incomplete_documents,
+            "covered_chunks": covered_chunks,
+            "total_chunks": total_chunks,
+            "document_read_coverage_ratio": (
+                1.0
+                if decision["complete"] and total_chunks == 0
+                else covered_chunks / total_chunks
+                if total_chunks
+                else 0.0
+            ),
+            # Kept as a compatibility alias. It measures only document reads
+            # and is never an independent proof of scope closure.
+            "coverage_ratio": (
+                1.0
+                if decision["complete"] and total_chunks == 0
+                else covered_chunks / total_chunks
+                if total_chunks
+                else 0.0
+            ),
+            **decision,
+            "stop_reason": decision["status_code"],
+        }
+        # Langflow retains every verified chunk in its artifact for source
+        # cards/UI. Its model-facing projection uses this bounded leaf-evidence
+        # set: ranked seeds first, then one source-order chunk for each newly
+        # linked document. No generated summary is allowed to stand in as
+        # evidence, and the projection size is disclosed in coverage.
+        model_evidence_by_id: dict[str, dict[str, Any]] = {}
+        represented_documents: set[str] = set()
+        for item in seed_results:
+            chunk_id = item.get("chunk_id")
+            if isinstance(chunk_id, str):
+                model_evidence_by_id.setdefault(chunk_id, item)
+                document_id = item.get("document_id")
+                if isinstance(document_id, str):
+                    represented_documents.add(document_id)
+        for item in evidence:
+            document_id = item.get("document_id")
+            if isinstance(document_id, str) and document_id in represented_documents:
+                continue
+            chunk_id = item.get("chunk_id")
+            if isinstance(chunk_id, str):
+                model_evidence_by_id.setdefault(chunk_id, item)
+            if isinstance(document_id, str):
+                represented_documents.add(document_id)
+            if len(model_evidence_by_id) >= settings.seed_count:
+                break
+        model_results = list(model_evidence_by_id.values())[: settings.seed_count]
+        coverage["model_evidence_chunks"] = len(model_results)
+        coverage["artifact_chunks"] = len(evidence)
+        return {
+            "results": evidence,
+            "model_results": model_results,
+            "total": len(evidence),
+            "documents": document_manifest,
+            "evidence_batches": evidence_batches,
+            "graph": {"entities": graph["entities"], "edges": graph["edges"]},
+            "coverage": coverage,
+        }
+
     async def search(
         self,
         query: str,
@@ -1375,8 +1822,8 @@ class SearchService:
             embedding_model: Embedding model to use for search (defaults to the
                 currently configured embedding model)
         """
-        if evidence_mode not in {"focused", "exhaustive"}:
-            raise ValueError("evidence_mode must be 'focused' or 'exhaustive'")
+        if evidence_mode not in {"focused", "exhaustive", "scope_exhaustive"}:
+            raise ValueError("evidence_mode must be 'focused', 'exhaustive', or 'scope_exhaustive'")
 
         # Set auth context if provided (for direct API calls)
         from config.settings import is_no_auth_mode
@@ -1402,6 +1849,21 @@ class SearchService:
                 filters=filters,
                 cursor=cursor,
                 batch_size=batch_size,
+            )
+
+        if evidence_mode == "scope_exhaustive":
+            if not user_id:
+                return {"results": [], "error": "Authentication required"}
+            if not query.strip():
+                raise ValueError("query is required for scope_exhaustive retrieval")
+            settings = ScopeExhaustiveSettings.from_knowledge(get_openrag_config().knowledge)
+            return await self.search_exhaustive_scope(
+                query,
+                user_id=user_id,
+                jwt_token=jwt_token,
+                filters=filters,
+                embedding_model=embedding_model,
+                settings=settings,
             )
 
         from auth_context import set_score_threshold, set_search_limit

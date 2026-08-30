@@ -44,6 +44,11 @@ class SettingsUpdateBody(BaseModel):
     retrieval_reranker_url: str | None = Field(None, max_length=2048)
     retrieval_reranker_timeout: int | None = Field(None, gt=0, le=120)
     retrieval_debug: bool | None = None
+    retrieval_scope_seed_count: int | None = Field(None, gt=0, le=500)
+    retrieval_scope_max_depth: int | None = Field(None, gt=0, le=64)
+    retrieval_scope_max_entities: int | None = Field(None, gt=0, le=5000)
+    retrieval_scope_max_documents: int | None = Field(None, gt=0, le=1000)
+    retrieval_scope_batch_size: int | None = Field(None, gt=0, le=50)
     openai_api_key: str | None = Field(None, min_length=1)
     anthropic_api_key: str | None = Field(None, min_length=1)
     watsonx_api_key: str | None = Field(None, min_length=1)
@@ -221,6 +226,11 @@ class KnowledgeConfig(BaseModel):
     retrieval_reranker_url: str | None = None
     retrieval_reranker_timeout: int | None = None
     retrieval_debug: bool | None = None
+    retrieval_scope_seed_count: int | None = None
+    retrieval_scope_max_depth: int | None = None
+    retrieval_scope_max_entities: int | None = None
+    retrieval_scope_max_documents: int | None = None
+    retrieval_scope_batch_size: int | None = None
 
 
 class AgentConfig(BaseModel):

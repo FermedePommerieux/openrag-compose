@@ -20,10 +20,10 @@ between relevant evidence discovery and complete corpus reading.
 
 ## Decision
 
-OpenRAG exposes one model-facing retrieval operation backed by two server-side
-primitives. This boundary is deliberate: ordinary archive search is always
-available, while complete source-order reading cannot be selected from vague
-topic wording.
+OpenRAG exposes one model-facing retrieval operation backed by three distinct
+server-side paths: ranked discovery, complete reading of one selected document,
+and exhaustive investigation of a query-defined documentary scope. Keeping
+the paths explicit prevents a top-k result from being presented as coverage.
 
 ### Normal archive search
 
@@ -47,11 +47,8 @@ containing the immutable snapshot digest, filename, chunks covered, total
 chunks, coverage ratio, continuation cursor and completion flag.
 
 The chat tool exposes this primitive only as `read_document_id`, for one already
-identified document explicitly selected by the human. Words such as
-“exhaustive”, “complete” or “all” in an archive topic do not activate it. They
-trigger normal search immediately and never a confirmation round-trip. This
-prevents an LLM from expanding one prompt into an unbounded sequence of costly
-document reads.
+identified document explicitly selected by the human. Topic wording never
+selects an arbitrary single document.
 
 Once a selected-document read starts, the agent follows `next_cursor` in the
 same turn until `complete=true`. An incomplete, inaccessible, changed or
@@ -59,6 +56,78 @@ unverifiable document is reported as incomplete. An API client may deliberately
 read several named documents, but coverage is then the conjunction of those
 independent reads; complete reading of one document says nothing about files
 excluded by ranked discovery.
+
+### Exhaustive investigation of a documentary scope
+
+An explicit request for all exchanges, all related documents, or a complete
+chronology can select `scope_exhaustive`. The server first reuses normal
+Retrieval v2 to obtain broad lexical/vector/RRF seeds. It then closes the
+accessible provenance graph from their primary and alternate entity ids:
+
+- outgoing relations are read from each entity's canonical provenance object;
+- incoming relations use a nested OpenSearch query, ensuring the allowed role
+  and target id belong to the same relation;
+- every OpenSearch request uses the current user's DLS-scoped client;
+- visited identifiers, frontier and results are ordered deterministically;
+- cycles terminate and forward/reverse traversal continues to an empty
+  frontier or an explicit safety bound.
+
+The default traversable roles are `reply_to`, `references`, `attachment_of`,
+`member_of`, `contained_in`, `occurrence_of`, `derived_from` and
+`primary_source`. Every discovered document is then read by repeatedly calling
+the existing selected-document primitive. Ranked seed chunks are discovery
+evidence, never proof that the document was read completely.
+
+Scope coverage is complete only when seed discovery found at least one
+PROV-O-identifiable document, every seed can participate in provenance closure,
+graph traversal ended with an empty frontier without reaching a bound, and
+every discovered document completed its verified immutable-snapshot read. A legacy profile,
+snapshot change, cursor failure, inaccessible read or any graph/document limit
+makes coverage incomplete with an explicit stop reason.
+
+#### Coverage certification invariants
+
+`complete=true` certifies only the accessible, indexed, provenance-connected
+scope reached from the ranked seeds. It never certifies the whole physical
+archive, documents not indexed, or documents hidden by DLS. The value is
+produced by one fail-closed decision function and requires all of these facts:
+
+1. ranked seed discovery completed without a search error;
+2. at least one seed document has valid canonical `source_provenance`;
+3. every seed document has valid provenance, including agreement between the
+   canonical object and denormalized identity fields;
+4. forward and nested reverse traversal ended at a natural empty frontier;
+5. no depth, entity, document, result-window or identity-ambiguity guard was
+   encountered;
+6. every DLS-visible discovered document was read in contiguous source order;
+7. every chunk digest, snapshot binding, cursor and exact counter was valid;
+8. the canonical whole-document SHA-256 recomputed from all returned chunks
+   matched the immutable ingestion snapshot.
+
+Reaching a limit exactly is not an error when the next visible frontier is
+empty. A limit is reported only when an additional accessible entity or
+document would cross it. Conversely, an invisible relation target is absent
+from `documents`, `entities` and `edges`, consumes no limit and cannot prevent
+natural closure. Active public filters are included in every graph query.
+
+The certificate exposes stable `status_code`, `status_message` and ordered
+`failure_codes` fields. Current incomplete codes are
+`incomplete_seed_discovery`, `search_error`, `no_provenance_seed`,
+`seed_missing_provenance`, `graph_limit_reached`,
+`graph_traversal_failed`, `document_limit_reached`,
+`document_read_incomplete`, `legacy_document`, `snapshot_changed`,
+`cursor_invalid`, `access_error`, `profile_invalid` and
+`identity_ambiguous`. Partial verified chunks and per-document statuses remain
+in the response when another read fails. `coverage_ratio` and
+`document_read_coverage_ratio` measure leaf-reading progress only; even a value
+of `1.0` is not proof of graph closure or valid seed discovery.
+
+The full response artifact retains every verified leaf chunk for provenance and
+the UI. To keep one investigation from blindly filling the LLM context with
+hundreds of documents, the model-facing projection contains ranked leaf seeds
+plus at most one source-order leaf from newly linked documents, a document
+manifest and the coverage certificate. These remain real citable leaf chunks;
+generated summaries never replace evidence.
 
 ## Ingestion analysis and snapshot identity
 
@@ -142,6 +211,10 @@ maps should be added to the same evidence ledger as they become available.
   quota, not a document-wide limit.
 - `retrieval_adaptive_max_chunks_per_document` is only the normal-search
   ceiling. It never truncates exhaustive reads.
+- `retrieval_scope_seed_count`, `retrieval_scope_max_depth`,
+  `retrieval_scope_max_entities`, `retrieval_scope_max_documents` and
+  `retrieval_scope_batch_size` bound dossier investigations. Reaching a bound
+  is reported as incomplete, never as successful coverage.
 - The database retains every leaf chunk. No summary replaces source evidence.
 - Langflow remains an orchestration client. The backend owns pagination,
   snapshot validation, ACL-scoped access and coverage accounting.
@@ -167,6 +240,12 @@ maps should be added to the same evidence ledger as they become available.
 
 Release validation must include small and long documents, multiple documents,
 exact identifiers, paraphrases, contradictions, a changed snapshot, an invalid
-cursor and a full pagination run. Model evaluation records retrieval coverage
+cursor, forward/reverse provenance chains, cycles, DLS-hidden neighbours and a
+full pagination run. Model evaluation records retrieval coverage
 separately from answer correctness so a capable model cannot conceal a
 retrieval omission.
+
+Even complete graph closure proves only the accessible entities currently
+indexed. It cannot prove that a source was never created, never ingested, or is
+not hidden by the caller's permissions. User-facing claims must retain that
+epistemic boundary.

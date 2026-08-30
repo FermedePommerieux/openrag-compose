@@ -36,7 +36,8 @@ class SearchClient:
             limit: Maximum number of results (default 10).
             score_threshold: Minimum score threshold (default 0).
             filter_id: Optional knowledge filter ID to apply.
-            evidence_mode: ``focused`` discovery or ``exhaustive`` reading.
+            evidence_mode: ``focused`` discovery, ``exhaustive`` one-document
+                reading, or ``scope_exhaustive`` dossier investigation.
             document_id: Required for exhaustive reading.
             cursor: Opaque continuation cursor from the previous coverage object.
             batch_size: Exhaustive page size, between 1 and 50.
@@ -78,4 +79,7 @@ class SearchClient:
             results=[SearchResult(**r) for r in data.get("results", [])],
             coverage=data.get("coverage"),
             error=data.get("error"),
+            documents=data.get("documents", []),
+            evidence_batches=data.get("evidence_batches", []),
+            graph=data.get("graph"),
         )

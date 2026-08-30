@@ -33,6 +33,11 @@ const BASE_KNOWLEDGE: Knowledge = {
   retrieval_max_chunks_per_document: 3,
   retrieval_adaptive_max_chunks_per_document: 20,
   retrieval_debug: false,
+  retrieval_scope_seed_count: 100,
+  retrieval_scope_max_depth: 8,
+  retrieval_scope_max_entities: 500,
+  retrieval_scope_max_documents: 250,
+  retrieval_scope_batch_size: 50,
 };
 
 async function mockSettings(
@@ -209,6 +214,12 @@ test.describe("Retrieval and ingestion settings contracts", () => {
   }) => {
     const settings = await mockSettings(page);
     await openSettings(page, "retrieval");
+
+    await expect(page.getByLabel("Seed results")).toHaveValue("100");
+    await expect(page.getByLabel("Maximum graph depth")).toHaveValue("8");
+    await expect(page.getByLabel("Maximum graph entities")).toHaveValue("500");
+    await expect(page.getByLabel("Maximum documents")).toHaveValue("250");
+    await expect(page.getByLabel("Read batch size")).toHaveValue("50");
 
     const mode = page.getByRole("combobox", { name: "Search mode" });
     await expect(

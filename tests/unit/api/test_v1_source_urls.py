@@ -227,3 +227,48 @@ async def test_exhaustive_search_accepts_an_empty_ranked_query():
 
     assert response.status_code == 200
     search_service.search.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_scope_exhaustive_search_preserves_graph_and_coverage_contract():
+    result = {
+        "results": [{"chunk_id": "chunk-1", "text": "Evidence"}],
+        "documents": [{"document_id": "document-1", "filename": "mail.eml"}],
+        "graph": {
+            "entities": ["mail-a", "mail-b"],
+            "edges": [
+                {
+                    "source_entity_id": "mail-a",
+                    "role": "reply_to",
+                    "target_entity_id": "mail-b",
+                }
+            ],
+        },
+        "coverage": {
+            "mode": "scope_exhaustive",
+            "documents_discovered": 1,
+            "documents_complete": 1,
+            "complete": True,
+        },
+    }
+    search_service = MagicMock()
+    search_service.search = AsyncMock(return_value=result)
+    user = User(
+        user_id="user-1",
+        email="u@example.com",
+        name="User",
+        jwt_token="Bearer tok",
+    )
+
+    response = await search_endpoint(
+        SearchV1Body(
+            query="all exchanges about Surface pastorale",
+            evidence_mode="scope_exhaustive",
+        ),
+        search_service=search_service,
+        user=user,
+        knowledge_filter_service=MagicMock(),
+    )
+
+    assert json.loads(response.body.decode()) == result
+    assert search_service.search.await_args.kwargs["evidence_mode"] == "scope_exhaustive"
