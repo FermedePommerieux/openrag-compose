@@ -1754,6 +1754,20 @@ class SearchService:
             "graph_frontier_empty": graph_coverage.get("frontier_empty", False),
             "graph_limit_reached": graph_coverage.get("limit_reached", False),
             "graph_stop_reason": graph_coverage.get("stop_reason"),
+            "graph_error": graph_coverage.get("error"),
+            "graph_forward_hits": graph_coverage.get("forward_hits", 0),
+            "graph_reverse_hits": graph_coverage.get("reverse_hits", 0),
+            "graph_forward_pages": graph_coverage.get("forward_pages", 0),
+            "graph_reverse_pages": graph_coverage.get("reverse_pages", 0),
+            "graph_forward_verification_pages": graph_coverage.get(
+                "forward_verification_pages", 0
+            ),
+            "graph_reverse_verification_pages": graph_coverage.get(
+                "reverse_verification_pages", 0
+            ),
+            "graph_distinct_results": graph_coverage.get("distinct_results", 0),
+            "graph_stability_verified": graph_coverage.get("stability_verified", False),
+            "graph_stability_observations": graph_coverage.get("stability_observations", 0),
             "documents_discovered": len(documents),
             "documents_complete": complete_documents,
             "documents_incomplete": incomplete_documents,

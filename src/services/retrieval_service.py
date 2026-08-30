@@ -26,7 +26,6 @@ logger = get_logger(__name__)
 EXHAUSTIVE_PROFILE_VERSION = 1
 EXHAUSTIVE_BATCH_MAX = 50
 PROVENANCE_GRAPH_PAGE_SIZE = 500
-PROVENANCE_GRAPH_PIT_KEEP_ALIVE = "2m"
 DEFAULT_SCOPE_RELATION_ROLES = (
     "attachment_of",
     "contained_in",
@@ -627,16 +626,22 @@ def _graph_query_body(
             "source_entity_alternate_ids",
             "source_relative_path",
             "source_path_ancestors",
+            # Included both for stability verification and to make the total
+            # pagination key auditable in returned hits.
+            "ingest_run_id",
+            "chunk_id",
         ],
         "size": size,
         "track_total_hits": True,
         "sort": [
             {"source_entity_id": {"order": "asc", "missing": "_last"}},
             {"document_id": {"order": "asc", "missing": "_last"}},
-            # PIT-local Lucene order is the unique deterministic tie-breaker
-            # required by search_after. Stable field values alone are not
-            # unique when one source occurrence has multiple ingest runs.
-            {"_shard_doc": "asc"},
+            # A document/source occurrence can have several ingest generations.
+            # ``ingest_run_id`` separates those generations and ``chunk_id``
+            # uniquely identifies their representative chunk. All four fields
+            # are mapped keywords with doc_values, unlike OpenSearch ``_id``.
+            {"ingest_run_id": {"order": "asc", "missing": "_last"}},
+            {"chunk_id": {"order": "asc", "missing": "_last"}},
         ],
     }
 
@@ -771,12 +776,23 @@ async def expand_provenance_graph(
         stop_reason = "max_documents"
         limit_reached = True
 
-    pit_id = ""
     pagination_pages = 0
+    traversal_stats: dict[str, dict[str, int]] = {
+        "forward": {"hits": 0, "pages": 0, "verification_pages": 0},
+        "reverse": {"hits": 0, "pages": 0, "verification_pages": 0},
+    }
+    distinct_result_ids: set[str] = set()
+    stability_observations = 0
 
     async def search_records(entity_ids: list[str]) -> list[dict[str, Any]]:
-        """Read both graph directions completely from one DLS-scoped PIT."""
-        nonlocal pit_id, pagination_pages
+        """Read and verify both directions using only DLS-compatible searches.
+
+        OpenSearch Security filter-level DLS rejects PIT creation. Each
+        direction is therefore observed twice with ordinary ``_search`` plus
+        ``search_after``. Exact totals are required on every page and the two
+        canonical observations must match before any record is accepted.
+        """
+        nonlocal pagination_pages, stability_observations
         bodies = [
             _graph_query_body(
                 entity_ids,
@@ -788,30 +804,31 @@ async def expand_provenance_graph(
             for reverse in (False, True)
         ]
         records: dict[tuple[str, str], dict[str, Any]] = {}
-        for reverse, base_body in zip((False, True), bodies, strict=True):
+
+        async def observe(
+            base_body: dict[str, Any],
+        ) -> tuple[list[dict[str, Any]], str, int, int, set[str]]:
+            nonlocal pagination_pages
             expected_total: int | None = None
             returned_hits = 0
             search_after: list[Any] | None = None
             seen_hit_ids: set[str] = set()
-            seen_cursors: set[str] = set()
-            direction_pages = 0
+            seen_sort_keys: set[str] = set()
+            canonical_hits: list[dict[str, Any]] = []
+            observed_records: list[dict[str, Any]] = []
+            pages = 0
 
             while expected_total is None or returned_hits < expected_total:
-                page_body = {
-                    **base_body,
-                    "pit": {"id": pit_id, "keep_alive": PROVENANCE_GRAPH_PIT_KEEP_ALIVE},
-                }
+                page_body = {**base_body}
                 if search_after is not None:
                     page_body["search_after"] = search_after
-                response = await client.search(body=page_body, params={"terminate_after": 0})
-                direction_pages += 1
+                response = await client.search(
+                    index=index_name,
+                    body=page_body,
+                    params={"terminate_after": 0},
+                )
+                pages += 1
                 pagination_pages += 1
-
-                refreshed_pit_id = response.get("pit_id")
-                if refreshed_pit_id is not None:
-                    if not isinstance(refreshed_pit_id, str) or not refreshed_pit_id:
-                        raise RuntimeError("Provenance traversal returned an invalid PIT cursor")
-                    pit_id = refreshed_pit_id
 
                 hit_container = response.get("hits", {})
                 hits = hit_container.get("hits", [])
@@ -829,7 +846,9 @@ async def expand_provenance_graph(
                 if expected_total is None:
                     expected_total = total_value
                 elif total_value != expected_total:
-                    raise RuntimeError("Provenance traversal hit total changed within its PIT")
+                    raise RuntimeError(
+                        "Provenance traversal hit total changed during pagination"
+                    )
                 if len(hits) > PROVENANCE_GRAPH_PAGE_SIZE:
                     raise RuntimeError("Provenance traversal page exceeded its requested size")
                 if not hits and returned_hits < expected_total:
@@ -844,6 +863,7 @@ async def expand_provenance_graph(
                             "Provenance traversal returned a duplicate paginated hit"
                         )
                     seen_hit_ids.add(hit_id)
+
                     sort_values = hit.get("sort")
                     if not isinstance(sort_values, list) or len(sort_values) != len(
                         base_body["sort"]
@@ -851,15 +871,28 @@ async def expand_provenance_graph(
                         raise RuntimeError(
                             "Provenance traversal returned an invalid search_after cursor"
                         )
-                    cursor_key = json.dumps(sort_values, ensure_ascii=False, separators=(",", ":"))
-                    if cursor_key in seen_cursors:
-                        raise RuntimeError(
-                            "Provenance traversal returned a repeated search_after cursor"
-                        )
-                    seen_cursors.add(cursor_key)
+                    sort_key = json.dumps(
+                        sort_values,
+                        ensure_ascii=False,
+                        separators=(",", ":"),
+                    )
+                    if sort_key in seen_sort_keys:
+                        raise RuntimeError("Provenance traversal sort key is not unique")
+                    seen_sort_keys.add(sort_key)
+
+                    source = hit.get("_source")
+                    if not isinstance(source, dict):
+                        raise RuntimeError("Provenance traversal hit has no source document")
+                    canonical_hits.append(
+                        {
+                            "_id": hit_id,
+                            "sort": sort_values,
+                            "_source": source,
+                        }
+                    )
                     record = _provenance_record(hit)
                     if record is not None:
-                        records[(record["source_entity_id"], record["document_id"])] = record
+                        observed_records.append(record)
 
                 returned_hits += len(hits)
                 if returned_hits > expected_total:
@@ -877,12 +910,48 @@ async def expand_provenance_graph(
                     raise RuntimeError("Provenance traversal page has no continuation cursor")
                 search_after = last_sort
 
+            canonical = json.dumps(
+                canonical_hits,
+                sort_keys=True,
+                ensure_ascii=False,
+                separators=(",", ":"),
+            )
+            digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+            return observed_records, digest, expected_total or 0, pages, seen_hit_ids
+
+        for reverse, base_body in zip((False, True), bodies, strict=True):
+            direction = "reverse" if reverse else "forward"
+            _first_records, first_digest, first_total, first_pages, first_ids = await observe(
+                base_body
+            )
+            second_records, second_digest, second_total, second_pages, second_ids = await observe(
+                base_body
+            )
+            if (
+                first_digest != second_digest
+                or first_total != second_total
+                or first_ids != second_ids
+            ):
+                raise RuntimeError(
+                    "Provenance traversal changed between stability observations"
+                )
+
+            stability_observations += 1
+            traversal_stats[direction]["hits"] += second_total
+            traversal_stats[direction]["pages"] += first_pages
+            traversal_stats[direction]["verification_pages"] += second_pages
+            distinct_result_ids.update(second_ids)
+            for record in second_records:
+                records[(record["source_entity_id"], record["document_id"])] = record
+
             logger.info(
                 "Completed paginated provenance direction",
-                direction="reverse" if reverse else "forward",
+                direction=direction,
                 frontier_entities=len(entity_ids),
-                pages=direction_pages,
-                hits=expected_total or 0,
+                pages=first_pages,
+                verification_pages=second_pages,
+                hits=second_total,
+                stability_verified=True,
             )
         return [records[key] for key in sorted(records)]
 
@@ -926,17 +995,7 @@ async def expand_provenance_graph(
             frontier = next_frontier - queried_ids
 
     if frontier and not limit_reached:
-        pit_response = await client.create_pit(
-            index=index_name,
-            params={"keep_alive": PROVENANCE_GRAPH_PIT_KEEP_ALIVE},
-        )
-        pit_id = pit_response.get("pit_id") if isinstance(pit_response, dict) else None
-        if not isinstance(pit_id, str) or not pit_id:
-            raise RuntimeError("Provenance traversal could not establish a stable PIT")
-        try:
-            await traverse()
-        finally:
-            await client.delete_pit(body={"pit_id": [pit_id]})
+        await traverse()
 
     visible_edges: dict[tuple[str, str, str], dict[str, str]] = {}
     for source, role, target_identifier in pending_edges:
@@ -964,6 +1023,19 @@ async def expand_provenance_graph(
             "stop_reason": stop_reason,
             "remaining_frontier": remaining_frontier,
             "pagination_pages": pagination_pages,
+            "forward_hits": traversal_stats["forward"]["hits"],
+            "reverse_hits": traversal_stats["reverse"]["hits"],
+            "forward_pages": traversal_stats["forward"]["pages"],
+            "reverse_pages": traversal_stats["reverse"]["pages"],
+            "forward_verification_pages": traversal_stats["forward"][
+                "verification_pages"
+            ],
+            "reverse_verification_pages": traversal_stats["reverse"][
+                "verification_pages"
+            ],
+            "distinct_results": len(distinct_result_ids),
+            "stability_verified": stability_observations > 0,
+            "stability_observations": stability_observations,
         },
     }
 
