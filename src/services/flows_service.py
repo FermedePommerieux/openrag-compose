@@ -35,7 +35,7 @@ _LEGACY_RETRIEVAL_COMPONENT = (
     "ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra"
 )
 _BACKEND_RETRIEVAL_COMPONENT = "ext:openrag:OpenRAGBackendRetrievalComponent@extra"
-_RETRIEVAL_FLOW_MIGRATION_VERSION = 9
+_RETRIEVAL_FLOW_MIGRATION_VERSION = 10
 _LEGACY_SYSTEM_FLOW_ID = "1098eea1-6649-4e1d-aed1-b77249fb8dd0"
 # These fields are rewritten by OpenRAG's settings synchronization and by
 # Langflow's provider refresh endpoint. Their values and option lists are
@@ -123,6 +123,15 @@ _PREVIOUS_VERSIONED_SCOPE_ARTIFACT_GRAPH_SHA256 = (
 )
 _PREVIOUS_VERSIONED_SCOPE_ARTIFACT_RUNTIME_GRAPH_SHA256 = (
     "93c5ad3b275a94705229298c38db0f22d7adbbf3555b2ce49eff008a478b4293"
+)
+# Exact fingerprints of the runtime-safe Retrieval v2 version 9 graph. They
+# authorize only the repository-owned projection update that exposes the
+# versioned scope-policy certificate and bounded context metadata to Langflow.
+_PREVIOUS_VERSIONED_RUNTIME_SAFE_GRAPH_SHA256 = (
+    "0f8bdfdf0983292eb61c9d3c62a717e16916e8cc217de74239017854cf1a2780"
+)
+_PREVIOUS_VERSIONED_RUNTIME_SAFE_RUNTIME_GRAPH_SHA256 = (
+    "53ea921ab9e9363fdd63d21fa44c2aff419bbf14b409d5ce142ded887e2675b8"
 )
 
 
@@ -1399,10 +1408,12 @@ class FlowsService:
             if marker == 7
             else {_PREVIOUS_VERSIONED_SCOPE_ARTIFACT_GRAPH_SHA256}
             if marker == 8
+            else {_PREVIOUS_VERSIONED_RUNTIME_SAFE_GRAPH_SHA256}
+            if marker == 9
             else set()
         )
         exact_match = self._graph_fingerprint(flow_data) in expected
-        if marker not in {6, 7, 8}:
+        if marker not in {6, 7, 8, 9}:
             return exact_match
         expected_runtime = (
             _PREVIOUS_VERSIONED_DOCUMENTALIST_RUNTIME_GRAPH_SHA256
@@ -1410,6 +1421,8 @@ class FlowsService:
             else _PREVIOUS_VERSIONED_SCOPELESS_RUNTIME_GRAPH_SHA256
             if marker == 7
             else _PREVIOUS_VERSIONED_SCOPE_ARTIFACT_RUNTIME_GRAPH_SHA256
+            if marker == 8
+            else _PREVIOUS_VERSIONED_RUNTIME_SAFE_RUNTIME_GRAPH_SHA256
         )
         return (
             exact_match or self._runtime_normalized_graph_fingerprint(flow_data) == expected_runtime
