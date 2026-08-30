@@ -46,6 +46,7 @@ MODEL_DOCUMENT_FIELDS = (
     "source_relative_path",
     "source_path_ancestors",
     "generated_at_time",
+    "scope_context_relations",
 )
 MODEL_COVERAGE_FIELDS = (
     "mode",
@@ -64,6 +65,8 @@ MODEL_COVERAGE_FIELDS = (
     "valid_provenance_seed_documents",
     "invalid_provenance_seed_documents",
     "seed_provenance_complete",
+    "scope_policy_id",
+    "scope_policy_version",
     "graph_entities_visited",
     "graph_frontier_empty",
     "graph_limit_reached",
@@ -78,6 +81,11 @@ MODEL_COVERAGE_FIELDS = (
     "graph_distinct_results",
     "graph_stability_verified",
     "graph_stability_observations",
+    "identity_shared_aliases_resolved",
+    "relations_traversed",
+    "relations_context_only",
+    "relations_excluded_by_policy",
+    "relations_unclassified",
     "documents_discovered",
     "documents_complete",
     "documents_incomplete",

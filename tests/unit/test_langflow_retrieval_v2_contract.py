@@ -367,10 +367,30 @@ def test_explicit_scope_investigation_routes_to_scope_exhaustive(monkeypatch):
             return {
                 "results": [],
                 "model_results": [],
-                "documents": [],
+                "documents": [
+                    {
+                        "document_id": "document-42",
+                        "scope_context_relations": [
+                            {
+                                "role": "contained_in",
+                                "target_type": "email_archive",
+                            }
+                        ],
+                    }
+                ],
                 "coverage": {
                     "mode": "scope_exhaustive",
                     "complete": False,
+                    "scope_policy_id": "documentary-prov-o",
+                    "scope_policy_version": 1,
+                    "identity_shared_aliases_resolved": 1,
+                    "relations_traversed": {"total": 12, "by_classification": []},
+                    "relations_context_only": {"total": 4, "by_classification": []},
+                    "relations_excluded_by_policy": {
+                        "total": 8,
+                        "by_classification": [],
+                    },
+                    "relations_unclassified": {"total": 0, "by_classification": []},
                     "documents_discovered": 0,
                     "stop_reason": "max_depth",
                 },
@@ -406,4 +426,25 @@ def test_explicit_scope_investigation_routes_to_scope_exhaustive(monkeypatch):
     assert captured["payload"]["evidenceMode"] == "scope_exhaustive"
     assert captured["payload"]["documentId"] is None
     assert captured["payload"]["responseProfile"] == "langflow"
-    assert json.loads(content)["coverage"]["stop_reason"] == "max_depth"
+    compact = json.loads(content)
+    assert compact["coverage"] == {
+        "mode": "scope_exhaustive",
+        "complete": False,
+        "scope_policy_id": "documentary-prov-o",
+        "scope_policy_version": 1,
+        "identity_shared_aliases_resolved": 1,
+        "relations_traversed": {"total": 12, "by_classification": []},
+        "relations_context_only": {"total": 4, "by_classification": []},
+        "relations_excluded_by_policy": {"total": 8, "by_classification": []},
+        "relations_unclassified": {"total": 0, "by_classification": []},
+        "documents_discovered": 0,
+        "stop_reason": "max_depth",
+    }
+    assert compact["documents"] == [
+        {
+            "document_id": "document-42",
+            "scope_context_relations": [
+                {"role": "contained_in", "target_type": "email_archive"}
+            ],
+        }
+    ]
