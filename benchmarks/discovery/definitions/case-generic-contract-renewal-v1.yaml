@@ -1,0 +1,59 @@
+schema_version: 1
+benchmark_id: case-generic-contract-renewal
+benchmark_version: 1
+document_metric_unit: source_occurrence
+queries:
+  - query_id: canonical-literal
+    kind: canonical_literal
+    text: Tous les échanges concernant le renouvellement du contrat Alpha.
+relevance_views:
+  STRICT:
+    - CORE
+  BROAD:
+    - CORE
+    - CONTEXTUAL
+documents:
+  - occurrence_id: urn:test:contract-alpha:message-1
+    document_id: contract-alpha-message-1
+    source_entity_id: urn:test:contract-alpha:message-1
+    component_id: CONTRACT-THREAD-001
+    state: relevant
+    human_decision: CORE
+  - occurrence_id: urn:test:contract-alpha:attachment-1
+    document_id: contract-alpha-attachment-1
+    source_entity_id: urn:test:contract-alpha:attachment-1
+    component_id: CONTRACT-THREAD-001
+    state: relevant
+    human_decision: CORE
+  - occurrence_id: urn:test:contract-alpha:context-1
+    document_id: contract-alpha-context-1
+    source_entity_id: urn:test:contract-alpha:context-1
+    component_id: CONTRACT-CONTEXT-001
+    state: uncertain
+    human_decision: CONTEXTUAL
+  - occurrence_id: urn:test:unrelated:maintenance-1
+    document_id: unrelated-maintenance-1
+    source_entity_id: urn:test:unrelated:maintenance-1
+    component_id: UNRELATED-MAINTENANCE-001
+    state: not_relevant
+    human_decision: NOT_RELEVANT
+components:
+  - component_id: CONTRACT-THREAD-001
+    type: message_attachments
+    state: relevant
+    human_decision: CORE
+    required_occurrence_ids:
+      - urn:test:contract-alpha:message-1
+      - urn:test:contract-alpha:attachment-1
+  - component_id: CONTRACT-CONTEXT-001
+    type: standalone_document
+    state: uncertain
+    human_decision: CONTEXTUAL
+    required_occurrence_ids:
+      - urn:test:contract-alpha:context-1
+  - component_id: UNRELATED-MAINTENANCE-001
+    type: standalone_document
+    state: not_relevant
+    human_decision: NOT_RELEVANT
+    required_occurrence_ids:
+      - urn:test:unrelated:maintenance-1

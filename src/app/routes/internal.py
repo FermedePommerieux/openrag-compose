@@ -361,6 +361,12 @@ def register_internal_routes(app: FastAPI):
     )
 
     # Settings endpoints
+    app.add_api_route(
+        "/settings/runtime-behavior",
+        settings.get_runtime_behavior_profile,
+        methods=["GET"],
+        tags=["internal"],
+    )
     app.add_api_route("/settings", settings.get_settings, methods=["GET"], tags=["internal"])
     app.add_api_route("/settings", settings.update_settings, methods=["POST"], tags=["internal"])
     app.add_api_route(

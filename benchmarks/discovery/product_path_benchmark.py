@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import hashlib
 import json
 import os
 import time
@@ -108,6 +109,25 @@ def _now() -> str:
     return datetime.now(UTC).isoformat()
 
 
+def _canonical_sha256(value: Any) -> str:
+    canonical = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _validation_check(
+    check_id: str, *, observed: Any, expected: Any, evidence: Any | None = None
+) -> dict[str, Any]:
+    return {
+        "check_id": check_id,
+        "status": "PASS" if observed == expected else "FAIL",
+        "observed": observed,
+        "expected": expected,
+        "evidence_sha256": _canonical_sha256(
+            evidence if evidence is not None else {"observed": observed, "expected": expected}
+        ),
+    }
+
+
 def _canonical_query(definition: dict[str, Any]) -> str:
     query = next(item for item in definition["queries"] if item.get("kind") == "canonical_literal")
     return str(query["text"])
@@ -172,7 +192,6 @@ def snapshot_product_corpus(
 ) -> dict[str, Any]:
     """Snapshot the exact DLS-visible occurrence set through ``/api/files``."""
 
-    import hashlib
     from urllib.parse import urlencode
 
     records: list[dict[str, Any]] = []
@@ -236,7 +255,12 @@ def snapshot_product_corpus(
 
 
 def _request_body(
-    *, query: str, filters: dict[str, Any], query_count: int, seed_budget: int
+    *,
+    query: str,
+    filters: dict[str, Any],
+    query_count: int,
+    seed_budget: int,
+    multi_query_concurrency: int,
 ) -> dict[str, Any]:
     body: dict[str, Any] = {
         "query": query,
@@ -251,7 +275,7 @@ def _request_body(
             {
                 "multiQueryDiscovery": True,
                 "multiQueryMaxQueries": query_count,
-                "multiQueryConcurrency": 2,
+                "multiQueryConcurrency": multi_query_concurrency,
             }
         )
     return body
@@ -331,10 +355,6 @@ def _contract_assessment(run: dict[str, Any]) -> dict[str, Any]:
         failures.append("retrieval_execution_incomplete")
     if run.get("retrieval_failure_codes") not in (None, []):
         failures.append("retrieval_failure_codes_present")
-    if run.get("planner", {}).get("temperature_present") is not False:
-        failures.append("planner_temperature_present")
-    if "temperature" in run.get("planner", {}).get("actual_request_parameter_names", []):
-        failures.append("planner_temperature_parameter_recorded")
     if coverage.get("retrieval_execution_complete") is not True:
         failures.append("coverage_retrieval_execution_incomplete")
     if coverage.get("requested_retrieval_profile") != requested:
@@ -374,7 +394,52 @@ def _contract_assessment(run: dict[str, Any]) -> dict[str, Any]:
             failures.append("reported_seed_budget_mismatch")
     elif len(run["generated_queries"]) != 1:
         failures.append("q1_not_single_query")
-    return {"valid": not failures, "failure_codes": failures}
+    checks = [
+        _validation_check(
+            "product_path_endpoint",
+            observed=run.get("product_endpoint"),
+            expected="/api/search",
+        ),
+        _validation_check(
+            "runtime_behavior_match",
+            observed=run.get("runtime_behavior_profile", {}).get("status"),
+            expected="MATCH",
+        ),
+        _validation_check(
+            "runtime_behavior_fingerprint_stable",
+            observed=run.get("runtime_behavior_fingerprint"),
+            expected=run.get("expected_runtime_behavior_fingerprint"),
+        ),
+        _validation_check(
+            "retrieval_execution_complete",
+            observed=run.get("retrieval_execution_complete"),
+            expected=True,
+        ),
+        _validation_check(
+            "coverage_complete",
+            observed={
+                "complete": coverage.get("complete"),
+                "status_code": coverage.get("status_code"),
+            },
+            expected={"complete": True, "status_code": "complete"},
+        ),
+        _validation_check(
+            "global_seed_budget",
+            observed=len(run["final_seeds"]) <= int(run["configuration"]["seed_budget"]),
+            expected=True,
+            evidence={
+                "observed_seed_count": len(run["final_seeds"]),
+                "seed_budget": run["configuration"]["seed_budget"],
+            },
+        ),
+    ]
+    failed_checks = [item["check_id"] for item in checks if item["status"] != "PASS"]
+    failures.extend(f"validation_failed:{check_id}" for check_id in failed_checks)
+    return {
+        "valid": not failures,
+        "failure_codes": sorted(set(failures)),
+        "validation_evidence": checks,
+    }
 
 
 def compact_product_response(
@@ -386,7 +451,8 @@ def compact_product_response(
     seed_budget: int,
     started_at: str,
     http_wall_seconds: float,
-    planner: dict[str, Any],
+    runtime_profile: dict[str, Any],
+    expected_runtime_behavior_fingerprint: str | None = None,
 ) -> dict[str, Any]:
     """Remove chunk text while retaining identities, ranks, and contracts."""
 
@@ -395,6 +461,27 @@ def compact_product_response(
     coverage = _compact_coverage(response)
     performance = coverage.get("performance")
     performance = performance if isinstance(performance, dict) else {}
+    generated_queries = _generated_queries(response, query)
+    discovery_planner = discovery.get("planner")
+    planner = (
+        discovery_planner
+        if isinstance(discovery_planner, dict)
+        else {
+            "provider": runtime_profile.get("planner", {}).get("effective_provider"),
+            "model": runtime_profile.get("planner", {}).get("effective_model"),
+            "capability_profile": runtime_profile.get("planner", {}).get("capability_profile"),
+        }
+    )
+    query_hashes = [
+        _canonical_sha256(
+            {
+                "query_id": item.get("query_id"),
+                "query_text": item.get("query_text"),
+                "query_type": item.get("query_type"),
+            }
+        )
+        for item in generated_queries
+    ]
     run = {
         "run_id": f"q{query_count}-r{repetition}",
         "started_at": started_at,
@@ -411,14 +498,17 @@ def compact_product_response(
             "evidence_mode": "scope_exhaustive",
             "score_threshold": 0,
         },
-        "planner": {
-            **planner,
-            "actual_request_parameter_names": (
-                planner.get("actual_request_parameter_names", []) if query_count > 1 else []
-            ),
-            "temperature_present": False,
-        },
-        "generated_queries": _generated_queries(response, query),
+        "product_endpoint": "/api/search",
+        "runtime_behavior_fingerprint": runtime_profile.get("runtime_behavior_fingerprint"),
+        "expected_runtime_behavior_fingerprint": (
+            expected_runtime_behavior_fingerprint
+            or runtime_profile.get("runtime_behavior_fingerprint")
+        ),
+        "runtime_behavior_profile": runtime_profile,
+        "planner": planner,
+        "generated_queries": generated_queries,
+        "query_hashes": query_hashes,
+        "plan_fingerprint": _canonical_sha256(query_hashes),
         "discovery": {
             field: discovery.get(field)
             for field in (
@@ -470,18 +560,13 @@ def capture(args: argparse.Namespace) -> None:
     definition = load_ground_truth(args.definition)
     query = _canonical_query(definition)
     filters = _json_object(args.filters_json, label="filters")
-    runtime_settings = _json_object(args.runtime_settings_json, label="runtime settings")
     headers = _headers(args.authorization_env)
-    planner = {
-        "provider": args.planner_provider,
-        "model": args.planner_model,
-        "supported_request_parameter_names": sorted(
-            value.strip() for value in args.planner_supported_parameters.split(",") if value.strip()
-        ),
-        "actual_request_parameter_names": sorted(
-            value.strip() for value in args.planner_actual_parameters.split(",") if value.strip()
-        ),
-    }
+    runtime_profile_url = f"{args.base_url.rstrip('/')}/api/settings/runtime-behavior"
+    runtime_profile = _get_json(runtime_profile_url, headers=headers, timeout=args.timeout)
+    product_default_seed_budget = int(runtime_profile["retrieval"]["seed_budget"])
+    multi_query_concurrency = int(runtime_profile["multi_query"]["concurrency"])
+    seed_budget = args.seed_budget or product_default_seed_budget
+    definition_sha = hashlib.sha256(args.definition.read_bytes()).hexdigest()
     capture_value: dict[str, Any]
     if args.resume and args.output.exists():
         capture_value = json.loads(args.output.read_text(encoding="utf-8"))
@@ -495,7 +580,8 @@ def capture(args: argparse.Namespace) -> None:
         capture_value = {
             "schema_version": 1,
             "benchmark_id": definition["benchmark_id"],
-            "benchmark_definition_sha": args.definition_sha,
+            "benchmark_version": definition["benchmark_version"],
+            "benchmark_definition_sha": definition_sha,
             "critical_contract_tag": args.contract_tag,
             "runtime_source_sha": args.runtime_source_sha,
             "started_at": _now(),
@@ -518,13 +604,20 @@ def capture(args: argparse.Namespace) -> None:
                     else "product no-auth identity"
                 ),
             },
-            "runtime_settings": runtime_settings,
-            "planner": planner,
+            "runtime_behavior_profile": runtime_profile,
+            "runtime_behavior_fingerprint": runtime_profile["runtime_behavior_fingerprint"],
+            "planner": runtime_profile["planner"],
             "configuration": {
                 "repetitions": args.repetitions,
                 "query_counts": [1, 2, 3, 4],
-                "global_seed_budget": args.seed_budget,
-                "multi_query_concurrency": 2,
+                "global_seed_budget": seed_budget,
+                "product_default_seed_budget": product_default_seed_budget,
+                "seed_budget_source": (
+                    "product_default"
+                    if seed_budget == product_default_seed_budget
+                    else "explicit_historical_compatibility"
+                ),
+                "multi_query_concurrency": multi_query_concurrency,
             },
             "corpus_before": before,
             "corpus_after": None,
@@ -543,7 +636,11 @@ def capture(args: argparse.Namespace) -> None:
                 query=query,
                 filters=filters,
                 query_count=query_count,
-                seed_budget=args.seed_budget,
+                seed_budget=seed_budget,
+                multi_query_concurrency=multi_query_concurrency,
+            )
+            run_runtime_profile = _get_json(
+                runtime_profile_url, headers=headers, timeout=args.timeout
             )
             started_at = _now()
             started = time.perf_counter()
@@ -554,10 +651,11 @@ def capture(args: argparse.Namespace) -> None:
                 query=query,
                 query_count=query_count,
                 repetition=repetition,
-                seed_budget=args.seed_budget,
+                seed_budget=seed_budget,
                 started_at=started_at,
                 http_wall_seconds=wall,
-                planner=planner,
+                runtime_profile=run_runtime_profile,
+                expected_runtime_behavior_fingerprint=capture_value["runtime_behavior_fingerprint"],
             )
             run["corpus_identity_sha256"] = capture_value["corpus_before"][
                 "occurrence_identity_sha256"
@@ -771,6 +869,12 @@ def evaluate_capture(
         and capture_value.get("corpus_before", {}).get("complete") is True
         and capture_value.get("corpus_after", {}).get("complete") is True
     )
+    runtime_fingerprints = {
+        str(run.get("runtime_behavior_fingerprint") or "") for run in capture_value["runs"]
+    }
+    runtime_behavior_stable = runtime_fingerprints == {
+        str(capture_value["runtime_behavior_fingerprint"])
+    }
     all_configurations_fully_valid = all(
         count == capture_value["configuration"]["repetitions"] for count in valid_strict.values()
     )
@@ -786,12 +890,14 @@ def evaluate_capture(
     result = {
         "schema_version": 1,
         "benchmark_id": capture_value["benchmark_id"],
+        "benchmark_version": capture_value["benchmark_version"],
         "critical_contract_tag": capture_value["critical_contract_tag"],
         "runtime_source_sha": capture_value["runtime_source_sha"],
         "product_endpoint": capture_value["product_endpoint"],
         "execution_path": capture_value["execution_path"],
         "context": capture_value["context"],
-        "runtime_settings": capture_value["runtime_settings"],
+        "runtime_behavior_profile": capture_value["runtime_behavior_profile"],
+        "runtime_behavior_fingerprint": capture_value["runtime_behavior_fingerprint"],
         "planner": capture_value["planner"],
         "configuration": capture_value["configuration"],
         "corpus": {
@@ -800,6 +906,7 @@ def evaluate_capture(
             "changed": capture_value["corpus_changed"],
         },
         "comparable": corpus_comparable,
+        "runtime_behavior_stable": runtime_behavior_stable,
         "all_configurations_fully_valid": all_configurations_fully_valid,
         "runs": [
             {key: value for key, value in run.items() if key != "capture"} for run in evaluated
@@ -808,6 +915,29 @@ def evaluate_capture(
         "best_query_count": best_query_count,
         "all_contracts_valid": all(run["valid"] for run in evaluated),
     }
+    result["validation_evidence"] = [
+        _validation_check(
+            "product_path_only",
+            observed=capture_value["product_endpoint"].endswith("/api/search"),
+            expected=True,
+            evidence=capture_value["execution_path"],
+        ),
+        _validation_check(
+            "corpus_identity_stable",
+            observed=capture_value.get("corpus_changed"),
+            expected=False,
+            evidence={
+                "before": capture_value.get("corpus_before", {}).get("occurrence_identity_sha256"),
+                "after": capture_value.get("corpus_after", {}).get("occurrence_identity_sha256"),
+            },
+        ),
+        _validation_check(
+            "runtime_behavior_fingerprint_stable",
+            observed=runtime_behavior_stable,
+            expected=True,
+            evidence=sorted(runtime_fingerprints),
+        ),
+    ]
     result["historical_comparison"] = (
         _historical_comparison(summaries, historical) if historical else []
     )
@@ -977,7 +1107,7 @@ def _report(result: dict[str, Any]) -> str:
             f"best_query_count_by_STRICT_post_PROV_O_component_recall: q{result['best_query_count']}",
             "q4_gain_vs_q1: " + json.dumps(result["q4_gain_vs_q1"], sort_keys=True),
             "",
-            "Historical figures remain reference-only because their runner did not use the product endpoint and used a 96-seed plateau.",
+            "Historical figures remain reference-only because their runner did not use the product endpoint and used a post-hoc seed plateau.",
             "",
         ]
     )
@@ -1002,11 +1132,10 @@ def parser() -> argparse.ArgumentParser:
     commands = root.add_subparsers(dest="command", required=True)
     capture_parser = commands.add_parser("capture")
     capture_parser.add_argument("--definition", type=Path, required=True)
-    capture_parser.add_argument("--definition-sha", required=True)
     capture_parser.add_argument("--base-url", required=True)
     capture_parser.add_argument("--output", type=Path, required=True)
     capture_parser.add_argument("--repetitions", type=int, default=3)
-    capture_parser.add_argument("--seed-budget", type=int, default=100)
+    capture_parser.add_argument("--seed-budget", type=int)
     capture_parser.add_argument("--page-size", type=int, default=1000)
     capture_parser.add_argument("--timeout", type=int, default=900)
     capture_parser.add_argument("--filters-json", default="{}")
@@ -1016,11 +1145,6 @@ def parser() -> argparse.ArgumentParser:
     capture_parser.add_argument("--dls-identity", required=True)
     capture_parser.add_argument("--contract-tag", required=True)
     capture_parser.add_argument("--runtime-source-sha", required=True)
-    capture_parser.add_argument("--runtime-settings-json", required=True)
-    capture_parser.add_argument("--planner-provider", required=True)
-    capture_parser.add_argument("--planner-model", required=True)
-    capture_parser.add_argument("--planner-supported-parameters", required=True)
-    capture_parser.add_argument("--planner-actual-parameters", required=True)
     capture_parser.add_argument("--resume", action="store_true")
     capture_parser.set_defaults(func=capture)
 

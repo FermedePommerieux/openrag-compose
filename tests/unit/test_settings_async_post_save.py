@@ -28,7 +28,13 @@ def _make_config_for_ollama_removal():
     )
     return SimpleNamespace(
         edited=True,
-        agent=SimpleNamespace(llm_provider="ollama", llm_model="llama3.2"),
+        agent=SimpleNamespace(
+            llm_provider="ollama",
+            llm_model="llama3.2",
+            planner_provider="",
+            planner_model="",
+            system_prompt="runtime prompt",
+        ),
         knowledge=SimpleNamespace(
             embedding_provider="ollama",
             embedding_model="nomic-embed-text",
@@ -38,12 +44,38 @@ def _make_config_for_ollama_removal():
     )
 
 
+class _FakeFlowsService:
+    async def sync_managed_chat_behavior(self, *, prompt, provider, model):
+        self.behavior = {
+            "flow_id": "managed-flow",
+            "flow_version": 1,
+            "locked": True,
+            "prompt": prompt,
+            "agent_provider": provider,
+            "agent_model": model,
+            "agent_guard_version": 1,
+            "agent_code_sha256": "code-sha",
+            "langgraph_max_iterations": 15,
+        }
+        return self.behavior
+
+    async def get_chat_flow_behavior(self):
+        return self.behavior
+
+
+def _patch_managed_flow(monkeypatch):
+    flows_service = _FakeFlowsService()
+    monkeypatch.setattr(settings_api, "_get_flows_service", lambda: flows_service, raising=True)
+    return flows_service
+
+
 @pytest.mark.asyncio
 async def test_update_settings_retains_background_task_reference(monkeypatch):
     settings_api._background_tasks.clear()
     config = _make_config_for_ollama_removal()
     fake_task = _FakeTask()
     post_save_mock = AsyncMock()
+    flows_service = _patch_managed_flow(monkeypatch)
 
     async def _noop_refresh():
         return None
@@ -82,6 +114,8 @@ async def test_update_settings_retains_background_task_reference(monkeypatch):
     )
 
     assert isinstance(response, settings_api.SettingsUpdateResponse)
+    assert flows_service.behavior["agent_provider"] == "openai"
+    assert flows_service.behavior["agent_model"] == settings_api._default_llm_model("openai")
     assert fake_task in settings_api._background_tasks
     assert fake_task.done_callback is not None
     fake_task.done_callback(fake_task)
@@ -94,6 +128,7 @@ async def test_provider_removal_triggers_mcp_server_update(monkeypatch):
     config = _make_config_for_ollama_removal()
     post_save_mock = AsyncMock()
     fake_task = _FakeTask()
+    _patch_managed_flow(monkeypatch)
 
     async def _noop_refresh():
         return None

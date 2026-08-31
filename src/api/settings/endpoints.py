@@ -9,6 +9,7 @@ Langflow-sync helpers in `api.settings.langflow_sync`. No behavior change.
 import asyncio
 import copy
 import json
+from typing import Any
 
 from fastapi import Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
@@ -30,7 +31,6 @@ from api.settings.langflow_sync import (
     _update_langflow_docling_settings,
     _update_langflow_global_variables,
     _update_langflow_model_values,
-    _update_langflow_system_prompt,
     _update_mcp_server_urls,
     _upsert_langflow_global_variable,
 )
@@ -49,6 +49,7 @@ from api.settings.models import (
     OnboardingStateConfig,
     OnboardingStateResponse,
     OpenAIProviderConfig,
+    PlannerConfig,
     ProvidersConfig,
     RefreshOpenRAGDocsResponse,
     RollbackBody,
@@ -98,6 +99,7 @@ from services.docling_service import (
     get_picture_description_options,
     is_picture_description_vlm_configured,
 )
+from services.model_capabilities import resolve_planner_selection
 from services.rbac_service import is_rbac_enforced
 from session_manager import User
 from utils import provider_health_cache
@@ -131,6 +133,7 @@ async def get_settings(
 
         knowledge_config = openrag_config.knowledge
         agent_config = openrag_config.agent
+        planner_provider, planner_model, planner_source = resolve_planner_selection(openrag_config)
         archiving_config = None
         if show_archiving:
             from config.settings import is_no_auth_mode
@@ -304,6 +307,11 @@ async def get_settings(
                 llm_provider=agent_config.llm_provider,
                 system_prompt=agent_config.system_prompt,
             ),
+            planner=PlannerConfig(
+                llm_model=planner_model,
+                llm_provider=planner_provider,
+                configured_source=planner_source,
+            ),
             localhost_url=LOCALHOST_URL,
             langflow_edit_url=langflow_edit_url,
             langflow_ingest_edit_url=langflow_ingest_edit_url,
@@ -320,6 +328,17 @@ async def get_settings(
     except Exception:
         logger.exception("Failed to retrieve settings")
         return JSONResponse({"error": "Failed to retrieve settings"}, status_code=500)
+
+
+async def get_runtime_behavior_profile(
+    _user: User = Depends(require_permission("config:read")),
+    flows_service=Depends(get_flows_service),
+) -> dict[str, Any]:
+    """Return the non-secret configured/effective runtime behavior contract."""
+
+    from services.runtime_behavior import build_runtime_behavior_profile
+
+    return await build_runtime_behavior_profile(get_openrag_config(), flows_service)
 
 
 async def update_settings(
@@ -346,8 +365,10 @@ async def update_settings(
         # Do this BEFORE modifying any config
         provider_fields = [
             "llm_provider",
+            "planner_provider",
             "embedding_provider",
             "llm_model",
+            "planner_model",
             "embedding_model",
             "openai_api_key",
             "anthropic_api_key",
@@ -414,6 +435,34 @@ async def update_settings(
                         project_id=project_id,
                     )
                     logger.info(f"LLM provider validation successful for {llm_provider}")
+
+                if body.planner_provider is not None or body.planner_model is not None:
+                    planner_provider, planner_model, _ = resolve_planner_selection(current_config)
+                    planner_provider = body.planner_provider or planner_provider
+                    planner_model = body.planner_model or planner_model
+                    planner_provider_config = current_config.providers.get_provider_config(
+                        planner_provider
+                    )
+                    api_key = getattr(planner_provider_config, "api_key", None)
+                    endpoint = getattr(planner_provider_config, "endpoint", None)
+                    project_id = getattr(planner_provider_config, "project_id", None)
+                    if getattr(body, f"{planner_provider}_api_key", None):
+                        api_key = getattr(body, f"{planner_provider}_api_key")
+                    if getattr(body, f"{planner_provider}_endpoint", None) is not None:
+                        endpoint = getattr(body, f"{planner_provider}_endpoint")
+                    if getattr(body, f"{planner_provider}_project_id", None) is not None:
+                        project_id = getattr(body, f"{planner_provider}_project_id")
+                    await validate_provider_setup(
+                        provider=planner_provider,
+                        api_key=api_key,
+                        llm_model=planner_model,
+                        endpoint=endpoint,
+                        project_id=project_id,
+                    )
+                    logger.info(
+                        "Planner provider validation successful",
+                        provider=planner_provider,
+                    )
 
                 # Validate embedding provider if being changed
                 if body.embedding_provider is not None or body.embedding_model is not None:
@@ -490,21 +539,18 @@ async def update_settings(
             )
             logger.info(f"LLM provider changed from {old_provider} to {body.llm_provider}")
 
+        if body.planner_model is not None or body.planner_provider is not None:
+            planner_provider, planner_model, _ = resolve_planner_selection(working_config)
+            working_config.agent.planner_provider = body.planner_provider or planner_provider
+            working_config.agent.planner_model = body.planner_model or planner_model
+            config_updated = True
+
         if body.system_prompt is not None:
             working_config.agent.system_prompt = body.system_prompt
             config_updated = True
             await TelemetryClient.send_event(
                 Category.SETTINGS_OPERATIONS, MessageId.ORB_SETTINGS_SYSTEM_PROMPT
             )
-
-            # Also update the chat flow with the new system prompt
-            try:
-                flows_service = _get_flows_service()
-                await _update_langflow_system_prompt(working_config, flows_service)
-            except Exception as e:
-                logger.error(f"Failed to update chat flow system prompt: {str(e)}")
-                # Don't fail the entire settings update if flow update fails
-                # The config will still be saved
 
         # Update knowledge settings
         if body.embedding_model is not None:
@@ -790,6 +836,9 @@ async def update_settings(
                 fb = _first_configured_llm_provider(working_config, "ollama")
                 working_config.agent.llm_provider = fb
                 working_config.agent.llm_model = _default_llm_model(fb)
+            if getattr(working_config.agent, "planner_provider", "") == "ollama":
+                working_config.agent.planner_provider = ""
+                working_config.agent.planner_model = ""
             if working_config.knowledge.embedding_provider == "ollama":
                 fb = _first_configured_embedding_provider(working_config, "ollama")
                 working_config.knowledge.embedding_provider = fb
@@ -822,6 +871,9 @@ async def update_settings(
                 fb = _first_configured_llm_provider(working_config, "openai")
                 working_config.agent.llm_provider = fb
                 working_config.agent.llm_model = _default_llm_model(fb)
+            if getattr(working_config.agent, "planner_provider", "") == "openai":
+                working_config.agent.planner_provider = ""
+                working_config.agent.planner_model = ""
             if working_config.knowledge.embedding_provider == "openai":
                 fb = _first_configured_embedding_provider(working_config, "openai")
                 working_config.knowledge.embedding_provider = fb
@@ -848,6 +900,9 @@ async def update_settings(
                 fb = _first_configured_llm_provider(working_config, "anthropic")
                 working_config.agent.llm_provider = fb
                 working_config.agent.llm_model = _default_llm_model(fb)
+            if getattr(working_config.agent, "planner_provider", "") == "anthropic":
+                working_config.agent.planner_provider = ""
+                working_config.agent.planner_model = ""
             # Anthropic is not a valid embedding provider; no embedding reset needed
             config_updated = True
             provider_updated = True
@@ -879,6 +934,9 @@ async def update_settings(
                 fb = _first_configured_llm_provider(working_config, "watsonx")
                 working_config.agent.llm_provider = fb
                 working_config.agent.llm_model = _default_llm_model(fb)
+            if getattr(working_config.agent, "planner_provider", "") == "watsonx":
+                working_config.agent.planner_provider = ""
+                working_config.agent.planner_model = ""
             if working_config.knowledge.embedding_provider == "watsonx":
                 fb = _first_configured_embedding_provider(working_config, "watsonx")
                 working_config.knowledge.embedding_provider = fb
@@ -894,9 +952,51 @@ async def update_settings(
         if not config_updated:
             return JSONResponse({"error": "No valid fields provided for update"}, status_code=400)
 
+        managed_behavior_changed = (
+            current_config.agent.llm_provider != working_config.agent.llm_provider
+            or current_config.agent.llm_model != working_config.agent.llm_model
+            or current_config.agent.system_prompt != working_config.agent.system_prompt
+        )
+
         # Save the updated configuration
         if not config_manager.save_config_file(working_config):
             return JSONResponse({"error": "Failed to save configuration"}, status_code=500)
+
+        # Agent behavior is synchronized and verified before the settings call
+        # returns, so the next chat cannot race an asynchronous flow update.
+        if managed_behavior_changed:
+            flows_service = _get_flows_service()
+            try:
+                await flows_service.sync_managed_chat_behavior(
+                    prompt=working_config.agent.system_prompt,
+                    provider=working_config.agent.llm_provider,
+                    model=working_config.agent.llm_model,
+                )
+                from services.runtime_behavior import (
+                    assert_runtime_behavior_match,
+                    build_runtime_behavior_profile,
+                )
+
+                profile = await build_runtime_behavior_profile(working_config, flows_service)
+                assert_runtime_behavior_match(profile)
+            except Exception as exc:
+                logger.error(
+                    "Managed runtime behavior update failed; restoring prior configuration",
+                    error=str(exc),
+                )
+                config_manager.save_config_file(current_config, preserve_edited=True)
+                try:
+                    await flows_service.sync_managed_chat_behavior(
+                        prompt=current_config.agent.system_prompt,
+                        provider=current_config.agent.llm_provider,
+                        model=current_config.agent.llm_model,
+                    )
+                except Exception:
+                    logger.exception("Failed to restore prior managed runtime behavior")
+                return JSONResponse(
+                    {"error": "Managed runtime behavior update could not be verified"},
+                    status_code=503,
+                )
 
         capacity_fields = {
             "ingestion_concurrency_mode",
@@ -924,9 +1024,7 @@ async def update_settings(
                         or provider_updated
                     ),
                     update_model_values=(
-                        body.llm_provider is not None
-                        or body.llm_model is not None
-                        or body.embedding_provider is not None
+                        body.embedding_provider is not None
                         or body.embedding_model is not None
                         or provider_updated
                     ),

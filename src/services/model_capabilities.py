@@ -59,6 +59,32 @@ def model_request_capabilities(*, provider: str | None, model: str) -> ModelRequ
     return ModelRequestCapabilities()
 
 
+def model_capability_profile(*, provider: str | None, model: str) -> dict[str, Any]:
+    """Return a stable, non-secret identity for the resolved request contract."""
+
+    capabilities = model_request_capabilities(provider=provider, model=model)
+    unsupported = sorted(capabilities.unsupported_responses_parameters)
+    return {
+        "registry": "responses-model-capabilities-v1",
+        "unsupported_responses_parameters": unsupported,
+    }
+
+
+def resolve_planner_selection(config: Any) -> tuple[str, str, str]:
+    """Resolve the runtime planner selection and describe its persisted source."""
+
+    agent = getattr(config, "agent", None)
+    planner_provider = str(getattr(agent, "planner_provider", "") or "").strip()
+    planner_model = str(getattr(agent, "planner_model", "") or "").strip()
+    if planner_provider and planner_model:
+        return planner_provider, planner_model, "workspace_config.agent.planner"
+    return (
+        planner_provider or str(getattr(agent, "llm_provider", "") or "").strip(),
+        planner_model or str(getattr(agent, "llm_model", "") or "").strip(),
+        "workspace_config.agent.agent_fallback",
+    )
+
+
 def build_responses_request(
     *,
     provider: str | None,

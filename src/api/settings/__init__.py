@@ -16,6 +16,7 @@ re-export it here.
 """
 
 from api.settings.endpoints import (
+    get_runtime_behavior_profile,
     get_settings,
     onboarding,
     refresh_openrag_docs,
@@ -41,6 +42,7 @@ from api.settings.models import (
     OnboardingStateConfig,
     OnboardingStateResponse,
     OpenAIProviderConfig,
+    PlannerConfig,
     ProvidersConfig,
     RefreshOpenRAGDocsResponse,
     RollbackBody,
@@ -54,6 +56,7 @@ from api.settings.models import (
 __all__ = [
     # Endpoints
     "get_settings",
+    "get_runtime_behavior_profile",
     "update_settings",
     "onboarding",
     "update_onboarding_state",
@@ -77,6 +80,7 @@ __all__ = [
     "ProvidersConfig",
     "KnowledgeConfig",
     "AgentConfig",
+    "PlannerConfig",
     "ArchivingConfig",
     "IngestionDefaultsConfig",
     "SettingsResponse",

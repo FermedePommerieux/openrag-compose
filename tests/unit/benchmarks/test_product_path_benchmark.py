@@ -1,3 +1,8 @@
+import re
+from pathlib import Path
+
+from benchmarks.discovery.final_baseline import _view_metrics
+from benchmarks.discovery.ground_truth import load_ground_truth
 from benchmarks.discovery.product_path_benchmark import (
     _contract_assessment,
     _request_body,
@@ -101,9 +106,37 @@ def _response() -> dict:
     }
 
 
+def _runtime_profile() -> dict:
+    return {
+        "profile_version": 1,
+        "status": "MATCH",
+        "runtime_behavior_fingerprint": "runtime-fingerprint",
+        "planner": {
+            "effective_provider": "openai",
+            "effective_model": "gpt-test",
+            "capability_profile": {
+                "registry": "responses-model-capabilities-v1",
+                "unsupported_responses_parameters": [],
+            },
+        },
+    }
+
+
 def test_request_body_uses_product_endpoint_contract_and_one_global_budget():
-    q1 = _request_body(query="Project Z", filters={"owners": ["A"]}, query_count=1, seed_budget=100)
-    q4 = _request_body(query="Project Z", filters={"owners": ["A"]}, query_count=4, seed_budget=100)
+    q1 = _request_body(
+        query="Project Z",
+        filters={"owners": ["A"]},
+        query_count=1,
+        seed_budget=100,
+        multi_query_concurrency=2,
+    )
+    q4 = _request_body(
+        query="Project Z",
+        filters={"owners": ["A"]},
+        query_count=4,
+        seed_budget=100,
+        multi_query_concurrency=2,
+    )
 
     assert q1["evidenceMode"] == q4["evidenceMode"] == "scope_exhaustive"
     assert q1["limit"] == q4["limit"] == 100
@@ -121,16 +154,15 @@ def test_compact_response_keeps_product_proof_but_never_chunk_text():
         seed_budget=100,
         started_at="2026-01-01T00:00:00+00:00",
         http_wall_seconds=3.5,
-        planner={
-            "provider": "openai",
-            "model": "gpt-5.6-sol",
-            "supported_request_parameter_names": ["input", "model", "stream"],
-            "actual_request_parameter_names": ["input", "model", "stream"],
-        },
+        runtime_profile=_runtime_profile(),
     )
 
     assert run["contract"]["valid"] is True
-    assert run["planner"]["temperature_present"] is False
+    assert run["planner"]["model"] == "gpt-test"
+    assert run["runtime_behavior_fingerprint"] == "runtime-fingerprint"
+    assert run["plan_fingerprint"]
+    assert len(run["query_hashes"]) == 2
+    assert all("evidence_sha256" in item for item in run["contract"]["validation_evidence"])
     assert run["final_seeds"][0]["source_entity_id"] == "occ-1"
     assert "text" not in run["final_seeds"][0]
     assert "coverage" not in run["scope_identities"][0]
@@ -147,7 +179,7 @@ def test_contract_assessment_fails_closed_on_counter_or_execution_mismatch():
         seed_budget=100,
         started_at="2026-01-01T00:00:00+00:00",
         http_wall_seconds=3.5,
-        planner={"actual_request_parameter_names": ["input", "model", "stream"]},
+        runtime_profile=_runtime_profile(),
     )
     run["coverage"]["covered_chunks"] = 1
     run["retrieval_execution_complete"] = False
@@ -157,3 +189,66 @@ def test_contract_assessment_fails_closed_on_counter_or_execution_mismatch():
     assert assessment["valid"] is False
     assert "chunk_counter_mismatch" in assessment["failure_codes"]
     assert "retrieval_execution_incomplete" in assessment["failure_codes"]
+
+
+def test_generic_contract_renewal_case_loads_without_engine_changes():
+    root = Path(__file__).resolve().parents[3]
+    definition = load_ground_truth(
+        root / "benchmarks/discovery/definitions/case-generic-contract-renewal-v1.yaml"
+    )
+    seeds = [
+        {
+            "source_entity_id": "urn:test:contract-alpha:message-1",
+            "document_id": "contract-alpha-message-1",
+        }
+    ]
+    closure = {
+        "documents": [
+            *seeds,
+            {
+                "source_entity_id": "urn:test:contract-alpha:attachment-1",
+                "document_id": "contract-alpha-attachment-1",
+            },
+        ],
+        "coverage": {"complete": True, "status_code": "complete"},
+    }
+
+    metrics = _view_metrics(definition, seeds, closure, requested_k=100, labels={"CORE"})
+
+    assert definition["benchmark_id"] == "case-generic-contract-renewal"
+    assert {item["human_decision"] for item in definition["documents"]} == {
+        "CORE",
+        "CONTEXTUAL",
+        "NOT_RELEVANT",
+    }
+    assert {item["human_decision"] for item in definition["components"]} == {
+        "CORE",
+        "CONTEXTUAL",
+        "NOT_RELEVANT",
+    }
+    assert metrics["seed_component_recall"]["denominator"] == 1
+    assert metrics["post_prov_o_document_recall"]["numerator"] == 2
+    assert metrics["post_prov_o_document_recall"]["denominator"] == 2
+
+
+def test_generic_engines_contain_no_surface_case_truth_or_post_hoc_budget():
+    root = Path(__file__).resolve().parents[3] / "benchmarks/discovery"
+    source = "\n".join(
+        (root / name).read_text(encoding="utf-8")
+        for name in ("product_path_benchmark.py", "multi_query_benchmark.py")
+    )
+
+    for term in (
+        "surface pastorale",
+        "pommerieux",
+        "ddt",
+        "pastoral",
+        "administration",
+        "préfecture",
+        "élevage",
+        "abattage",
+        "facture",
+    ):
+        assert term not in source.casefold()
+    for historical_literal in (40, 51, 96, 114, 192):
+        assert re.search(rf"\b{historical_literal}\b", source) is None

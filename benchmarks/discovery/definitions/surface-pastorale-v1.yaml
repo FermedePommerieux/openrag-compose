@@ -122,6 +122,11 @@ historical_actual_run_metrics:
   prov_o_core_component_recovery_gain_within_reached_scope: 11
   prov_o_core_document_recovery_gain_within_reached_scope: 40
   prov_o_core_document_recovery_multiplier_within_reached_scope: 1.8333333333333333
+historical_compatibility:
+  purpose: reproduce_the_pre_product_path_experiment_only
+  final_seed_budget: 96
+  max_queries: 4
+  concurrency: 2
 documents:
 - occurrence_id: urn:openrag:openarchiver:attachment:05ef151d-34fa-48fc-ad47-ec39945748f8
   document_id: 4KvLrrfYD5X2ZD5VXOnwt1DP

@@ -103,12 +103,11 @@ budget, and the unchanged PROV-O scope limits. It cannot read the benchmark
 definition or human ground truth. Ground-truth scoring happens locally only
 after all ranked results have been captured.
 
-The primary replay fixes `final_seed_budget` to the effective q1 baseline
-budget (96 for this frozen benchmark), so any recall difference comes from
-query diversity rather than a larger candidate pool. Runs are cumulative:
-q1 is the exact original query, then q2 through q4 add one generated query at a
-time. A separate budget-100 capture may be retained only as a clearly named
-secondary control.
+The legacy replay retains its post-hoc budget and query bound only under the
+case definition's explicit `historical_compatibility` section. It is secondary
+evidence, not the product default or a current expected result. Runs are
+cumulative: q1 is the exact original query, then later runs add generated
+queries up to the historical bound.
 
 ```bash
 uv run python -m benchmarks.discovery.multi_query_benchmark capture \
@@ -135,25 +134,22 @@ planner, OpenSearch query, RRF, graph traversal, or certification logic.
 `remote_multi_query.py` remains historical evidence and is not a product-path
 proof.
 
-Capture three read-only repetitions of q1 through q4 using one product-default
-global seed budget:
+Capture read-only repetitions of q1 through q4. The harness reads
+`/api/settings/runtime-behavior`, uses its product-default seed budget unless a
+secondary historical override is explicitly supplied, and verifies that the
+runtime fingerprint stays stable:
 
 ```bash
 uv run python -m benchmarks.discovery.product_path_benchmark capture \
   --definition benchmarks/discovery/definitions/case.yaml \
-  --definition-sha SHA256_OF_CASE \
   --base-url https://openrag.example.test \
   --output benchmarks/discovery/results/case-product-path-capture.json \
-  --repetitions 3 --seed-budget 100 \
+  --repetitions 3 \
   --filters-json '{}' \
   --benchmark-user-context 'documented product identity' \
   --workspace 'documented workspace' \
   --dls-identity 'documented DLS principal' \
-  --contract-tag TAG --runtime-source-sha SHA \
-  --runtime-settings-json '{"retrieval_strategy":"rrf"}' \
-  --planner-provider openai --planner-model gpt-5.6-sol \
-  --planner-supported-parameters input,max_output_tokens,model,stream \
-  --planner-actual-parameters input,max_output_tokens,model,stream
+  --contract-tag TAG --runtime-source-sha SHA
 ```
 
 For authenticated deployments, name an environment variable containing the
@@ -173,7 +169,9 @@ uv run python -m benchmarks.discovery.product_path_benchmark evaluate \
   --output-report benchmarks/discovery/results/case-product-path-report.md
 ```
 
-The capture retains timestamps, corpus digests, generated-query provenance,
-requested/effective profiles, lane candidate counts, compact seed ranks,
-scope identities, exact certificates, and latency. It deliberately drops
-retrieved chunk text.
+The capture retains the case/version and definition hash, application SHA,
+runtime profile/fingerprint, DLS descriptor, corpus digest, planner identity
+and capability profile, generated-query hashes and plan fingerprint,
+requested/effective profiles, lane candidate counts, compact seed ranks, scope
+identities, exact certificates, validation evidence, and latency. It
+deliberately drops retrieved chunk text and all credentials.

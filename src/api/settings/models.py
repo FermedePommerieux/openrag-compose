@@ -15,6 +15,8 @@ from services.docling_service import DoclingConfig
 class SettingsUpdateBody(BaseModel):
     llm_model: str | None = Field(None, min_length=1)
     llm_provider: str | None = Field(None, pattern="^(openai|anthropic|watsonx|ollama)$")
+    planner_model: str | None = Field(None, min_length=1)
+    planner_provider: str | None = Field(None, pattern="^(openai|anthropic|watsonx|ollama)$")
     system_prompt: str | None = None
     chunk_size: int | None = Field(None, gt=0)
     chunk_overlap: int | None = Field(None, ge=0)
@@ -239,6 +241,12 @@ class AgentConfig(BaseModel):
     system_prompt: str | None
 
 
+class PlannerConfig(BaseModel):
+    llm_model: str | None
+    llm_provider: str | None
+    configured_source: str
+
+
 class ArchivingConfig(BaseModel):
     """Local source archiving state, paths, and storage statistics."""
 
@@ -271,6 +279,7 @@ class SettingsResponse(BaseModel):
     providers: ProvidersConfig | None = None
     knowledge: KnowledgeConfig
     agent: AgentConfig
+    planner: PlannerConfig
     # Filesystem paths and storage details are admin-only.
     archiving: ArchivingConfig | None = None
     localhost_url: str

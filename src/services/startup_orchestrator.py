@@ -66,7 +66,9 @@ async def ensure_system_retrieval_flow_ready(services) -> dict[str, object]:
             "Refusing ASGI startup: failed to prepare system retrieval flow",
             error=str(exc),
         )
-        raise RuntimeError("Refusing ASGI startup: system retrieval flow_preparation_failed") from exc
+        raise RuntimeError(
+            "Refusing ASGI startup: system retrieval flow_preparation_failed"
+        ) from exc
 
     status = migration.get("status")
     reason = migration.get("reason")
@@ -92,39 +94,44 @@ async def ensure_system_retrieval_flow_ready(services) -> dict[str, object]:
             f"flow_id={migration.get('flow_id', 'unknown')})"
         )
 
-    # Prompt synchronization is deliberately downstream of the two validated
-    # Retrieval v2 states accepted above.  It cannot run after a failed,
-    # skipped, unrecognized, or custom flow result.
-    from config.config_manager import DEFAULT_SYSTEM_PROMPT, LEGACY_SYSTEM_PROMPTS
-
-    config_prompt = get_openrag_config().agent.system_prompt
-    if config_prompt in LEGACY_SYSTEM_PROMPTS or config_prompt == DEFAULT_SYSTEM_PROMPT:
-        target_prompt = (
-            DEFAULT_SYSTEM_PROMPT
-            if config_prompt in LEGACY_SYSTEM_PROMPTS
-            else config_prompt
-        )
+    # Behavior synchronization is deliberately downstream of graph validation.
+    # For the managed flow, workspace runtime settings are authoritative even
+    # when they contain an operator-customized prompt. A different persisted
+    # prompt/model is drift, not a second configuration source.
+    config = get_openrag_config()
+    if config.edited and config.agent.llm_model:
         try:
-            current_prompt = await flows_service.get_chat_flow_system_prompt()
+            await flows_service.sync_managed_chat_behavior(
+                prompt=config.agent.system_prompt,
+                provider=config.agent.llm_provider,
+                model=config.agent.llm_model,
+            )
+            from services.runtime_behavior import (
+                assert_runtime_behavior_match,
+                build_runtime_behavior_profile,
+            )
+
+            profile = await build_runtime_behavior_profile(config, flows_service)
+            assert_runtime_behavior_match(profile)
+            migration["runtime_behavior_fingerprint"] = profile["runtime_behavior_fingerprint"]
+            logger.info(
+                "Verified managed runtime behavior",
+                runtime_behavior_fingerprint=profile["runtime_behavior_fingerprint"],
+            )
         except Exception as exc:
-            logger.warning(
-                "Could not read current chat flow system prompt; skipping system prompt sync",
+            logger.error(
+                "Refusing ASGI startup: managed runtime behavior mismatch",
                 error=str(exc),
             )
-        else:
-            # Only update if the Langflow prompt is a known default/legacy AND it differs from our config prompt.
-            if (
-                not current_prompt
-                or current_prompt in LEGACY_SYSTEM_PROMPTS
-                or current_prompt == DEFAULT_SYSTEM_PROMPT
-            ):
-                if current_prompt != target_prompt:
-                    await flows_service.update_chat_flow_system_prompt(
-                        target_prompt, expected_prompt=current_prompt
-                    )
-                    logger.info("Ensured system prompt is synced to Langflow")
-            else:
-                logger.info("Preserved custom system prompt in Langflow")
+            raise RuntimeError("Refusing ASGI startup: managed runtime behavior mismatch") from exc
+    else:
+        # Before onboarding there is no functional model selection to verify,
+        # but the versioned application prompt is still the managed default.
+        current_prompt = await flows_service.get_chat_flow_system_prompt()
+        if current_prompt != config.agent.system_prompt:
+            await flows_service.update_chat_flow_system_prompt(
+                config.agent.system_prompt, expected_prompt=current_prompt
+            )
 
     return migration
 

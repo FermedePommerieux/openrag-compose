@@ -3,6 +3,7 @@ import copy
 import hashlib
 import json
 import os
+import re
 from datetime import UTC, datetime
 from typing import Any
 
@@ -906,6 +907,97 @@ class FlowsService:
             .get("value")
         )
 
+    @staticmethod
+    def _runtime_model_identity(value: Any) -> tuple[str, str]:
+        """Return the provider/model identity selected by a Langflow ModelInput."""
+
+        selected = value[0] if isinstance(value, list) and value else value
+        if isinstance(selected, dict):
+            provider = str(selected.get("provider") or "").strip().casefold()
+            model = str(selected.get("name") or selected.get("model") or "").strip()
+        else:
+            provider = ""
+            model = str(selected or "").strip()
+        provider_aliases = {
+            "ibm watsonx": "watsonx",
+            "ibm watsonx.ai": "watsonx",
+        }
+        return provider_aliases.get(provider, provider), model
+
+    async def get_chat_flow_behavior(self) -> dict[str, Any]:
+        """Observe behavior-bearing fields from the persisted managed chat flow."""
+
+        if not LANGFLOW_CHAT_FLOW_ID:
+            raise ValueError("LANGFLOW_CHAT_FLOW_ID is not configured")
+        response = await clients.langflow_request("GET", f"/api/v1/flows/{LANGFLOW_CHAT_FLOW_ID}")
+        if response.status_code != 200:
+            raise RuntimeError(
+                f"Failed to get flow {LANGFLOW_CHAT_FLOW_ID}: HTTP {response.status_code}"
+            )
+        flow_data = response.json()
+        target_node, _ = self._find_node_in_flow(
+            flow_data, display_name=AGENT_COMPONENT_DISPLAY_NAME
+        )
+        if target_node is None:
+            raise RuntimeError(
+                f"Component '{AGENT_COMPONENT_DISPLAY_NAME}' not found in flow "
+                f"{LANGFLOW_CHAT_FLOW_ID}"
+            )
+        template = target_node.get("data", {}).get("node", {}).get("template", {})
+        prompt = template.get("system_prompt", {}).get("value")
+        provider, model = self._runtime_model_identity(template.get("model", {}).get("value"))
+        code = template.get("code", {}).get("value")
+        guard_version = None
+        if isinstance(code, str):
+            match = re.search(r"^_RETRIEVAL_GUARD_VERSION\s*=\s*(\d+)\s*$", code, re.MULTILINE)
+            guard_version = int(match.group(1)) if match else None
+        return {
+            "flow_id": LANGFLOW_CHAT_FLOW_ID,
+            "flow_version": flow_data.get("data", {}).get("openrag_retrieval_version"),
+            "locked": flow_data.get("locked"),
+            "prompt": prompt if isinstance(prompt, str) else "",
+            "agent_provider": provider,
+            "agent_model": model,
+            "agent_guard_version": guard_version,
+            "agent_code_sha256": (
+                hashlib.sha256(code.encode("utf-8")).hexdigest() if isinstance(code, str) else None
+            ),
+            "langgraph_max_iterations": template.get("max_iterations", {}).get("value"),
+        }
+
+    async def sync_managed_chat_behavior(
+        self, *, prompt: str, provider: str, model: str
+    ) -> dict[str, Any]:
+        """Apply OpenRAG runtime behavior to the managed flow and verify it."""
+
+        result = await self.change_langflow_model_value(
+            provider,
+            llm_model=model,
+            force_llm_update=True,
+            flow_configs=[{"name": "retrieval", "flow_id": LANGFLOW_CHAT_FLOW_ID}],
+        )
+        if not result.get("success"):
+            raise RuntimeError(f"Managed agent model synchronization failed: {result}")
+
+        observed = await self.get_chat_flow_behavior()
+        if observed["prompt"] != prompt:
+            await self.update_chat_flow_system_prompt(prompt, expected_prompt=observed["prompt"])
+            observed = await self.get_chat_flow_behavior()
+
+        expected = {
+            "prompt": prompt,
+            "agent_provider": str(provider or "").strip().casefold(),
+            "agent_model": str(model or "").strip(),
+        }
+        mismatches = {
+            field: {"configured": value, "effective": observed.get(field)}
+            for field, value in expected.items()
+            if observed.get(field) != value
+        }
+        if mismatches:
+            raise RuntimeError(f"Managed runtime behavior mismatch: {mismatches}")
+        return observed
+
     async def update_chat_flow_system_prompt(
         self, system_prompt: str, expected_prompt: Any = _UNSET
     ):
@@ -1303,6 +1395,39 @@ class FlowsService:
         return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
     @staticmethod
+    def _managed_behavior_normalized_graph_fingerprint(
+        flow_data: dict[str, Any],
+    ) -> str | None:
+        """Fingerprint graph ownership while excluding managed behavior values.
+
+        Historical migration fingerprints remain intentionally unchanged. This
+        normalization is only for the already-current managed flow so a prompt
+        persisted through OpenRAG settings is not mistaken for graph
+        customization on the next restart.
+        """
+
+        graph = flow_data.get("data") if isinstance(flow_data, dict) else None
+        if not isinstance(graph, dict):
+            return None
+        normalized = copy.deepcopy(graph)
+        for node in normalized.get("nodes", []):
+            component = node.get("data", {}).get("node", {}) if isinstance(node, dict) else {}
+            if component.get("display_name") not in _RUNTIME_MANAGED_RETRIEVAL_COMPONENTS:
+                continue
+            template = component.get("template", {})
+            if not isinstance(template, dict):
+                continue
+            fields = set(_RUNTIME_MANAGED_RETRIEVAL_FIELDS)
+            if component.get("display_name") == AGENT_COMPONENT_DISPLAY_NAME:
+                fields.add("system_prompt")
+            for field in fields.intersection(template):
+                template[field] = {"runtime_managed": field}
+        canonical = json.dumps(
+            normalized, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+        )
+        return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+    @staticmethod
     def _preserve_runtime_managed_retrieval_fields(
         source_graph: dict[str, Any], target_graph: dict[str, Any]
     ) -> None:
@@ -1375,8 +1500,8 @@ class FlowsService:
         return (
             flow_data.get("name") == expected.get("name")
             and flow_data.get("description") == expected.get("description")
-            and self._runtime_normalized_graph_fingerprint(flow_data)
-            == self._runtime_normalized_graph_fingerprint(expected)
+            and self._managed_behavior_normalized_graph_fingerprint(flow_data)
+            == self._managed_behavior_normalized_graph_fingerprint(expected)
         )
 
     def _is_known_unversioned_retrieval_v2_flow(self, flow_data: dict[str, Any]) -> bool:

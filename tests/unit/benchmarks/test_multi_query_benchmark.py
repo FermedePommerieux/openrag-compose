@@ -26,6 +26,11 @@ def _definition() -> dict:
             },
             "embedding": {"provider": "openai", "model": "text-embedding-3-large"},
         },
+        "historical_compatibility": {
+            "max_queries": 4,
+            "concurrency": 2,
+            "final_seed_budget": 96,
+        },
         # These labels prove the serialized remote plan excludes evaluator data.
         "documents": [{"occurrence_id": "secret-review-row"}],
         "components": [{"component_id": "secret-component"}],

@@ -618,7 +618,7 @@ def test_exact_repository_owned_version_6_graph_is_migration_eligible():
     assert service._is_known_previous_retrieval_v2_flow(flow) is False
 
 
-def test_migrated_graph_accepts_settings_sync_but_rejects_prompt_edits():
+def test_migrated_graph_accepts_runtime_managed_prompt_but_rejects_code_edits():
     service = FlowsService()
     flow = _unversioned_retrieval_v2_flow()
     flow["data"]["openrag_retrieval_version"] = 13
@@ -638,6 +638,8 @@ def test_migrated_graph_accepts_settings_sync_but_rejects_prompt_edits():
         if node.get("data", {}).get("node", {}).get("display_name") == "Agent"
     )
     agent["data"]["node"]["template"]["system_prompt"]["value"] += " custom"
+    assert service._is_known_migrated_retrieval_flow(flow) is True
+    agent["data"]["node"]["template"]["code"]["value"] += "\n# unauthorized"
     assert service._is_known_migrated_retrieval_flow(flow) is False
 
 

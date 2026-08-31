@@ -13,7 +13,11 @@ from auth_context import get_auth_context
 from config.embedding_constants import get_declared_default_embedding_model
 from config.settings import clients, get_embedding_model, get_index_name, get_openrag_config
 from models.source_provenance import parse_source_provenance
-from services.model_capabilities import build_responses_request
+from services.model_capabilities import (
+    build_responses_request,
+    model_capability_profile,
+    resolve_planner_selection,
+)
 from services.retrieval_service import (
     EXHAUSTIVE_BATCH_MAX,
     EXHAUSTIVE_PROFILE_VERSION,
@@ -1411,8 +1415,7 @@ class SearchService:
             return build_discovery_plan(query, None, max_queries=1), None, 0.0
         try:
             config = get_openrag_config()
-            model = str(getattr(config.agent, "llm_model", "") or "").strip()
-            provider = str(getattr(config.agent, "llm_provider", "") or "").strip()
+            provider, model, _source = resolve_planner_selection(config)
             if not model:
                 raise RuntimeError("No language model is configured for query decomposition")
             formatted_model = (
@@ -1462,6 +1465,15 @@ class SearchService:
         started = time.perf_counter()
         config = get_openrag_config()
         settings = RetrievalSettings.from_knowledge(config.knowledge)
+        planner_provider, planner_model, planner_source = resolve_planner_selection(config)
+        planner_contract = {
+            "provider": planner_provider.casefold(),
+            "model": planner_model,
+            "source": planner_source,
+            "capability_profile": model_capability_profile(
+                provider=planner_provider, model=planner_model
+            ),
+        }
         if settings.strategy != "rrf":
             raise ValueError("multi-query discovery requires the Retrieval v2 RRF strategy")
         requested_profile = requested_retrieval_profile(
@@ -1532,6 +1544,7 @@ class SearchService:
                         if generation_error
                         else "query_failed",
                         "query_errors": query_errors,
+                        "planner": planner_contract,
                     },
                 },
                 requested=requested_profile,
@@ -1627,6 +1640,7 @@ class SearchService:
             ),
             "duplicate_seed_ratio": duplicate_ratio,
             "query_errors": query_errors,
+            "planner": planner_contract,
             "timings": {
                 "query_generation_seconds": generation_seconds,
                 "lexical_seconds_total": sum(

@@ -73,12 +73,16 @@ async def test_verified_system_flow_reapplies_settings_and_can_sync_prompt(monke
     monkeypatch.setattr(
         orchestrator,
         "get_openrag_config",
-        lambda: SimpleNamespace(agent=SimpleNamespace(system_prompt=DEFAULT_SYSTEM_PROMPT)),
+        lambda: SimpleNamespace(
+            edited=False,
+            agent=SimpleNamespace(
+                system_prompt=DEFAULT_SYSTEM_PROMPT,
+                llm_model="",
+            ),
+        ),
     )
 
-    result = await orchestrator.ensure_system_retrieval_flow_ready(
-        {"flows_service": flows_service}
-    )
+    result = await orchestrator.ensure_system_retrieval_flow_ready({"flows_service": flows_service})
 
     assert result["status"] == "already_migrated"
     flows_service.ensure_flows_exist.assert_awaited_once_with(
@@ -105,22 +109,22 @@ async def test_verified_system_flow_upgrades_previous_retrieval_prompt(monkeypat
     flows_service.migrate_persisted_retrieval_flow = AsyncMock(
         return_value={"status": "already_migrated", "flow_id": "system-flow"}
     )
-    flows_service.get_chat_flow_system_prompt = AsyncMock(
-        return_value=previous_retrieval_prompt
-    )
+    flows_service.get_chat_flow_system_prompt = AsyncMock(return_value=previous_retrieval_prompt)
     flows_service.update_chat_flow_system_prompt = AsyncMock()
 
     monkeypatch.setattr(
         orchestrator,
         "get_openrag_config",
         lambda: SimpleNamespace(
-            agent=SimpleNamespace(system_prompt=previous_retrieval_prompt)
+            edited=False,
+            agent=SimpleNamespace(
+                system_prompt=DEFAULT_SYSTEM_PROMPT,
+                llm_model="",
+            ),
         ),
     )
 
-    await orchestrator.ensure_system_retrieval_flow_ready(
-        {"flows_service": flows_service}
-    )
+    await orchestrator.ensure_system_retrieval_flow_ready({"flows_service": flows_service})
 
     flows_service.update_chat_flow_system_prompt.assert_awaited_once_with(
         DEFAULT_SYSTEM_PROMPT,

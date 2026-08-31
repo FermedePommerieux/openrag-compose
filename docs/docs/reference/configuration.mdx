@@ -45,8 +45,15 @@ This is typically only required for critical configuration changes that affect t
 
 ## Model provider settings {#model-provider-settings}
 
-Configure which models and providers OpenRAG uses to generate text and embeddings.
-You only need to provide credentials for the providers you are using in OpenRAG.
+Configure provider connectivity for OpenRAG and the embedding model used by
+ingestion. You only need to provide credentials for the providers you are using.
+
+The agent model, planner model, and managed system prompt are application-runtime
+settings. OpenRAG persists them in the workspace configuration and applies them
+to the managed flow without rebuilding an image or changing Kubernetes/GitOps.
+They are not deployment environment variables. The planner follows the agent by
+default and can be selected independently through `POST /api/settings` with
+`planner_provider` and `planner_model`.
 
 These variables are initially set during the [application onboarding process](/install-uvx#application-onboarding).
 
@@ -54,14 +61,30 @@ These variables are initially set during the [application onboarding process](/i
 |----------|---------|-------------|
 | `EMBEDDING_PROVIDER` | `openai` | Embedding model provider, as one of `openai`, `watsonx`, or `ollama`. |
 | `EMBEDDING_MODEL` | `text-embedding-3-small` | Embedding model for generating vector embeddings for documents in the knowledge base and similarity search queries. Can be changed after the application onboarding process. |
-| `LLM_PROVIDER` | `openai` | Language model provider, as one of `openai`, `watsonx`, `ollama`, or `anthropic`. |
-| `LLM_MODEL` | `gpt-4o-mini` | Language model for language processing and text generation in the **Chat** feature. Can be changed after the application onboarding process. |
 | `ANTHROPIC_API_KEY` | Not set | API key for the Anthropic model provider. |
 | `OPENAI_API_KEY` | Not set | API key for the OpenAI model provider, which is also the default model provider. |
 | `OLLAMA_ENDPOINT` | Not set | Custom provider endpoint for the Ollama model provider. |
 | `WATSONX_API_KEY` | Not set | API key for the IBM watsonx.ai model provider. |
 | `WATSONX_ENDPOINT` | Not set | Custom provider endpoint for the IBM watsonx.ai model provider. |
 | `WATSONX_PROJECT_ID` | Not set | Project ID for the IBM watsonx.ai model provider. |
+
+### Runtime behavior ownership
+
+| Setting | Owner | Configured source | Effective source |
+|---------|-------|-------------------|------------------|
+| Images, replicas, resources, ingress | Deployment/GitOps | Deployment manifests | Kubernetes runtime |
+| Provider credentials and endpoints | Provider infrastructure | Secret or deployment connectivity settings | Provider client |
+| Agent provider/model | OpenRAG runtime | Workspace `agent` settings | Managed Langflow Agent model |
+| Planner provider/model | OpenRAG runtime | Workspace `agent.planner` settings (agent fallback when empty) | Backend search planner |
+| System prompt | OpenRAG managed runtime | Workspace `agent.system_prompt` | Managed Langflow Agent prompt |
+| Model capabilities | OpenRAG code | Capability registry | Inference request builder |
+| Retrieval policy | OpenRAG runtime/code contract | Workspace knowledge settings and policy registry | Search and scope services |
+
+`GET /api/settings/runtime-behavior` returns the non-secret
+`RuntimeBehaviorProfile v1`: configured/effective identities, prompt hashes,
+capability profiles, retrieval/scope settings, validation evidence, and a
+deterministic `runtime_behavior_fingerprint`. A managed flow mismatch is a
+startup or settings-update error; OpenRAG does not silently accept drift.
 
 ## Document processing settings {#document-processing-settings}
 
