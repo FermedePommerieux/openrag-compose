@@ -2207,12 +2207,34 @@ class FlowsService:
 
         # Update model field and call custom_component/update endpoint
         if "model" in template:
-            if "options" not in template["model"]:
-                logger.warning(f"Model field not found in template for provider {provider_name}")
-                return False
-
             # Enable the model in Langflow first
             await self._enable_model_in_langflow(provider_name, model_value)
+            model_field = template["model"]
+            options = model_field.get("options")
+
+            # Agent ModelInput fields intentionally load their catalog from
+            # Langflow's external enabled-model registry and therefore do not
+            # serialize an ``options`` list. Persist the selected identity and
+            # let the component update endpoint enrich its metadata. Treating
+            # the missing list as an incompatible field silently left the
+            # managed Agent on its previous provider.
+            if not isinstance(options, list):
+                model_options = [{"provider": provider_name, "name": model_value}]
+                model_field["value"] = model_options
+                template = (
+                    await self._update_component_langflow(template, model_options) or template
+                )
+                selected_provider, selected_model = self._runtime_model_identity(
+                    template.get("model", {}).get("value")
+                )
+                if (selected_provider, selected_model) != (
+                    provider.casefold(),
+                    model_value,
+                ):
+                    template["model"]["value"] = model_options
+                component_node["data"]["node"]["template"] = template
+                return True
+
             # Update template via Langflow API to get latest options
             template = (
                 await self._update_component_langflow(template, template["model"]["value"])

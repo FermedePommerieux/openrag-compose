@@ -643,6 +643,36 @@ def test_migrated_graph_accepts_runtime_managed_prompt_but_rejects_code_edits():
     assert service._is_known_migrated_retrieval_flow(flow) is False
 
 
+@pytest.mark.asyncio
+async def test_agent_external_model_input_is_updated_without_serialized_options():
+    service = FlowsService()
+    flow = _unversioned_retrieval_v2_flow()
+    agent = next(
+        node
+        for node in flow["data"]["nodes"]
+        if node.get("data", {}).get("node", {}).get("display_name") == "Agent"
+    )
+    model_field = agent["data"]["node"]["template"]["model"]
+    assert "options" not in model_field
+
+    with (
+        patch.object(service, "_enable_model_in_langflow", new_callable=AsyncMock),
+        patch.object(
+            service,
+            "_update_component_langflow",
+            new_callable=AsyncMock,
+            side_effect=lambda template, _selection: template,
+        ),
+    ):
+        updated = await service._update_component_fields(agent, "openai", "gpt-5.4-mini")
+
+    assert updated is True
+    assert service._runtime_model_identity(model_field["value"]) == (
+        "openai",
+        "gpt-5.4-mini",
+    )
+
+
 def test_version_6_migration_preserves_settings_managed_model_values():
     service = FlowsService()
     flow = _versioned_retrieval_v6_flow()
