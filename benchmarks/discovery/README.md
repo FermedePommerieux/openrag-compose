@@ -125,3 +125,55 @@ uv run python -m benchmarks.discovery.multi_query_benchmark capture \
 Evaluation requires no cluster access and writes JSON, CSV, and the structured
 decision report. Supplying a validation JSON makes test and lint status part of
 the decision gate.
+
+## Product-path rebenchmark
+
+`product_path_benchmark.py` is the authoritative rebenchmark harness after the
+fail-closed retrieval-contract repair. It posts only to the deployed
+`/api/search` endpoint with `evidenceMode=scope_exhaustive`; it contains no
+planner, OpenSearch query, RRF, graph traversal, or certification logic.
+`remote_multi_query.py` remains historical evidence and is not a product-path
+proof.
+
+Capture three read-only repetitions of q1 through q4 using one product-default
+global seed budget:
+
+```bash
+uv run python -m benchmarks.discovery.product_path_benchmark capture \
+  --definition benchmarks/discovery/definitions/case.yaml \
+  --definition-sha SHA256_OF_CASE \
+  --base-url https://openrag.example.test \
+  --output benchmarks/discovery/results/case-product-path-capture.json \
+  --repetitions 3 --seed-budget 100 \
+  --filters-json '{}' \
+  --benchmark-user-context 'documented product identity' \
+  --workspace 'documented workspace' \
+  --dls-identity 'documented DLS principal' \
+  --contract-tag TAG --runtime-source-sha SHA \
+  --runtime-settings-json '{"retrieval_strategy":"rrf"}' \
+  --planner-provider openai --planner-model gpt-5.6-sol \
+  --planner-supported-parameters input,max_output_tokens,model,stream \
+  --planner-actual-parameters input,max_output_tokens,model,stream
+```
+
+For authenticated deployments, name an environment variable containing the
+product bearer token with `--authorization-env`; neither the variable value nor
+any chunk text is persisted. The capture checkpoints after every request and
+supports `--resume`.
+
+Ground-truth evaluation stays local:
+
+```bash
+uv run python -m benchmarks.discovery.product_path_benchmark evaluate \
+  --definition benchmarks/discovery/definitions/case.yaml \
+  --capture benchmarks/discovery/results/case-product-path-capture.json \
+  --historical benchmarks/discovery/results/case-historical.json \
+  --output-json benchmarks/discovery/results/case-product-path.json \
+  --output-csv benchmarks/discovery/results/case-product-path.csv \
+  --output-report benchmarks/discovery/results/case-product-path-report.md
+```
+
+The capture retains timestamps, corpus digests, generated-query provenance,
+requested/effective profiles, lane candidate counts, compact seed ranks,
+scope identities, exact certificates, and latency. It deliberately drops
+retrieved chunk text.
