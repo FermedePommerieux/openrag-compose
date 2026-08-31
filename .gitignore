@@ -17,6 +17,10 @@ wheels/
 
 1001*.pdf
 *.json
+benchmarks/discovery/results/*
+!benchmarks/discovery/results/surface-pastorale-v1-final-baseline.json
+!benchmarks/discovery/results/surface-pastorale-v1-final-baseline.csv
+!benchmarks/discovery/results/surface-pastorale-v1-final-report.md
 !**/package.json
 !**/package-lock.json
 !**/tsconfig.json
