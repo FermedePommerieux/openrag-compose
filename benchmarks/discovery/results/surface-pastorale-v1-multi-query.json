@@ -4365,7 +4365,8 @@
     "full_suite_if_needed": "pass",
     "Ruff": "pass",
     "Mypy": "pass",
-    "git_diff_check": "pass"
+    "git_diff_check": "pass",
+    "production_smoke": "pass"
   },
   "decision": "MULTI-QUERY DISCOVERY VALIDATED",
   "qwen_readiness": {
@@ -4373,11 +4374,27 @@
     "reason": "The OpenAI multi-query pipeline is stable and isolated from embedding changes."
   },
   "production": {
-    "commit": "pending",
-    "push": "pending",
-    "build": "pending",
-    "gitops": "pending",
-    "deploy": "pending"
+    "commit": "yes",
+    "push": "yes",
+    "build": "yes",
+    "gitops": "yes",
+    "deploy": "yes"
+  },
+  "production_evidence": {
+    "implementation_commit": "8c766f41da5c793cff3d71b8492bf92c3815ba15",
+    "migration_fix_commit": "49e1e0baee59cb246f4d115e8cd46fe95af44cb3",
+    "workflow_run": 33398477585,
+    "backend_image": "ghcr.io/fermedepommerieux/openrag-compose/openrag-backend:v0.6.0-retrieval-v2.75",
+    "backend_digest": "sha256:b675fb98edd31931f0ecd51381934299bd0f2d666280ac089974f8ec8a9eb7da",
+    "gitops_commit": "a8e424025c5db2de0a5e5b9b8accee114f107803",
+    "fleet_ready": "7/7",
+    "retrieval_flow_version": 12,
+    "retrieval_flow_locked": true,
+    "historical_mode_smoke": "pass",
+    "multi_query_smoke": "pass",
+    "second_documentary_domain_smoke": "pass",
+    "failed_candidate_image": "v0.6.0-retrieval-v2.74",
+    "failed_candidate_action": "rolled back to v2.73 before publishing and deploying v2.75"
   },
   "decision_inputs": {
     "comparable": true,

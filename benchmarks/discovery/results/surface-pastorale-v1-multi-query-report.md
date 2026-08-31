@@ -33,6 +33,7 @@ full_suite_if_needed: pass
 Ruff: pass
 Mypy: pass
 git_diff_check: pass
+production_smoke: pass
 
 ## E. Benchmark STRICT
 
@@ -152,11 +153,18 @@ reason: The OpenAI multi-query pipeline is stable and isolated from embedding ch
 
 ## M. Production
 
-commit: pending
-push: pending
-build: pending
-gitops: pending
-deploy: pending
+commit: yes — implementation `8c766f41`, migration fix `49e1e0ba`
+push: yes — `pommerieux/v0.6.0-retrieval-v2-prov-o`
+build: yes — backend-only `v0.6.0-retrieval-v2.75`, digest `sha256:b675fb98edd31931f0ecd51381934299bd0f2d666280ac089974f8ec8a9eb7da`
+gitops: yes — `a8e4240`, Fleet `7/7` ready
+deploy: yes — backend Ready, persisted retrieval flow locked at version 12
+
+Production smoke: historical mode returned HTTP 200 without a discovery block;
+multi-query returned HTTP 200 with four bounded queries and contribution traces
+for contracts/avenants and for a distinct invoices/payment request. No warning
+was emitted. Candidate image `v2.74` failed closed on the unregistered v11 flow
+fingerprint and was rolled back to `v2.73`; the corrected `v2.75` deployment
+then backed up, migrated, verified, and re-locked that exact flow.
 
 ## N. Conclusion
 

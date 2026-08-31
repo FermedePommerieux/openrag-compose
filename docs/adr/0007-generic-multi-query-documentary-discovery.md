@@ -2,7 +2,7 @@
 
 ## Status
 
-Experimental — implemented and benchmarked, but not enabled or deployed.
+Accepted — deployed as an explicit opt-in capability; disabled by default.
 
 ## Context
 

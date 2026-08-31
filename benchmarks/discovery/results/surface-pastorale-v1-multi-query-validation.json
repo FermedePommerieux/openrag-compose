@@ -8,5 +8,6 @@
   "full_suite_if_needed": "pass",
   "Ruff": "pass",
   "Mypy": "pass",
-  "git_diff_check": "pass"
+  "git_diff_check": "pass",
+  "production_smoke": "pass"
 }
