@@ -235,6 +235,7 @@ def test_backend_tool_forwards_request_and_preserves_provenance(monkeypatch):
         "read_document_id",
         "cursor",
         "scope_exhaustive",
+        "multi_query_discovery",
     ]
     content, artifact = built_tool["func"]("where is the archive?")
     model_payload = json.loads(content)

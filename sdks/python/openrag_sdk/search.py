@@ -26,6 +26,9 @@ class SearchClient:
         document_id: str | None = None,
         cursor: str = "",
         batch_size: int = 20,
+        multi_query_discovery: bool = False,
+        multi_query_max_queries: int = 4,
+        multi_query_concurrency: int = 2,
     ) -> SearchResponse:
         """
         Search for documents or read one immutable document snapshot exhaustively.
@@ -41,6 +44,12 @@ class SearchClient:
             document_id: Required for exhaustive reading.
             cursor: Opaque continuation cursor from the previous coverage object.
             batch_size: Exhaustive page size, between 1 and 50.
+            multi_query_discovery: Enable bounded query decomposition. Disabled
+                by default.
+            multi_query_max_queries: Total query cap including the original,
+                between 1 and 4.
+            multi_query_concurrency: Maximum concurrent derived-query
+                retrievals, between 1 and 4.
 
         Returns:
             SearchResponse containing focused matches or an exhaustive page and its
@@ -53,6 +62,9 @@ class SearchClient:
             "score_threshold": score_threshold,
             "evidence_mode": evidence_mode,
             "batch_size": batch_size,
+            "multi_query_discovery": multi_query_discovery,
+            "multi_query_max_queries": multi_query_max_queries,
+            "multi_query_concurrency": multi_query_concurrency,
         }
 
         if filters:
@@ -82,4 +94,6 @@ class SearchClient:
             documents=data.get("documents", []),
             evidence_batches=data.get("evidence_batches", []),
             graph=data.get("graph"),
+            discovery=data.get("discovery"),
+            warnings=data.get("warnings", []),
         )

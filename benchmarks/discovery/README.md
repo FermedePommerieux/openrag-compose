@@ -93,3 +93,35 @@ The runner emits STRICT and BROAD metrics, lane contributions, complete
 coverage certificates, canonical-query miss ranks, performance measurements,
 before/after corpus snapshots, and reusable machine-readable captures for a
 future dense-model replay.
+
+## Generic multi-query experiment
+
+`multi_query_benchmark.py` evaluates the opt-in query-diversity layer without
+making cluster changes. The in-pod runner receives only the literal query,
+frozen retrieval settings, bounded query/concurrency values, the final seed
+budget, and the unchanged PROV-O scope limits. It cannot read the benchmark
+definition or human ground truth. Ground-truth scoring happens locally only
+after all ranked results have been captured.
+
+The primary replay fixes `final_seed_budget` to the effective q1 baseline
+budget (96 for this frozen benchmark), so any recall difference comes from
+query diversity rather than a larger candidate pool. Runs are cumulative:
+q1 is the exact original query, then q2 through q4 add one generated query at a
+time. A separate budget-100 capture may be retained only as a clearly named
+secondary control.
+
+```bash
+uv run python -m benchmarks.discovery.multi_query_benchmark capture \
+  --definition benchmarks/discovery/definitions/surface-pastorale-v1.yaml \
+  --remote-script benchmarks/discovery/remote_multi_query.py \
+  --output benchmarks/discovery/results/surface-pastorale-v1-multi-query-capture.json \
+  --base-url https://openrag.example.test \
+  --ssh-host user@cluster.example.test \
+  --ssh-key /absolute/path/to/key \
+  --namespace openrag \
+  --deployment openrag-backend
+```
+
+Evaluation requires no cluster access and writes JSON, CSV, and the structured
+decision report. Supplying a validation JSON makes test and lint status part of
+the decision gate.

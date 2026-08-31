@@ -4,6 +4,7 @@ import hashlib
 import hmac
 import os
 import re
+import time
 from typing import Any
 
 from agentd.tool_decorator import tool
@@ -15,17 +16,23 @@ from models.source_provenance import parse_source_provenance
 from services.retrieval_service import (
     EXHAUSTIVE_BATCH_MAX,
     EXHAUSTIVE_PROFILE_VERSION,
+    MAX_DISCOVERY_QUERIES,
+    DiscoveryQuery,
     HttpReranker,
     RetrievalSettings,
     ScopeCertificationFacts,
     ScopeExhaustiveSettings,
+    build_discovery_plan,
     certify_scope_coverage,
     decode_exhaustive_cursor,
+    discovery_query_prompt,
     document_content_sha256_from_chunks,
     encode_exhaustive_cursor,
     exhaustive_scope_sha256,
     expand_provenance_graph,
+    hit_identity,
     limit_chunks_per_document,
+    multi_query_reciprocal_rank_fusion,
     reciprocal_rank_fusion,
 )
 from services.scope_traversal_policy import DEFAULT_SCOPE_TRAVERSAL_POLICY
@@ -333,6 +340,8 @@ class SearchService:
         group_by_document: bool = False,
         page: int = 1,
         page_size: int = 100,
+        _discovery_query: DiscoveryQuery | None = None,
+        _include_timing: bool = False,
     ) -> dict[str, Any]:
         """
         Use this tool to search for documents relevant to the query.
@@ -347,6 +356,11 @@ class SearchService:
             dict (str, Any): {"results": [chunks]} on success
         """
         from utils.embedding_fields import get_embedding_field_name
+
+        search_started = time.perf_counter()
+        embedding_seconds = 0.0
+        lane_timings: dict[str, float] = {}
+        fusion_seconds = 0.0
 
         document_page = max(1, int(page))
         document_page_size = min(1000, max(1, int(page_size)))
@@ -539,10 +553,12 @@ class SearchService:
             # one broken model (e.g. provider credentials removed after ingest)
             # doesn't take down the entire search. If all models fail we fall
             # back to keyword-only search below.
+            embedding_started = time.perf_counter()
             embedding_results = await asyncio.gather(
                 *[embed_with_model(model) for model in available_models],
                 return_exceptions=True,
             )
+            embedding_seconds = time.perf_counter() - embedding_started
 
             for model_name, result in zip(available_models, embedding_results, strict=False):
                 if isinstance(result, BaseException):
@@ -896,12 +912,15 @@ class SearchService:
 
         async def execute_search(body: dict[str, Any], label: str) -> dict[str, Any]:
             fallback_body = without_num_candidates(body)
+            lane_started = time.perf_counter()
             try:
                 index_name = get_index_name()
                 logger.info("Sending query to index", retrieval_lane=label, index_name=index_name)
-                return await opensearch_client.search(
+                response = await opensearch_client.search(
                     index=index_name, body=body, params=search_params
                 )
+                lane_timings[label] = time.perf_counter() - lane_started
+                return response
             except RequestError as error:
                 error_message = str(error)
                 if is_disk_space_error(error):
@@ -918,9 +937,11 @@ class SearchService:
                         retrieval_lane=label,
                     )
                     try:
-                        return await opensearch_client.search(
+                        response = await opensearch_client.search(
                             index=get_index_name(), body=fallback_body, params=search_params
                         )
+                        lane_timings[label] = time.perf_counter() - lane_started
+                        return response
                     except RequestError as retry_error:
                         if is_disk_space_error(retry_error):
                             logger.error(
@@ -966,11 +987,39 @@ class SearchService:
 
         raw_hits = results.get("hits", {}).get("hits", [])
         if retrieval_results:
+            fusion_started = time.perf_counter()
             ranked_lists = [
                 lane_result.get("hits", {}).get("hits", [])
                 for lane_result in retrieval_results.values()
             ]
             raw_hits = reciprocal_rank_fusion(ranked_lists, k=retrieval_settings.rrf_k)
+            if _discovery_query is not None:
+                lane_rank_by_identity = {
+                    lane: {
+                        hit_identity(hit): rank
+                        for rank, hit in enumerate(
+                            lane_result.get("hits", {}).get("hits", []), start=1
+                        )
+                    }
+                    for lane, lane_result in retrieval_results.items()
+                }
+                for rrf_rank, hit in enumerate(raw_hits, start=1):
+                    identity = hit_identity(hit)
+                    lexical_rank = lane_rank_by_identity.get("lexical", {}).get(identity)
+                    vector_rank = lane_rank_by_identity.get("vector", {}).get(identity)
+                    matched_lanes = [
+                        lane
+                        for lane, rank in (("lexical", lexical_rank), ("dense", vector_rank))
+                        if rank is not None
+                    ]
+                    hit["_retrieval_query_contribution"] = {
+                        **_discovery_query.as_dict(),
+                        "lexical_rank": lexical_rank,
+                        "dense_rank": vector_rank,
+                        "rrf_rank": rrf_rank,
+                        "matched_lanes": matched_lanes,
+                        "query_rrf_score": hit.get("_retrieval_fusion_score"),
+                    }
             raw_hits = limit_chunks_per_document(
                 raw_hits,
                 max_chunks_per_document=retrieval_settings.max_chunks_per_document,
@@ -983,62 +1032,75 @@ class SearchService:
                 retrieval_settings.reranker_timeout,
             ).rerank(query, raw_hits)
             raw_hits = raw_hits[:limit]
+            fusion_seconds = time.perf_counter() - fusion_started
 
         # Transform results (keep for backward compatibility)
         chunks = []
         for hit in raw_hits:
             source = hit.get("_source", {})
-            chunks.append(
-                {
-                    "document_id": source.get("document_id"),
-                    "filename": source.get("filename"),
-                    "mimetype": source.get("mimetype"),
-                    "page": source.get("page"),
-                    "chunk_index": source.get("chunk_index"),
-                    "chunking_strategy": source.get("chunking_strategy"),
-                    "text": source.get("text"),
-                    "score": (
-                        hit.get("_retrieval_rerank_score")
-                        or hit.get("_retrieval_fusion_score")
-                        or hit.get("_score")
-                    ),
-                    "source_url": source.get("source_url"),
-                    "connector_file_id": source.get("connector_file_id"),
-                    "source_provenance": source.get("source_provenance"),
-                    "source_entity_id": source.get("source_entity_id"),
-                    "source_entity_type": source.get("source_entity_type"),
-                    "source_entity_system": source.get("source_entity_system"),
-                    "source_entity_alternate_ids": source.get("source_entity_alternate_ids", []),
-                    "source_relation_target_ids": source.get("source_relation_target_ids", []),
-                    "source_relation_roles": source.get("source_relation_roles", []),
-                    "source_relative_path": source.get("source_relative_path"),
-                    "source_path_ancestors": source.get("source_path_ancestors", []),
-                    "owner": source.get("owner"),
-                    "owner_name": source.get("owner_name"),
-                    "owner_email": source.get("owner_email"),
-                    "file_size": source.get("file_size"),
-                    "connector_type": source.get("connector_type"),
-                    "embedding_model": source.get("embedding_model"),  # Include in results
-                    "embedding_dimensions": source.get("embedding_dimensions"),
-                    "parser": source.get("parser"),
-                    "chunk_size": source.get("chunk_size"),
-                    "chunk_overlap": source.get("chunk_overlap"),
-                    "document_profile_version": source.get("document_profile_version"),
-                    "document_chunk_count": source.get("document_chunk_count"),
-                    "document_page_count": source.get("document_page_count"),
-                    "document_max_page": source.get("document_max_page"),
-                    "document_character_count": source.get("document_character_count"),
-                    "document_size_class": source.get("document_size_class"),
-                    # Legacy chunks predate the source ``chunk_id`` mapping;
-                    # keep their existing primary id visible to callers.
-                    "chunk_id": source.get("chunk_id") or hit.get("_id"),
-                    "id": hit.get("_id"),
-                    # ACL fields (may be missing for some documents)
-                    "allowed_users": source.get("allowed_users", []),
-                    "allowed_groups": source.get("allowed_groups", []),
-                    "allowed_principal_labels": source.get("allowed_principal_labels", []),
-                }
-            )
+            chunk = {
+                "document_id": source.get("document_id"),
+                "filename": source.get("filename"),
+                "mimetype": source.get("mimetype"),
+                "page": source.get("page"),
+                "chunk_index": source.get("chunk_index"),
+                "chunking_strategy": source.get("chunking_strategy"),
+                "text": source.get("text"),
+                "score": (
+                    hit.get("_retrieval_rerank_score")
+                    or hit.get("_retrieval_fusion_score")
+                    or hit.get("_score")
+                ),
+                "source_url": source.get("source_url"),
+                "connector_file_id": source.get("connector_file_id"),
+                "source_provenance": source.get("source_provenance"),
+                "source_entity_id": source.get("source_entity_id"),
+                "source_entity_type": source.get("source_entity_type"),
+                "source_entity_system": source.get("source_entity_system"),
+                "source_entity_alternate_ids": source.get("source_entity_alternate_ids", []),
+                "source_relation_target_ids": source.get("source_relation_target_ids", []),
+                "source_relation_roles": source.get("source_relation_roles", []),
+                "source_relative_path": source.get("source_relative_path"),
+                "source_path_ancestors": source.get("source_path_ancestors", []),
+                "owner": source.get("owner"),
+                "owner_name": source.get("owner_name"),
+                "owner_email": source.get("owner_email"),
+                "file_size": source.get("file_size"),
+                "connector_type": source.get("connector_type"),
+                "embedding_model": source.get("embedding_model"),  # Include in results
+                "embedding_dimensions": source.get("embedding_dimensions"),
+                "parser": source.get("parser"),
+                "chunk_size": source.get("chunk_size"),
+                "chunk_overlap": source.get("chunk_overlap"),
+                "document_profile_version": source.get("document_profile_version"),
+                "document_chunk_count": source.get("document_chunk_count"),
+                "document_page_count": source.get("document_page_count"),
+                "document_max_page": source.get("document_max_page"),
+                "document_character_count": source.get("document_character_count"),
+                "document_size_class": source.get("document_size_class"),
+                # Legacy chunks predate the source ``chunk_id`` mapping;
+                # keep their existing primary id visible to callers.
+                "chunk_id": source.get("chunk_id") or hit.get("_id"),
+                "id": hit.get("_id"),
+                # ACL fields (may be missing for some documents)
+                "allowed_users": source.get("allowed_users", []),
+                "allowed_groups": source.get("allowed_groups", []),
+                "allowed_principal_labels": source.get("allowed_principal_labels", []),
+            }
+            contribution = hit.get("_retrieval_query_contribution")
+            if isinstance(contribution, dict):
+                chunk.update(
+                    {
+                        "matched_queries": [contribution["query_id"]],
+                        "matched_lanes": list(contribution.get("matched_lanes", [])),
+                        "best_rank_per_query": {
+                            contribution["query_id"]: contribution.get("rrf_rank")
+                        },
+                        "query_contributions": [dict(contribution)],
+                        "fusion_score": hit.get("_retrieval_fusion_score"),
+                    }
+                )
+            chunks.append(chunk)
 
         # Preserve ordinary hybrid/RRF results. Exact narrowing is only for
         # identifier-like queries with an actual verbatim match.
@@ -1123,7 +1185,219 @@ class SearchService:
                 ),
                 "reranker_enabled": bool(retrieval_settings.reranker_url),
             }
+        if _include_timing:
+            response["_retrieval_timing"] = {
+                "embedding_seconds": embedding_seconds,
+                "lexical_seconds": lane_timings.get("lexical", 0.0),
+                "dense_seconds": lane_timings.get("vector", 0.0),
+                "fusion_seconds": fusion_seconds,
+                "total_seconds": time.perf_counter() - search_started,
+            }
         return response
+
+    async def _generate_discovery_plan(
+        self,
+        query: str,
+        *,
+        max_queries: int,
+    ) -> tuple[list[DiscoveryQuery], str | None, float]:
+        """Generate variants from the user query alone and fail safely to q0."""
+
+        started = time.perf_counter()
+        bounded_max = min(MAX_DISCOVERY_QUERIES, max(1, int(max_queries)))
+        if bounded_max == 1:
+            return build_discovery_plan(query, None, max_queries=1), None, 0.0
+        try:
+            config = get_openrag_config()
+            model = str(getattr(config.agent, "llm_model", "") or "").strip()
+            provider = str(getattr(config.agent, "llm_provider", "") or "").strip()
+            if not model:
+                raise RuntimeError("No language model is configured for query decomposition")
+            formatted_model = (
+                await self.models_service.get_litellm_model_name(model, provider=provider or None)
+                if self.models_service
+                else model
+            )
+            response = await clients.patched_llm_client.responses.create(
+                model=formatted_model,
+                input=discovery_query_prompt(query, max_queries=bounded_max),
+                stream=False,
+                temperature=0,
+                max_output_tokens=800,
+            )
+            output_text = getattr(response, "output_text", None)
+            if not isinstance(output_text, str) or not output_text.strip():
+                raise ValueError("Query planner response has no output_text")
+            plan = build_discovery_plan(
+                query,
+                output_text,
+                max_queries=bounded_max,
+                generation_method="llm_structured_v1",
+            )
+            return plan, None, time.perf_counter() - started
+        except Exception as exc:
+            logger.warning(
+                "Multi-query generation failed; retaining original query", error=str(exc)
+            )
+            return (
+                build_discovery_plan(query, None, max_queries=bounded_max),
+                str(exc),
+                time.perf_counter() - started,
+            )
+
+    async def _search_multi_query(
+        self,
+        query: str,
+        *,
+        embedding_model: str | None,
+        max_queries: int,
+        concurrency: int,
+    ) -> dict[str, Any]:
+        """Run one bounded discovery plan under the caller's existing DLS context."""
+
+        started = time.perf_counter()
+        config = get_openrag_config()
+        settings = RetrievalSettings.from_knowledge(config.knowledge)
+        if settings.strategy != "rrf":
+            raise ValueError("multi-query discovery requires the Retrieval v2 RRF strategy")
+        plan, generation_error, generation_seconds = await self._generate_discovery_plan(
+            query,
+            max_queries=max_queries,
+        )
+
+        semaphore = asyncio.Semaphore(min(MAX_DISCOVERY_QUERIES, max(1, int(concurrency))))
+
+        async def retrieve(item: DiscoveryQuery) -> tuple[DiscoveryQuery, dict[str, Any]]:
+            async with semaphore:
+                return item, await self.search_tool(
+                    item.query_text,
+                    embedding_model=embedding_model,
+                    _discovery_query=item,
+                    _include_timing=True,
+                )
+
+        raw_responses = await asyncio.gather(
+            *[retrieve(item) for item in plan],
+            return_exceptions=True,
+        )
+        successful: list[tuple[DiscoveryQuery, dict[str, Any]]] = []
+        query_errors: list[dict[str, str]] = []
+        for item, query_result in zip(plan, raw_responses, strict=True):
+            if isinstance(query_result, BaseException):
+                query_errors.append({"query_id": item.query_id, "error": str(query_result)})
+                continue
+            returned_query, response = query_result
+            if response.get("error"):
+                query_errors.append(
+                    {"query_id": returned_query.query_id, "error": str(response["error"])}
+                )
+                continue
+            successful.append((returned_query, response))
+
+        original_response = next(
+            (response for item, response in successful if item.query_id == "q0"),
+            None,
+        )
+        if original_response is None:
+            error = next(
+                (value["error"] for value in query_errors if value["query_id"] == "q0"),
+                "Original query retrieval failed",
+            )
+            return {"results": [], "error": error, "retrieval_strategy": "rrf"}
+
+        timing_rows: list[dict[str, Any]] = []
+        for item, response in successful:
+            timing = response.pop("_retrieval_timing", {})
+            timing_rows.append({"query_id": item.query_id, **timing})
+
+        from auth_context import get_search_limit
+
+        final_budget = max(1, int(get_search_limit()))
+        fusion_started = time.perf_counter()
+        if len(successful) == 1:
+            final_results = list(original_response.get("results", []))[:final_budget]
+        else:
+            final_results = multi_query_reciprocal_rank_fusion(
+                [(item, response.get("results", [])) for item, response in successful],
+                k=settings.rrf_k,
+            )
+            final_results = limit_chunks_per_document(
+                final_results,
+                max_chunks_per_document=settings.max_chunks_per_document,
+                adaptive_max_chunks_per_document=settings.adaptive_max_chunks_per_document,
+            )[:final_budget]
+        global_fusion_seconds = time.perf_counter() - fusion_started
+
+        total_memberships = sum(len(response.get("results", [])) for _, response in successful)
+        unique_candidates = {
+            hit_identity(item)
+            for _, response in successful
+            for item in response.get("results", [])
+            if isinstance(item, dict)
+        }
+        duplicate_ratio = (
+            (total_memberships - len(unique_candidates)) / total_memberships
+            if total_memberships
+            else 0.0
+        )
+        final_response = dict(original_response)
+        final_response["results"] = final_results
+        final_response["total"] = len(final_results)
+        warnings = list(final_response.get("warnings", []))
+        if generation_error:
+            warnings.append(
+                {
+                    "code": "query_decomposition_unavailable",
+                    "message": generation_error,
+                }
+            )
+        if query_errors:
+            warnings.append(
+                {
+                    "code": "derived_query_failed",
+                    "queries": query_errors,
+                    "message": "One or more derived queries failed under the same access scope.",
+                }
+            )
+        if warnings:
+            final_response["warnings"] = warnings
+        final_response["discovery"] = {
+            "enabled": True,
+            "query_count": len(successful),
+            "generated_query_count": len(plan),
+            "queries": [item.as_dict() for item in plan],
+            "fusion": "hierarchical_rrf",
+            "fusion_formula": "sum_q(1 / (rrf_k + per_query_rrf_rank))",
+            "rrf_k": settings.rrf_k,
+            "final_seed_chunk_budget": final_budget,
+            "unique_seed_chunks": len(final_results),
+            "unique_seed_documents": len(
+                {
+                    str(item.get("document_id"))
+                    for item in final_results
+                    if item.get("document_id") not in (None, "")
+                }
+            ),
+            "duplicate_seed_ratio": duplicate_ratio,
+            "query_errors": query_errors,
+            "timings": {
+                "query_generation_seconds": generation_seconds,
+                "lexical_seconds_total": sum(
+                    float(row.get("lexical_seconds", 0.0)) for row in timing_rows
+                ),
+                "dense_seconds_total": sum(
+                    float(row.get("dense_seconds", 0.0)) for row in timing_rows
+                ),
+                "embedding_seconds_total": sum(
+                    float(row.get("embedding_seconds", 0.0)) for row in timing_rows
+                ),
+                "per_query": timing_rows,
+                "fusion_seconds": global_fusion_seconds
+                + sum(float(row.get("fusion_seconds", 0.0)) for row in timing_rows),
+                "retrieval_wall_seconds": time.perf_counter() - started,
+            },
+        }
+        return final_response
 
     async def read_document_chunks(
         self,
@@ -1497,6 +1771,9 @@ class SearchService:
         filters: dict[str, Any] | None,
         embedding_model: str | None,
         settings: ScopeExhaustiveSettings,
+        multi_query_discovery: bool = False,
+        multi_query_max_queries: int = MAX_DISCOVERY_QUERIES,
+        multi_query_concurrency: int = 2,
     ) -> dict[str, Any]:
         """Discover, close and verify one query-defined documentary scope.
 
@@ -1507,10 +1784,19 @@ class SearchService:
         """
         from auth_context import set_score_threshold, set_search_limit
 
+        scope_started = time.perf_counter()
         set_search_limit(settings.seed_count)
         set_score_threshold(0)
         try:
-            seed_response = await self.search_tool(query, embedding_model=embedding_model)
+            if multi_query_discovery:
+                seed_response = await self._search_multi_query(
+                    query,
+                    embedding_model=embedding_model,
+                    max_queries=multi_query_max_queries,
+                    concurrency=multi_query_concurrency,
+                )
+            else:
+                seed_response = await self.search_tool(query, embedding_model=embedding_model)
         except Exception as exc:
             logger.warning("Scope seed discovery failed", error=str(exc))
             return {
@@ -1830,6 +2116,19 @@ class SearchService:
             **decision,
             "stop_reason": decision["status_code"],
         }
+        discovery_metadata = seed_response.get("discovery")
+        discovery_wall_seconds = 0.0
+        if isinstance(discovery_metadata, dict):
+            timings = discovery_metadata.get("timings")
+            if isinstance(timings, dict):
+                discovery_wall_seconds = float(timings.get("retrieval_wall_seconds", 0.0))
+            coverage["discovery"] = discovery_metadata
+        total_scope_seconds = time.perf_counter() - scope_started
+        coverage["performance"] = {
+            "discovery_seconds": discovery_wall_seconds,
+            "prov_o_seconds": max(0.0, total_scope_seconds - discovery_wall_seconds),
+            "total_seconds": total_scope_seconds,
+        }
         # Langflow retains every verified chunk in its artifact for source
         # cards/UI. Its model-facing projection uses this bounded leaf-evidence
         # set: ranked seeds first, then one source-order chunk for each newly
@@ -1858,7 +2157,7 @@ class SearchService:
         model_results = list(model_evidence_by_id.values())[: settings.seed_count]
         coverage["model_evidence_chunks"] = len(model_results)
         coverage["artifact_chunks"] = len(evidence)
-        return {
+        response = {
             "results": evidence,
             "model_results": model_results,
             "total": len(evidence),
@@ -1871,6 +2170,9 @@ class SearchService:
             },
             "coverage": coverage,
         }
+        if isinstance(discovery_metadata, dict):
+            response["discovery"] = discovery_metadata
+        return response
 
     async def search(
         self,
@@ -1888,6 +2190,9 @@ class SearchService:
         group_by_document: bool = False,
         page: int = 1,
         page_size: int = 100,
+        multi_query_discovery: bool = False,
+        multi_query_max_queries: int = MAX_DISCOVERY_QUERIES,
+        multi_query_concurrency: int = 2,
     ) -> dict[str, Any]:
         """Public search method for API endpoints
 
@@ -1937,6 +2242,9 @@ class SearchService:
                 filters=filters,
                 embedding_model=embedding_model,
                 settings=settings,
+                multi_query_discovery=multi_query_discovery,
+                multi_query_max_queries=multi_query_max_queries,
+                multi_query_concurrency=multi_query_concurrency,
             )
 
         from auth_context import set_score_threshold, set_search_limit
@@ -1944,6 +2252,15 @@ class SearchService:
         set_search_limit(limit)
         set_score_threshold(score_threshold)
 
+        if multi_query_discovery:
+            if group_by_document:
+                raise ValueError("multi-query discovery is not available for document browsing")
+            return await self._search_multi_query(
+                query,
+                embedding_model=embedding_model,
+                max_queries=multi_query_max_queries,
+                concurrency=multi_query_concurrency,
+            )
         return await self.search_tool(
             query,
             embedding_model=embedding_model,

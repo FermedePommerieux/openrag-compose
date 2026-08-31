@@ -35,6 +35,9 @@ class SearchV1Body(BaseModel):
     document_id: str | None = None
     cursor: str = ""
     batch_size: int = Field(default=20, ge=1, le=50)
+    multi_query_discovery: bool = False
+    multi_query_max_queries: int = Field(default=4, ge=1, le=4)
+    multi_query_concurrency: int = Field(default=2, ge=1, le=4)
 
 
 async def search_endpoint(
@@ -93,6 +96,9 @@ async def search_endpoint(
             document_id=body.document_id,
             cursor=body.cursor,
             batch_size=min(50, max(1, body.batch_size)),
+            multi_query_discovery=body.multi_query_discovery,
+            multi_query_max_queries=body.multi_query_max_queries,
+            multi_query_concurrency=body.multi_query_concurrency,
         )
 
         if body.evidence_mode in {"exhaustive", "scope_exhaustive"}:
@@ -120,11 +126,21 @@ async def search_endpoint(
                 "source_relation_roles": item.get("source_relation_roles", []),
                 "source_relative_path": item.get("source_relative_path"),
                 "source_path_ancestors": item.get("source_path_ancestors", []),
+                "matched_queries": item.get("matched_queries", []),
+                "matched_lanes": item.get("matched_lanes", []),
+                "best_rank_per_query": item.get("best_rank_per_query", {}),
+                "query_contributions": item.get("query_contributions", []),
+                "fusion_score": item.get("fusion_score"),
             }
             for item in result.get("results", [])
         ]
 
-        return JSONResponse({"results": results})
+        response: dict[str, Any] = {"results": results}
+        if isinstance(result.get("discovery"), dict):
+            response["discovery"] = result["discovery"]
+        if isinstance(result.get("warnings"), list):
+            response["warnings"] = result["warnings"]
+        return JSONResponse(response)
 
     except ValueError as e:
         return JSONResponse({"error": str(e)}, status_code=400)

@@ -21,6 +21,10 @@ benchmarks/discovery/results/*
 !benchmarks/discovery/results/surface-pastorale-v1-final-baseline.json
 !benchmarks/discovery/results/surface-pastorale-v1-final-baseline.csv
 !benchmarks/discovery/results/surface-pastorale-v1-final-report.md
+!benchmarks/discovery/results/surface-pastorale-v1-multi-query.json
+!benchmarks/discovery/results/surface-pastorale-v1-multi-query.csv
+!benchmarks/discovery/results/surface-pastorale-v1-multi-query-report.md
+!benchmarks/discovery/results/surface-pastorale-v1-multi-query-validation.json
 !**/package.json
 !**/package-lock.json
 !**/tsconfig.json

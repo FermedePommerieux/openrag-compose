@@ -34,6 +34,9 @@ class SearchBody(BaseModel):
     responseProfile: Literal["default", "langflow"] = Field(
         default="default", alias="responseProfile"
     )
+    multiQueryDiscovery: bool = Field(default=False, alias="multiQueryDiscovery")
+    multiQueryMaxQueries: int = Field(default=4, ge=1, le=4, alias="multiQueryMaxQueries")
+    multiQueryConcurrency: int = Field(default=2, ge=1, le=4, alias="multiQueryConcurrency")
 
     model_config = {"populate_by_name": True}
 
@@ -69,6 +72,9 @@ async def search(
             page=body.page,
             page_size=body.pageSize,
             response_profile=body.responseProfile,
+            multi_query_discovery=body.multiQueryDiscovery,
+            multi_query_max_queries=body.multiQueryMaxQueries,
+            multi_query_concurrency=body.multiQueryConcurrency,
         )
 
         result = await search_service.search(
@@ -85,6 +91,9 @@ async def search(
             group_by_document=body.groupByDocument,
             page=body.page,
             page_size=body.pageSize,
+            multi_query_discovery=body.multiQueryDiscovery,
+            multi_query_max_queries=body.multiQueryMaxQueries,
+            multi_query_concurrency=body.multiQueryConcurrency,
         )
         if body.evidenceMode == "scope_exhaustive" and body.responseProfile == "langflow":
             result = project_scope_exhaustive_for_langflow(result)

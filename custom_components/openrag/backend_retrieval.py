@@ -33,6 +33,11 @@ MODEL_EVIDENCE_FIELDS = (
     "evidence_order",
     "score",
     "text",
+    "matched_queries",
+    "matched_lanes",
+    "best_rank_per_query",
+    "query_contributions",
+    "fusion_score",
 )
 MODEL_DOCUMENT_FIELDS = (
     "document_id",
@@ -97,6 +102,8 @@ MODEL_COVERAGE_FIELDS = (
     "failure_codes",
     "model_evidence_chunks",
     "artifact_chunks",
+    "discovery",
+    "performance",
 )
 
 
@@ -207,6 +214,9 @@ def _model_payload(payload: dict[str, Any]) -> dict[str, Any]:
             MODEL_COVERAGE_FIELDS,
             keep_null=("next_cursor",),
         )
+    discovery = payload.get("discovery")
+    if isinstance(discovery, dict):
+        compact["discovery"] = discovery
     for field in ("error", "warning", "retrieval_strategy"):
         if field in payload and payload[field] not in (None, ""):
             compact[field] = payload[field]
@@ -299,6 +309,9 @@ class OpenRAGBackendRetrievalComponent(LCToolComponent):
         document_id: str = "",
         cursor: str = "",
         batch_size: int = 20,
+        multi_query_discovery: bool = False,
+        multi_query_max_queries: int = 4,
+        multi_query_concurrency: int = 2,
     ) -> dict[str, Any]:
         """Call the backend and retain results plus its coverage certificate."""
         query = _as_text(search_query)
@@ -320,21 +333,30 @@ class OpenRAGBackendRetrievalComponent(LCToolComponent):
             headers["Authorization"] = jwt if jwt.lower().startswith("bearer ") else f"Bearer {jwt}"
 
         filters, limit, score_threshold = self._request_context()
+        request_body: dict[str, Any] = {
+            "query": query,
+            "filters": filters,
+            "limit": limit,
+            "scoreThreshold": score_threshold,
+            "evidenceMode": mode,
+            "documentId": resolved_document_id or None,
+            "cursor": _as_text(cursor),
+            "batchSize": min(50, max(1, int(batch_size))),
+            "responseProfile": "langflow",
+        }
+        if multi_query_discovery:
+            request_body.update(
+                {
+                    "multiQueryDiscovery": True,
+                    "multiQueryMaxQueries": min(4, max(1, int(multi_query_max_queries))),
+                    "multiQueryConcurrency": min(4, max(1, int(multi_query_concurrency))),
+                }
+            )
         with httpx.Client(timeout=300.0) as client:
             response = client.post(
                 url,
                 headers=headers,
-                json={
-                    "query": query,
-                    "filters": filters,
-                    "limit": limit,
-                    "scoreThreshold": score_threshold,
-                    "evidenceMode": mode,
-                    "documentId": resolved_document_id or None,
-                    "cursor": _as_text(cursor),
-                    "batchSize": min(50, max(1, int(batch_size))),
-                    "responseProfile": "langflow",
-                },
+                json=request_body,
             )
             response.raise_for_status()
             payload = response.json()
@@ -378,6 +400,7 @@ class OpenRAGBackendRetrievalComponent(LCToolComponent):
             read_document_id: str = "",
             cursor: str = "",
             scope_exhaustive: bool = False,
+            multi_query_discovery: bool = False,
         ) -> tuple[str, list[dict[str, Any]]]:
             """Search normally, investigate a dossier, or read one selected document."""
             resolved_document_id = _as_text(read_document_id)
@@ -395,6 +418,7 @@ class OpenRAGBackendRetrievalComponent(LCToolComponent):
                 document_id=resolved_document_id,
                 cursor=cursor,
                 batch_size=50 if resolved_document_id else 20,
+                multi_query_discovery=multi_query_discovery,
             )
             artifact = payload["results"]
 
@@ -418,7 +442,9 @@ class OpenRAGBackendRetrievalComponent(LCToolComponent):
                 "Otherwise it performs normal ranked archive search. Set read_document_id only when "
                 "the human explicitly selected one known document for complete reading; "
                 "continue with coverage.next_cursor until complete=true. Never expose an "
-                "internal document id as a human-facing scope label: use documents.filename."
+                "internal document id as a human-facing scope label: use documents.filename. "
+                "Set multi_query_discovery=true for one backend-controlled, bounded decomposition "
+                "plan; it is still a single guarded discovery attempt under the same access scope."
             ),
             response_format="content_and_artifact",
             metadata=_retrieval_guard_metadata(filters, limit, score_threshold),

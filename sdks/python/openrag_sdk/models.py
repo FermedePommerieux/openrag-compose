@@ -130,6 +130,11 @@ class SearchResult(BaseModel):
     source_relation_roles: list[str] = Field(default_factory=list)
     source_relative_path: str | None = None
     source_path_ancestors: list[str] = Field(default_factory=list)
+    matched_queries: list[str] = Field(default_factory=list)
+    matched_lanes: list[str] = Field(default_factory=list)
+    best_rank_per_query: dict[str, int] = Field(default_factory=dict)
+    query_contributions: list[dict] = Field(default_factory=list)
+    fusion_score: float | None = None
 
 
 class SearchResponse(BaseModel):
@@ -141,6 +146,8 @@ class SearchResponse(BaseModel):
     documents: list[dict] = Field(default_factory=list)
     evidence_batches: list[dict] = Field(default_factory=list)
     graph: dict | None = None
+    discovery: dict | None = None
+    warnings: list[dict] = Field(default_factory=list)
 
 
 # Document models

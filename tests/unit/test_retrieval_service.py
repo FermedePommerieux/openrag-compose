@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from services.retrieval_service import (
+    DiscoveryQuery,
     RetrievalSettings,
     ScopeExhaustiveSettings,
     adaptive_chunk_limit,
@@ -441,7 +442,17 @@ async def test_search_service_rrf_fuses_lanes_preserves_provenance_and_emits_deb
     session_manager = MagicMock()
     session_manager.get_user_opensearch_client.return_value = OpenSearchClient()
 
-    result = await SearchService(session_manager=session_manager).search_tool("shared text")
+    result = await SearchService(session_manager=session_manager).search_tool(
+        "shared text",
+        _discovery_query=DiscoveryQuery(
+            query_id="q1",
+            query_text="shared text",
+            query_type="conceptual_variant",
+            parent_query="original text",
+            generation_method="test",
+        ),
+        _include_timing=True,
+    )
 
     assert [item["chunk_id"] for item in result["results"]] == ["shared", "lexical"]
     assert result["results"][0]["source_url"] == "https://example.test/b"
@@ -452,6 +463,11 @@ async def test_search_service_rrf_fuses_lanes_preserves_provenance_and_emits_deb
     assert result["results"][0]["chunk_index"] == 0
     assert result["results"][0]["chunking_strategy"] == "hybrid"
     assert result["retrieval_debug"]["lanes"] == {"lexical": 2, "vector": 2}
+    assert result["results"][0]["matched_queries"] == ["q1"]
+    assert result["results"][0]["matched_lanes"] == ["lexical", "dense"]
+    assert result["results"][0]["query_contributions"][0]["lexical_rank"] == 2
+    assert result["results"][0]["query_contributions"][0]["dense_rank"] == 1
+    assert result["_retrieval_timing"]["total_seconds"] >= 0
     lane_bodies = [body for body in OpenSearchClient.bodies if body.get("size") != 0]
     assert len(lane_bodies) == 2
     assert all(
