@@ -62,7 +62,16 @@ def project_scope_exhaustive_for_langflow(payload: dict[str, Any]) -> dict[str, 
             "source_resolution": "dls_chunk_id",
         },
     }
-    for field in ("error", "warning", "retrieval_strategy"):
+    for field in (
+        "error",
+        "warnings",
+        "retrieval_strategy",
+        "requested_retrieval_profile",
+        "effective_retrieval_profile",
+        "retrieval_execution_complete",
+        "retrieval_failure_codes",
+        "discovery",
+    ):
         if field in payload and payload[field] not in (None, ""):
             compact[field] = payload[field]
     return compact

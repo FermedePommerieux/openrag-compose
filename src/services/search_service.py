@@ -13,6 +13,7 @@ from auth_context import get_auth_context
 from config.embedding_constants import get_declared_default_embedding_model
 from config.settings import clients, get_embedding_model, get_index_name, get_openrag_config
 from models.source_provenance import parse_source_provenance
+from services.model_capabilities import build_responses_request
 from services.retrieval_service import (
     EXHAUSTIVE_BATCH_MAX,
     EXHAUSTIVE_PROFILE_VERSION,
@@ -34,6 +35,8 @@ from services.retrieval_service import (
     limit_chunks_per_document,
     multi_query_reciprocal_rank_fusion,
     reciprocal_rank_fusion,
+    requested_retrieval_profile,
+    retrieval_execution_complete,
 )
 from services.scope_traversal_policy import DEFAULT_SCOPE_TRAVERSAL_POLICY
 from utils.container_utils import transform_localhost_url
@@ -46,6 +49,80 @@ MAX_EMBED_RETRIES = 3
 EMBED_RETRY_INITIAL_DELAY = 1.0
 EMBED_RETRY_MAX_DELAY = 8.0
 DOCUMENT_SEARCH_RESULT_WINDOW = 10_000
+
+_RETRIEVAL_LANE_FAILURE_CODES = {
+    "lexical": "retrieval_lexical_lane_failed",
+    "dense": "retrieval_dense_lane_failed",
+    "fusion": "retrieval_fusion_failed",
+    "multi_query": "retrieval_execution_incomplete",
+}
+
+
+def _initial_effective_retrieval_profile(requested: dict[str, Any]) -> dict[str, Any]:
+    lanes: dict[str, dict[str, Any]] = {}
+    for lane, requirement in requested.get("lanes", {}).items():
+        lanes[lane] = {
+            "requested": requirement == "required",
+            "status": "failed" if requirement == "required" else "not_requested",
+            "candidates": 0,
+        }
+        if requirement == "required":
+            lanes[lane]["error"] = "not_executed"
+    return {
+        "version": requested.get("version", 1),
+        "strategy": requested.get("strategy"),
+        "mode": "none",
+        "lanes": lanes,
+    }
+
+
+def _finalize_retrieval_contract(
+    response: dict[str, Any],
+    *,
+    requested: dict[str, Any],
+    effective: dict[str, Any],
+    failure_codes: list[str] | None = None,
+    warnings: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Attach one fail-closed, machine-readable retrieval execution contract."""
+
+    lanes = effective.get("lanes", {})
+    lexical_succeeded = lanes.get("lexical", {}).get("status") == "succeeded"
+    dense_succeeded = lanes.get("dense", {}).get("status") == "succeeded"
+    if lexical_succeeded and dense_succeeded:
+        effective["mode"] = "hybrid"
+    elif dense_succeeded:
+        effective["mode"] = "vector"
+    elif lexical_succeeded:
+        effective["mode"] = "lexical"
+    else:
+        effective["mode"] = "none"
+
+    resolved_failure_codes = list(failure_codes or [])
+    for lane, requirement in requested.get("lanes", {}).items():
+        if requirement != "required":
+            continue
+        if lanes.get(lane, {}).get("status") != "succeeded":
+            if lane == "multi_query" and any(
+                code in {"multi_query_planner_failed", "multi_query_query_failed"}
+                for code in resolved_failure_codes
+            ):
+                continue
+            resolved_failure_codes.append(_RETRIEVAL_LANE_FAILURE_CODES[lane])
+    resolved_failure_codes = list(dict.fromkeys(resolved_failure_codes))
+    complete = retrieval_execution_complete(requested, effective)
+    if not complete and not resolved_failure_codes:
+        resolved_failure_codes.append("retrieval_execution_incomplete")
+
+    response["requested_retrieval_profile"] = requested
+    response["effective_retrieval_profile"] = effective
+    response["retrieval_execution_complete"] = complete
+    response["retrieval_failure_codes"] = resolved_failure_codes
+    combined_warnings = [value for value in response.get("warnings", []) if isinstance(value, dict)]
+    combined_warnings.extend(value for value in (warnings or []) if isinstance(value, dict))
+    if combined_warnings:
+        response["warnings"] = combined_warnings
+    return response
 
 
 # Variable used to store the active instance for the tool wrapper
@@ -378,6 +455,9 @@ class SearchService:
         openrag_config = get_openrag_config()
         retrieval_settings = RetrievalSettings.from_knowledge(openrag_config.knowledge)
         use_retrieval_v2 = retrieval_settings.strategy == "rrf"
+        requested_profile = requested_retrieval_profile(retrieval_settings)
+        effective_profile = _initial_effective_retrieval_profile(requested_profile)
+        execution_warnings: list[dict[str, Any]] = []
         embedding_model = (
             embedding_model
             or get_embedding_model()
@@ -413,6 +493,7 @@ class SearchService:
         query_embeddings = {}
         available_models = []
         failed_models: list = []
+        embedding_detection_error: str | None = None
 
         opensearch_client = self.session_manager.get_user_opensearch_client(user_id, jwt_token)
 
@@ -427,7 +508,11 @@ class SearchService:
                 await require_sortable_chunk_id_mapping(mapping_client, get_index_name())
             except RRFMappingError as exc:
                 logger.error("RRF blocked by incompatible chunk_id mapping", error=str(exc))
-                return {"results": [], "error": str(exc), "retrieval_strategy": "rrf"}
+                return _finalize_retrieval_contract(
+                    {"results": [], "error": str(exc), "retrieval_strategy": "rrf"},
+                    requested=requested_profile,
+                    effective=effective_profile,
+                )
 
         if not is_wildcard_match_all:
             # Build filter clauses first so we can use them in model detection
@@ -493,6 +578,7 @@ class SearchService:
                 logger.warning(
                     "Failed to detect embedding models, using configured model", error=str(e)
                 )
+                embedding_detection_error = str(e)
                 available_models = [embedding_model]
 
             # Parallelize embedding generation for all models
@@ -579,6 +665,37 @@ class SearchService:
                 failed_models=failed_models,
                 query_preview=query[:50],
             )
+            dense_execution = effective_profile["lanes"]["dense"]
+            dense_execution.update(
+                {
+                    "embedding_models": sorted(str(model) for model in query_embeddings),
+                    "embedding_dimensions": {
+                        str(model): len(vector)
+                        for model, vector in query_embeddings.items()
+                        if isinstance(vector, (list, tuple))
+                    },
+                    "failed_embedding_models": sorted(str(model) for model in failed_models),
+                }
+            )
+            if requested_profile["lanes"]["dense"] == "required" and (
+                not query_embeddings or failed_models or embedding_detection_error
+            ):
+                dense_execution["status"] = "failed"
+                dense_execution["error"] = (
+                    "embedding_model_detection_failed"
+                    if embedding_detection_error
+                    else "embedding_generation_failed"
+                )
+                execution_warnings.append(
+                    {
+                        "code": "retrieval_dense_lane_failed",
+                        "failed_models": sorted(str(model) for model in failed_models),
+                        "message": (
+                            "Dense retrieval is incomplete; partial results may be available, "
+                            "but the requested retrieval profile is not certifiable."
+                        ),
+                    }
+                )
         else:
             # Wildcard query - no embedding needed
             filter_clauses = []
@@ -978,12 +1095,61 @@ class SearchService:
         if retrieval_bodies:
             lanes = [name for name, _body in retrieval_bodies]
             lane_results = await asyncio.gather(
-                *[execute_search(body, name) for name, body in retrieval_bodies]
+                *[execute_search(body, name) for name, body in retrieval_bodies],
+                return_exceptions=True,
             )
-            retrieval_results = dict(zip(lanes, lane_results, strict=True))
-            results = retrieval_results.get("lexical") or lane_results[0]
+            for lane, lane_result in zip(lanes, lane_results, strict=True):
+                contract_lane = "dense" if lane == "vector" else lane
+                lane_execution = effective_profile["lanes"][contract_lane]
+                if isinstance(lane_result, OpenSearchDiskSpaceError):
+                    raise lane_result
+                if isinstance(lane_result, BaseException):
+                    lane_execution.update({"status": "failed", "error": str(lane_result)})
+                    execution_warnings.append(
+                        {
+                            "code": _RETRIEVAL_LANE_FAILURE_CODES[contract_lane],
+                            "lane": contract_lane,
+                            "message": (
+                                f"The {contract_lane} retrieval lane failed; partial results "
+                                "may be available, but scope certification is disabled."
+                            ),
+                        }
+                    )
+                    continue
+                retrieval_results[lane] = lane_result
+                candidate_count = len(lane_result.get("hits", {}).get("hits", []))
+                lane_execution["candidates"] = candidate_count
+                # A successful vector request cannot repair missing/failed
+                # embeddings for another model in the requested dense lane.
+                if contract_lane != "dense" or (
+                    query_embeddings and not failed_models and not embedding_detection_error
+                ):
+                    lane_execution.update({"status": "succeeded"})
+                    lane_execution.pop("error", None)
+            if not retrieval_results:
+                return _finalize_retrieval_contract(
+                    {
+                        "results": [],
+                        "error": "All requested retrieval lanes failed",
+                        "retrieval_strategy": retrieval_settings.strategy,
+                    },
+                    requested=requested_profile,
+                    effective=effective_profile,
+                    warnings=execution_warnings,
+                )
+            results = retrieval_results.get("lexical") or next(iter(retrieval_results.values()))
         else:
             results = await execute_search(search_body, "weighted")
+            weighted_candidates = len(results.get("hits", {}).get("hits", []))
+            effective_profile["lanes"]["lexical"].update(
+                {"status": "succeeded", "candidates": weighted_candidates}
+            )
+            effective_profile["lanes"]["lexical"].pop("error", None)
+            if query_embeddings:
+                effective_profile["lanes"]["dense"]["candidates"] = weighted_candidates
+                if not failed_models and not embedding_detection_error:
+                    effective_profile["lanes"]["dense"]["status"] = "succeeded"
+                    effective_profile["lanes"]["dense"].pop("error", None)
 
         raw_hits = results.get("hits", {}).get("hits", [])
         if retrieval_results:
@@ -992,7 +1158,38 @@ class SearchService:
                 lane_result.get("hits", {}).get("hits", [])
                 for lane_result in retrieval_results.values()
             ]
-            raw_hits = reciprocal_rank_fusion(ranked_lists, k=retrieval_settings.rrf_k)
+            try:
+                raw_hits = reciprocal_rank_fusion(ranked_lists, k=retrieval_settings.rrf_k)
+                if requested_profile["lanes"]["fusion"] == "required":
+                    required_input_lanes_succeeded = all(
+                        effective_profile["lanes"][lane]["status"] == "succeeded"
+                        for lane in ("lexical", "dense")
+                    )
+                    fusion_execution = effective_profile["lanes"]["fusion"]
+                    if required_input_lanes_succeeded:
+                        fusion_execution.update(
+                            {"status": "succeeded", "candidates": len(raw_hits)}
+                        )
+                        fusion_execution.pop("error", None)
+                    else:
+                        fusion_execution.update(
+                            {"status": "failed", "error": "required_lane_failed"}
+                        )
+            except Exception as exc:
+                # Preserve one successful lane for diagnosis, but never present
+                # it as execution of the requested fused profile.
+                raw_hits = list(ranked_lists[0]) if ranked_lists else []
+                fusion_execution = effective_profile["lanes"]["fusion"]
+                fusion_execution.update({"status": "failed", "error": str(exc)})
+                execution_warnings.append(
+                    {
+                        "code": "retrieval_fusion_failed",
+                        "message": (
+                            "Retrieval fusion failed; unfused partial results are available, "
+                            "but scope certification is disabled."
+                        ),
+                    }
+                )
             if _discovery_query is not None:
                 lane_rank_by_identity = {
                     lane: {
@@ -1193,7 +1390,12 @@ class SearchService:
                 "fusion_seconds": fusion_seconds,
                 "total_seconds": time.perf_counter() - search_started,
             }
-        return response
+        return _finalize_retrieval_contract(
+            response,
+            requested=requested_profile,
+            effective=effective_profile,
+            warnings=execution_warnings,
+        )
 
     async def _generate_discovery_plan(
         self,
@@ -1218,13 +1420,15 @@ class SearchService:
                 if self.models_service
                 else model
             )
-            response = await clients.patched_llm_client.responses.create(
+            request = build_responses_request(
+                provider=provider or None,
                 model=formatted_model,
                 input=discovery_query_prompt(query, max_queries=bounded_max),
                 stream=False,
                 temperature=0,
                 max_output_tokens=800,
             )
+            response = await clients.patched_llm_client.responses.create(**request)
             output_text = getattr(response, "output_text", None)
             if not isinstance(output_text, str) or not output_text.strip():
                 raise ValueError("Query planner response has no output_text")
@@ -1260,6 +1464,12 @@ class SearchService:
         settings = RetrievalSettings.from_knowledge(config.knowledge)
         if settings.strategy != "rrf":
             raise ValueError("multi-query discovery requires the Retrieval v2 RRF strategy")
+        requested_profile = requested_retrieval_profile(
+            settings,
+            multi_query_requested=True,
+            multi_query_max_queries=max_queries,
+        )
+        effective_profile = _initial_effective_retrieval_profile(requested_profile)
         plan, generation_error, generation_seconds = await self._generate_discovery_plan(
             query,
             max_queries=max_queries,
@@ -1303,7 +1513,31 @@ class SearchService:
                 (value["error"] for value in query_errors if value["query_id"] == "q0"),
                 "Original query retrieval failed",
             )
-            return {"results": [], "error": error, "retrieval_strategy": "rrf"}
+            effective_profile["lanes"]["multi_query"].update(
+                {"status": "failed", "error": "original_query_failed"}
+            )
+            failure_code = (
+                "multi_query_planner_failed" if generation_error else "multi_query_query_failed"
+            )
+            return _finalize_retrieval_contract(
+                {
+                    "results": [],
+                    "error": error,
+                    "retrieval_strategy": "rrf",
+                    "discovery": {
+                        "multi_query_requested": True,
+                        "multi_query_executed": False,
+                        "multi_query_query_count": 0,
+                        "multi_query_status": "planner_failed"
+                        if generation_error
+                        else "query_failed",
+                        "query_errors": query_errors,
+                    },
+                },
+                requested=requested_profile,
+                effective=effective_profile,
+                failure_codes=[failure_code],
+            )
 
         timing_rows: list[dict[str, Any]] = []
         for item, response in successful:
@@ -1343,7 +1577,12 @@ class SearchService:
         final_response = dict(original_response)
         final_response["results"] = final_results
         final_response["total"] = len(final_results)
-        warnings = list(final_response.get("warnings", []))
+        warnings = [
+            warning
+            for _, response in successful
+            for warning in response.get("warnings", [])
+            if isinstance(warning, dict)
+        ]
         if generation_error:
             warnings.append(
                 {
@@ -1361,8 +1600,16 @@ class SearchService:
             )
         if warnings:
             final_response["warnings"] = warnings
+        multi_query_status = (
+            "planner_failed" if generation_error else "query_failed" if query_errors else "success"
+        )
+        multi_query_executed = multi_query_status == "success"
         final_response["discovery"] = {
             "enabled": True,
+            "multi_query_requested": True,
+            "multi_query_executed": multi_query_executed,
+            "multi_query_query_count": len(successful),
+            "multi_query_status": multi_query_status,
             "query_count": len(successful),
             "generated_query_count": len(plan),
             "queries": [item.as_dict() for item in plan],
@@ -1397,7 +1644,47 @@ class SearchService:
                 "retrieval_wall_seconds": time.perf_counter() - started,
             },
         }
-        return final_response
+        for lane in ("lexical", "dense", "fusion"):
+            lane_rows = [
+                response.get("effective_retrieval_profile", {}).get("lanes", {}).get(lane, {})
+                for _, response in successful
+            ]
+            lane_rows = [row for row in lane_rows if isinstance(row, dict)]
+            lane_execution = effective_profile["lanes"][lane]
+            lane_execution["candidates"] = sum(int(row.get("candidates", 0)) for row in lane_rows)
+            if (
+                lane_rows
+                and len(lane_rows) == len(plan)
+                and all(row.get("status") == "succeeded" for row in lane_rows)
+            ):
+                lane_execution["status"] = "succeeded"
+                lane_execution.pop("error", None)
+            elif requested_profile["lanes"][lane] == "required":
+                lane_execution.update({"status": "failed", "error": "query_lane_incomplete"})
+
+        multi_query_execution = effective_profile["lanes"]["multi_query"]
+        multi_query_execution.update(
+            {
+                "status": "succeeded" if multi_query_executed else "failed",
+                "candidates": len(successful),
+                "query_count": len(successful),
+            }
+        )
+        if not multi_query_executed:
+            multi_query_execution["error"] = multi_query_status
+        else:
+            multi_query_execution.pop("error", None)
+        failure_codes: list[str] = []
+        if generation_error:
+            failure_codes.append("multi_query_planner_failed")
+        if query_errors:
+            failure_codes.append("multi_query_query_failed")
+        return _finalize_retrieval_contract(
+            final_response,
+            requested=requested_profile,
+            effective=effective_profile,
+            failure_codes=failure_codes,
+        )
 
     async def read_document_chunks(
         self,
@@ -1733,6 +2020,7 @@ class SearchService:
                 graph_limit_reached=False,
                 graph_stop_reason=None,
                 graph_failed=False,
+                retrieval_execution_complete=False,
                 documents_discovered=0,
                 documents_complete=0,
                 covered_chunks=0,
@@ -1810,13 +2098,27 @@ class SearchService:
             }
 
         if seed_response.get("error"):
+            failure_coverage = self._scope_error_coverage(
+                query, "incomplete_seed_discovery", str(seed_response["error"])
+            )
+            for field in (
+                "requested_retrieval_profile",
+                "effective_retrieval_profile",
+                "retrieval_execution_complete",
+                "retrieval_failure_codes",
+            ):
+                if field in seed_response:
+                    failure_coverage[field] = seed_response[field]
             return {
                 "results": [],
                 "documents": [],
                 "graph": {"entities": [], "edges": []},
                 "error": seed_response["error"],
-                "coverage": self._scope_error_coverage(
-                    query, "incomplete_seed_discovery", str(seed_response["error"])
+                "coverage": failure_coverage,
+                **(
+                    {"warnings": seed_response["warnings"]}
+                    if isinstance(seed_response.get("warnings"), list)
+                    else {}
                 ),
             }
 
@@ -2038,11 +2340,19 @@ class SearchService:
                 graph_limit_reached=graph_coverage.get("limit_reached") is True,
                 graph_stop_reason=graph_coverage.get("stop_reason"),
                 graph_failed=graph_failed,
+                retrieval_execution_complete=(
+                    seed_response.get("retrieval_execution_complete") is True
+                ),
                 documents_discovered=len(documents),
                 documents_complete=complete_documents,
                 covered_chunks=covered_chunks,
                 total_chunks=total_chunks,
                 document_failure_codes=tuple(document_failure_codes),
+                retrieval_failure_codes=tuple(
+                    str(code)
+                    for code in seed_response.get("retrieval_failure_codes", [])
+                    if isinstance(code, str)
+                ),
                 unclassified_relations=int(
                     graph_coverage.get("relations_unclassified", {}).get("total", 0)
                 ),
@@ -2063,6 +2373,16 @@ class SearchService:
             "valid_provenance_seed_documents": len(valid_provenance_seed_documents),
             "invalid_provenance_seed_documents": len(invalid_provenance_seed_documents),
             "seed_provenance_complete": seed_provenance_complete,
+            "requested_retrieval_profile": seed_response.get("requested_retrieval_profile"),
+            "effective_retrieval_profile": seed_response.get("effective_retrieval_profile"),
+            "retrieval_execution_complete": (
+                seed_response.get("retrieval_execution_complete") is True
+            ),
+            "retrieval_failure_codes": [
+                str(code)
+                for code in seed_response.get("retrieval_failure_codes", [])
+                if isinstance(code, str)
+            ],
             "graph_entities_visited": graph_coverage.get("entities_visited", 0),
             "graph_frontier_empty": graph_coverage.get("frontier_empty", False),
             "graph_limit_reached": graph_coverage.get("limit_reached", False),
@@ -2161,6 +2481,16 @@ class SearchService:
             "results": evidence,
             "model_results": model_results,
             "total": len(evidence),
+            "requested_retrieval_profile": seed_response.get("requested_retrieval_profile"),
+            "effective_retrieval_profile": seed_response.get("effective_retrieval_profile"),
+            "retrieval_execution_complete": (
+                seed_response.get("retrieval_execution_complete") is True
+            ),
+            "retrieval_failure_codes": [
+                str(code)
+                for code in seed_response.get("retrieval_failure_codes", [])
+                if isinstance(code, str)
+            ],
             "documents": document_manifest,
             "evidence_batches": evidence_batches,
             "graph": {
@@ -2172,6 +2502,8 @@ class SearchService:
         }
         if isinstance(discovery_metadata, dict):
             response["discovery"] = discovery_metadata
+        if isinstance(seed_response.get("warnings"), list):
+            response["warnings"] = seed_response["warnings"]
         return response
 
     async def search(

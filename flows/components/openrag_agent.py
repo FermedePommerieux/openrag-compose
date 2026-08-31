@@ -94,6 +94,10 @@ _RETRIEVAL_COVERAGE_FIELDS = (
     "documents_discovered",
     "documents_complete",
     "documents_incomplete",
+    "requested_retrieval_profile",
+    "effective_retrieval_profile",
+    "retrieval_execution_complete",
+    "retrieval_failure_codes",
     "stop_reason",
     "status_code",
     "failure_codes",
@@ -449,6 +453,7 @@ def _build_retrieval_guard_snapshot(
             record.mode == "scope_exhaustive"
             and record.coverage.get("complete") is True
             and record.coverage.get("status_code") == "complete"
+            and record.coverage.get("retrieval_execution_complete") is True
         ):
             snapshot.exhaustive_scope_satisfied = True
             snapshot.terminal_scopes.add(record.terminal_scope_fingerprint)

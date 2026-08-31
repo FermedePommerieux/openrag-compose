@@ -255,6 +255,31 @@ def test_backend_tool_forwards_request_and_preserves_provenance(monkeypatch):
     assert "JSON(text_key=" not in content
 
 
+def test_model_projection_preserves_structured_retrieval_warnings(monkeypatch):
+    module = _load_component_with_langflow_stubs(monkeypatch)
+    payload = {
+        "results": [{"chunk_id": "partial", "text": "partial evidence"}],
+        "warnings": [
+            {
+                "code": "multi_query_planner_failed",
+                "message": "planner unavailable",
+            }
+        ],
+        "requested_retrieval_profile": {"version": 1, "mode": "hybrid"},
+        "effective_retrieval_profile": {"version": 1, "mode": "lexical"},
+        "retrieval_execution_complete": False,
+        "retrieval_failure_codes": ["multi_query_planner_failed"],
+    }
+
+    compact = module._model_payload(payload)
+
+    assert compact["warnings"] == payload["warnings"]
+    assert "warning" not in compact
+    assert compact["retrieval_execution_complete"] is False
+    assert compact["requested_retrieval_profile"]["mode"] == "hybrid"
+    assert compact["effective_retrieval_profile"]["mode"] == "lexical"
+
+
 def test_backend_tool_forwards_exhaustive_cursor_and_coverage(monkeypatch):
     module = _load_component_with_langflow_stubs(monkeypatch)
     captured: dict = {}

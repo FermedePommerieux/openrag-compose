@@ -68,6 +68,11 @@ def _scope_payload(chunk_count: int, *, complete: bool = False) -> dict:
             "model_evidence_chunks": len(model_results),
             "artifact_chunks": chunk_count,
         },
+        "warnings": [{"code": "retrieval_dense_lane_failed", "message": "partial"}],
+        "requested_retrieval_profile": {"version": 1, "mode": "hybrid"},
+        "effective_retrieval_profile": {"version": 1, "mode": "lexical"},
+        "retrieval_execution_complete": False,
+        "retrieval_failure_codes": ["retrieval_dense_lane_failed"],
     }
 
 
@@ -94,6 +99,10 @@ def test_langflow_scope_projection_preserves_backend_coverage_and_occurrences(co
         "scope_evidence_omitted": True,
         "source_resolution": "dls_chunk_id",
     }
+    assert compact["warnings"] == payload["warnings"]
+    assert compact["retrieval_execution_complete"] is False
+    assert compact["requested_retrieval_profile"]["mode"] == "hybrid"
+    assert compact["effective_retrieval_profile"]["mode"] == "lexical"
 
 
 def test_langflow_scope_payload_is_independent_of_verified_chunk_text_volume():

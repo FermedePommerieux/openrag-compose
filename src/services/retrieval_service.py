@@ -52,6 +52,14 @@ SCOPE_COVERAGE_MESSAGES = {
     ),
     "incomplete_seed_discovery": "Ranked seed discovery did not complete.",
     "search_error": "Ranked seed discovery failed with a search error.",
+    "retrieval_execution_incomplete": (
+        "The requested retrieval profile was not executed completely."
+    ),
+    "multi_query_planner_failed": "The requested multi-query planner did not complete.",
+    "multi_query_query_failed": "At least one planned discovery query did not complete.",
+    "retrieval_lexical_lane_failed": "The required lexical retrieval lane did not complete.",
+    "retrieval_dense_lane_failed": "The required dense retrieval lane did not complete.",
+    "retrieval_fusion_failed": "The required retrieval fusion did not complete.",
     "no_provenance_seed": "No valid provenance-bearing seed document was discovered.",
     "seed_missing_provenance": (
         "At least one discovered seed document has missing or invalid provenance."
@@ -95,6 +103,7 @@ class ScopeCertificationFacts:
     graph_limit_reached: bool
     graph_stop_reason: str | None
     graph_failed: bool
+    retrieval_execution_complete: bool
     documents_discovered: int
     documents_complete: int
     covered_chunks: int
@@ -102,6 +111,7 @@ class ScopeCertificationFacts:
     document_failure_codes: tuple[str, ...] = ()
     seed_failure_code: str | None = None
     unclassified_relations: int = 0
+    retrieval_failure_codes: tuple[str, ...] = ()
 
 
 def certify_scope_coverage(facts: ScopeCertificationFacts) -> dict[str, Any]:
@@ -116,6 +126,17 @@ def certify_scope_coverage(facts: ScopeCertificationFacts) -> dict[str, Any]:
         )
     elif not facts.seed_discovery_complete:
         failures.add("incomplete_seed_discovery")
+
+    recognized_retrieval_failures = {
+        code
+        for code in facts.retrieval_failure_codes
+        if code in SCOPE_COVERAGE_MESSAGES and code != "complete"
+    }
+    failures.update(recognized_retrieval_failures)
+    if not facts.retrieval_execution_complete and not recognized_retrieval_failures:
+        failures.add("retrieval_execution_incomplete")
+    if facts.retrieval_execution_complete and facts.retrieval_failure_codes:
+        failures.add("profile_invalid")
 
     if facts.seed_discovery_complete:
         if facts.seed_documents <= 0 or facts.valid_provenance_seed_documents <= 0:
@@ -149,9 +170,11 @@ def certify_scope_coverage(facts: ScopeCertificationFacts) -> dict[str, Any]:
         if facts.document_failure_codes and not recognized_document_failures:
             failures.add("document_read_incomplete")
         if (
-            facts.documents_complete != facts.documents_discovered
+            facts.documents_complete < facts.documents_discovered
             and not facts.document_failure_codes
         ):
+            failures.add("document_read_incomplete")
+        if facts.covered_chunks < facts.total_chunks and not facts.document_failure_codes:
             failures.add("document_read_incomplete")
     if (
         min(
@@ -285,6 +308,55 @@ class RetrievalSettings:
             reranker_timeout=bounded("retrieval_reranker_timeout", 5, 120),
             debug=bool(getattr(knowledge, "retrieval_debug", False)),
         )
+
+
+RETRIEVAL_EXECUTION_PROFILE_VERSION = 1
+
+
+def requested_retrieval_profile(
+    settings: RetrievalSettings,
+    *,
+    multi_query_requested: bool = False,
+    multi_query_max_queries: int = 1,
+) -> dict[str, Any]:
+    """Describe the retrieval capabilities the caller requires."""
+
+    lexical_required = settings.mode in {"lexical", "hybrid"}
+    dense_required = settings.mode in {"vector", "hybrid"}
+    fusion_required = settings.strategy == "rrf" and settings.mode == "hybrid"
+    return {
+        "version": RETRIEVAL_EXECUTION_PROFILE_VERSION,
+        "strategy": settings.strategy,
+        "mode": settings.mode,
+        "lanes": {
+            "lexical": "required" if lexical_required else "disabled",
+            "dense": "required" if dense_required else "disabled",
+            "fusion": "required" if fusion_required else "disabled",
+            "multi_query": "required" if multi_query_requested else "disabled",
+        },
+        "multi_query": {
+            "requested": multi_query_requested,
+            "max_queries": (
+                min(MAX_DISCOVERY_QUERIES, max(1, int(multi_query_max_queries)))
+                if multi_query_requested
+                else 1
+            ),
+        },
+    }
+
+
+def retrieval_execution_complete(requested: dict[str, Any], effective: dict[str, Any]) -> bool:
+    """Return True only when every required retrieval capability succeeded."""
+
+    requested_lanes = requested.get("lanes", {})
+    effective_lanes = effective.get("lanes", {})
+    for lane, requirement in requested_lanes.items():
+        if requirement != "required":
+            continue
+        lane_status = effective_lanes.get(lane, {})
+        if not isinstance(lane_status, dict) or lane_status.get("status") != "succeeded":
+            return False
+    return True
 
 
 @dataclass(frozen=True)

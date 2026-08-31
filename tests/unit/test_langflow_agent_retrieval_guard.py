@@ -187,6 +187,7 @@ def test_scope_complete_marks_terminal_but_allows_distinct_focused_search():
             coverage={
                 "mode": "scope_exhaustive",
                 "complete": True,
+                "retrieval_execution_complete": True,
                 "status_code": "complete",
                 "failure_codes": [],
                 "scope_policy_id": "documentary-prov-o",
@@ -203,6 +204,30 @@ def test_scope_complete_marks_terminal_but_allows_distinct_focused_search():
         "scope_already_complete"
     )
     assert GUARD["_retrieval_guard_reason"](snapshot, focused, CONTEXT) is None
+
+
+def test_guard_rejects_false_complete_when_retrieval_execution_is_degraded():
+    snapshot = _snapshot(
+        [
+            _user(),
+            _ai("scope", "all contract records", scope_exhaustive=True),
+            _tool(
+                "scope",
+                chunks=(("doc-1", "chunk-1"),),
+                coverage={
+                    "mode": "scope_exhaustive",
+                    "complete": True,
+                    "status_code": "complete",
+                    "failure_codes": [],
+                    "retrieval_execution_complete": False,
+                    "retrieval_failure_codes": ["retrieval_dense_lane_failed"],
+                },
+            ),
+        ]
+    )
+
+    assert snapshot.exhaustive_scope_satisfied is False
+    assert snapshot.records[-1].coverage["retrieval_execution_complete"] is False
 
 
 def test_incomplete_scope_keeps_distinct_recovery_available_and_fail_closed():
@@ -329,6 +354,7 @@ def test_invoice_regression_stalls_after_repeated_evidence_then_preserves_calcul
             coverage={
                 "mode": "scope_exhaustive",
                 "complete": True,
+                "retrieval_execution_complete": True,
                 "status_code": "complete",
                 "failure_codes": [],
             },

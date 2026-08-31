@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 from copy import deepcopy
+from dataclasses import replace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -114,6 +115,36 @@ def _seed(document_id: str, entity_id: str) -> dict:
         "source_provenance": _provenance(entity_id),
         "chunk_id": f"seed-{entity_id}",
         "text": "seed",
+    }
+
+
+def _successful_retrieval(results: list[dict]) -> dict:
+    return {
+        "results": results,
+        "requested_retrieval_profile": {
+            "version": 1,
+            "strategy": "rrf",
+            "mode": "hybrid",
+            "lanes": {
+                "lexical": "required",
+                "dense": "required",
+                "fusion": "required",
+                "multi_query": "disabled",
+            },
+        },
+        "effective_retrieval_profile": {
+            "version": 1,
+            "strategy": "rrf",
+            "mode": "hybrid",
+            "lanes": {
+                "lexical": {"status": "succeeded", "candidates": len(results)},
+                "dense": {"status": "succeeded", "candidates": len(results)},
+                "fusion": {"status": "succeeded", "candidates": len(results)},
+                "multi_query": {"status": "not_requested", "candidates": 0},
+            },
+        },
+        "retrieval_execution_complete": True,
+        "retrieval_failure_codes": [],
     }
 
 
@@ -1249,7 +1280,7 @@ async def test_scope_reads_every_discovered_document_and_certifies_only_all_comp
     from services import search_service
 
     service = _scope_service()
-    service.search_tool = AsyncMock(return_value={"results": [_seed("doc-A", "A")]})
+    service.search_tool = AsyncMock(return_value=_successful_retrieval([_seed("doc-A", "A")]))
     monkeypatch.setattr(
         search_service,
         "expand_provenance_graph",
@@ -1303,7 +1334,9 @@ async def test_scope_reads_same_content_document_per_source_occurrence(monkeypat
     from services import search_service
 
     service = _scope_service()
-    service.search_tool = AsyncMock(return_value={"results": [_seed("shared-doc", "local")]})
+    service.search_tool = AsyncMock(
+        return_value=_successful_retrieval([_seed("shared-doc", "local")])
+    )
     monkeypatch.setattr(
         search_service,
         "expand_provenance_graph",
@@ -1395,7 +1428,7 @@ async def test_scope_is_incomplete_for_legacy_or_changed_document(monkeypatch, f
     from services import search_service
 
     service = _scope_service()
-    service.search_tool = AsyncMock(return_value={"results": [_seed("doc-A", "A")]})
+    service.search_tool = AsyncMock(return_value=_successful_retrieval([_seed("doc-A", "A")]))
     monkeypatch.setattr(
         search_service,
         "expand_provenance_graph",
@@ -1468,7 +1501,7 @@ async def test_scope_never_certifies_empty_or_unlinked_ranked_seeds(
     from services import search_service
 
     service = _scope_service()
-    service.search_tool = AsyncMock(return_value={"results": seed_results})
+    service.search_tool = AsyncMock(return_value=_successful_retrieval(seed_results))
     documents = [{"document_id": item["document_id"], "filename": "A.pdf"} for item in seed_results]
     monkeypatch.setattr(
         search_service,
@@ -1527,17 +1560,116 @@ def _closed_graph(*document_ids: str) -> dict:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("failure_code", "multi_query"),
+    [
+        ("multi_query_planner_failed", True),
+        ("retrieval_dense_lane_failed", False),
+    ],
+)
+async def test_degraded_discovery_preserves_evidence_but_never_certifies(
+    monkeypatch, failure_code, multi_query
+):
+    from services import search_service
+
+    service = _scope_service()
+    seed_response = _successful_retrieval([_seed("doc-A", "A")])
+    seed_response["retrieval_execution_complete"] = False
+    seed_response["retrieval_failure_codes"] = [failure_code]
+    seed_response["warnings"] = [{"code": failure_code, "message": "forced sabotage"}]
+    if multi_query:
+        seed_response["requested_retrieval_profile"]["lanes"]["multi_query"] = "required"
+        seed_response["effective_retrieval_profile"]["lanes"]["multi_query"] = {
+            "status": "failed",
+            "candidates": 1,
+            "error": "planner_failed",
+        }
+        seed_response["discovery"] = {
+            "multi_query_requested": True,
+            "multi_query_executed": False,
+            "multi_query_query_count": 1,
+            "multi_query_status": "planner_failed",
+        }
+        service._search_multi_query = AsyncMock(return_value=seed_response)
+    else:
+        seed_response["effective_retrieval_profile"]["mode"] = "lexical"
+        seed_response["effective_retrieval_profile"]["lanes"]["dense"] = {
+            "status": "failed",
+            "candidates": 0,
+            "error": "embedding_generation_failed",
+        }
+        seed_response["effective_retrieval_profile"]["lanes"]["fusion"] = {
+            "status": "failed",
+            "candidates": 0,
+            "error": "required_lane_failed",
+        }
+        service.search_tool = AsyncMock(return_value=seed_response)
+
+    monkeypatch.setattr(
+        search_service,
+        "expand_provenance_graph",
+        AsyncMock(return_value=_closed_graph("doc-A")),
+    )
+    service.read_document_chunks = AsyncMock(return_value=_complete_page("doc-A"))
+
+    result = await service.search_exhaustive_scope(
+        "all exchanges",
+        user_id="user-1",
+        jwt_token="jwt",
+        filters={},
+        embedding_model=None,
+        settings=ScopeExhaustiveSettings(),
+        multi_query_discovery=multi_query,
+    )
+
+    assert result["results"]
+    assert result["coverage"]["documents_complete"] == 1
+    assert result["coverage"]["covered_chunks"] == result["coverage"]["total_chunks"]
+    assert result["coverage"]["retrieval_execution_complete"] is False
+    assert result["coverage"]["complete"] is False
+    assert failure_code in result["coverage"]["failure_codes"]
+    assert result["warnings"][0]["code"] == failure_code
+
+
+@pytest.mark.asyncio
+async def test_missing_retrieval_execution_contract_fails_closed(monkeypatch):
+    from services import search_service
+
+    service = _scope_service()
+    service.search_tool = AsyncMock(return_value={"results": [_seed("doc-A", "A")]})
+    monkeypatch.setattr(
+        search_service,
+        "expand_provenance_graph",
+        AsyncMock(return_value=_closed_graph("doc-A")),
+    )
+    service.read_document_chunks = AsyncMock(return_value=_complete_page("doc-A"))
+
+    result = await service.search_exhaustive_scope(
+        "all exchanges",
+        user_id="user-1",
+        jwt_token="jwt",
+        filters={},
+        embedding_model=None,
+        settings=ScopeExhaustiveSettings(),
+    )
+
+    assert result["coverage"]["complete"] is False
+    assert result["coverage"]["status_code"] == "retrieval_execution_incomplete"
+    assert result["coverage"]["retrieval_execution_complete"] is False
+
+
+@pytest.mark.asyncio
 async def test_scope_mixed_valid_and_invalid_seeds_is_never_complete(monkeypatch):
     from services import search_service
 
     service = _scope_service()
     service.search_tool = AsyncMock(
-        return_value={
-            "results": [
+        return_value=_successful_retrieval(
+            [
                 _seed("doc-A", "A"),
                 {"document_id": "doc-B", "chunk_id": "seed-B", "text": "seed"},
             ]
-        }
+        )
     )
     monkeypatch.setattr(
         search_service,
@@ -1600,7 +1732,7 @@ async def test_scope_retains_partial_evidence_when_one_document_access_fails(mon
     from services import search_service
 
     service = _scope_service()
-    service.search_tool = AsyncMock(return_value={"results": [_seed("doc-A", "A")]})
+    service.search_tool = AsyncMock(return_value=_successful_retrieval([_seed("doc-A", "A")]))
     monkeypatch.setattr(
         search_service,
         "expand_provenance_graph",
@@ -1634,7 +1766,7 @@ async def test_scope_recomputes_and_rejects_wrong_final_document_digest(monkeypa
     from services import search_service
 
     service = _scope_service()
-    service.search_tool = AsyncMock(return_value={"results": [_seed("doc-A", "A")]})
+    service.search_tool = AsyncMock(return_value=_successful_retrieval([_seed("doc-A", "A")]))
     monkeypatch.setattr(
         search_service,
         "expand_provenance_graph",
@@ -1663,7 +1795,7 @@ async def test_scope_graph_exception_is_classified_and_seed_document_is_retained
     from services import search_service
 
     service = _scope_service()
-    service.search_tool = AsyncMock(return_value={"results": [_seed("doc-A", "A")]})
+    service.search_tool = AsyncMock(return_value=_successful_retrieval([_seed("doc-A", "A")]))
     monkeypatch.setattr(
         search_service,
         "expand_provenance_graph",
@@ -1712,6 +1844,7 @@ def test_document_ratio_alone_never_certifies_scope():
             graph_limit_reached=True,
             graph_stop_reason="max_depth",
             graph_failed=False,
+            retrieval_execution_complete=True,
             documents_discovered=1,
             documents_complete=1,
             covered_chunks=10,
@@ -1734,6 +1867,7 @@ def test_unclassified_relation_has_a_stable_policy_failure_code():
             graph_limit_reached=False,
             graph_stop_reason="frontier_empty",
             graph_failed=False,
+            retrieval_execution_complete=True,
             documents_discovered=1,
             documents_complete=1,
             covered_chunks=1,
@@ -1758,6 +1892,7 @@ def test_impossible_coverage_counters_fail_closed():
             graph_limit_reached=False,
             graph_stop_reason="frontier_empty",
             graph_failed=False,
+            retrieval_execution_complete=True,
             documents_discovered=1,
             documents_complete=1,
             covered_chunks=2,
@@ -1766,3 +1901,78 @@ def test_impossible_coverage_counters_fail_closed():
     )
 
     assert decision["status_code"] == "profile_invalid"
+
+
+def _complete_certification_facts() -> ScopeCertificationFacts:
+    return ScopeCertificationFacts(
+        seed_discovery_complete=True,
+        seed_documents=1,
+        valid_provenance_seed_documents=1,
+        invalid_provenance_seed_documents=0,
+        graph_frontier_empty=True,
+        graph_limit_reached=False,
+        graph_stop_reason="frontier_empty",
+        graph_failed=False,
+        retrieval_execution_complete=True,
+        documents_discovered=1,
+        documents_complete=1,
+        covered_chunks=2,
+        total_chunks=2,
+    )
+
+
+@pytest.mark.parametrize(
+    ("mutation", "expected_code"),
+    [
+        ({"covered_chunks": 1}, "document_read_incomplete"),
+        ({"covered_chunks": 3}, "profile_invalid"),
+        ({"documents_complete": 0}, "document_read_incomplete"),
+        ({"documents_complete": 2}, "profile_invalid"),
+    ],
+)
+def test_partition_counter_sabotage_never_certifies(mutation, expected_code):
+    decision = certify_scope_coverage(replace(_complete_certification_facts(), **mutation))
+
+    assert decision["complete"] is False
+    assert expected_code in decision["failure_codes"]
+
+
+def test_exact_partition_counters_can_certify():
+    decision = certify_scope_coverage(_complete_certification_facts())
+
+    assert decision == {
+        "complete": True,
+        "status_code": "complete",
+        "status_message": decision["status_message"],
+        "failure_codes": [],
+    }
+
+
+def test_empty_search_never_certifies_even_with_zero_equalities():
+    facts = replace(
+        _complete_certification_facts(),
+        seed_documents=0,
+        valid_provenance_seed_documents=0,
+        documents_discovered=0,
+        documents_complete=0,
+        covered_chunks=0,
+        total_chunks=0,
+    )
+
+    decision = certify_scope_coverage(facts)
+
+    assert decision["complete"] is False
+    assert decision["status_code"] == "no_provenance_seed"
+
+
+def test_retrieval_execution_is_a_required_certification_input():
+    facts = replace(
+        _complete_certification_facts(),
+        retrieval_execution_complete=False,
+        retrieval_failure_codes=("multi_query_planner_failed",),
+    )
+
+    decision = certify_scope_coverage(facts)
+
+    assert decision["complete"] is False
+    assert decision["status_code"] == "multi_query_planner_failed"

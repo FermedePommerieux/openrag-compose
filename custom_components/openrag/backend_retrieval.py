@@ -72,6 +72,10 @@ MODEL_COVERAGE_FIELDS = (
     "valid_provenance_seed_documents",
     "invalid_provenance_seed_documents",
     "seed_provenance_complete",
+    "requested_retrieval_profile",
+    "effective_retrieval_profile",
+    "retrieval_execution_complete",
+    "retrieval_failure_codes",
     "scope_policy_id",
     "scope_policy_version",
     "graph_entities_visited",
@@ -217,7 +221,15 @@ def _model_payload(payload: dict[str, Any]) -> dict[str, Any]:
     discovery = payload.get("discovery")
     if isinstance(discovery, dict):
         compact["discovery"] = discovery
-    for field in ("error", "warning", "retrieval_strategy"):
+    for field in (
+        "error",
+        "warnings",
+        "retrieval_strategy",
+        "requested_retrieval_profile",
+        "effective_retrieval_profile",
+        "retrieval_execution_complete",
+        "retrieval_failure_codes",
+    ):
         if field in payload and payload[field] not in (None, ""):
             compact[field] = payload[field]
     return compact

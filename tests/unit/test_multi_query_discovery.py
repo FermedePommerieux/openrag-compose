@@ -297,3 +297,71 @@ async def test_multi_query_count_one_preserves_q0_order_and_scores(monkeypatch):
 
     assert result["results"] == expected
     assert result["discovery"]["query_count"] == 1
+
+
+@pytest.mark.asyncio
+async def test_planner_failure_keeps_q0_results_but_marks_discovery_incomplete(monkeypatch):
+    from services import search_service
+
+    knowledge = SimpleNamespace(retrieval_strategy="rrf", retrieval_mode="hybrid")
+    monkeypatch.setattr(
+        search_service,
+        "get_openrag_config",
+        lambda: SimpleNamespace(knowledge=knowledge),
+    )
+    service = SearchService.__new__(SearchService)
+    service.models_service = None
+    q0 = _query("q0", "all records about Project Z")
+    service._generate_discovery_plan = AsyncMock(
+        return_value=([q0], "planner rejected request", 0.01)
+    )
+    expected = [_result("q0-result", "doc-q0", q0, 1)]
+    service.search_tool = AsyncMock(
+        return_value={
+            "results": expected,
+            "aggregations": {},
+            "_retrieval_timing": {},
+            "requested_retrieval_profile": {
+                "version": 1,
+                "strategy": "rrf",
+                "mode": "hybrid",
+                "lanes": {
+                    "lexical": "required",
+                    "dense": "required",
+                    "fusion": "required",
+                    "multi_query": "disabled",
+                },
+            },
+            "effective_retrieval_profile": {
+                "version": 1,
+                "strategy": "rrf",
+                "mode": "hybrid",
+                "lanes": {
+                    "lexical": {"status": "succeeded", "candidates": 1},
+                    "dense": {"status": "succeeded", "candidates": 1},
+                    "fusion": {"status": "succeeded", "candidates": 1},
+                    "multi_query": {"status": "not_requested", "candidates": 0},
+                },
+            },
+            "retrieval_execution_complete": True,
+            "retrieval_failure_codes": [],
+        }
+    )
+
+    result = await service._search_multi_query(
+        q0.query_text,
+        embedding_model=None,
+        max_queries=4,
+        concurrency=1,
+    )
+
+    assert result["results"] == expected
+    assert result["discovery"]["multi_query_requested"] is True
+    assert result["discovery"]["multi_query_executed"] is False
+    assert result["discovery"]["multi_query_query_count"] == 1
+    assert result["discovery"]["multi_query_status"] == "planner_failed"
+    assert result["retrieval_execution_complete"] is False
+    assert "multi_query_planner_failed" in result["retrieval_failure_codes"]
+    assert any(
+        warning["code"] == "query_decomposition_unavailable" for warning in result["warnings"]
+    )
