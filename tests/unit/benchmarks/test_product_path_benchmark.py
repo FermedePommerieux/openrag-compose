@@ -1,3 +1,4 @@
+import argparse
 import re
 from pathlib import Path
 
@@ -5,9 +6,20 @@ from benchmarks.discovery.final_baseline import _view_metrics
 from benchmarks.discovery.ground_truth import load_ground_truth
 from benchmarks.discovery.product_path_benchmark import (
     _contract_assessment,
+    _repetition_plan,
     _request_body,
     compact_product_response,
 )
+
+
+def test_repetition_plan_supports_exact_selected_query_counts():
+    args = argparse.Namespace(
+        query_counts=[1, 4],
+        repetitions=3,
+        repetition_plan_json='{"1": 5, "4": 10}',
+    )
+
+    assert _repetition_plan(args) == {1: 5, 4: 10}
 
 
 def _profile(*, multi_query: bool = True) -> tuple[dict, dict]:

@@ -157,6 +157,11 @@ product bearer token with `--authorization-env`; neither the variable value nor
 any chunk text is persisted. The capture checkpoints after every request and
 supports `--resume`.
 
+Use `--query-counts 1 4 --repetition-plan-json '{"1":5,"4":10}'` when an
+audit calls for different repetition counts on selected query modes. The
+selection and exact plan are persisted in the capture; omitted flags preserve
+the uniform q1-through-q4 behavior above.
+
 Ground-truth evaluation stays local:
 
 ```bash

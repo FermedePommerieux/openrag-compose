@@ -140,6 +140,27 @@ def _json_object(raw: str, *, label: str) -> dict[str, Any]:
     return value
 
 
+def _repetition_plan(args: argparse.Namespace) -> dict[int, int]:
+    query_counts = sorted(set(args.query_counts))
+    plan = {query_count: args.repetitions for query_count in query_counts}
+    if not args.repetition_plan_json:
+        return plan
+    requested = _json_object(args.repetition_plan_json, label="repetition plan")
+    parsed: dict[int, int] = {}
+    for raw_query_count, raw_repetitions in requested.items():
+        query_count = int(raw_query_count)
+        repetitions = int(raw_repetitions)
+        if query_count not in query_counts:
+            raise ValueError(f"repetition plan contains unselected q{query_count}")
+        if repetitions < 1:
+            raise ValueError("repetitions must be positive")
+        parsed[query_count] = repetitions
+    missing = set(query_counts) - set(parsed)
+    if missing:
+        raise ValueError(f"repetition plan is missing query counts: {sorted(missing)}")
+    return parsed
+
+
 def _headers(authorization_env: str | None) -> dict[str, str]:
     headers = {"Content-Type": "application/json"}
     if authorization_env:
@@ -567,6 +588,8 @@ def capture(args: argparse.Namespace) -> None:
     multi_query_concurrency = int(runtime_profile["multi_query"]["concurrency"])
     seed_budget = args.seed_budget or product_default_seed_budget
     definition_sha = hashlib.sha256(args.definition.read_bytes()).hexdigest()
+    repetition_plan = _repetition_plan(args)
+    query_counts = sorted(repetition_plan)
     capture_value: dict[str, Any]
     if args.resume and args.output.exists():
         capture_value = json.loads(args.output.read_text(encoding="utf-8"))
@@ -608,8 +631,12 @@ def capture(args: argparse.Namespace) -> None:
             "runtime_behavior_fingerprint": runtime_profile["runtime_behavior_fingerprint"],
             "planner": runtime_profile["planner"],
             "configuration": {
-                "repetitions": args.repetitions,
-                "query_counts": [1, 2, 3, 4],
+                "repetitions": (args.repetitions if args.repetition_plan_json is None else None),
+                "repetition_plan": {
+                    str(query_count): repetitions
+                    for query_count, repetitions in repetition_plan.items()
+                },
+                "query_counts": query_counts,
                 "global_seed_budget": seed_budget,
                 "product_default_seed_budget": product_default_seed_budget,
                 "seed_budget_source": (
@@ -627,8 +654,8 @@ def capture(args: argparse.Namespace) -> None:
 
     completed = {str(run.get("run_id")) for run in capture_value.get("runs", [])}
     endpoint = f"{args.base_url.rstrip('/')}/api/search"
-    for query_count in (1, 2, 3, 4):
-        for repetition in range(1, args.repetitions + 1):
+    for query_count in query_counts:
+        for repetition in range(1, repetition_plan[query_count] + 1):
             run_id = f"q{query_count}-r{repetition}"
             if run_id in completed:
                 continue
@@ -777,6 +804,8 @@ def _historical_comparison(
         if old.get("view") != "STRICT":
             continue
         query_count = int(old["query_count"])
+        if str(query_count) not in summaries["STRICT"]:
+            continue
         summary = summaries["STRICT"][str(query_count)]
         for metric in (
             "seed_component_recall",
@@ -849,10 +878,23 @@ def evaluate_capture(
                 }
             )
 
+    query_counts = [int(value) for value in capture_value["configuration"]["query_counts"]]
+    repetition_plan = {
+        int(query_count): int(repetitions)
+        for query_count, repetitions in capture_value["configuration"]
+        .get(
+            "repetition_plan",
+            {
+                str(query_count): capture_value["configuration"]["repetitions"]
+                for query_count in query_counts
+            },
+        )
+        .items()
+    }
     summaries: dict[str, dict[str, Any]] = {}
     for view in views:
         summaries[view] = {}
-        for query_count in (1, 2, 3, 4):
+        for query_count in query_counts:
             summaries[view][str(query_count)] = _summary(
                 [
                     run
@@ -862,7 +904,7 @@ def evaluate_capture(
             )
     valid_strict = {
         query_count: summaries["STRICT"][str(query_count)]["valid_runs"]
-        for query_count in (1, 2, 3, 4)
+        for query_count in query_counts
     }
     corpus_comparable = (
         capture_value.get("corpus_changed") is False
@@ -876,10 +918,10 @@ def evaluate_capture(
         str(capture_value["runtime_behavior_fingerprint"])
     }
     all_configurations_fully_valid = all(
-        count == capture_value["configuration"]["repetitions"] for count in valid_strict.values()
+        count == repetition_plan[query_count] for query_count, count in valid_strict.items()
     )
     best_query_count = max(
-        (1, 2, 3, 4),
+        query_counts,
         key=lambda value: (
             summaries["STRICT"][str(value)]["metrics"]["post_prov_o_component_recall"]["mean"]
             or -1,
@@ -941,15 +983,19 @@ def evaluate_capture(
     result["historical_comparison"] = (
         _historical_comparison(summaries, historical) if historical else []
     )
-    result["q4_gain_vs_q1"] = {
-        metric: summaries["STRICT"]["4"]["metrics"][metric]["mean"]
-        - summaries["STRICT"]["1"]["metrics"][metric]["mean"]
-        for metric in (
-            "seed_component_recall",
-            "post_prov_o_component_recall",
-            "post_prov_o_document_recall",
-        )
-    }
+    result["q4_gain_vs_q1"] = (
+        {
+            metric: summaries["STRICT"]["4"]["metrics"][metric]["mean"]
+            - summaries["STRICT"]["1"]["metrics"][metric]["mean"]
+            for metric in (
+                "seed_component_recall",
+                "post_prov_o_component_recall",
+                "post_prov_o_document_recall",
+            )
+        }
+        if {1, 4}.issubset(query_counts)
+        else None
+    )
     return result
 
 
@@ -1021,7 +1067,8 @@ def _report(result: dict[str, Any]) -> str:
         f"comparable: {str(result['comparable']).lower()}",
         "",
     ]
-    for view in ("STRICT", "BROAD"):
+    query_counts = [int(value) for value in result["configuration"]["query_counts"]]
+    for view in result["summaries"]:
         lines.extend(
             [
                 f"## {view}",
@@ -1030,7 +1077,7 @@ def _report(result: dict[str, Any]) -> str:
                 "|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
             ]
         )
-        for query_count in (1, 2, 3, 4):
+        for query_count in query_counts:
             summary = result["summaries"][view][str(query_count)]
             metrics = summary["metrics"]
             lines.append(
@@ -1052,7 +1099,7 @@ def _report(result: dict[str, Any]) -> str:
             "|---:|---:|---:|---:|",
         ]
     )
-    for query_count in (1, 2, 3, 4):
+    for query_count in query_counts:
         summary = result["summaries"]["STRICT"][str(query_count)]
         lines.append(
             f"| q{query_count} | {summary['generated_query_variants']} "
@@ -1135,6 +1182,13 @@ def parser() -> argparse.ArgumentParser:
     capture_parser.add_argument("--base-url", required=True)
     capture_parser.add_argument("--output", type=Path, required=True)
     capture_parser.add_argument("--repetitions", type=int, default=3)
+    capture_parser.add_argument(
+        "--query-counts", type=int, nargs="+", choices=(1, 2, 3, 4), default=(1, 2, 3, 4)
+    )
+    capture_parser.add_argument(
+        "--repetition-plan-json",
+        help='per-query repetition counts, for example \'{"1":5,"4":10}\'',
+    )
     capture_parser.add_argument("--seed-budget", type=int)
     capture_parser.add_argument("--page-size", type=int, default=1000)
     capture_parser.add_argument("--timeout", type=int, default=900)
