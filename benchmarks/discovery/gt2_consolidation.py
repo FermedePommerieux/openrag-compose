@@ -308,3 +308,33 @@ def standard_ir_metrics(
         "Recall@200": recall(200),
         "Precision@100": precision(100),
     }
+
+
+def condensed_standard_ir_metrics(
+    ranked_candidate_ids: Sequence[str],
+    qrels: Mapping[str, int],
+) -> dict[str, float | int | None]:
+    """Evaluate a condensed judged-only ranking without demoting unjudged rows.
+
+    TREC-style pooling often maps unjudged rows to grade zero.  GT2 explicitly
+    forbids that assumption, so unknown identities are removed before scoring
+    and reported separately.  Precision uses only the judged documents present
+    in the condensed top 100 as its denominator.
+    """
+
+    ranked = list(dict.fromkeys(ranked_candidate_ids))
+    judged = [candidate_id for candidate_id in ranked if candidate_id in qrels]
+    metrics = standard_ir_metrics(judged, qrels)
+    relevant = {candidate_id for candidate_id, grade in qrels.items() if grade > 0}
+    precision_denominator = min(100, len(judged))
+    metrics["Precision@100"] = (
+        len(set(judged[:100]) & relevant) / precision_denominator
+        if precision_denominator
+        else None
+    )
+    return {
+        **metrics,
+        "ranked_unique_documents": len(ranked),
+        "evaluated_judged_documents": len(judged),
+        "unjudged_documents_excluded": len(ranked) - len(judged),
+    }

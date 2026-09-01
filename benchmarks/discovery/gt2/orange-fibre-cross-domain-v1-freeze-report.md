@@ -1,4 +1,4 @@
-# GT2 Consolidation + Completeness Control + Freeze + Cross-Domain Horizon Benchmark
+# GT2 Freeze + Cross-Domain Candidate-Horizon Benchmark
 
 Date d'audit : 2026-09-01
 Topic : `orange-fibre-cross-domain-v1`
@@ -6,252 +6,250 @@ Topic : `orange-fibre-cross-domain-v1`
 ## A. Git baseline
 
 ```text
-worktree:
-/Users/eloiprimaux/Developer/openrag-compose-planner-calibration
-
-working_branch:
-agent/planner-calibration
-
-baseline_HEAD_before_this_phase:
-5e78422110e3 — benchmarks: record closure identity hashes
-
-target_remote:
-origin/pommerieux/v0.6.0-retrieval-v2-prov-o @ 4d45bba8
-
-baseline_relation:
-working branch ahead by 6 commits before this phase
+worktree: /Users/eloiprimaux/Developer/openrag-compose-planner-calibration
+branch: agent/planner-calibration
+baseline HEAD: c151b8c4d0fdffa9ed5a462f77bc529d951343be
+baseline commit: benchmarks: gate GT2 freeze on human completeness
+upstream: origin/pommerieux/v0.6.0-retrieval-v2-prov-o
+baseline relation: ahead by 7 commits
 ```
 
-`git fetch`, `git status`, `git branch -avv`, `git rev-parse HEAD` et
-`git log --oneline --decorate -15` ont été exécutés. Le worktree et la branche
-existants ont été conservés ; aucun commit expérimental antérieur n'a été réécrit.
+Le worktree, la branche et les artefacts antérieurs ont été conservés. Aucun
+default produit n'a été modifié et aucun déploiement n'a été effectué.
 
 ## B. Corpus verification
 
-Le corpus a été réénuméré avant toute décision de benchmark :
+Le corpus a été vérifié avant et après la campagne :
 
 ```text
-visible_occurrences:          47,454
-enumerated_occurrences:       47,454
-distinct_document_ids:        47,400
-distinct_source_entity_ids:   47,451
-complete:                     true
+visible_occurrences:          47,454 -> 47,454
+enumerated_occurrences:       47,454 -> 47,454
+distinct_document_ids:        47,400 -> 47,400
+distinct_source_entity_ids:   47,451 -> 47,451
+complete:                     true -> true
 occurrence_identity_sha256:   038987ca2eb70b2e56d674bc45e9b60fe00652e72296249dba0252d6964fafd7
+comparable:                   true
 ```
 
-Le digest est identique à la baseline. `comparable=true` pour le corpus ; cette
-comparabilité ne lève pas le gate GT2.
+## C. Frozen ground truths
 
-## C. GT1 frozen baseline
+GT1 `surface-pastorale-v1` n'a pas été modifié.
 
-GT1 `Surface pastorale` n'a pas été modifié.
+| GT | Niveau | CORE | CONTEXTUAL | NOT_RELEVANT |
+|---|---|---:|---:|---:|
+| GT1 | documents | 192 | 59 | 11 |
+| GT1 | composants | 114 | 28 | 5 |
+| GT2 | documents humains | 48 | 57 | 245 |
+| GT2 | composants métriques dérivés des qrels documents | 33 | 51 | 184 |
+| GT2 | métadonnées composants revues | 58 | 21 | 271 |
 
-| Niveau | CORE | CONTEXTUAL | NOT_RELEVANT |
-|---|---:|---:|---:|
-| Composants | 114 | 28 | 5 |
-| Documents | 192 | 59 | 11 |
+Provenance GT1 canonique : `surface-pastorale-v1-ground-truth-human-v1.yaml`,
+SHA-256 `6a759d49141ceaaa27679bf9b39f90b2e0d5f889bcd5dd469501ca822fd19903`.
+Définition exécutée : SHA-256
+`43963a033a203aa29f62d518e6b940749b4cba62ed1cb9c44586ddcac8c97341`.
 
-Provenance humaine canonique conservée :
-`surface-pastorale-v1-ground-truth-human-v1.yaml`, SHA-256
-`6a759d49141ceaaa27679bf9b39f90b2e0d5f889bcd5dd469501ca822fd19903`.
-
-## D. GT2 topic/guideline
+## D. GT2 topic and guideline
 
 ```text
-topic_version:
-orange-fibre-cross-domain-v1
-
-guideline_version:
-orange-fibre-cross-domain-guideline-v1
-
-CORE:
-Orange/Sosh AND fibre/Internet fixe AND centralité thématique
-
-CONTEXTUAL:
-information Orange + fibre/Internet fixe utile mais secondaire
-
-NOT_RELEVANT:
-mobile/4G/5G/téléphonie/ADSL/DSL seuls, autre opérateur sans rôle structurel
-d'Orange, mention accidentelle ou absence d'apport documentaire réel
+topic_version: orange-fibre-cross-domain-v1
+guideline_version: orange-fibre-cross-domain-guideline-v1
+CORE: Orange/Sosh + fibre/Internet fixe + centralité thématique
+CONTEXTUAL: information Orange + fixe utile mais secondaire
+NOT_RELEVANT: mobile/4G/5G/téléphonie/ADSL seuls, autre opérateur sans rôle
+              structurel, mention accidentelle ou absence d'apport documentaire
+mapping: CORE=2, CONTEXTUAL=1, NOT_RELEVANT=0
 ```
 
-Les tests humains de substitution marque et service sont conservés. Ils ne sont
-pas transformés en règles automatiques. La précédence est : jugement humain
-document > jugement humain composant > suggestion automatisée. Les colonnes IA
-des classeurs sources n'ont jamais servi de qrels.
+La précédence reste jugement humain document > jugement humain composant >
+suggestion automatisée. Les colonnes IA n'ont jamais servi de qrels.
 
-## E. Human review consolidation
+## E. Pass 3 import and consolidation
+
+Le workbook fourni a été conservé byte-for-byte :
+`orange-fibre-GT2-completeness-review-pass-3.xlsx`, SHA-256
+`9745b82639775948aa0a4efcb3ae92f3338a244f1885b898bb1006180cb93fb5`.
+Seuls `human_label` et `review_notes` ont été importés, liés aux 13
+`candidate_id` attendus.
 
 ```text
-component judgments:            350
-document judgments stage 1:     249
-document judgments stage 2:      88
-total unique judged documents:  337
-duplicate candidate_id:           0
-conflicts:                        0
-empty labels:                     0
-invalid labels:                   0
+pass 3 rows:          13
+CONTEXTUAL:            1
+NOT_RELEVANT:         12
+duplicate identities: 0
+conflicts:            0
+empty labels:         0
+invalid labels:       0
+workbook values match: true
 ```
 
-Le digest canonique des 337 lignes consolidées est
-`6bd581dca4b6d2ead6c64b6e2e04389d194877e7339be5cfd6bba703324e3cf6`.
-Il s'agit d'un digest de consolidation, **pas** d'un ground-truth digest figé.
+| Stage | Documents | CORE | CONTEXTUAL | NOT_RELEVANT |
+|---|---:|---:|---:|---:|
+| 1 | 249 | 47 | 56 | 146 |
+| 2 | 88 | 1 | 0 | 87 |
+| 3 | 13 | 0 | 1 | 12 |
+| consolidé | 350 | 48 | 57 | 245 |
 
-Les trois workbooks bruts sont versionnés sans modification :
+Le digest canonique des 350 qrels consolidés est
+`0efd69628ca4e81a89aa0c4857ad3468db598038cda41237a9994817fa4a88c0`.
+Les trois stages sont disjoints ; aucun document non jugé n'a été injecté.
 
-| Source humaine | Rôle | SHA-256 |
-|---|---|---|
-| `orange-fibre-GT2-revue-humaine-pretrie-corrigee.xlsx` | composants | `53b49df89b3fe0324bd5f59d8cc56c71740e7cb664715aeb9ff6a4f96d98d637` |
-| `orange-fibre-GT2-revue-a-faire.xlsx` | documents stage 1 | `ab5b671891dff8932a5e200b2f87f9258698778e87a6c20e51dcc996f48692fa` |
-| `orange-fibre-GT2-derniere-revue-ciblee.xlsx` | documents stage 2 | `483b09f2ccf61a86591a75abe1c449e1cf6b3b486e24b2e7a19e3086868dc810` |
+## F. Completeness control rerun
 
-Les champs de provenance disponibles (`case_id`, `candidate_id`, `component_id`,
-`document_id`, `occurrence_id`, `source_entity_id`, label, source, stage, feuille,
-ligne, topic et guideline) sont conservés. Aucun `review_timestamp` n'existait
-dans les sources ; il n'a pas été inventé.
-
-## F. GT2 label distribution
+Le contrôle complet a été rejoué sur le même univers non borné que lors de la
+sélection pass 3.
 
 ```text
-CORE:          48
-CONTEXTUAL:    56
-NOT_RELEVANT: 233
-TOTAL:        337
+candidate universe:              3,012 documents / 1,338 components
+human-judged documents:            350
+unjudged documents:              2,662
+same CORE/relevant component:        0
+same CORE/relevant document_id:      0
+direct Orange/Sosh + fixed:          0
+CORE title family exact/near:        0
+secondary Orange/Sosh + fixed:       0
+new high-priority candidates:        0
+human review needed:                 0
+automatic labels created:            0
 ```
 
-Mapping numérique explicite : `CORE=2`, `CONTEXTUAL=1`, `NOT_RELEVANT=0`.
+Les domaines expéditeur (377), identifiants numériques partagés (83/84),
+signaux fixe sans marque (27), mobile-only (121) et ADSL/DSL-only (2) restent
+des diagnostics larges ou des guards, jamais des labels. Le contrôle négatif
+historique de 60 documents, tous jugés `NOT_RELEVANT`, reste valide. Les 2 662
+documents non jugés restent `UNJUDGED`.
 
-## G. Completeness control
-
-Le contrôle a reconstruit le pool compact complet issu des lanes lexicales,
-denses, RRF et de récupération metadata/relation. Les signaux n'ont servi qu'à
-sélectionner des documents pour revue humaine.
+## G. Freeze gate and digest
 
 ```text
-candidate universe:                         3,012 documents / 1,338 components
-unjudged candidate universe:                2,675 documents
-same thread/component as human CORE:            0
-same document_id as human CORE:                 0
-direct brand + fixed term in full preview:      0
-exact non-degenerate CORE title families:       9
-near non-degenerate CORE title families:        4
-high-priority candidates found:                13
-human review needed:                           13
-automatic labels created:                       0
-
-negative-control size:                         60
-distinct negative-control components:          60
-CORE found:                                     0
-CONTEXTUAL found:                               0
-NOT_RELEVANT found:                            60
-estimated residual miss signal:                0.0%
+GT2_FREEZE: PASS
+benchmark_authorized: true
+blockers: []
+pending_high_priority_candidates: 0
+ground_truth_digest: a1f53f7f1e42969b287d4778f846fd7a3c86a0bee0d2c0d0cb46a1cc6e10ff6a
+corpus_digest: 038987ca2eb70b2e56d674bc45e9b60fe00652e72296249dba0252d6964fafd7
+unjudged_documents_defaulted_to_not_relevant: 0
 ```
 
-La sélection des 13 lignes est déterministe : titres exacts ou proches
-(`SequenceMatcher >= 0.82`) ancrés uniquement sur des titres document jugés
-humainement `CORE`, avec exclusion des familles dégénérées `mail--<id>.eml`.
-Elle comprend 9 familles exactes et 4 proches. Les signaux mobile/ADSL/téléphonie
-et contexte secondaire sont affichés comme risques, jamais comme labels.
+Le freeze est reproductible : deux générations successives ont produit les
+mêmes hashes source, qrels et ground truth.
 
-Les domaines expéditeur partagés (378 candidats) et longs identifiants numériques
-partagés (77) ont été conservés comme diagnostics trop larges pour constituer à
-eux seuls une priorité humaine. Le contrôle négatif a été reproduit exactement,
-ordre inclus, par tri `SHA-256(candidate_id)` et sélection d'un seul document par
-composant après exclusion des tranches prioritaires. Son taux nul n'est pas une
-preuve mathématique d'exhaustivité.
+## H. Benchmark protocol
 
-## H. GT2 freeze
+La campagne a exécuté exactement 18 runs : 2 GT × 3 horizons × 3 répétitions.
+La seule variable était le couple `lexical_candidates/dense_candidates` :
+50/50, 100/100, 200/200. Tous les autres paramètres sont restés fixes : q1,
+RRF k=60, seed budget=100, `multi_query=false`, scope `documentary-prov-o v1`,
+`max_depth=8`, `max_entities=500`, `max_documents=250`, `batch_size=50`.
+
+Contexte exécuté : application
+`c151b8c4d0fdffa9ed5a462f77bc529d951343be`, identité produit no-auth,
+workspace runtime par défaut, filtres knowledge `{}`. Les 18 runs ont terminé
+sans erreur de transport.
+
+## I. GT1 documentary results
+
+Valeurs identiques sur les trois répétitions pour les métriques documentaires.
+Latences en moyenne sur trois runs.
+
+| Horizon | Seed doc | Seed comp | Post doc | Post comp | Precision STRICT | Expansion | Coverage | Graph | Read | Total |
+|---|---:|---:|---:|---:|---:|---:|---|---:|---:|---:|
+| 50/50 | 26.56% | 35.09% | 45.83% | 43.86% | 76.12% | 2.060 | 100%, complete | 0.253s | 4.875s | 5.128s |
+| 100/100 | 26.56% | 35.96% | 46.88% | 45.61% | 75.00% | 2.059 | 100%, complete | 0.267s | 3.842s | 4.109s |
+| 200/200 | 28.65% | 39.47% | 50.52% | 49.12% | 75.34% | 2.014 | 100%, complete | 0.269s | 3.569s | 3.838s |
+
+La vue BROAD post-PROV-O passe respectivement à 53.78/50.70%,
+54.58/52.11% et 57.37/54.93% en recall document/composant ; sa précision
+judged-only vaut 100% dans les trois cas.
+
+## J. GT2 documentary results
+
+| Horizon | Seed doc | Seed comp | Post doc | Post comp | Precision STRICT | Expansion | Coverage | Graph | Read | Total |
+|---|---:|---:|---:|---:|---:|---:|---|---:|---:|---:|
+| 50/50 | 45.83% | 66.67% | 60.42% | 66.67% | 52.38% | 2.563 | 100%, complete | 0.359s | 3.357s | 3.717s |
+| 100/100 | 45.83% | 66.67% | 60.42% | 66.67% | 48.89% | 3.165 | 0%, document limit | 0.484s | 3.752s | 4.237s |
+| 200/200 | 45.83% | 66.67% | 60.42% | 66.67% | 45.83% | 3.086 | 0%, document limit | 0.393s | 3.961s | 4.354s |
+
+À 50/50, la traversal épuise naturellement la frontier à 205 documents. À
+100/100 et 200/200, les trois répétitions atteignent 250 documents avec une
+frontier non vide : `coverage.complete=false`, `status_code=document_limit_reached`.
+Les chiffres de qualité de ces deux horizons sont donc descriptifs et ne
+peuvent pas justifier un changement.
+
+La vue BROAD GT2 post-PROV-O reste à 29.52% document / 28.57% composant ; la
+précision judged-only décroît de 57.14% à 53.33%, puis 50.00%.
+
+## K. Condensed standard IR metrics
+
+Les métriques standard sont calculées après condensation des seuls documents
+jugés. Les non-jugés sont retirés du ranking, jamais transformés en zéros.
+
+| GT | Horizon | nDCG@10 | nDCG@100 | MAP | Recall@100 | Recall@200 | Precision@100 |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| GT1 | 50/50 | .7773 | .6194 | .2669 | .2669 | .2669 | 1.0000 |
+| GT1 | 100/100 | .8039 | .6275 | .2709 | .2709 | .2709 | 1.0000 |
+| GT1 | 200/200 | .8905 | .6636 | .2908 | .2908 | .2908 | 1.0000 |
+| GT2 | 50/50 | .4441 | .4056 | .1235 | .2286 | .2286 | .5714 |
+| GT2 | 100/100 | .5068 | .4033 | .1205 | .2286 | .2286 | .5333 |
+| GT2 | 200/200 | .5704 | .4070–.4071 | .1214 | .2286 | .2286 | .5000 |
+
+Pour GT2, 38, 34 et 33 seeds non jugés sont respectivement exclus. La variation
+de nDCG@100 à 200/200 est la conséquence de la dérive d'ordre auditée ci-dessous.
+
+## L. Coverage, resource, and latency audit
+
+Les scopes GT1 sont naturellement complets. Seul GT2 50/50 est naturellement
+complet ; GT2 100/100 et 200/200 restent fail-closed. Les chunks lus sont :
+GT1 6 239 / 6 241 / 5 768 et GT2 3 656 / 4 734 / 4 725.
+
+Le delta `ru_maxrss` est uniquement un proxy de processus : moyennes 23 760,
+853 et 341 KiB pour GT1, puis 0, 1 707 et 1 024 KiB pour GT2. Il est dépendant
+du high-water mark et ne permet pas une comparaison RAM robuste. La CPU n'était
+pas observable séparément ; aucune conclusion ressource ne repose sur ces
+valeurs.
+
+## M. Determinism audit
 
 ```text
-GT2_FREEZE:
-BLOCKED
-
-blocker:
-13 high-priority human document judgments pending
-
-ground_truth_digest:
-not available — GT2 is not frozen
-
-corpus_digest:
-038987ca2eb70b2e56d674bc45e9b60fe00652e72296249dba0252d6964fafd7
-
-guideline_version:
-orange-fibre-cross-domain-guideline-v1
+seed identity sets stable:        PASS (6/6 groups)
+scope identity sets stable:       PASS (6/6 groups)
+ordered scope stable:             PASS (6/6 groups)
+ordered seed stable:              FAIL (4/6 groups pass)
+documentary metrics stable:       PASS (6/6 groups)
+standard metrics stable:          FAIL (5/6 groups pass)
+overall determinism gate:         FAIL
+quality interpretation authorized: false
 ```
 
-Le fichier `benchmarks/discovery/ground_truth/orange-fibre-cross-domain-v1.json`
-n'a pas été créé. C'est l'application directe du contrat fail-closed.
+La répétition 2 déplace un résultat aux rangs 89–90 pour GT1 50/50 et aux
+rangs 38–40 pour GT2 200/200. Les répétitions 1 et 3 sont identiques. Les
+ensembles seed et scope ne changent jamais.
 
-## I. GT1 horizon results
-
-Aucun horizon n'a été relancé dans cette phase, car le protocole autorise la
-comparaison GT1/GT2 seulement après le freeze GT2. Référence historique gelée,
-non réinterprétée comme une nouvelle mesure :
-
-| Horizon | Seed doc recall | Seed comp recall | Post doc recall | Post comp recall | STRICT precision | Expansion | Coverage | Wall latency |
-|---|---:|---:|---:|---:|---:|---:|---|---:|
-| 50/50 | 26.56% | 35.96% | 45.83% | 44.74% | 76.12% | 2.060 | complete | 5.49 s |
-| 100/100 | 26.56% | 36.84% | 46.88% | 46.49% | 75.00% | 2.059 | complete | 3.81 s |
-| 200/200 | 28.65% | 40.35% | 50.52% | 50.00% | 75.34% | 2.014 | complete | 3.64 s |
-
-L'ordre de latence historique reste observationnel.
-
-## J. GT2 horizon results
-
-```text
-50/50:   NOT RUN — GT2 freeze blocked
-100/100: NOT RUN — GT2 freeze blocked
-200/200: NOT RUN — GT2 freeze blocked
-```
-
-Aucun résultat de retrieval GT2 non figé n'entre dans la décision.
-
-## K. Standard IR metrics
-
-`nDCG@10`, `nDCG@100`, `MAP`, `Recall@100`, `Recall@200` et `Precision@100`
-n'ont pas été calculés sur GT2 : les qrels restent un draft incomplet. Le tooling
-équivalent déterministe est testé, mais son exécution sur GT2 est interdite par le
-gate.
-
-## L. Documentary metrics
-
-Les métriques `Seed Document Recall`, `Seed Component Recall`, `Post-PROV-O
-Document Recall`, `Post-PROV-O Component Recall`, précisions `STRICT`/`BROAD`,
-facteur d'expansion, coverage et latence n'ont pas été mesurées sur GT2. Les
-valeurs GT1 du tableau I ne sont que la référence historique.
-
-## M. Determinism
-
-```text
-human consolidation order-independent:           PASS
-duplicate/conflict/empty-label fail-closed:       PASS
-title-family candidate selection deterministic:  PASS
-negative control set reproducibility:             PASS
-negative control order reproducibility:           PASS
-review workbook imported formula error scan:      PASS
-13 review labels initially blank:                 PASS
-
-3 repeated horizon runs per GT/horizon:
-NOT RUN — GT2 freeze blocked
-```
-
-Le protocole s'est arrêté avant le benchmark ; il n'existe donc aucune prétention
-nouvelle de stabilité seed/scope/metrics pour cette phase.
+RRF trie de façon déterministe par score puis identité persistante. Le score
+réciproque change néanmoins (`.00917431 -> .00925926` sur GT1 et
+`.01259644 -> .01274013` sur GT2), ce qui prouve une variation de rang dans une
+lane avant fusion. L'observation est cohérente avec la lane dense OpenSearch k-NN
+approximative ; la lane lexicale a un tie-break explicite. Aucun signal ne pointe
+vers le planner ou la traversal scope. Ce diagnostic n'autorise pas un correctif
+produit dans cette phase.
 
 ## N. Cross-domain comparison
 
-Impossible : GT1 est figé, mais GT2 ne l'est pas. Comparer des horizons contre les
-337 qrels partiels laisserait le retrieval s'auto-évaluer sur un pool incomplet.
+Les horizons supérieurs augmentent certaines métriques GT1, mais ils n'améliorent
+pas le recall GT2 et provoquent une closure incomplète à 100/100 et 200/200. Le
+protocole impose en outre l'arrêt de l'interprétation qualité après échec du gate
+de déterminisme. Il n'existe donc pas de preuve cross-domain suffisante pour
+modifier l'horizon.
 
 ## O. Candidate horizon recommendation
 
 ```text
-INSUFFICIENT CROSS-DOMAIN EVIDENCE
+KEEP 50/50
 ```
 
-La production reste à `q1 50/50`, seed budget 100, RRF k 60, `multi_query=false`.
+C'est une décision de non-changement et de sécurité, pas une affirmation que
+50/50 est qualitativement optimal.
 
-## P. Product change recommendation
+## P. Product and scope-limit decision
 
 ```text
 NO BUILD
@@ -260,26 +258,26 @@ NO GITOPS CHANGE
 NO PRODUCT DEFAULT CHANGE
 ```
 
-La décision scope reste `TARGET/PROBE/HARD PROMISING BUT INSUFFICIENT EVIDENCE`.
-Cette phase n'apporte pas de résultat GT2 figé permettant de rouvrir cette
-architecture. `max_depth`, `max_entities`, `max_documents` et `batch` n'ont pas
-été modifiés.
+`max_depth`, `max_entities`, `max_documents` et `batch_size` n'ont pas été
+modifiés. Cette campagne isole l'horizon de retrieval ; elle ne réouvre pas le
+choix adaptive soft/hard scope et n'autorise aucune nouvelle limite fixe.
 
-## Q. Tests
+## Q. Verification
 
 ```text
-full unit suite: 1,596 PASS
-targeted benchmark unit tests: 56 PASS
-artifact digest and gate regression: PASS
-spreadsheet import, formulas, 13 blank labels: PASS
-Ruff: PASS
+targeted benchmark tests: 14 PASS
+full unit suite:           1,600 PASS
+Ruff focused checks:       PASS
+Mypy focused checks:       PASS
+freeze generation twice:  byte-stable hashes PASS
+campaign executions:      18 complete / 0 transport errors
 ```
 
-La suite couvre consolidation, doublons/conflits, labels vides/invalides,
-métadonnées guideline, digests d'artefacts, mapping qrel, génération des candidats,
-reproductibilité du contrôle négatif, métriques IR, gate fail-closed et invariants
-des artefacts versionnés. Les tests horizons/déterminisme existants restent
-inchangés ; les captures nouvelles sont volontairement absentes.
+La collecte repository-wide `uv run pytest -q` reste indisponible à cause d'une
+collision de namespace `tests.test_retrieval_provenance`; `pytest tests/` requiert
+en outre le package optionnel `openrag_sdk`. La suite officielle `tests/unit/`
+est entièrement verte. Ces deux problèmes de collecte préexistent et ne sont
+pas liés à cette phase.
 
 ## R. Remaining audit
 
@@ -287,21 +285,23 @@ inchangés ; les captures nouvelles sont volontairement absentes.
 AUD-008:             not addressed in this session
 AUD-009:             not addressed in this session
 live cross-user DLS: not addressed in this session
+dense k-NN repeat-order drift: audited, unresolved product-side
 ```
-
-Aucun de ces chantiers n'était un blocker direct de la consolidation humaine.
 
 ## S. Qwen
 
 ```text
-QWEN_READINESS:
-BLOCKED
+QWEN_READINESS: BLOCKED
 ```
 
-Qwen n'a pas été modifié ni exécuté.
+Qwen n'a pas été modifié, exécuté ou déployé.
 
 ## T. Conclusion
 
 ```text
-GT2 FREEZE BLOCKED
+GT2 FROZEN - CROSS-DOMAIN EVIDENCE INSUFFICIENT
 ```
+
+Les qrels GT2 sont gelés et digestés. Le benchmark a été exécuté seulement après
+ce freeze, mais les failures coverage et determinism empêchent toute promotion
+d'un horizon supérieur.

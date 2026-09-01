@@ -1,0 +1,94 @@
+{
+  "schema_version": 1,
+  "artifact_type": "gt2_pass_3_human_fields_import",
+  "case_id": "orange-fibre-cross-domain-v1",
+  "review_stage": "document-review-stage-3",
+  "review_sheet": "Revue complémentaire",
+  "source_workbook": "orange-fibre-GT2-completeness-review-pass-3.xlsx",
+  "source_workbook_sha256": "9745b82639775948aa0a4efcb3ae92f3338a244f1885b898bb1006180cb93fb5",
+  "imported_columns": [
+    "human_label",
+    "review_notes"
+  ],
+  "join_key": "candidate_id",
+  "rows": [
+    {
+      "candidate_id": "candidate-2607f22e7742f1ff",
+      "human_label": "NOT_RELEVANT",
+      "review_notes": "MOBILE_ONLY",
+      "review_row": 2
+    },
+    {
+      "candidate_id": "candidate-356e7220dbe8e141",
+      "human_label": "NOT_RELEVANT",
+      "review_notes": "MOBILE_ONLY",
+      "review_row": 3
+    },
+    {
+      "candidate_id": "candidate-403cf8baad2c7d93",
+      "human_label": "NOT_RELEVANT",
+      "review_notes": "",
+      "review_row": 4
+    },
+    {
+      "candidate_id": "candidate-475d34e06796e98d",
+      "human_label": "NOT_RELEVANT",
+      "review_notes": "MOBILE_ONLY",
+      "review_row": 5
+    },
+    {
+      "candidate_id": "candidate-499105060a1ff8fd",
+      "human_label": "NOT_RELEVANT",
+      "review_notes": "MOBILE_ONLY",
+      "review_row": 6
+    },
+    {
+      "candidate_id": "candidate-5e43bb3d17ed7fc6",
+      "human_label": "CONTEXTUAL",
+      "review_notes": "impossible de trancher sans analyse pousée de la grille tarifaire",
+      "review_row": 7
+    },
+    {
+      "candidate_id": "candidate-8c313b06c38c6129",
+      "human_label": "NOT_RELEVANT",
+      "review_notes": "MOBILE_ONLY",
+      "review_row": 8
+    },
+    {
+      "candidate_id": "candidate-97f0168659ac16f1",
+      "human_label": "NOT_RELEVANT",
+      "review_notes": "MOBILE_ONLY",
+      "review_row": 9
+    },
+    {
+      "candidate_id": "candidate-a664e7dfb038e739",
+      "human_label": "NOT_RELEVANT",
+      "review_notes": "",
+      "review_row": 10
+    },
+    {
+      "candidate_id": "candidate-cc0a2e6332127afc",
+      "human_label": "NOT_RELEVANT",
+      "review_notes": "",
+      "review_row": 11
+    },
+    {
+      "candidate_id": "candidate-cdc289be903e7545",
+      "human_label": "NOT_RELEVANT",
+      "review_notes": "impossible de trancher sans analyse pousée des echanges et des dates",
+      "review_row": 12
+    },
+    {
+      "candidate_id": "candidate-d7bae65995b86664",
+      "human_label": "NOT_RELEVANT",
+      "review_notes": "MOBILE_ONLY",
+      "review_row": 13
+    },
+    {
+      "candidate_id": "candidate-f9a5bdf11de8d796",
+      "human_label": "NOT_RELEVANT",
+      "review_notes": "OVH",
+      "review_row": 14
+    }
+  ]
+}

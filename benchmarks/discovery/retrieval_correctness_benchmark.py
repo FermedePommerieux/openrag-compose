@@ -25,7 +25,11 @@ def _parse_remote_output(output: str) -> dict[str, Any]:
 
 
 def _capture(args: argparse.Namespace) -> None:
-    plan = json.loads(args.plan_json)
+    plan = (
+        json.loads(args.plan_json)
+        if args.plan_json is not None
+        else json.loads(args.plan_file.read_text(encoding="utf-8"))
+    )
     if not isinstance(plan, dict):
         raise ValueError("plan must be a JSON object")
     script_b64 = base64.b64encode(args.remote_script.read_bytes()).decode("ascii")
@@ -87,7 +91,9 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("command", choices=("capture",))
     parser.add_argument("--remote-script", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--plan-json", required=True)
+    plan_source = parser.add_mutually_exclusive_group(required=True)
+    plan_source.add_argument("--plan-json")
+    plan_source.add_argument("--plan-file", type=Path)
     parser.add_argument("--ssh-host", required=True)
     parser.add_argument("--namespace", default="openrag")
     parser.add_argument("--deployment", default="openrag-backend")

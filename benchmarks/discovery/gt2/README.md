@@ -1,20 +1,22 @@
 # Orange/Fibre GT2 evidence
 
-This directory contains the fail-closed consolidation and completeness-control
-evidence for `orange-fibre-cross-domain-v1`.
+This directory contains the fail-closed consolidation, final completeness
+control, and frozen evidence for `orange-fibre-cross-domain-v1`.
 
-- `raw/` preserves the three human-review workbooks byte-for-byte.
+- `raw/` preserves all four human-review workbooks byte-for-byte, including pass 3.
 - `*-human-review-source.json` is a normalized export of human-owned columns only.
 - `*-consolidated-qrels-draft.{json,csv}` consolidates 337 human document judgments.
-  It is explicitly a draft and is not a frozen ground truth.
-- `*-completeness-candidates.json` contains 13 unlabeled candidates selected for a
-  new human pass. Retrieval and title-family signals are diagnostic only.
+  It remains preserved as the pre-pass-3 draft.
+- `*-pass-3-review-import.json` contains only the 13 reviewed `human_label` and
+  `review_notes` values plus their candidate identities.
+- `*-consolidated-qrels-frozen.{json,csv}` consolidates 350 human judgments.
+- `*-completeness-candidates.json` preserves the now-completed pass-3 selection.
+- `*-completeness-control-final.json` records the post-pass-3 full-universe rerun.
 - `*-negative-control.json` records the deterministic 60-document control and its
   human labels.
-- `*-freeze-gate.json` records the blocked, fail-closed freeze decision.
-- `*-freeze-report.md` is the A–T campaign report.
+- `*-freeze-gate.json` records the passed, fail-closed freeze decision and digest.
+- `../ground_truth/orange-fibre-cross-domain-v1.json` is the frozen GT2 definition.
+- `*-freeze-report.md` is the A–T freeze and horizon-campaign report.
 
-The corresponding editable review workbook is
-`outputs/gt2-completeness-control/orange-fibre-GT2-completeness-review-pass-3.xlsx`.
-No `benchmarks/discovery/ground_truth/orange-fibre-cross-domain-v1.json` exists
-because the selected completeness candidates are not yet human-labeled.
+Unjudged documents remain excluded from qrels and judged-only metrics; they are
+never defaulted to `NOT_RELEVANT`.

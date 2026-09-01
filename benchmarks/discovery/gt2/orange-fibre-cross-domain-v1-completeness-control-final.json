@@ -1,0 +1,75 @@
+{
+  "artifact_sha256": "76b79295514b1bccd25395ad842540cd91e6820d61fde29b783c98d64243ef76",
+  "artifact_type": "gt2_completeness_control_final",
+  "auto_labels_created": 0,
+  "candidate_universe": {
+    "components": 1338,
+    "documents": 3012,
+    "judged_documents": 350,
+    "unjudged_documents": 2662
+  },
+  "candidates": [],
+  "case_id": "orange-fibre-cross-domain-v1",
+  "completeness_control_completed": true,
+  "corpus_digest": "038987ca2eb70b2e56d674bc45e9b60fe00652e72296249dba0252d6964fafd7",
+  "diagnostic_examples": {
+    "adsl_dsl_only_guard": [
+      "candidate-05e7048c6ed0e7ca",
+      "candidate-689cb61ea7101819"
+    ],
+    "fixed_service_without_orange_sosh": [
+      "candidate-15768a3774902805",
+      "candidate-176bbaa0f6bfe4d5",
+      "candidate-18975439b4c4273e",
+      "candidate-29dbdaab19a4fc36",
+      "candidate-2ad72a05608e305d",
+      "candidate-31e0b82a96be627c",
+      "candidate-39c1386cdbe00164",
+      "candidate-3c11c9d9696345f6",
+      "candidate-3d81fc5e448de3a7",
+      "candidate-3fbff4ca0b4bc8b8"
+    ],
+    "mobile_only_guard": [
+      "candidate-003438bc1107ba8a",
+      "candidate-02f9f8c414c89a6d",
+      "candidate-0513b1b3206cdd9b",
+      "candidate-0756a47c2c57afff",
+      "candidate-0afc12bdfe01ccfa",
+      "candidate-0b169af25ca0b459",
+      "candidate-0e3c5522c52837d4",
+      "candidate-0ffefa7aae7a0382",
+      "candidate-137cae8e880d8c1d",
+      "candidate-14fdc98f794e1fb1"
+    ],
+    "orange_word_plus_event_without_fixed_service": [
+      "candidate-9ef218274899e9d6"
+    ],
+    "same_sender_domain_plus_fixed_without_brand": [
+      "candidate-ead5d84d67e33246"
+    ]
+  },
+  "high_priority_candidates_found": 0,
+  "human_review_needed": 0,
+  "pooling_method": "TREC-style judged pool plus deep lexical/dense lanes, metadata/relation recovery, relevant-neighbor probes, title families, and the acquired outside-priority negative control.",
+  "probe_diagnostics": {
+    "adsl_dsl_only_false_positive_guard": 2,
+    "deep_lexical_dense_and_metadata_evidence_already_in_universe": true,
+    "direct_orange_sosh_plus_fixed_service": 0,
+    "exact_or_near_human_core_title_family": 0,
+    "fixed_service_without_orange_sosh_diagnostic_only": 27,
+    "mobile_only_false_positive_guard": 121,
+    "orange_word_plus_event_without_fixed_service_diagnostic_only": 1,
+    "same_document_id_as_any_relevant": 0,
+    "same_document_id_as_human_core": 0,
+    "same_sender_domain_diagnostic_only": 377,
+    "same_sender_domain_plus_fixed_without_brand_diagnostic_only": 1,
+    "same_thread_or_component_as_any_relevant": 0,
+    "same_thread_or_component_as_human_core": 0,
+    "secondary_context_orange_sosh_plus_fixed_service": 0,
+    "shared_any_relevant_numeric_identifier_diagnostic_only": 84,
+    "shared_human_core_numeric_identifier_diagnostic_only": 83,
+    "title_similarity_threshold": 0.82
+  },
+  "schema_version": 1,
+  "unjudged_policy": "Unjudged documents remain UNJUDGED, are excluded from qrels and judged-only precision, and are never defaulted to NOT_RELEVANT."
+}

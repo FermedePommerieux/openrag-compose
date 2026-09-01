@@ -1,19 +1,18 @@
 {
-  "GT2_FREEZE": "BLOCKED",
-  "artifact_sha256": "be7f52ccfa9bfcb127fe2b1c2dd958ffb185fbea02c661e6918af773da67ba32",
+  "GT2_FREEZE": "PASS",
+  "artifact_sha256": "03084278108c0534f701f1085dc63f7132a431bf2bc37a58dbaa471a71f6a643",
   "artifact_type": "gt2_freeze_gate",
-  "benchmark_authorized": false,
-  "blockers": [
-    "high_priority_human_review_pending"
-  ],
+  "benchmark_authorized": true,
+  "blockers": [],
   "case_id": "orange-fibre-cross-domain-v1",
+  "completeness_control_completed": true,
   "corpus_digest": "038987ca2eb70b2e56d674bc45e9b60fe00652e72296249dba0252d6964fafd7",
   "fail_closed": true,
-  "frozen_ground_truth_artifact_created": false,
-  "ground_truth_digest": null,
+  "freeze_date": "2026-09-01",
+  "ground_truth_digest": "a1f53f7f1e42969b287d4778f846fd7a3c86a0bee0d2c0d0cb46a1cc6e10ff6a",
   "guideline_version": "orange-fibre-cross-domain-guideline-v1",
   "negative_control_complete": true,
-  "pending_high_priority_candidates": 13,
-  "reason": "Thirteen high-priority completeness candidates require human document-level judgments. Fail-closed policy prohibits GT2 freeze and horizon benchmarking.",
-  "schema_version": 1
+  "pending_high_priority_candidates": 0,
+  "schema_version": 1,
+  "unjudged_documents_defaulted_to_not_relevant": 0
 }

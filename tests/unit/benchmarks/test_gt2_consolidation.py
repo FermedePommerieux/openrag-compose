@@ -1,3 +1,4 @@
+import hashlib
 import json
 from pathlib import Path
 
@@ -6,6 +7,7 @@ import pytest
 from benchmarks.discovery.gt2_consolidation import (
     QREL_MAPPING,
     canonical_sha256,
+    condensed_standard_ir_metrics,
     consolidate_document_rows,
     freeze_gate,
     generate_title_family_candidates,
@@ -151,18 +153,28 @@ def test_standard_ir_metrics_use_deduplicated_ranked_candidates():
     assert metrics["Precision@100"] == pytest.approx(0.02)
 
 
-def test_versioned_gt2_draft_artifacts_remain_fail_closed_and_self_consistent():
+def test_condensed_standard_metrics_exclude_unjudged_without_demoting_them():
+    metrics = condensed_standard_ir_metrics(
+        ["unknown-1", "core", "unknown-2", "not-relevant"],
+        {"core": 2, "not-relevant": 0, "missing-relevant": 1},
+    )
+
+    assert metrics["evaluated_judged_documents"] == 2
+    assert metrics["unjudged_documents_excluded"] == 2
+    assert metrics["Precision@100"] == pytest.approx(0.5)
+    assert metrics["Recall@100"] == pytest.approx(0.5)
+
+
+def test_versioned_gt2_draft_artifacts_remain_preserved_and_self_consistent():
     root = Path(__file__).resolve().parents[3]
     artifact_dir = root / "benchmarks/discovery/gt2"
     qrels_path = artifact_dir / "orange-fibre-cross-domain-v1-consolidated-qrels-draft.json"
     candidates_path = artifact_dir / "orange-fibre-cross-domain-v1-completeness-candidates.json"
     negative_path = artifact_dir / "orange-fibre-cross-domain-v1-negative-control.json"
-    gate_path = artifact_dir / "orange-fibre-cross-domain-v1-freeze-gate.json"
 
     qrels = json.loads(qrels_path.read_text(encoding="utf-8"))
     candidates = json.loads(candidates_path.read_text(encoding="utf-8"))
     negative = json.loads(negative_path.read_text(encoding="utf-8"))
-    gate = json.loads(gate_path.read_text(encoding="utf-8"))
 
     assert qrels["guideline_version"] == "orange-fibre-cross-domain-guideline-v1"
     assert qrels["freeze_status"] == "NOT_FROZEN"
@@ -178,13 +190,89 @@ def test_versioned_gt2_draft_artifacts_remain_fail_closed_and_self_consistent():
     assert negative["sample_size"] == negative["distinct_components"] == 60
     assert negative["label_counts"] == {"NOT_RELEVANT": 60}
     assert negative["estimated_residual_miss_signal"] == 0.0
-    assert gate["GT2_FREEZE"] == "BLOCKED"
-    assert gate["benchmark_authorized"] is False
-    assert gate["ground_truth_digest"] is None
-    assert not (
-        root / "benchmarks/discovery/ground_truth/orange-fibre-cross-domain-v1.json"
-    ).exists()
-
-    for artifact in (qrels, candidates, negative, gate):
+    for artifact in (qrels, candidates, negative):
         expected = artifact.pop("artifact_sha256")
         assert canonical_sha256(artifact) == expected
+
+
+def test_frozen_gt2_artifacts_are_human_only_complete_and_digest_consistent():
+    root = Path(__file__).resolve().parents[3]
+    artifact_dir = root / "benchmarks/discovery/gt2"
+    frozen = json.loads(
+        (artifact_dir / "orange-fibre-cross-domain-v1-consolidated-qrels-frozen.json")
+        .read_text(encoding="utf-8")
+    )
+    completeness = json.loads(
+        (artifact_dir / "orange-fibre-cross-domain-v1-completeness-control-final.json")
+        .read_text(encoding="utf-8")
+    )
+    gate = json.loads(
+        (artifact_dir / "orange-fibre-cross-domain-v1-freeze-gate.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    ground_truth = json.loads(
+        (root / "benchmarks/discovery/ground_truth/orange-fibre-cross-domain-v1.json")
+        .read_text(encoding="utf-8")
+    )
+    pass3 = json.loads(
+        (artifact_dir / "orange-fibre-cross-domain-v1-pass-3-import-verification.json")
+        .read_text(encoding="utf-8")
+    )
+    pass3_import = json.loads(
+        (artifact_dir / "orange-fibre-cross-domain-v1-pass-3-review-import.json")
+        .read_text(encoding="utf-8")
+    )
+
+    assert pass3["imported_columns"] == ["human_label", "review_notes"]
+    assert pass3["candidate_count"] == 13
+    assert pass3["audit"]["valid"] is True
+    assert pass3["audit"]["workbook_values_match"] is True
+    assert pass3["audit"]["label_distribution"] == {
+        "CONTEXTUAL": 1,
+        "NOT_RELEVANT": 12,
+    }
+    assert len(pass3_import["rows"]) == 13
+    assert all(
+        set(row) == {"candidate_id", "human_label", "review_notes", "review_row"}
+        for row in pass3_import["rows"]
+    )
+    assert frozen["document_audit"]["valid"] is True
+    assert frozen["document_audit"]["duplicate_identities"] == []
+    assert frozen["document_audit"]["conflicts"] == []
+    assert frozen["document_audit"]["empty_labels"] == []
+    assert frozen["document_audit"]["label_distribution"] == {
+        "CONTEXTUAL": 57,
+        "CORE": 48,
+        "NOT_RELEVANT": 245,
+    }
+    assert len(frozen["human_qrels"]) == 350
+    assert completeness["candidate_universe"] == {
+        "components": 1338,
+        "documents": 3012,
+        "judged_documents": 350,
+        "unjudged_documents": 2662,
+    }
+    assert completeness["high_priority_candidates_found"] == 0
+    assert completeness["human_review_needed"] == 0
+    assert completeness["auto_labels_created"] == 0
+    assert gate["GT2_FREEZE"] == "PASS"
+    assert gate["benchmark_authorized"] is True
+    assert gate["unjudged_documents_defaulted_to_not_relevant"] == 0
+    assert ground_truth["evaluation_policy"]["unjudged_are_not_not_relevant"] is True
+    assert ground_truth["counts"]["documents"] == {
+        "CONTEXTUAL": 57,
+        "CORE": 48,
+        "NOT_RELEVANT": 245,
+    }
+
+    digest = ground_truth.pop("ground_truth_digest")
+    assert canonical_sha256(ground_truth) == digest == gate["ground_truth_digest"]
+    for artifact in (frozen, completeness, gate, pass3):
+        expected = artifact.pop("artifact_sha256")
+        assert canonical_sha256(artifact) == expected
+
+    workbook = artifact_dir / "raw/orange-fibre-GT2-completeness-review-pass-3.xlsx"
+    assert hashlib.sha256(workbook.read_bytes()).hexdigest() == (
+        "9745b82639775948aa0a4efcb3ae92f3338a244f1885b898bb1006180cb93fb5"
+    )

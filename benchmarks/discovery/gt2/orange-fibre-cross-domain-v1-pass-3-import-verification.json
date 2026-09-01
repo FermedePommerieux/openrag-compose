@@ -1,0 +1,29 @@
+{
+  "artifact_sha256": "0dd6cebd8472fafda7ea8b82bd9dd241bffb7a7580bc0d840070ed184fed7ea1",
+  "artifact_type": "gt2_pass_3_import_verification",
+  "audit": {
+    "conflicts": [],
+    "duplicate_identities": [],
+    "empty_labels": [],
+    "invalid_labels": [],
+    "label_distribution": {
+      "CONTEXTUAL": 1,
+      "NOT_RELEVANT": 12
+    },
+    "rows": 13,
+    "unique_identities": 13,
+    "valid": true,
+    "workbook_values_match": true
+  },
+  "candidate_count": 13,
+  "candidate_identity_match": true,
+  "case_id": "orange-fibre-cross-domain-v1",
+  "imported_columns": [
+    "human_label",
+    "review_notes"
+  ],
+  "non_human_columns_used_as_qrels": false,
+  "schema_version": 1,
+  "source_workbook": "orange-fibre-GT2-completeness-review-pass-3.xlsx",
+  "source_workbook_sha256": "9745b82639775948aa0a4efcb3ae92f3338a244f1885b898bb1006180cb93fb5"
+}
