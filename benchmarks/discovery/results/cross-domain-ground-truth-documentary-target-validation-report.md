@@ -247,8 +247,8 @@ The fully crossed hard-750 grid gives:
 
 | Probe size | Mean probes | Max probes | Mean prototype replay overhead | Max replay overhead | Frontier diagnostic quality |
 |---:|---:|---:|---:|---:|---|
-| 25 | 0.823 | 8 | 0.310 s | 3.46 s | higher-resolution frontier/depth trajectory |
-| 50 | 0.500 | 4 | 0.173 s | 1.57 s | sufficient to expose active frontier with fewer replay queries |
+| 25 | 0.823 | 8 | 0.300 s | 3.17 s | higher-resolution frontier/depth trajectory |
+| 50 | 0.500 | 4 | 0.168 s | 1.46 s | sufficient to expose active frontier with fewer replay queries |
 
 At target 250 specifically, probe 25 averaged 0.656 extensions (max 6) versus 0.406 (max 3) for probe 50. The benchmark prototype replays traversal from the seed at every extension; a product implementation should retain state, so replay overhead is an upper-bound artifact rather than a projected continuous traversal cost.
 
@@ -286,10 +286,10 @@ The exhaustive rule is deterministic: natural frontier exhausted successfully �
 
 | Strategy | Completion rate | Legitimate truncation | Mean graph latency | Mean documents | Probe/replay overhead | Hard-hit rate |
 |---|---:|---:|---:|---:|---:|---:|
-| fixed 250 | 75.0% | 25.0% (8/32) | 0.310 s | 190.1 | none | 25.0% document-limit hits |
-| fixed 400 | 100% | 0% | 0.342 s | 203.9 | none | 0% |
-| fixed 500 | 100% | 0% | 0.358 s | 203.9 | none | 0% |
-| target 250 / probe 50 / hard 500 prototype | 100% | 0% | 0.351 s final traversal | 203.9; mean 13.84 beyond target | mean 0.406 extra graph queries and 0.152 s replay overhead | 0% |
+| fixed 250 | 75.0% | 25.0% (8/32) | 0.304 s | 190.1 | none | 25.0% document-limit hits |
+| fixed 400 | 100% | 0% | 0.336 s | 203.9 | none | 0% |
+| fixed 500 | 100% | 0% | 0.354 s | 203.9 | none | 0% |
+| target 250 / probe 50 / hard 500 prototype | 100% | 0% | 0.343 s final traversal | 203.9; mean 13.84 beyond target | mean 0.406 extra graph queries and 0.147 s replay overhead | 0% |
 
 Fixed 400 and 500 happen to recover this sample, but the absence of a pathological hard hit means their safety role is untested. Target/probe/hard correctly separates validation onset from safety semantics and is supported by 32/32 fail-closed natural outcomes, yet production adoption still needs a real guard-hit/resource case and a continuous-state implementation measurement.
 
@@ -299,7 +299,7 @@ Document reads were measured through the product service on representative requi
 
 ```text
 graph latency:
-0.021–0.816 s across fixed/resource graph observations; target-250/probe-50/hard-500 final mean 0.351 s
+0.021–0.816 s across fixed/resource graph observations; target-250/probe-50/hard-500 final mean 0.343 s
 
 document-read latency:
 1.86–9.33 s on q1 product-service resource cases
