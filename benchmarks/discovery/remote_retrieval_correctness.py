@@ -9,10 +9,12 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import copy
 import json
 import resource
 import sys
 import time
+import types
 from typing import Any
 
 
@@ -111,7 +113,7 @@ def _lane_observation(
                 "lane": lane_name,
                 "ranked_count": len(lane),
                 "unique_identities": len(positions),
-                "duplicate_count": sum(item["extra_occurrences"] for item in duplicates),
+                "duplicate_count": sum(len(ranks) - 1 for ranks in positions.values()),
                 "duplicate_identities": duplicates,
             }
         )
@@ -216,17 +218,34 @@ async def _natural_closure(plan: dict[str, Any], service: Any, client: Any, inde
 
     query = str(plan["query"])
     seed_budget = max(1, int(plan.get("seed_budget", 100)))
-    seed_response = await service.search(
-        query,
-        user_id="anonymous",
-        jwt_token=None,
-        filters={},
-        limit=seed_budget,
-        score_threshold=0,
-    )
-    if seed_response.get("error"):
-        raise RuntimeError(str(seed_response["error"]))
-    seed_results = [item for item in seed_response.get("results", []) if isinstance(item, dict)]
+    supplied_seed_ids = plan.get("seed_chunk_ids")
+    if isinstance(supplied_seed_ids, list):
+        normalized_seed_ids = list(
+            dict.fromkeys(str(value).strip() for value in supplied_seed_ids if str(value).strip())
+        )[:seed_budget]
+        seed_results = await service.resolve_cited_chunks(
+            normalized_seed_ids,
+            user_id="anonymous",
+            jwt_token=None,
+            filters={},
+        )
+        seed_source = "product_selected_chunk_ids"
+    else:
+        seed_response = await service.search(
+            query,
+            user_id="anonymous",
+            jwt_token=None,
+            filters={},
+            limit=seed_budget,
+            score_threshold=0,
+        )
+        if seed_response.get("error"):
+            raise RuntimeError(str(seed_response["error"]))
+        seed_results = [item for item in seed_response.get("results", []) if isinstance(item, dict)]
+        normalized_seed_ids = [
+            str(item.get("chunk_id")) for item in seed_results if item.get("chunk_id")
+        ]
+        seed_source = "focused_product_service"
     seed_documents: dict[str, dict[str, Any]] = {}
     seed_entities: set[str] = set()
     for item in seed_results:
@@ -263,8 +282,11 @@ async def _natural_closure(plan: dict[str, Any], service: Any, client: Any, inde
         if isinstance(item.get("document_chunk_count"), int)
     )
     return {
+        "label": str(plan.get("label") or query),
         "query": query,
         "query_sha256": _sha256(query),
+        "seed_source": seed_source,
+        "seed_chunk_ids_sha256": _sha256(normalized_seed_ids),
         "seed_chunks": len(seed_results),
         "seed_documents": len(seed_documents),
         "seed_entities": len(seed_entities),
@@ -280,8 +302,172 @@ async def _natural_closure(plan: dict[str, Any], service: Any, client: Any, inde
     }
 
 
+def _compact_sensitivity_response(response: dict[str, Any]) -> dict[str, Any]:
+    """Drop retrieved text while retaining quality, cost, and contract evidence."""
+
+    identity_fields = (
+        "chunk_id",
+        "document_id",
+        "source_entity_id",
+        "source_entity_alternate_ids",
+        "score",
+        "fusion_score",
+        "matched_queries",
+        "matched_lanes",
+        "best_rank_per_query",
+        "query_contributions",
+    )
+    scope_fields = (
+        "document_id",
+        "source_entity_id",
+        "source_entity_alternate_ids",
+        "document_chunk_count",
+        "document_character_count",
+    )
+    seeds = response.get("model_results")
+    documents = response.get("documents")
+    return {
+        "seeds": [
+            {field: item[field] for field in identity_fields if field in item}
+            for item in seeds
+            if isinstance(item, dict)
+        ]
+        if isinstance(seeds, list)
+        else [],
+        "documents": [
+            {field: item[field] for field in scope_fields if field in item}
+            for item in documents
+            if isinstance(item, dict)
+        ]
+        if isinstance(documents, list)
+        else [],
+        "discovery": response.get("discovery", {}),
+        "requested_retrieval_profile": response.get("requested_retrieval_profile"),
+        "effective_retrieval_profile": response.get("effective_retrieval_profile"),
+        "retrieval_execution_complete": response.get("retrieval_execution_complete"),
+        "retrieval_failure_codes": response.get("retrieval_failure_codes", []),
+        "coverage": response.get("coverage", {}),
+        "error": response.get("error"),
+    }
+
+
+async def _sensitivity_experiment(plan: dict[str, Any], service: Any) -> dict[str, Any]:
+    """Run one isolated read-only axis through the product SearchService."""
+
+    from auth_context import set_auth_context
+    from config.settings import get_openrag_config
+    from services import search_service
+    from services.retrieval_service import (
+        ScopeExhaustiveSettings,
+        build_discovery_plan,
+        discovery_plan_audit,
+    )
+
+    query = str(plan["query"])
+    query_count = max(1, min(4, int(plan.get("query_count", 1))))
+    seed_budget = max(1, int(plan.get("seed_budget", 100)))
+    config = copy.deepcopy(get_openrag_config())
+    knowledge = config.knowledge
+    knowledge.retrieval_lexical_candidates = max(
+        1, int(plan.get("lexical_candidates", knowledge.retrieval_lexical_candidates))
+    )
+    knowledge.retrieval_vector_candidates = max(
+        1, int(plan.get("dense_candidates", knowledge.retrieval_vector_candidates))
+    )
+    knowledge.retrieval_rrf_k = max(1, int(plan.get("rrf_k", knowledge.retrieval_rrf_k)))
+    fixed_queries = [str(value) for value in plan.get("fixed_queries", []) if str(value).strip()]
+
+    original_config = search_service.get_openrag_config
+    original_generator = service._generate_discovery_plan
+
+    async def fixed_plan_generator(
+        _self: Any, original_query: str, *, max_queries: int
+    ) -> tuple[list[Any], str | None, float, dict[str, Any]]:
+        variants = [
+            {"text": value, "kind": "conceptual_variant"}
+            for value in fixed_queries
+            if value.strip() != original_query.strip()
+        ]
+        generated = {"queries": variants}
+        discovery_plan = build_discovery_plan(
+            original_query,
+            generated,
+            max_queries=max_queries,
+            generation_method="benchmark_fixed_plan",
+        )
+        audit = discovery_plan_audit(original_query, generated, discovery_plan)
+        return (
+            discovery_plan,
+            None,
+            0.0,
+            {
+                **audit,
+                "planner_invoked": False,
+                "request_parameters": {"source": "captured_fixed_plan"},
+                "request_fingerprint": _sha256(audit["query_hashes"]),
+                "response_model": None,
+            },
+        )
+
+    search_service.get_openrag_config = lambda: config
+    set_auth_context("anonymous", None)
+    if query_count > 1:
+        if not fixed_queries:
+            raise ValueError("multi-query sensitivity experiments require fixed_queries")
+        service._generate_discovery_plan = types.MethodType(fixed_plan_generator, service)
+
+    rss_before = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    started = time.perf_counter()
+    try:
+        response = await service.search_exhaustive_scope(
+            query,
+            user_id="anonymous",
+            jwt_token=None,
+            filters={},
+            embedding_model=None,
+            settings=ScopeExhaustiveSettings(
+                seed_count=seed_budget,
+                max_depth=max(1, int(plan.get("max_depth", 8))),
+                max_entities=max(1, int(plan.get("max_entities", 500))),
+                max_documents=max(1, int(plan.get("max_documents", 250))),
+                batch_size=max(1, min(50, int(plan.get("batch_size", 50)))),
+            ),
+            multi_query_discovery=query_count > 1,
+            multi_query_max_queries=query_count,
+            multi_query_concurrency=max(1, min(4, int(plan.get("concurrency", 2)))),
+        )
+    finally:
+        search_service.get_openrag_config = original_config
+        service._generate_discovery_plan = original_generator
+    elapsed = time.perf_counter() - started
+    rss_after = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    compact = _compact_sensitivity_response(response)
+    return {
+        "experiment_id": str(plan["experiment_id"]),
+        "axis": str(plan["axis"]),
+        "configuration": {
+            "lexical_candidates": knowledge.retrieval_lexical_candidates,
+            "dense_candidates": knowledge.retrieval_vector_candidates,
+            "rrf_k": knowledge.retrieval_rrf_k,
+            "seed_budget": seed_budget,
+            "query_count": query_count,
+            "max_depth": max(1, int(plan.get("max_depth", 8))),
+            "max_entities": max(1, int(plan.get("max_entities", 500))),
+            "max_documents": max(1, int(plan.get("max_documents", 250))),
+            "batch_size": max(1, min(50, int(plan.get("batch_size", 50)))),
+        },
+        "query": query,
+        "query_sha256": _sha256(query),
+        "fixed_plan_sha256": _sha256(fixed_queries),
+        "wall_seconds": elapsed,
+        "max_rss_kib_delta": max(0, rss_after - rss_before),
+        **compact,
+    }
+
+
 async def run(plan: dict[str, Any]) -> dict[str, Any]:
     from config.settings import get_index_name
+    from services import search_service
     from services.models_service import ModelsService
     from services.search_service import SearchService
     from session_manager import SessionManager
@@ -297,16 +483,39 @@ async def run(plan: dict[str, Any]) -> dict[str, Any]:
         "knowledge_filters": {},
         "index": index_name,
     }
-    if plan.get("identity_audit"):
-        result["identity_audit"] = await _identity_audit(client, index_name)
-    if plan.get("queries"):
-        result["lane_audits"] = await _lane_audit(plan)
-    if isinstance(plan.get("natural_closure"), list):
-        result["natural_closures"] = [
-            await _natural_closure(value, service, client, index_name)
-            for value in plan["natural_closure"]
-            if isinstance(value, dict)
-        ]
+    original_mapping_check = search_service.require_sortable_chunk_id_mapping
+
+    async def mapping_already_verified_by_running_product(*_args: Any, **_kwargs: Any) -> None:
+        return None
+
+    # This diagnostic executes inside an already healthy backend pod, but in a
+    # fresh Python process without the startup administrative mapping client.
+    # All reads below still use the product anonymous/DLS-scoped client.
+    search_service.require_sortable_chunk_id_mapping = mapping_already_verified_by_running_product
+    try:
+        if plan.get("identity_audit"):
+            result["identity_audit"] = await _identity_audit(client, index_name)
+        if plan.get("queries"):
+            result["lane_audits"] = await _lane_audit(plan)
+        if isinstance(plan.get("natural_closure"), list):
+            result["natural_closures"] = [
+                await _natural_closure(value, service, client, index_name)
+                for value in plan["natural_closure"]
+                if isinstance(value, dict)
+            ]
+        if isinstance(plan.get("sensitivity_experiments"), list):
+            result["sensitivity_experiments"] = [
+                await _sensitivity_experiment(value, service)
+                for value in plan["sensitivity_experiments"]
+                if isinstance(value, dict)
+            ]
+    finally:
+        search_service.require_sortable_chunk_id_mapping = original_mapping_check
+        close = getattr(client, "close", None)
+        if callable(close):
+            closed = close()
+            if hasattr(closed, "__await__"):
+                await closed
     return result
 
 

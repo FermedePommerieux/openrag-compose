@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "captured_at": "2026-09-01T05:12:23.433484+00:00",
+  "remote_script_sha256": "2926f041d691ea80f9bb252dfa9746d47fee1577be9f92bbbf2a2d67bc8d3ea5",
+  "plan": {
+    "identity_audit": true
+  },
+  "result": {
+    "schema_version": 1,
+    "identity_descriptor": "product no-auth identity",
+    "workspace": "default runtime workspace",
+    "knowledge_filters": {},
+    "index": "documents",
+    "identity_audit": {
+      "identity_unit": "DLS-visible OpenSearch chunk",
+      "total_chunks": 380817,
+      "modern_chunk_id": 380817,
+      "missing_chunk_id": 0,
+      "legacy_chunks": 21,
+      "legacy_documents": 3,
+      "missing_sortable_chunk_id": 0,
+      "missing_document_id": 0,
+      "missing_source_entity_id": 21,
+      "missing_provenance_entity_id": 21,
+      "missing_stable_canonical_identity": 0,
+      "legacy_fallback": "OpenSearch _id"
+    }
+  }
+}

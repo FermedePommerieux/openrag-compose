@@ -1,0 +1,229 @@
+{
+  "schema_version": 1,
+  "captured_at": "2026-09-01T05:11:46.533113+00:00",
+  "remote_script_sha256": "324b58b8a8753f942c4e38c7bd518f90513c048027f26a97e6daa2ff934b8a2e",
+  "plan": {
+    "identity_audit": true,
+    "seed_budget": 100,
+    "queries": [
+      "Donne-moi tous les échanges avec l’administration sur le projet Surface pastorale.",
+      "Surface pastorale échanges administration correspondance courriels lettres comptes rendus",
+      "Surface pastorale administration dossier administratif autorisations demandes réponses",
+      "Surface pastorale relations avec l’administration projet échanges institutionnels",
+      "Tous les échanges concernant le renouvellement du contrat Alpha.",
+      "Tous les documents relatifs à une panne réseau intermittente.",
+      "Retrouve les correspondances concernant la succession Dupont."
+    ]
+  },
+  "result": {
+    "schema_version": 1,
+    "identity_descriptor": "product no-auth identity",
+    "workspace": "default runtime workspace",
+    "knowledge_filters": {},
+    "index": "documents",
+    "identity_audit": {
+      "identity_unit": "DLS-visible OpenSearch chunk",
+      "total_chunks": 380817,
+      "modern_chunk_id": 380817,
+      "missing_chunk_id": 0,
+      "legacy_chunks": 0,
+      "legacy_documents": 0,
+      "missing_document_id": 0,
+      "missing_source_entity_id": 21,
+      "missing_provenance_entity_id": 21,
+      "missing_stable_canonical_identity": 0,
+      "legacy_fallback": "OpenSearch _id"
+    },
+    "lane_audits": [
+      {
+        "query": "Donne-moi tous les échanges avec l’administration sur le projet Surface pastorale.",
+        "query_sha256": "dc4bd72fc5b7af986ac5e85179ed23f7036a948ee13b4f5ecf1038889b291f1b",
+        "lanes": [
+          {
+            "lane": "lexical",
+            "ranked_count": 50,
+            "unique_identities": 50,
+            "duplicate_count": 0,
+            "duplicate_identities": []
+          },
+          {
+            "lane": "dense",
+            "ranked_count": 50,
+            "unique_identities": 50,
+            "duplicate_count": 0,
+            "duplicate_identities": []
+          }
+        ],
+        "score_or_rank_changes": [],
+        "legacy_seed_count": 98,
+        "corrected_seed_count": 98,
+        "seeds_removed_by_fix": [],
+        "seeds_added_by_fix": [],
+        "legacy_order_sha256": "1b15ef593800bf1af83225feac76ea833d05ba6350fe58df68fe3210863e847b",
+        "corrected_order_sha256": "1b15ef593800bf1af83225feac76ea833d05ba6350fe58df68fe3210863e847b"
+      },
+      {
+        "query": "Surface pastorale échanges administration correspondance courriels lettres comptes rendus",
+        "query_sha256": "cf2d111d8f0fd68b7cdf21b7652a59211267ad71b370505d0eca0e5c64372944",
+        "lanes": [
+          {
+            "lane": "lexical",
+            "ranked_count": 50,
+            "unique_identities": 50,
+            "duplicate_count": 0,
+            "duplicate_identities": []
+          },
+          {
+            "lane": "dense",
+            "ranked_count": 50,
+            "unique_identities": 50,
+            "duplicate_count": 0,
+            "duplicate_identities": []
+          }
+        ],
+        "score_or_rank_changes": [],
+        "legacy_seed_count": 100,
+        "corrected_seed_count": 100,
+        "seeds_removed_by_fix": [],
+        "seeds_added_by_fix": [],
+        "legacy_order_sha256": "e33ac673100bc0205df3d2a4c5f55f00cdc7b90aae5149079ebbf92e3dad910f",
+        "corrected_order_sha256": "e33ac673100bc0205df3d2a4c5f55f00cdc7b90aae5149079ebbf92e3dad910f"
+      },
+      {
+        "query": "Surface pastorale administration dossier administratif autorisations demandes réponses",
+        "query_sha256": "7923e03efe7832f51bacc0776d419620f01162f3a061bf354db1962a46e410f0",
+        "lanes": [
+          {
+            "lane": "lexical",
+            "ranked_count": 50,
+            "unique_identities": 50,
+            "duplicate_count": 0,
+            "duplicate_identities": []
+          },
+          {
+            "lane": "dense",
+            "ranked_count": 50,
+            "unique_identities": 50,
+            "duplicate_count": 0,
+            "duplicate_identities": []
+          }
+        ],
+        "score_or_rank_changes": [],
+        "legacy_seed_count": 97,
+        "corrected_seed_count": 97,
+        "seeds_removed_by_fix": [],
+        "seeds_added_by_fix": [],
+        "legacy_order_sha256": "e962e60e337c158f7c2db24ddfe430d81394761708828ba5584a48abf6752910",
+        "corrected_order_sha256": "e962e60e337c158f7c2db24ddfe430d81394761708828ba5584a48abf6752910"
+      },
+      {
+        "query": "Surface pastorale relations avec l’administration projet échanges institutionnels",
+        "query_sha256": "b82fbb69b8fe43ecb0715c76b913774563f78d0687d2b55cfd71e66ffe53c93c",
+        "lanes": [
+          {
+            "lane": "lexical",
+            "ranked_count": 50,
+            "unique_identities": 50,
+            "duplicate_count": 0,
+            "duplicate_identities": []
+          },
+          {
+            "lane": "dense",
+            "ranked_count": 50,
+            "unique_identities": 50,
+            "duplicate_count": 0,
+            "duplicate_identities": []
+          }
+        ],
+        "score_or_rank_changes": [],
+        "legacy_seed_count": 95,
+        "corrected_seed_count": 95,
+        "seeds_removed_by_fix": [],
+        "seeds_added_by_fix": [],
+        "legacy_order_sha256": "7e640d705eaded799727e99de1899e2c8d5cba0401bb30857fbe045c4cffe7e7",
+        "corrected_order_sha256": "7e640d705eaded799727e99de1899e2c8d5cba0401bb30857fbe045c4cffe7e7"
+      },
+      {
+        "query": "Tous les échanges concernant le renouvellement du contrat Alpha.",
+        "query_sha256": "8abb5c01a5658708203f48c639797d1dc60068f67f4e92ccfe27e01d0c96cfba",
+        "lanes": [
+          {
+            "lane": "lexical",
+            "ranked_count": 50,
+            "unique_identities": 50,
+            "duplicate_count": 0,
+            "duplicate_identities": []
+          },
+          {
+            "lane": "dense",
+            "ranked_count": 50,
+            "unique_identities": 50,
+            "duplicate_count": 0,
+            "duplicate_identities": []
+          }
+        ],
+        "score_or_rank_changes": [],
+        "legacy_seed_count": 99,
+        "corrected_seed_count": 99,
+        "seeds_removed_by_fix": [],
+        "seeds_added_by_fix": [],
+        "legacy_order_sha256": "b694403e5de56dbc7a33bb508f5ff5a57bb830aaafdcf0991acae1ae7178d84a",
+        "corrected_order_sha256": "b694403e5de56dbc7a33bb508f5ff5a57bb830aaafdcf0991acae1ae7178d84a"
+      },
+      {
+        "query": "Tous les documents relatifs à une panne réseau intermittente.",
+        "query_sha256": "94893bf89eacf1d4fe2ae96f470a379474e5f41e43d8a29ff88ecf7c823beb4d",
+        "lanes": [
+          {
+            "lane": "lexical",
+            "ranked_count": 50,
+            "unique_identities": 50,
+            "duplicate_count": 0,
+            "duplicate_identities": []
+          },
+          {
+            "lane": "dense",
+            "ranked_count": 50,
+            "unique_identities": 50,
+            "duplicate_count": 0,
+            "duplicate_identities": []
+          }
+        ],
+        "score_or_rank_changes": [],
+        "legacy_seed_count": 100,
+        "corrected_seed_count": 100,
+        "seeds_removed_by_fix": [],
+        "seeds_added_by_fix": [],
+        "legacy_order_sha256": "357a48dd52f01fce82a9c2f9ae7e777f0916f699d0f0414c1f5bb0a5ebddf220",
+        "corrected_order_sha256": "357a48dd52f01fce82a9c2f9ae7e777f0916f699d0f0414c1f5bb0a5ebddf220"
+      },
+      {
+        "query": "Retrouve les correspondances concernant la succession Dupont.",
+        "query_sha256": "4916529719d88e266e241310c6fb7410dac57a6fbe4a3bfac228c5cbaece9755",
+        "lanes": [
+          {
+            "lane": "lexical",
+            "ranked_count": 50,
+            "unique_identities": 50,
+            "duplicate_count": 0,
+            "duplicate_identities": []
+          },
+          {
+            "lane": "dense",
+            "ranked_count": 50,
+            "unique_identities": 50,
+            "duplicate_count": 0,
+            "duplicate_identities": []
+          }
+        ],
+        "score_or_rank_changes": [],
+        "legacy_seed_count": 97,
+        "corrected_seed_count": 97,
+        "seeds_removed_by_fix": [],
+        "seeds_added_by_fix": [],
+        "legacy_order_sha256": "3553bb0b6731868eac99b6818f7817ab9b7eeb7fb1ae428474c3efe8f2c914aa",
+        "corrected_order_sha256": "3553bb0b6731868eac99b6818f7817ab9b7eeb7fb1ae428474c3efe8f2c914aa"
+      }
+    ]
+  }
+}
