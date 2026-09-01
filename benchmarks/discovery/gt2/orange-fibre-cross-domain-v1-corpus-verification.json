@@ -1,0 +1,12 @@
+{
+  "visible_occurrences": 47454,
+  "enumerated_occurrences": 47454,
+  "distinct_document_ids": 47400,
+  "distinct_source_entity_ids": 47451,
+  "sources": [
+    "local",
+    "openarchiver"
+  ],
+  "occurrence_identity_sha256": "038987ca2eb70b2e56d674bc45e9b60fe00652e72296249dba0252d6964fafd7",
+  "complete": true
+}

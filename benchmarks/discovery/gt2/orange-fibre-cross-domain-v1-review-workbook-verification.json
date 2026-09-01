@@ -1,0 +1,44 @@
+{
+  "artifact_type": "gt2_review_workbook_verification",
+  "blank_human_labels": 13,
+  "distinct_completeness_candidate_ids": 13,
+  "formula_errors": [],
+  "review_workbook": "outputs/gt2-completeness-control/orange-fibre-GT2-completeness-review-pass-3.xlsx",
+  "review_workbook_sha256": "6bf6f2846117ea2bec2b587751bd0670132812d61c1f669e3232fc80658cda70",
+  "schema_version": 1,
+  "sheets": [
+    {
+      "formula_cells": 0,
+      "name": "Règles de jugement",
+      "used_range": "A1:B13"
+    },
+    {
+      "formula_cells": 10,
+      "name": "Synthèse",
+      "used_range": "A1:C15"
+    },
+    {
+      "formula_cells": 0,
+      "name": "Revue complémentaire",
+      "used_range": "A1:W14"
+    },
+    {
+      "formula_cells": 0,
+      "name": "Contrôle négatif acquis",
+      "used_range": "A1:G61"
+    },
+    {
+      "formula_cells": 0,
+      "name": "Jugements acquis",
+      "used_range": "A1:N338"
+    },
+    {
+      "formula_cells": 0,
+      "name": "Composants acquis",
+      "used_range": "A1:H351"
+    }
+  ],
+  "summary_gate_value": "BLOCKED",
+  "visual_qa": "PASS",
+  "workbook_reimport": "PASS"
+}

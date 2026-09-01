@@ -37,6 +37,7 @@ benchmarks/discovery/results/*
 !benchmarks/discovery/results/orange-fibre-cross-domain-v1-human-review-components.csv
 !benchmarks/discovery/results/orange-fibre-cross-domain-v1-human-review-documents.csv
 !benchmarks/discovery/results/orange-fibre-cross-domain-v1-human-review.json
+!benchmarks/discovery/gt2/*.json
 !**/package.json
 !**/package-lock.json
 !**/tsconfig.json

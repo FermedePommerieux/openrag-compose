@@ -1,0 +1,770 @@
+{
+  "artifact_sha256": "b2d8ade04f1a5b1109363069c9e0cd795c99a2d7a7c3ddf8eb8ea8818752f0a0",
+  "artifact_type": "gt2_completeness_control_candidates",
+  "auto_labels_created": 0,
+  "candidate_universe": {
+    "components": 1338,
+    "documents": 3012,
+    "judged_documents": 337,
+    "unjudged_documents": 2675
+  },
+  "candidates": [
+    {
+      "anchor_candidate_id": "candidate-9e630ecc5ef1bebc",
+      "anchor_title": "Confirmation de votre commande",
+      "best_dense_rank": null,
+      "best_lexical_rank": null,
+      "best_rrf_rank": null,
+      "candidate_id": "candidate-2607f22e7742f1ff",
+      "component_human_label": "",
+      "component_id": "component-157917ccea03a87a",
+      "component_key": "thread:urn:openrag:openarchiver:thread:6ca4c5b5-3440-4c50-8666-cecfa25916d5:%3C1232565576.143781.1423127819957.JavaMail.ihdwls2%40bt1shl9o%3E",
+      "current_closure_member": false,
+      "date": "2015-02-05T09:16:59Z",
+      "discovery_query_ids": [],
+      "discovery_reasons": [
+        "metadata_recovery"
+      ],
+      "document_id": "KjaiRTwx5ZTxJQp5r_bfjD5r",
+      "email_id": "ceb7f2f0-c798-445c-a50f-3c08967f9472",
+      "false_positive_risks": [],
+      "human_label": "",
+      "label_owner": "HUMAN_REVIEW_REQUIRED",
+      "occurrence_id": "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:ceb7f2f0-c798-445c-a50f-3c08967f9472",
+      "openarchiver_url": "https://openarchiver.ferme-de-pommerieux.fr/dashboard/archived-emails/ceb7f2f0-c798-445c-a50f-3c08967f9472",
+      "recipients": "primaux@wisearch.fr",
+      "relations": [
+        "contained_in->urn:openrag:openarchiver:source:6ca4c5b5-3440-4c50-8666-cecfa25916d5 ()",
+        "contained_in->urn:openrag:openarchiver:source:6ca4c5b5-3440-4c50-8666-cecfa25916d5 (email_archive)",
+        "member_of->urn:openrag:openarchiver:thread:6ca4c5b5-3440-4c50-8666-cecfa25916d5:%3C1232565576.143781.1423127819957.JavaMail.ihdwls2%40bt1shl9o%3E ()",
+        "member_of->urn:openrag:openarchiver:thread:6ca4c5b5-3440-4c50-8666-cecfa25916d5:%3C1232565576.143781.1423127819957.JavaMail.ihdwls2%40bt1shl9o%3E (email_thread)"
+      ],
+      "retrieval_probes": [
+        "known-component-anchors:metadata_relation@48",
+        "known-component-anchors:metadata_relation@79"
+      ],
+      "review_notes": "",
+      "review_priority": "outside_baseline_candidate",
+      "review_state": "unreviewed",
+      "secondary_context_signals": [],
+      "selection_class": "EXACT_HUMAN_CORE_TITLE_FAMILY",
+      "selection_reason": "Le titre du document non jugé appartient à une famille structurelle exacte ou proche d'un titre CORE humain ; une revue humaine est requise.",
+      "sender": "Esp@ce Client Bouygues Telecom <espaceclient@bouyguestelecom.fr>",
+      "source": "openarchiver",
+      "source_entity_alternate_ids": [
+        "urn:openrag:rfc5322:message-id:%3C1232565576.143781.1423127819957.JavaMail.ihdwls2%40bt1shl9o%3E"
+      ],
+      "source_entity_id": "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:ceb7f2f0-c798-445c-a50f-3c08967f9472",
+      "text_preview": "Confirmation de votre commande From: Esp@ce Client Bouygues Telecom <espaceclient@bouyguestelecom.fr> To: primaux@wisearch.fr Date: 2015-02-05T09:16:59+00:00 | <!-- image --> | |-----------------------------------------------------------------| | Vous recevez cet email car vous êtes un client Bouygues Telecom | | <!-- image --> | | Bouygues Telecom <!-- image --> | ELOI PRIMAUX 0661973582 | Mon compte <!-- image --> | <!-- image --> | |------------------------------------|---------------------------|------------------------------|------------------| | <!-- image --> | Récapitulatif de votre commande | <!-- image --> | <!-- image --> | <!-- image --> | |------------------|--------------------",
+      "title": "Confirmation de votre commande",
+      "title_family_signature": "confirmation de votre commande",
+      "title_similarity": 1.0
+    },
+    {
+      "anchor_candidate_id": "candidate-8c3e27b891da1f72",
+      "anchor_title": "facture_9093277556_2023-04-06.pdf",
+      "best_dense_rank": 23,
+      "best_lexical_rank": null,
+      "best_rrf_rank": 36,
+      "candidate_id": "candidate-356e7220dbe8e141",
+      "component_human_label": "",
+      "component_id": "component-a270bc4405989a76",
+      "component_key": "thread:urn:openrag:openarchiver:thread:6ca4c5b5-3440-4c50-8666-cecfa25916d5:%3CMRWPR04MB122802365D1DDDC1530F393A1979AA%40MRWPR04MB12280.eurprd04.prod.outlook.com%3E",
+      "current_closure_member": false,
+      "date": "",
+      "discovery_query_ids": [
+        "deep-fibre-optique",
+        "entity-orange-fibre"
+      ],
+      "discovery_reasons": [
+        "alternate query",
+        "entity query",
+        "metadata_recovery"
+      ],
+      "document_id": "ZFDQ72-RFY_Onn6RfVKQDCEK",
+      "email_id": "f551a23b-c7fd-4626-ad05-57b26c00afaf",
+      "false_positive_risks": [],
+      "human_label": "",
+      "label_owner": "HUMAN_REVIEW_REQUIRED",
+      "occurrence_id": "urn:openrag:openarchiver:attachment:10a9df57-45a5-4558-adcb-831897ba11e2",
+      "openarchiver_url": "https://openarchiver.ferme-de-pommerieux.fr/dashboard/archived-emails/f551a23b-c7fd-4626-ad05-57b26c00afaf",
+      "recipients": "",
+      "relations": [
+        "attachment_of->urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:f551a23b-c7fd-4626-ad05-57b26c00afaf ()",
+        "attachment_of->urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:f551a23b-c7fd-4626-ad05-57b26c00afaf (email_message)",
+        "contained_in->urn:openrag:openarchiver:source:6ca4c5b5-3440-4c50-8666-cecfa25916d5 ()",
+        "contained_in->urn:openrag:openarchiver:source:6ca4c5b5-3440-4c50-8666-cecfa25916d5 (email_archive)",
+        "member_of->urn:openrag:openarchiver:thread:6ca4c5b5-3440-4c50-8666-cecfa25916d5:%3CMRWPR04MB122802365D1DDDC1530F393A1979AA%40MRWPR04MB12280.eurprd04.prod.outlook.com%3E ()",
+        "member_of->urn:openrag:openarchiver:thread:6ca4c5b5-3440-4c50-8666-cecfa25916d5:%3CMRWPR04MB122802365D1DDDC1530F393A1979AA%40MRWPR04MB12280.eurprd04.prod.outlook.com%3E (email_thread)"
+      ],
+      "retrieval_probes": [
+        "deep-fibre-optique:dense@194",
+        "entity-orange-fibre:dense@23",
+        "entity-orange-fibre:rrf@36",
+        "known-component-anchors:metadata_relation@180"
+      ],
+      "review_notes": "",
+      "review_priority": "outside_baseline_candidate",
+      "review_state": "unreviewed",
+      "secondary_context_signals": [],
+      "selection_class": "EXACT_HUMAN_CORE_TITLE_FAMILY",
+      "selection_reason": "Le titre du document non jugé appartient à une famille structurelle exacte ou proche d'un titre CORE humain ; une revue humaine est requise.",
+      "sender": "",
+      "source": "openarchiver",
+      "source_entity_alternate_ids": [],
+      "source_entity_id": "urn:openrag:openarchiver:attachment:10a9df57-45a5-4558-adcb-831897ba11e2",
+      "text_preview": "[Document structural region] Page: 1 Region: page_footer - Position(left=208.6, top=40.6); Text: Orange SA au capital de 10 640 226 396 € - 111 quai du Prés. Roosevelt 92130 Issy-les-Moulineaux - 380 129 866 RCS Nanterre - Position(left=507.4, top=23.1); Text: page : 1/2",
+      "title": "facture_9073083280_2025-02-04.pdf",
+      "title_family_signature": "facture_<id>_<n>-<n>-<n>.pdf",
+      "title_similarity": 1.0
+    },
+    {
+      "anchor_candidate_id": "candidate-4bc1767622cf61cc",
+      "anchor_title": "EARL FERME DE POMMERIEUX  - plaquettes 2022 et 2021",
+      "best_dense_rank": null,
+      "best_lexical_rank": null,
+      "best_rrf_rank": null,
+      "candidate_id": "candidate-403cf8baad2c7d93",
+      "component_human_label": "",
+      "component_id": "component-e13afdb1b8e7f92a",
+      "component_key": "thread:urn:openrag:openarchiver:thread:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:%3C093ACA49-59F0-4111-A19F-DABCD540D736%40ferme-de-pommerieux.fr%3E",
+      "current_closure_member": false,
+      "date": "2018-05-02T07:54:13Z",
+      "discovery_query_ids": [],
+      "discovery_reasons": [
+        "metadata_recovery"
+      ],
+      "document_id": "7f0VmONml2FSzC_wDOh5FLvE",
+      "email_id": "96bf11af-4ce9-4642-97eb-d9c47a37b07d",
+      "false_positive_risks": [],
+      "human_label": "",
+      "label_owner": "HUMAN_REVIEW_REQUIRED",
+      "occurrence_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:96bf11af-4ce9-4642-97eb-d9c47a37b07d",
+      "openarchiver_url": "https://openarchiver.ferme-de-pommerieux.fr/dashboard/archived-emails/96bf11af-4ce9-4642-97eb-d9c47a37b07d",
+      "recipients": "BENRAHAL Fairouz <fairouz.benrahal@ca-valdefrance.fr>",
+      "relations": [
+        "contained_in->urn:openrag:openarchiver:source:9e325a3e-b01f-40bf-8890-b400d4e3d7f4 ()",
+        "contained_in->urn:openrag:openarchiver:source:9e325a3e-b01f-40bf-8890-b400d4e3d7f4 (email_archive)",
+        "member_of->urn:openrag:openarchiver:thread:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:%3C093ACA49-59F0-4111-A19F-DABCD540D736%40ferme-de-pommerieux.fr%3E ()",
+        "member_of->urn:openrag:openarchiver:thread:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:%3C093ACA49-59F0-4111-A19F-DABCD540D736%40ferme-de-pommerieux.fr%3E (email_thread)"
+      ],
+      "retrieval_probes": [
+        "known-component-anchors:metadata_relation@25",
+        "known-component-anchors:metadata_relation@30"
+      ],
+      "review_notes": "",
+      "review_priority": "outside_baseline_candidate",
+      "review_state": "unreviewed",
+      "secondary_context_signals": [
+        "REPORT_OR_PRESENTATION"
+      ],
+      "selection_class": "NEAR_HUMAN_CORE_TITLE_FAMILY",
+      "selection_reason": "Le titre du document non jugé appartient à une famille structurelle exacte ou proche d'un titre CORE humain ; une revue humaine est requise.",
+      "sender": "Eloi Primaux <eloi@ferme-de-pommerieux.fr>",
+      "source": "openarchiver",
+      "source_entity_alternate_ids": [
+        "urn:openrag:rfc5322:message-id:%3C093ACA49-59F0-4111-A19F-DABCD540D736%40ferme-de-pommerieux.fr%3E"
+      ],
+      "source_entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:96bf11af-4ce9-4642-97eb-d9c47a37b07d",
+      "text_preview": "EARL FERME DE POMEMRIEUX - Plaquette Banque 2016 From: Eloi Primaux <eloi@ferme-de-pommerieux.fr> To: BENRAHAL Fairouz <fairouz.benrahal@ca-valdefrance.fr> Date: 2018-05-02T07:54:13+00:00 Bonjour Mme. Ferouz, Vous trouverez ci-après la plaquette banque de l‘exercice 2016 Bien cordialement Eloi Primaux EARL Ferme de Pommerieux Domaine de Pommerieux 37 rue de la Grande Sologne 41600 Nouan le Fuzelier Mob : + 33 (0) 6 61 97 35 82 Ce message est destiné exclusivement aux personnes dont le nom figure ci-dessus. Il peut contenir des informations protégées par le secret professionnel et dont la divulgation est strictement prohibée.This message is intended for the above-mentioned addressee(s) only.",
+      "title": "EARL FERME DE POMEMRIEUX - Plaquette Banque 2016",
+      "title_family_signature": "earl ferme de pomemrieux - plaquette banque <n>",
+      "title_similarity": 0.821053
+    },
+    {
+      "anchor_candidate_id": "candidate-8c3e27b891da1f72",
+      "anchor_title": "facture_9093277556_2023-04-06.pdf",
+      "best_dense_rank": 196,
+      "best_lexical_rank": null,
+      "best_rrf_rank": null,
+      "candidate_id": "candidate-475d34e06796e98d",
+      "component_human_label": "",
+      "component_id": "component-ec5e0cac3920ae9c",
+      "component_key": "thread:urn:openrag:openarchiver:thread:6ca4c5b5-3440-4c50-8666-cecfa25916d5:%3CA22100BA-7763-4128-87B4-79F3D45B3B67%40wisearch.eu%3E",
+      "current_closure_member": false,
+      "date": "",
+      "discovery_query_ids": [
+        "deep-fibre-optique"
+      ],
+      "discovery_reasons": [
+        "alternate query",
+        "metadata_recovery"
+      ],
+      "document_id": "CRBZ2HH3F10c0ArHfa8wi32p",
+      "email_id": "e46ad9df-96d3-486a-84f2-ab4fd51bd80c",
+      "false_positive_risks": [
+        "MOBILE_ONLY"
+      ],
+      "human_label": "",
+      "label_owner": "HUMAN_REVIEW_REQUIRED",
+      "occurrence_id": "urn:openrag:openarchiver:attachment:7759b9f1-f4ae-49af-ac19-88883af9a051",
+      "openarchiver_url": "https://openarchiver.ferme-de-pommerieux.fr/dashboard/archived-emails/e46ad9df-96d3-486a-84f2-ab4fd51bd80c",
+      "recipients": "",
+      "relations": [
+        "attachment_of->urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:e46ad9df-96d3-486a-84f2-ab4fd51bd80c ()",
+        "attachment_of->urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:e46ad9df-96d3-486a-84f2-ab4fd51bd80c (email_message)",
+        "contained_in->urn:openrag:openarchiver:source:6ca4c5b5-3440-4c50-8666-cecfa25916d5 ()",
+        "contained_in->urn:openrag:openarchiver:source:6ca4c5b5-3440-4c50-8666-cecfa25916d5 (email_archive)",
+        "member_of->urn:openrag:openarchiver:thread:6ca4c5b5-3440-4c50-8666-cecfa25916d5:%3CA22100BA-7763-4128-87B4-79F3D45B3B67%40wisearch.eu%3E ()",
+        "member_of->urn:openrag:openarchiver:thread:6ca4c5b5-3440-4c50-8666-cecfa25916d5:%3CA22100BA-7763-4128-87B4-79F3D45B3B67%40wisearch.eu%3E (email_thread)"
+      ],
+      "retrieval_probes": [
+        "deep-fibre-optique:dense@196",
+        "known-component-anchors:metadata_relation@51",
+        "known-component-anchors:metadata_relation@71"
+      ],
+      "review_notes": "",
+      "review_priority": "outside_baseline_candidate",
+      "review_state": "unreviewed",
+      "secondary_context_signals": [],
+      "selection_class": "EXACT_HUMAN_CORE_TITLE_FAMILY",
+      "selection_reason": "Le titre du document non jugé appartient à une famille structurelle exacte ou proche d'un titre CORE humain ; une revue humaine est requise.",
+      "sender": "",
+      "source": "openarchiver",
+      "source_entity_alternate_ids": [],
+      "source_entity_id": "urn:openrag:openarchiver:attachment:7759b9f1-f4ae-49af-ac19-88883af9a051",
+      "text_preview": "votre offre Série Limitée Sosh 17,99€ 100 Go synthèse de votre offre page suivante détails et conditions sur votre espace client",
+      "title": "facture_9073083280_2025-01-06.pdf",
+      "title_family_signature": "facture_<id>_<n>-<n>-<n>.pdf",
+      "title_similarity": 1.0
+    },
+    {
+      "anchor_candidate_id": "candidate-8c3e27b891da1f72",
+      "anchor_title": "facture_9093277556_2023-04-06.pdf",
+      "best_dense_rank": 24,
+      "best_lexical_rank": null,
+      "best_rrf_rank": 38,
+      "candidate_id": "candidate-499105060a1ff8fd",
+      "component_human_label": "",
+      "component_id": "component-97bda1a19ac038f4",
+      "component_key": "thread:urn:openrag:openarchiver:thread:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:%3C0BB39B3B-6A41-42FA-84EC-A07C5C1201D5%40ferme-de-pommerieux.fr%3E",
+      "current_closure_member": false,
+      "date": "",
+      "discovery_query_ids": [
+        "entity-orange-fibre"
+      ],
+      "discovery_reasons": [
+        "entity query",
+        "metadata_recovery"
+      ],
+      "document_id": "tUWwfK90nVjv4nt2wDE5oq15",
+      "email_id": "5fac8a05-b351-4aa7-a2ac-4994de515778",
+      "false_positive_risks": [],
+      "human_label": "",
+      "label_owner": "HUMAN_REVIEW_REQUIRED",
+      "occurrence_id": "urn:openrag:openarchiver:attachment:17d974d2-2234-4fd3-b311-bf11edaaafee",
+      "openarchiver_url": "https://openarchiver.ferme-de-pommerieux.fr/dashboard/archived-emails/5fac8a05-b351-4aa7-a2ac-4994de515778",
+      "recipients": "",
+      "relations": [
+        "attachment_of->urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:5fac8a05-b351-4aa7-a2ac-4994de515778 ()",
+        "attachment_of->urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:5fac8a05-b351-4aa7-a2ac-4994de515778 (email_message)",
+        "contained_in->urn:openrag:openarchiver:source:9e325a3e-b01f-40bf-8890-b400d4e3d7f4 ()",
+        "contained_in->urn:openrag:openarchiver:source:9e325a3e-b01f-40bf-8890-b400d4e3d7f4 (email_archive)",
+        "member_of->urn:openrag:openarchiver:thread:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:%3C0BB39B3B-6A41-42FA-84EC-A07C5C1201D5%40ferme-de-pommerieux.fr%3E ()",
+        "member_of->urn:openrag:openarchiver:thread:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:%3C0BB39B3B-6A41-42FA-84EC-A07C5C1201D5%40ferme-de-pommerieux.fr%3E (email_thread)"
+      ],
+      "retrieval_probes": [
+        "entity-orange-fibre:dense@24",
+        "entity-orange-fibre:rrf@38",
+        "known-component-anchors:metadata_relation@141",
+        "known-component-anchors:metadata_relation@204"
+      ],
+      "review_notes": "",
+      "review_priority": "outside_baseline_candidate",
+      "review_state": "unreviewed",
+      "secondary_context_signals": [],
+      "selection_class": "EXACT_HUMAN_CORE_TITLE_FAMILY",
+      "selection_reason": "Le titre du document non jugé appartient à une famille structurelle exacte ou proche d'un titre CORE humain ; une revue humaine est requise.",
+      "sender": "",
+      "source": "openarchiver",
+      "source_entity_alternate_ids": [],
+      "source_entity_id": "urn:openrag:openarchiver:attachment:17d974d2-2234-4fd3-b311-bf11edaaafee",
+      "text_preview": "[Document structural region] Page: 1 Region: page_footer - Position(left=208.6, top=40.6); Text: Orange SA au capital de 10 640 226 396 € - 111 quai du Prés. Roosevelt 92130 Issy-les-Moulineaux - 380 129 866 RCS Nanterre - Position(left=507.4, top=23.1); Text: page : 1/2",
+      "title": "facture_9073083280_2023-12-04.pdf",
+      "title_family_signature": "facture_<id>_<n>-<n>-<n>.pdf",
+      "title_similarity": 1.0
+    },
+    {
+      "anchor_candidate_id": "candidate-9e630ecc5ef1bebc",
+      "anchor_title": "Confirmation de votre commande",
+      "best_dense_rank": 39,
+      "best_lexical_rank": 169,
+      "best_rrf_rank": 57,
+      "candidate_id": "candidate-5e43bb3d17ed7fc6",
+      "component_human_label": "NOT_RELEVANT",
+      "component_id": "component-c547c5afd1fd4452",
+      "component_key": "thread:urn:openrag:openarchiver:thread:6ca4c5b5-3440-4c50-8666-cecfa25916d5:%3C1610122702.126161654692413707.JavaMail.ad72bas1%40op72bas100%3E",
+      "current_closure_member": false,
+      "date": "2022-06-08T12:46:53Z",
+      "discovery_query_ids": [
+        "alternate-raccordement",
+        "canonical-q1",
+        "deep-fibre-optique",
+        "entity-orange-fibre"
+      ],
+      "discovery_reasons": [
+        "alternate query",
+        "canonical query",
+        "entity query",
+        "metadata_recovery"
+      ],
+      "document_id": "eUUxCz5i1L1SFKtJWsWZMTIv",
+      "email_id": "12e5861c-a7c6-4c5c-a6ca-e99d7802930d",
+      "false_positive_risks": [],
+      "human_label": "",
+      "label_owner": "HUMAN_REVIEW_REQUIRED",
+      "occurrence_id": "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:12e5861c-a7c6-4c5c-a6ca-e99d7802930d",
+      "openarchiver_url": "https://openarchiver.ferme-de-pommerieux.fr/dashboard/archived-emails/12e5861c-a7c6-4c5c-a6ca-e99d7802930d",
+      "recipients": "",
+      "relations": [
+        "contained_in->urn:openrag:openarchiver:source:6ca4c5b5-3440-4c50-8666-cecfa25916d5 ()",
+        "contained_in->urn:openrag:openarchiver:source:6ca4c5b5-3440-4c50-8666-cecfa25916d5 (email_archive)",
+        "member_of->urn:openrag:openarchiver:thread:6ca4c5b5-3440-4c50-8666-cecfa25916d5:%3C1610122702.126161654692413707.JavaMail.ad72bas1%40op72bas100%3E ()",
+        "member_of->urn:openrag:openarchiver:thread:6ca4c5b5-3440-4c50-8666-cecfa25916d5:%3C1610122702.126161654692413707.JavaMail.ad72bas1%40op72bas100%3E (email_thread)"
+      ],
+      "retrieval_probes": [
+        "alternate-raccordement:dense@41",
+        "alternate-raccordement:rrf@88",
+        "canonical-q1:dense@94",
+        "canonical-q1:rrf@147",
+        "deep-fibre-optique:dense@102",
+        "deep-fibre-optique:rrf@204",
+        "entity-orange-fibre:dense@39",
+        "entity-orange-fibre:lexical@169",
+        "entity-orange-fibre:rrf@57",
+        "known-component-anchors:metadata_relation@109"
+      ],
+      "review_notes": "",
+      "review_priority": "outside_baseline_candidate",
+      "review_state": "unreviewed",
+      "secondary_context_signals": [
+        "ACCOUNTING"
+      ],
+      "selection_class": "EXACT_HUMAN_CORE_TITLE_FAMILY",
+      "selection_reason": "Le titre du document non jugé appartient à une famille structurelle exacte ou proche d'un titre CORE humain ; une revue humaine est requise.",
+      "sender": "",
+      "source": "openarchiver",
+      "source_entity_alternate_ids": [
+        "urn:openrag:rfc5322:message-id:%3C1610122702.126161654692413707.JavaMail.ad72bas1%40op72bas100%3E"
+      ],
+      "source_entity_id": "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:12e5861c-a7c6-4c5c-a6ca-e99d7802930d",
+      "text_preview": "Confirmation de votre commande Facturation M. PRIMAUX Eloi POMMERIEUX 41600 NOUAN LE FUZELIER En souscrivant une offre Sosh, vous acceptez l'envoi de votre facture mensuelle au format Ã©lectronique Ã l'adresse e-mail que vous avez communiquÃ©e. Votre 1Ã¨re facture vous sera adressÃ©e dans les 10 jours aprÃ¨s validation de votre commande. spacer bloc Bon a savoir (optionnel) spacer Titre recap commande <tr> <td style=\"padding-left:20px; padding-right:20px; padding-top:30px; padding-bottom:30px; font-family: arial, sans-serif; font-size: 29px; line-height:34px; font-weight:bold; background-color:white;\">RÃ©capitulatif <br/> de votre commande</td> </tr> spacer <tr style=\"height:10px; font-size:",
+      "title": "Confirmation de votre commande",
+      "title_family_signature": "confirmation de votre commande",
+      "title_similarity": 1.0
+    },
+    {
+      "anchor_candidate_id": "candidate-8c3e27b891da1f72",
+      "anchor_title": "facture_9093277556_2023-04-06.pdf",
+      "best_dense_rank": 195,
+      "best_lexical_rank": null,
+      "best_rrf_rank": null,
+      "candidate_id": "candidate-8c313b06c38c6129",
+      "component_human_label": "",
+      "component_id": "component-bea609695f5c15a5",
+      "component_key": "thread:urn:openrag:openarchiver:thread:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:%3C1F9AE13E-C2A3-42A9-9C37-79B2940C237A%40ferme-de-pommerieux.fr%3E",
+      "current_closure_member": false,
+      "date": "",
+      "discovery_query_ids": [
+        "deep-fibre-optique"
+      ],
+      "discovery_reasons": [
+        "alternate query",
+        "metadata_recovery"
+      ],
+      "document_id": "a5_cUIPlQlLokf6C6ZYBgLHS",
+      "email_id": "959d0a53-7a4c-4ea9-b4e2-cd488fed01bf",
+      "false_positive_risks": [
+        "MOBILE_ONLY"
+      ],
+      "human_label": "",
+      "label_owner": "HUMAN_REVIEW_REQUIRED",
+      "occurrence_id": "urn:openrag:openarchiver:attachment:4600c50b-ea30-406a-9070-569528f5b8bc",
+      "openarchiver_url": "https://openarchiver.ferme-de-pommerieux.fr/dashboard/archived-emails/959d0a53-7a4c-4ea9-b4e2-cd488fed01bf",
+      "recipients": "",
+      "relations": [
+        "attachment_of->urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:959d0a53-7a4c-4ea9-b4e2-cd488fed01bf ()",
+        "attachment_of->urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:959d0a53-7a4c-4ea9-b4e2-cd488fed01bf (email_message)",
+        "contained_in->urn:openrag:openarchiver:source:9e325a3e-b01f-40bf-8890-b400d4e3d7f4 ()",
+        "contained_in->urn:openrag:openarchiver:source:9e325a3e-b01f-40bf-8890-b400d4e3d7f4 (email_archive)",
+        "member_of->urn:openrag:openarchiver:thread:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:%3C1F9AE13E-C2A3-42A9-9C37-79B2940C237A%40ferme-de-pommerieux.fr%3E ()",
+        "member_of->urn:openrag:openarchiver:thread:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:%3C1F9AE13E-C2A3-42A9-9C37-79B2940C237A%40ferme-de-pommerieux.fr%3E (email_thread)"
+      ],
+      "retrieval_probes": [
+        "deep-fibre-optique:dense@195",
+        "known-component-anchors:metadata_relation@103",
+        "known-component-anchors:metadata_relation@142"
+      ],
+      "review_notes": "",
+      "review_priority": "outside_baseline_candidate",
+      "review_state": "unreviewed",
+      "secondary_context_signals": [],
+      "selection_class": "NEAR_HUMAN_CORE_TITLE_FAMILY",
+      "selection_reason": "Le titre du document non jugé appartient à une famille structurelle exacte ou proche d'un titre CORE humain ; une revue humaine est requise.",
+      "sender": "",
+      "source": "openarchiver",
+      "source_entity_alternate_ids": [],
+      "source_entity_id": "urn:openrag:openarchiver:attachment:4600c50b-ea30-406a-9070-569528f5b8bc",
+      "text_preview": "votre offre Série Limitée Sosh 17,99€ 100 Go synthèse de votre offre page suivante détails et conditions sur votre espace client",
+      "title": "250117-facture_9073083280_2025-01-06.pdf",
+      "title_family_signature": "<n>-facture_<id>_<n>-<n>-<n>.pdf",
+      "title_similarity": 0.933333
+    },
+    {
+      "anchor_candidate_id": "candidate-8c3e27b891da1f72",
+      "anchor_title": "facture_9093277556_2023-04-06.pdf",
+      "best_dense_rank": 22,
+      "best_lexical_rank": null,
+      "best_rrf_rank": 35,
+      "candidate_id": "candidate-97f0168659ac16f1",
+      "component_human_label": "",
+      "component_id": "component-33f68a427068d9f0",
+      "component_key": "thread:urn:openrag:openarchiver:thread:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:%3CF4B02868-30A0-4335-B5C3-C91CBFE35EA5%40ferme-de-pommerieux.fr%3E",
+      "current_closure_member": false,
+      "date": "",
+      "discovery_query_ids": [
+        "deep-fibre-optique",
+        "entity-orange-fibre"
+      ],
+      "discovery_reasons": [
+        "alternate query",
+        "entity query",
+        "metadata_recovery"
+      ],
+      "document_id": "q-LQPqGW9iuCf53gorTZpnU2",
+      "email_id": "f8ffeb18-9f2c-43cc-8ad3-595237b116eb",
+      "false_positive_risks": [],
+      "human_label": "",
+      "label_owner": "HUMAN_REVIEW_REQUIRED",
+      "occurrence_id": "urn:openrag:openarchiver:attachment:583d14cc-042d-4280-9501-c279d940bdd8",
+      "openarchiver_url": "https://openarchiver.ferme-de-pommerieux.fr/dashboard/archived-emails/f8ffeb18-9f2c-43cc-8ad3-595237b116eb",
+      "recipients": "",
+      "relations": [
+        "attachment_of->urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:f8ffeb18-9f2c-43cc-8ad3-595237b116eb ()",
+        "attachment_of->urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:f8ffeb18-9f2c-43cc-8ad3-595237b116eb (email_message)",
+        "contained_in->urn:openrag:openarchiver:source:9e325a3e-b01f-40bf-8890-b400d4e3d7f4 ()",
+        "contained_in->urn:openrag:openarchiver:source:9e325a3e-b01f-40bf-8890-b400d4e3d7f4 (email_archive)",
+        "member_of->urn:openrag:openarchiver:thread:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:%3CF4B02868-30A0-4335-B5C3-C91CBFE35EA5%40ferme-de-pommerieux.fr%3E ()",
+        "member_of->urn:openrag:openarchiver:thread:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:%3CF4B02868-30A0-4335-B5C3-C91CBFE35EA5%40ferme-de-pommerieux.fr%3E (email_thread)"
+      ],
+      "retrieval_probes": [
+        "deep-fibre-optique:dense@209",
+        "entity-orange-fibre:dense@22",
+        "entity-orange-fibre:rrf@35",
+        "known-component-anchors:metadata_relation@174"
+      ],
+      "review_notes": "",
+      "review_priority": "outside_baseline_candidate",
+      "review_state": "unreviewed",
+      "secondary_context_signals": [],
+      "selection_class": "EXACT_HUMAN_CORE_TITLE_FAMILY",
+      "selection_reason": "Le titre du document non jugé appartient à une famille structurelle exacte ou proche d'un titre CORE humain ; une revue humaine est requise.",
+      "sender": "",
+      "source": "openarchiver",
+      "source_entity_alternate_ids": [],
+      "source_entity_id": "urn:openrag:openarchiver:attachment:583d14cc-042d-4280-9501-c279d940bdd8",
+      "text_preview": "[Document structural region] Page: 1 Region: page_footer - Position(left=208.6, top=40.6); Text: Orange SA au capital de 10 640 226 396 € - 111 quai du Prés. Roosevelt 92130 Issy-les-Moulineaux - 380 129 866 RCS Nanterre - Position(left=507.4, top=23.1); Text: page : 1/2",
+      "title": "facture_9073083280_2023-01-04.pdf",
+      "title_family_signature": "facture_<id>_<n>-<n>-<n>.pdf",
+      "title_similarity": 1.0
+    },
+    {
+      "anchor_candidate_id": "candidate-ac6698356b07eae7",
+      "anchor_title": "Grand livre auxiliaire.pdf",
+      "best_dense_rank": null,
+      "best_lexical_rank": null,
+      "best_rrf_rank": null,
+      "candidate_id": "candidate-a664e7dfb038e739",
+      "component_human_label": "",
+      "component_id": "component-f66f279386166fe9",
+      "component_key": "thread:urn:openrag:openarchiver:thread:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:%3C662fa4f67a6f41e588f59c1bcf6d0281%40alliancecentre.cerfrance.fr%3E",
+      "current_closure_member": false,
+      "date": "",
+      "discovery_query_ids": [],
+      "discovery_reasons": [
+        "metadata_recovery"
+      ],
+      "document_id": "iOLCLKRFnnZPswYzp2djh9_7",
+      "email_id": "82d9c0d1-3d30-40a6-b48b-f386dcbf862a",
+      "false_positive_risks": [],
+      "human_label": "",
+      "label_owner": "HUMAN_REVIEW_REQUIRED",
+      "occurrence_id": "urn:openrag:openarchiver:attachment:18684d8f-981a-4bb4-aba1-5c0dab004d8b",
+      "openarchiver_url": "https://openarchiver.ferme-de-pommerieux.fr/dashboard/archived-emails/82d9c0d1-3d30-40a6-b48b-f386dcbf862a",
+      "recipients": "",
+      "relations": [
+        "attachment_of->urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:82d9c0d1-3d30-40a6-b48b-f386dcbf862a ()",
+        "attachment_of->urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:82d9c0d1-3d30-40a6-b48b-f386dcbf862a (email_message)",
+        "attachment_of->urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:a2be6ad0-f2a1-4edd-9b21-fb49bcc53195 ()",
+        "attachment_of->urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:a2be6ad0-f2a1-4edd-9b21-fb49bcc53195 (email_message)",
+        "contained_in->urn:openrag:openarchiver:source:9e325a3e-b01f-40bf-8890-b400d4e3d7f4 ()",
+        "contained_in->urn:openrag:openarchiver:source:9e325a3e-b01f-40bf-8890-b400d4e3d7f4 (email_archive)",
+        "member_of->urn:openrag:openarchiver:thread:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:%3C662fa4f67a6f41e588f59c1bcf6d0281%40alliancecentre.cerfrance.fr%3E ()",
+        "member_of->urn:openrag:openarchiver:thread:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:%3C662fa4f67a6f41e588f59c1bcf6d0281%40alliancecentre.cerfrance.fr%3E (email_thread)",
+        "member_of->urn:openrag:openarchiver:thread:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:%3C80c35dbd5ec240358a80582228a855b7%40alliancecentre.cerfrance.fr%3E ()",
+        "member_of->urn:openrag:openarchiver:thread:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:%3C80c35dbd5ec240358a80582228a855b7%40alliancecentre.cerfrance.fr%3E (email_thread)"
+      ],
+      "retrieval_probes": [
+        "known-component-anchors:metadata_relation@209"
+      ],
+      "review_notes": "",
+      "review_priority": "outside_baseline_candidate",
+      "review_state": "unreviewed",
+      "secondary_context_signals": [
+        "ACCOUNTING"
+      ],
+      "selection_class": "NEAR_HUMAN_CORE_TITLE_FAMILY",
+      "selection_reason": "Le titre du document non jugé appartient à une famille structurelle exacte ou proche d'un titre CORE humain ; une revue humaine est requise.",
+      "sender": "",
+      "source": "openarchiver",
+      "source_entity_alternate_ids": [],
+      "source_entity_id": "urn:openrag:openarchiver:attachment:18684d8f-981a-4bb4-aba1-5c0dab004d8b",
+      "text_preview": "Justificatif de solde Comptes auxiliaires du CAADIV200 CAADIV200 au Dates comptables du 03/07/2012 30/12/2099 au Etablissement <<Tous>> Devise <<Tous>> / Affichage en euros Numéros de pièces (folios) de à Référence interne Type d'écritures Normal Exercice <<Tous>> Nature des comptes <<Tous>> Mode de sélection Comptes d'exception Tous les comptes Ecritures validées Lettrées n n A-Nouveaux détaillés Justif. de solde en date du 31/12/2019 Comptes généraux du au 411000 411000",
+      "title": "Grand livre auxiliaire CLIENTS.pdf",
+      "title_family_signature": "grand livre auxiliaire clients.pdf",
+      "title_similarity": 0.866667
+    },
+    {
+      "anchor_candidate_id": "candidate-9e630ecc5ef1bebc",
+      "anchor_title": "Confirmation de votre commande",
+      "best_dense_rank": null,
+      "best_lexical_rank": 58,
+      "best_rrf_rank": 96,
+      "candidate_id": "candidate-cc0a2e6332127afc",
+      "component_human_label": "",
+      "component_id": "component-32431603174baed8",
+      "component_key": "thread:urn:openrag:openarchiver:thread:6ca4c5b5-3440-4c50-8666-cecfa25916d5:%3C0.0.A.79.1D73DC71EDB8336.0%40mail29241.apostello.io%3E",
+      "current_closure_member": false,
+      "date": "2021-04-30T13:45:47Z",
+      "discovery_query_ids": [
+        "deep-fibre-optique"
+      ],
+      "discovery_reasons": [
+        "alternate query",
+        "metadata_recovery"
+      ],
+      "document_id": "Vj1mUy_x0fcMcCzhxIYvOVul",
+      "email_id": "115d8da2-59c7-4675-a1f5-2cf966d55857",
+      "false_positive_risks": [],
+      "human_label": "",
+      "label_owner": "HUMAN_REVIEW_REQUIRED",
+      "occurrence_id": "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:115d8da2-59c7-4675-a1f5-2cf966d55857",
+      "openarchiver_url": "https://openarchiver.ferme-de-pommerieux.fr/dashboard/archived-emails/115d8da2-59c7-4675-a1f5-2cf966d55857",
+      "recipients": "primaux@wisearch.fr",
+      "relations": [
+        "contained_in->urn:openrag:openarchiver:source:6ca4c5b5-3440-4c50-8666-cecfa25916d5 ()",
+        "contained_in->urn:openrag:openarchiver:source:6ca4c5b5-3440-4c50-8666-cecfa25916d5 (email_archive)",
+        "member_of->urn:openrag:openarchiver:thread:6ca4c5b5-3440-4c50-8666-cecfa25916d5:%3C0.0.A.79.1D73DC71EDB8336.0%40mail29241.apostello.io%3E ()",
+        "member_of->urn:openrag:openarchiver:thread:6ca4c5b5-3440-4c50-8666-cecfa25916d5:%3C0.0.A.79.1D73DC71EDB8336.0%40mail29241.apostello.io%3E (email_thread)"
+      ],
+      "retrieval_probes": [
+        "deep-fibre-optique:lexical@58",
+        "deep-fibre-optique:rrf@96",
+        "known-component-anchors:metadata_relation@88"
+      ],
+      "review_notes": "",
+      "review_priority": "outside_baseline_candidate",
+      "review_state": "unreviewed",
+      "secondary_context_signals": [],
+      "selection_class": "NEAR_HUMAN_CORE_TITLE_FAMILY",
+      "selection_reason": "Le titre du document non jugé appartient à une famille structurelle exacte ou proche d'un titre CORE humain ; une revue humaine est requise.",
+      "sender": "La Poste <laposte@notif-lpfr-laposte.info>",
+      "source": "openarchiver",
+      "source_entity_alternate_ids": [
+        "urn:openrag:rfc5322:message-id:%3C0.0.A.79.1D73DC71EDB8336.0%40mail29241.apostello.io%3E"
+      ],
+      "source_entity_id": "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:115d8da2-59c7-4675-a1f5-2cf966d55857",
+      "text_preview": "Confirmation de commande From: La Poste <laposte@notif-lpfr-laposte.info> To: primaux@wisearch.fr Date: 2021-04-30T13:45:47+00:00 | Bonjour M. Eloi Primaux, Votre commande n° 770694937 sur la Boutique a bien été enregistrée le 30/04/2021. Colissimo en ligne Imprimez votre bordereau d'affranchissement - Le code barre du bordereau doit être bien imprimé et lisible - Le bordereau doit être collé à plat sur une seule face du colis Vous n'avez pas d'imprimante ? Imprimez ce bordereau en bureau de Poste, sur l'automate en libre-service ou au guichet. > En savoir plus.",
+      "title": "Confirmation de commande",
+      "title_family_signature": "confirmation de commande",
+      "title_similarity": 0.888889
+    },
+    {
+      "anchor_candidate_id": "candidate-b7816406ec3b1756",
+      "anchor_title": "Votre colis ORANGE est arrivé dans votre relais Pickup !",
+      "best_dense_rank": 45,
+      "best_lexical_rank": 54,
+      "best_rrf_rank": 54,
+      "candidate_id": "candidate-cdc289be903e7545",
+      "component_human_label": "",
+      "component_id": "component-685924f0a0029990",
+      "component_key": "thread:urn:openrag:openarchiver:thread:6ca4c5b5-3440-4c50-8666-cecfa25916d5:%3CwE3AU0oBRJ-xQZApthafVQ%40geopod-ismtpd-3-0%3E",
+      "current_closure_member": false,
+      "date": "2023-01-18T09:10:18Z",
+      "discovery_query_ids": [
+        "entity-orange-fibre"
+      ],
+      "discovery_reasons": [
+        "entity query",
+        "metadata_recovery"
+      ],
+      "document_id": "b-IXLbod1wwMnJoML5yyrbOy",
+      "email_id": "394f729d-6dab-4490-aff2-c9c521f8c0f6",
+      "false_positive_risks": [],
+      "human_label": "",
+      "label_owner": "HUMAN_REVIEW_REQUIRED",
+      "occurrence_id": "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:394f729d-6dab-4490-aff2-c9c521f8c0f6",
+      "openarchiver_url": "https://openarchiver.ferme-de-pommerieux.fr/dashboard/archived-emails/394f729d-6dab-4490-aff2-c9c521f8c0f6",
+      "recipients": "",
+      "relations": [
+        "contained_in->urn:openrag:openarchiver:source:6ca4c5b5-3440-4c50-8666-cecfa25916d5 ()",
+        "contained_in->urn:openrag:openarchiver:source:6ca4c5b5-3440-4c50-8666-cecfa25916d5 (email_archive)",
+        "member_of->urn:openrag:openarchiver:thread:6ca4c5b5-3440-4c50-8666-cecfa25916d5:%3CwE3AU0oBRJ-xQZApthafVQ%40geopod-ismtpd-3-0%3E ()",
+        "member_of->urn:openrag:openarchiver:thread:6ca4c5b5-3440-4c50-8666-cecfa25916d5:%3CwE3AU0oBRJ-xQZApthafVQ%40geopod-ismtpd-3-0%3E (email_thread)"
+      ],
+      "retrieval_probes": [
+        "entity-orange-fibre:dense@45",
+        "entity-orange-fibre:lexical@54",
+        "entity-orange-fibre:rrf@54",
+        "known-component-anchors:metadata_relation@168"
+      ],
+      "review_notes": "",
+      "review_priority": "outside_baseline_candidate",
+      "review_state": "unreviewed",
+      "secondary_context_signals": [],
+      "selection_class": "EXACT_HUMAN_CORE_TITLE_FAMILY",
+      "selection_reason": "Le titre du document non jugé appartient à une famille structurelle exacte ou proche d'un titre CORE humain ; une revue humaine est requise.",
+      "sender": "",
+      "source": "openarchiver",
+      "source_entity_alternate_ids": [
+        "urn:openrag:rfc5322:message-id:%3CwE3AU0oBRJ-xQZApthafVQ%40geopod-ismtpd-3-0%3E"
+      ],
+      "source_entity_id": "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:394f729d-6dab-4490-aff2-c9c521f8c0f6",
+      "text_preview": "Votre colis ORANGE est arrivé dans votre relais Pickup ! | | | | | | | | | | | | | | |",
+      "title": "Votre colis ORANGE est arrivé dans votre relais Pickup !",
+      "title_family_signature": "votre colis orange est arrive dans votre relais pickup !",
+      "title_similarity": 1.0
+    },
+    {
+      "anchor_candidate_id": "candidate-8c3e27b891da1f72",
+      "anchor_title": "facture_9093277556_2023-04-06.pdf",
+      "best_dense_rank": 192,
+      "best_lexical_rank": null,
+      "best_rrf_rank": null,
+      "candidate_id": "candidate-d7bae65995b86664",
+      "component_human_label": "",
+      "component_id": "component-b8b199e838dd838b",
+      "component_key": "thread:urn:openrag:openarchiver:thread:6ca4c5b5-3440-4c50-8666-cecfa25916d5:%3C8CFDE315-D782-4E25-8E94-0D4BFBA6AAA6%40wisearch.eu%3E",
+      "current_closure_member": false,
+      "date": "",
+      "discovery_query_ids": [
+        "deep-fibre-optique"
+      ],
+      "discovery_reasons": [
+        "alternate query",
+        "metadata_recovery"
+      ],
+      "document_id": "uoW2raos1PgZKi7pa8ZpURwm",
+      "email_id": "92921513-2838-4fec-835a-962242fcae8a",
+      "false_positive_risks": [
+        "MOBILE_ONLY"
+      ],
+      "human_label": "",
+      "label_owner": "HUMAN_REVIEW_REQUIRED",
+      "occurrence_id": "urn:openrag:openarchiver:attachment:72948a6f-e1bc-4225-8e5b-b63ea4212a4a",
+      "openarchiver_url": "https://openarchiver.ferme-de-pommerieux.fr/dashboard/archived-emails/92921513-2838-4fec-835a-962242fcae8a",
+      "recipients": "",
+      "relations": [
+        "attachment_of->urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:92921513-2838-4fec-835a-962242fcae8a ()",
+        "attachment_of->urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:92921513-2838-4fec-835a-962242fcae8a (email_message)",
+        "contained_in->urn:openrag:openarchiver:source:6ca4c5b5-3440-4c50-8666-cecfa25916d5 ()",
+        "contained_in->urn:openrag:openarchiver:source:6ca4c5b5-3440-4c50-8666-cecfa25916d5 (email_archive)",
+        "member_of->urn:openrag:openarchiver:thread:6ca4c5b5-3440-4c50-8666-cecfa25916d5:%3C8CFDE315-D782-4E25-8E94-0D4BFBA6AAA6%40wisearch.eu%3E ()",
+        "member_of->urn:openrag:openarchiver:thread:6ca4c5b5-3440-4c50-8666-cecfa25916d5:%3C8CFDE315-D782-4E25-8E94-0D4BFBA6AAA6%40wisearch.eu%3E (email_thread)"
+      ],
+      "retrieval_probes": [
+        "deep-fibre-optique:dense@192",
+        "known-component-anchors:metadata_relation@189"
+      ],
+      "review_notes": "",
+      "review_priority": "outside_baseline_candidate",
+      "review_state": "unreviewed",
+      "secondary_context_signals": [],
+      "selection_class": "EXACT_HUMAN_CORE_TITLE_FAMILY",
+      "selection_reason": "Le titre du document non jugé appartient à une famille structurelle exacte ou proche d'un titre CORE humain ; une revue humaine est requise.",
+      "sender": "",
+      "source": "openarchiver",
+      "source_entity_alternate_ids": [],
+      "source_entity_id": "urn:openrag:openarchiver:attachment:72948a6f-e1bc-4225-8e5b-b63ea4212a4a",
+      "text_preview": "votre offre Série Limitée Sosh 17,99€ 100 Go synthèse de votre offre page suivante détails et conditions sur votre espace client",
+      "title": "facture_9073083280_2024-10-04.pdf",
+      "title_family_signature": "facture_<id>_<n>-<n>-<n>.pdf",
+      "title_similarity": 1.0
+    },
+    {
+      "anchor_candidate_id": "candidate-8c3e27b891da1f72",
+      "anchor_title": "facture_9093277556_2023-04-06.pdf",
+      "best_dense_rank": 20,
+      "best_lexical_rank": null,
+      "best_rrf_rank": 32,
+      "candidate_id": "candidate-f9a5bdf11de8d796",
+      "component_human_label": "",
+      "component_id": "component-0a605204cf7a9e6b",
+      "component_key": "thread:urn:openrag:openarchiver:thread:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:%3C25E5EE28-4E67-41C7-8143-C9B6B793975F%40ferme-de-pommerieux.fr%3E",
+      "current_closure_member": false,
+      "date": "",
+      "discovery_query_ids": [
+        "deep-fibre-optique",
+        "entity-orange-fibre"
+      ],
+      "discovery_reasons": [
+        "alternate query",
+        "entity query",
+        "metadata_recovery"
+      ],
+      "document_id": "kLNOxpLsVN79wi4rlw55HDV4",
+      "email_id": "26ce331e-e775-4ed6-963f-746912862514",
+      "false_positive_risks": [],
+      "human_label": "",
+      "label_owner": "HUMAN_REVIEW_REQUIRED",
+      "occurrence_id": "urn:openrag:openarchiver:attachment:79554186-ce84-40a5-860c-d44f1c0493f8",
+      "openarchiver_url": "https://openarchiver.ferme-de-pommerieux.fr/dashboard/archived-emails/26ce331e-e775-4ed6-963f-746912862514",
+      "recipients": "",
+      "relations": [
+        "attachment_of->urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:26ce331e-e775-4ed6-963f-746912862514 ()",
+        "attachment_of->urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:26ce331e-e775-4ed6-963f-746912862514 (email_message)",
+        "contained_in->urn:openrag:openarchiver:source:9e325a3e-b01f-40bf-8890-b400d4e3d7f4 ()",
+        "contained_in->urn:openrag:openarchiver:source:9e325a3e-b01f-40bf-8890-b400d4e3d7f4 (email_archive)",
+        "member_of->urn:openrag:openarchiver:thread:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:%3C25E5EE28-4E67-41C7-8143-C9B6B793975F%40ferme-de-pommerieux.fr%3E ()",
+        "member_of->urn:openrag:openarchiver:thread:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:%3C25E5EE28-4E67-41C7-8143-C9B6B793975F%40ferme-de-pommerieux.fr%3E (email_thread)"
+      ],
+      "retrieval_probes": [
+        "deep-fibre-optique:dense@214",
+        "entity-orange-fibre:dense@20",
+        "entity-orange-fibre:rrf@32",
+        "known-component-anchors:metadata_relation@195"
+      ],
+      "review_notes": "",
+      "review_priority": "outside_baseline_candidate",
+      "review_state": "unreviewed",
+      "secondary_context_signals": [],
+      "selection_class": "EXACT_HUMAN_CORE_TITLE_FAMILY",
+      "selection_reason": "Le titre du document non jugé appartient à une famille structurelle exacte ou proche d'un titre CORE humain ; une revue humaine est requise.",
+      "sender": "",
+      "source": "openarchiver",
+      "source_entity_alternate_ids": [],
+      "source_entity_id": "urn:openrag:openarchiver:attachment:79554186-ce84-40a5-860c-d44f1c0493f8",
+      "text_preview": "[Document structural region] Page: 1 Region: page_footer - Position(left=208.6, top=40.6); Text: Orange SA au capital de 10 640 226 396 € - 111 quai du Prés. Roosevelt 92130 Issy-les-Moulineaux - 380 129 866 RCS Nanterre - Position(left=507.4, top=23.1); Text: page : 1/2",
+      "title": "facture_9073083280_2023-02-06.pdf",
+      "title_family_signature": "facture_<id>_<n>-<n>-<n>.pdf",
+      "title_similarity": 1.0
+    }
+  ],
+  "case_id": "orange-fibre-cross-domain-v1",
+  "corpus_digest": "038987ca2eb70b2e56d674bc45e9b60fe00652e72296249dba0252d6964fafd7",
+  "high_priority_candidates_found": 13,
+  "human_review_needed": 13,
+  "pooling_method": "TREC-style pooled retrieval lanes plus metadata/relation recovery; retrieval signals select candidates only and never assign qrels.",
+  "probe_diagnostics": {
+    "direct_brand_plus_fixed_term_in_full_preview": 0,
+    "exact_nondegenerate_human_core_title_family": 9,
+    "generic_mail_id_title_families_excluded": true,
+    "near_nondegenerate_human_core_title_family": 4,
+    "same_document_id_as_human_core": 0,
+    "same_sender_domain_diagnostic_only": 378,
+    "same_thread_or_component_as_human_core": 0,
+    "shared_long_numeric_identifier_diagnostic_only": 77,
+    "title_similarity_threshold": 0.82
+  },
+  "schema_version": 1
+}
