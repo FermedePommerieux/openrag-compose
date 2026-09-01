@@ -36,7 +36,7 @@ _LEGACY_RETRIEVAL_COMPONENT = (
     "ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra"
 )
 _BACKEND_RETRIEVAL_COMPONENT = "ext:openrag:OpenRAGBackendRetrievalComponent@extra"
-_RETRIEVAL_FLOW_MIGRATION_VERSION = 13
+_RETRIEVAL_FLOW_MIGRATION_VERSION = 14
 _LEGACY_SYSTEM_FLOW_ID = "1098eea1-6649-4e1d-aed1-b77249fb8dd0"
 # These fields are rewritten by OpenRAG's settings synchronization and by
 # Langflow's provider refresh endpoint. Their values and option lists are
@@ -166,6 +166,17 @@ _PREVIOUS_VERSIONED_MULTI_QUERY_GRAPH_SHA256 = (
 )
 _PREVIOUS_VERSIONED_MULTI_QUERY_RUNTIME_GRAPH_SHA256 = (
     "2410b7449648a6fad712ef6bf00c08920df7685f01641cbd7ad3d1d0d604b494"
+)
+# Exact fingerprints of the deployed Retrieval v2 version 13 graph before
+# canonical coverage verification and DLS relation redaction were added to the
+# Agent and backend-retrieval components. The managed-behavior fingerprint is
+# the live production identity observed before rollout; it excludes only the
+# prompt/model/provider fields that OpenRAG settings own and resynchronize.
+_PREVIOUS_VERSIONED_FAIL_CLOSED_GRAPH_SHA256 = (
+    "3b8e8d4843fd30f9f9b1b3356176fce9723c6c216d7dc73bebe5e84b360092bf"
+)
+_PREVIOUS_VERSIONED_FAIL_CLOSED_MANAGED_GRAPH_SHA256 = (
+    "1aa6efbb51bcd2387d27021b1dbe6ce6047df7754533ed3434ac8ec10b3c0ff7"
 )
 
 
@@ -1575,9 +1586,17 @@ class FlowsService:
             if marker == 11
             else {_PREVIOUS_VERSIONED_MULTI_QUERY_GRAPH_SHA256}
             if marker == 12
+            else {_PREVIOUS_VERSIONED_FAIL_CLOSED_GRAPH_SHA256}
+            if marker == 13
             else set()
         )
         exact_match = self._graph_fingerprint(flow_data) in expected
+        if marker == 13:
+            return (
+                exact_match
+                or self._managed_behavior_normalized_graph_fingerprint(flow_data)
+                == _PREVIOUS_VERSIONED_FAIL_CLOSED_MANAGED_GRAPH_SHA256
+            )
         if marker not in {6, 7, 8, 9, 10, 11, 12}:
             return exact_match
         expected_runtime = (
