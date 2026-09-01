@@ -427,6 +427,9 @@ def _graph_observation(graph: dict[str, Any]) -> dict[str, Any]:
         "public": {
             "documents": len(documents),
             "entities": int(coverage.get("entities_visited") or len(primary_entities)),
+            "scope_identity_sha256": _sha256(sorted(documents)),
+            "entity_identity_sha256": _sha256(sorted(observed_entities)),
+            "edge_identity_sha256": _sha256(sorted(edges)),
             "chunks": chunks,
             "depth": int(coverage.get("depth_reached") or 0),
             "frontier": len(frontier),
