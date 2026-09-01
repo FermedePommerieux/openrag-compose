@@ -87,6 +87,7 @@ _COVERAGE_FIELDS = (
     "graph_stability_observations",
     "relations_unclassified",
     "identity_shared_aliases_resolved",
+    "scope_diagnostics",
     "documents_discovered",
     "documents_complete",
     "documents_incomplete",
@@ -493,16 +494,21 @@ def compact_product_response(
             "capability_profile": runtime_profile.get("planner", {}).get("capability_profile"),
         }
     )
-    query_hashes = [
-        _canonical_sha256(
-            {
-                "query_id": item.get("query_id"),
-                "query_text": item.get("query_text"),
-                "query_type": item.get("query_type"),
-            }
-        )
-        for item in generated_queries
-    ]
+    server_query_hashes = discovery.get("query_hashes")
+    query_hashes = (
+        [str(value) for value in server_query_hashes]
+        if isinstance(server_query_hashes, list)
+        else [
+            _canonical_sha256(
+                {
+                    "query_id": item.get("query_id"),
+                    "query_text": item.get("query_text"),
+                    "query_type": item.get("query_type"),
+                }
+            )
+            for item in generated_queries
+        ]
+    )
     run = {
         "run_id": f"q{query_count}-r{repetition}",
         "started_at": started_at,
@@ -529,7 +535,7 @@ def compact_product_response(
         "planner": planner,
         "generated_queries": generated_queries,
         "query_hashes": query_hashes,
-        "plan_fingerprint": _canonical_sha256(query_hashes),
+        "plan_fingerprint": discovery.get("plan_fingerprint") or _canonical_sha256(query_hashes),
         "discovery": {
             field: discovery.get(field)
             for field in (
@@ -548,6 +554,13 @@ def compact_product_response(
                 "unique_seed_documents",
                 "duplicate_seed_ratio",
                 "query_errors",
+                "original_query",
+                "original_query_normalized",
+                "original_query_sha256",
+                "generated_variants",
+                "normalized_variants",
+                "query_hashes",
+                "plan_fingerprint",
                 "timings",
             )
             if field in discovery

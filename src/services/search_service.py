@@ -2,6 +2,7 @@ import asyncio
 import copy
 import hashlib
 import hmac
+import json
 import os
 import re
 import time
@@ -30,6 +31,7 @@ from services.retrieval_service import (
     build_discovery_plan,
     certify_scope_coverage,
     decode_exhaustive_cursor,
+    discovery_plan_audit,
     discovery_query_prompt,
     document_content_sha256_from_chunks,
     encode_exhaustive_cursor,
@@ -1406,13 +1408,27 @@ class SearchService:
         query: str,
         *,
         max_queries: int,
-    ) -> tuple[list[DiscoveryQuery], str | None, float]:
+    ) -> tuple[list[DiscoveryQuery], str | None, float, dict[str, Any]]:
         """Generate variants from the user query alone and fail safely to q0."""
 
         started = time.perf_counter()
         bounded_max = min(MAX_DISCOVERY_QUERIES, max(1, int(max_queries)))
         if bounded_max == 1:
-            return build_discovery_plan(query, None, max_queries=1), None, 0.0
+            plan = build_discovery_plan(query, None, max_queries=1)
+            return (
+                plan,
+                None,
+                0.0,
+                {
+                    **discovery_plan_audit(query, None, plan),
+                    "planner_invoked": False,
+                    "request_parameters": {},
+                    "request_fingerprint": None,
+                    "response_model": None,
+                },
+            )
+        request_parameters: dict[str, Any] = {}
+        request_fingerprint: str | None = None
         try:
             config = get_openrag_config()
             provider, model, _source = resolve_planner_selection(config)
@@ -1431,6 +1447,18 @@ class SearchService:
                 temperature=0,
                 max_output_tokens=800,
             )
+            request_parameters = {key: value for key, value in request.items() if key != "input"}
+            request_parameters["input_sha256"] = hashlib.sha256(
+                str(request["input"]).encode("utf-8")
+            ).hexdigest()
+            request_fingerprint = hashlib.sha256(
+                json.dumps(
+                    request_parameters,
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ).encode("utf-8")
+            ).hexdigest()
             response = await clients.patched_llm_client.responses.create(**request)
             output_text = getattr(response, "output_text", None)
             if not isinstance(output_text, str) or not output_text.strip():
@@ -1441,15 +1469,34 @@ class SearchService:
                 max_queries=bounded_max,
                 generation_method="llm_structured_v1",
             )
-            return plan, None, time.perf_counter() - started
+            return (
+                plan,
+                None,
+                time.perf_counter() - started,
+                {
+                    **discovery_plan_audit(query, output_text, plan),
+                    "planner_invoked": True,
+                    "request_parameters": request_parameters,
+                    "request_fingerprint": request_fingerprint,
+                    "response_model": getattr(response, "model", None),
+                },
+            )
         except Exception as exc:
             logger.warning(
                 "Multi-query generation failed; retaining original query", error=str(exc)
             )
+            plan = build_discovery_plan(query, None, max_queries=bounded_max)
             return (
-                build_discovery_plan(query, None, max_queries=bounded_max),
+                plan,
                 str(exc),
                 time.perf_counter() - started,
+                {
+                    **discovery_plan_audit(query, None, plan),
+                    "planner_invoked": bool(request_parameters),
+                    "request_parameters": request_parameters,
+                    "request_fingerprint": request_fingerprint,
+                    "response_model": None,
+                },
             )
 
     async def _search_multi_query(
@@ -1482,9 +1529,21 @@ class SearchService:
             multi_query_max_queries=max_queries,
         )
         effective_profile = _initial_effective_retrieval_profile(requested_profile)
-        plan, generation_error, generation_seconds = await self._generate_discovery_plan(
+        (
+            plan,
+            generation_error,
+            generation_seconds,
+            plan_audit,
+        ) = await self._generate_discovery_plan(
             query,
             max_queries=max_queries,
+        )
+        planner_contract.update(
+            {
+                "request_parameters": plan_audit["request_parameters"],
+                "request_fingerprint": plan_audit["request_fingerprint"],
+                "response_model": plan_audit["response_model"],
+            }
         )
 
         semaphore = asyncio.Semaphore(min(MAX_DISCOVERY_QUERIES, max(1, int(concurrency))))
@@ -1545,6 +1604,11 @@ class SearchService:
                         else "query_failed",
                         "query_errors": query_errors,
                         "planner": planner_contract,
+                        "original_query": plan_audit["original_query"],
+                        "generated_variants": plan_audit["generated_variants"],
+                        "normalized_variants": plan_audit["normalized_variants"],
+                        "query_hashes": plan_audit["query_hashes"],
+                        "plan_fingerprint": plan_audit["plan_fingerprint"],
                     },
                 },
                 requested=requested_profile,
@@ -1626,6 +1690,13 @@ class SearchService:
             "query_count": len(successful),
             "generated_query_count": len(plan),
             "queries": [item.as_dict() for item in plan],
+            "original_query": plan_audit["original_query"],
+            "original_query_normalized": plan_audit["original_query_normalized"],
+            "original_query_sha256": plan_audit["original_query_sha256"],
+            "generated_variants": plan_audit["generated_variants"],
+            "normalized_variants": plan_audit["normalized_variants"],
+            "query_hashes": plan_audit["query_hashes"],
+            "plan_fingerprint": plan_audit["plan_fingerprint"],
             "fusion": "hierarchical_rrf",
             "fusion_formula": "sum_q(1 / (rrf_k + per_query_rrf_rank))",
             "rrf_k": settings.rrf_k,
@@ -2425,6 +2496,15 @@ class SearchService:
             ),
             "identity_shared_aliases_resolved": graph_coverage.get(
                 "identity_shared_aliases_resolved", 0
+            ),
+            "scope_diagnostics": graph_coverage.get(
+                "scope_diagnostics",
+                {
+                    "documents_per_depth": [],
+                    "entities_per_depth": [],
+                    "relations_per_depth": [],
+                    "largest_expansion_contributors": [],
+                },
             ),
             "documents_discovered": len(documents),
             "documents_complete": complete_documents,

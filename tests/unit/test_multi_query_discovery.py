@@ -9,6 +9,7 @@ from auth_context import get_auth_context, get_search_filters
 from services.retrieval_service import (
     DiscoveryQuery,
     build_discovery_plan,
+    discovery_plan_audit,
     discovery_query_prompt,
     multi_query_reciprocal_rank_fusion,
     normalize_discovery_query,
@@ -48,6 +49,17 @@ def _result(chunk_id: str, document_id: str, query: DiscoveryQuery, rank: int) -
     }
 
 
+def _planner_audit(plan: list[DiscoveryQuery]) -> dict:
+    audit = discovery_plan_audit(plan[0].parent_query, None, plan)
+    return {
+        **audit,
+        "planner_invoked": len(plan) > 1,
+        "request_parameters": {},
+        "request_fingerprint": None,
+        "response_model": None,
+    }
+
+
 def test_normalization_deduplicates_case_accents_whitespace_and_punctuation():
     assert normalize_discovery_query("  Décision—B! ") == "decision b"
     assert normalize_discovery_query("décision B") == "decision b"
@@ -70,6 +82,32 @@ def test_original_is_always_q0_and_generated_duplicates_are_removed():
     assert plan[0].query_text == "Decision B"
     assert plan[0].generation_method == "user"
     assert plan[1].parent_query == "Decision B"
+
+
+def test_plan_audit_records_raw_normalized_variants_and_stable_fingerprint():
+    generated = {
+        "queries": [
+            {"text": "contrat Alpha documents", "kind": "documentary_subject"},
+            {"kind": "documentary_subject", "text": "Contrat Alpha documents."},
+        ]
+    }
+    plan = build_discovery_plan("contrat Alpha", generated, max_queries=4)
+
+    first = discovery_plan_audit("contrat Alpha", generated, plan)
+    second = discovery_plan_audit(
+        "contrat Alpha",
+        {"queries": [dict(reversed(list(item.items()))) for item in generated["queries"]]},
+        plan,
+    )
+
+    assert len(first["generated_variants"]) == 2
+    assert [item["normalized_text"] for item in first["normalized_variants"]] == [
+        "contrat alpha documents",
+        "contrat alpha documents",
+    ]
+    assert len(plan) == 2
+    assert first["query_hashes"] == second["query_hashes"]
+    assert first["plan_fingerprint"] == second["plan_fingerprint"]
 
 
 def test_simple_query_may_keep_only_the_original():
@@ -213,7 +251,10 @@ async def test_multi_query_reuses_dls_filters_and_respects_global_budget(monkeyp
     q0 = _query("q0", "all records about Project Z")
     q1 = _query("q1", "Project Z correspondence")
     q2 = _query("q2", "Project Z decisions")
-    service._generate_discovery_plan = AsyncMock(return_value=([q0, q1, q2], None, 0.01))
+    plan = [q0, q1, q2]
+    service._generate_discovery_plan = AsyncMock(
+        return_value=(plan, None, 0.01, _planner_audit(plan))
+    )
     observations: list[tuple[str, tuple, dict]] = []
 
     async def fake_search(query, **kwargs):
@@ -293,7 +334,9 @@ async def test_multi_query_count_one_preserves_q0_order_and_scores(monkeypatch):
     service = SearchService.__new__(SearchService)
     service.models_service = None
     q0 = _query("q0", "all records about Project Z")
-    service._generate_discovery_plan = AsyncMock(return_value=([q0], None, 0.0))
+    service._generate_discovery_plan = AsyncMock(
+        return_value=([q0], None, 0.0, _planner_audit([q0]))
+    )
     expected = [_result("b", "doc-b", q0, 1), _result("a", "doc-a", q0, 2)]
     service.search_tool = AsyncMock(
         return_value={
@@ -331,7 +374,7 @@ async def test_planner_failure_keeps_q0_results_but_marks_discovery_incomplete(m
     service.models_service = None
     q0 = _query("q0", "all records about Project Z")
     service._generate_discovery_plan = AsyncMock(
-        return_value=([q0], "planner rejected request", 0.01)
+        return_value=([q0], "planner rejected request", 0.01, _planner_audit([q0]))
     )
     expected = [_result("q0-result", "doc-q0", q0, 1)]
     service.search_tool = AsyncMock(

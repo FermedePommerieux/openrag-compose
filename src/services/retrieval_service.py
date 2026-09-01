@@ -507,6 +507,69 @@ def build_discovery_plan(
     return queries
 
 
+def _canonical_json_sha256(value: Any) -> str:
+    canonical = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def discovery_plan_audit(
+    original_query: str,
+    generated_output: str | dict[str, Any] | None,
+    plan: Iterable[DiscoveryQuery],
+) -> dict[str, Any]:
+    """Return a text-safe deterministic trace of one discovery plan.
+
+    This trace reports normalization and fingerprints; it never performs a
+    second model call or changes which generated variants are accepted.
+    """
+
+    plan_values = list(plan)
+    generated_variants: list[dict[str, str]] = []
+    normalized_variants: list[dict[str, str]] = []
+    if generated_output not in (None, ""):
+        payload = _structured_discovery_payload(generated_output)
+        candidates = payload.get("queries")
+        if isinstance(candidates, list):
+            for candidate in candidates:
+                if not isinstance(candidate, dict):
+                    continue
+                text = candidate.get("text")
+                if not isinstance(text, str) or not text.strip():
+                    continue
+                resolved_text = " ".join(text.split())
+                kind = str(candidate.get("kind") or "conceptual_variant").strip().casefold()
+                if kind not in DISCOVERY_QUERY_KINDS:
+                    kind = "conceptual_variant"
+                generated_variants.append({"text": resolved_text, "kind": kind})
+                normalized_variants.append(
+                    {
+                        "text": resolved_text,
+                        "normalized_text": normalize_discovery_query(resolved_text),
+                        "kind": kind,
+                    }
+                )
+
+    query_hashes = [
+        _canonical_json_sha256(
+            {
+                "query_id": item.query_id,
+                "query_text": item.query_text,
+                "query_type": item.query_type,
+            }
+        )
+        for item in plan_values
+    ]
+    return {
+        "original_query": str(original_query),
+        "original_query_normalized": normalize_discovery_query(original_query),
+        "original_query_sha256": _canonical_json_sha256(str(original_query)),
+        "generated_variants": generated_variants,
+        "normalized_variants": normalized_variants,
+        "query_hashes": query_hashes,
+        "plan_fingerprint": _canonical_json_sha256(query_hashes),
+    }
+
+
 def multi_query_reciprocal_rank_fusion(
     query_results: Iterable[tuple[DiscoveryQuery, Iterable[dict[str, Any]]]],
     *,
@@ -863,6 +926,8 @@ def _provenance_record(hit: dict[str, Any]) -> dict[str, Any] | None:
         ),
         "source_relative_path": source.get("source_relative_path"),
         "source_path_ancestors": source.get("source_path_ancestors", []),
+        "document_chunk_count": source.get("document_chunk_count"),
+        "document_character_count": source.get("document_character_count"),
         "generated_at_time": generated_at_time,
         "source_provenance": provenance,
     }
@@ -978,6 +1043,8 @@ def _graph_query_body(
             # pagination key auditable in returned hits.
             "ingest_run_id",
             "chunk_id",
+            "document_chunk_count",
+            "document_character_count",
         ],
         "size": size,
         "track_total_hits": True,
@@ -1035,6 +1102,8 @@ async def expand_provenance_graph(
     queried_reverse: set[str] = set()
     primary_entities: set[str] = set()
     primary_records: dict[str, dict[str, Any]] = {}
+    entity_depths: dict[str, int] = {}
+    document_depths: dict[tuple[str, str], int] = {}
     identifier_owners: dict[str, set[str]] = {}
     pending_edges: set[tuple[str, str, str]] = set()
     context_edges: dict[tuple[str, str, str], dict[str, Any]] = {}
@@ -1094,7 +1163,7 @@ async def expand_provenance_graph(
             )
         )
 
-    def register_identity(record: dict[str, Any]) -> bool:
+    def register_identity(record: dict[str, Any], *, discovery_depth: int) -> bool:
         """Register owners while keeping legitimate duplicate occurrences distinct."""
         nonlocal stop_reason, limit_reached
         primary = str(record["source_entity_id"])
@@ -1105,6 +1174,7 @@ async def expand_provenance_graph(
             return False
         primary_entities.add(primary)
         primary_records.setdefault(primary, record)
+        entity_depths.setdefault(primary, discovery_depth)
 
         for identifier in [primary, *record["source_entity_alternate_ids"]]:
             owners = identifier_owners.setdefault(identifier, set())
@@ -1122,10 +1192,15 @@ async def expand_provenance_graph(
             resolved_shared_aliases.add(identifier)
         return True
 
-    def add_record(record: dict[str, Any], reverse_target_ids: set[str]) -> None:
+    def add_record(
+        record: dict[str, Any],
+        reverse_target_ids: set[str],
+        *,
+        discovery_depth: int,
+    ) -> None:
         """Add one visible occurrence and classify all of its typed relations."""
         nonlocal stop_reason, limit_reached
-        if not register_identity(record):
+        if not register_identity(record, discovery_depth=discovery_depth):
             return
         key = occurrence_key(record)
         if key not in documents:
@@ -1134,6 +1209,7 @@ async def expand_provenance_graph(
                 limit_reached = True
                 blocked_identifiers.add(str(record["source_entity_id"]))
                 return
+        document_depths.setdefault(key, discovery_depth)
         primary = str(record["source_entity_id"])
         source_type = str(record.get("source_entity_type") or "")
         add_intent(primary, entity_type=source_type, forward=False, reverse=True)
@@ -1281,7 +1357,7 @@ async def expand_provenance_graph(
     for document in seed_document_values:
         record = _provenance_record({"_source": document})
         if record is not None:
-            add_record(record, set())
+            add_record(record, set(), discovery_depth=0)
 
     pagination_pages = 0
     traversal_stats: dict[str, dict[str, int]] = {
@@ -1534,7 +1610,11 @@ async def expand_provenance_graph(
 
             reverse_target_ids = set(reverse_ids)
             for key in sorted(all_records):
-                add_record(all_records[key], reverse_target_ids)
+                add_record(
+                    all_records[key],
+                    reverse_target_ids,
+                    discovery_depth=depth + 1,
+                )
                 if limit_reached:
                     break
             depth += 1
@@ -1575,6 +1655,44 @@ async def expand_provenance_graph(
         }
 
     remaining_frontier = sorted(remaining_identifiers())
+
+    def depth_distribution(values: Iterable[int]) -> list[dict[str, int]]:
+        counts: dict[int, int] = {}
+        for value in values:
+            counts[value] = counts.get(value, 0) + 1
+        return [{"depth": value, "count": counts[value]} for value in sorted(counts)]
+
+    relation_depth_counts: dict[tuple[int, str, str, str], int] = {}
+    node_degrees: dict[str, dict[str, int]] = {}
+    for edge in visible_edges.values():
+        source = edge["source_entity_id"]
+        target = edge["target_entity_id"]
+        role = edge["role"]
+        source_type = str(primary_records.get(source, {}).get("source_entity_type") or "")
+        target_type = str(primary_records.get(target, {}).get("source_entity_type") or "")
+        edge_depth = max(entity_depths.get(source, 0), entity_depths.get(target, 0))
+        relation_key = (edge_depth, role, source_type, target_type)
+        relation_depth_counts[relation_key] = relation_depth_counts.get(relation_key, 0) + 1
+        source_degree = node_degrees.setdefault(source, {"outbound": 0, "inbound": 0})
+        target_degree = node_degrees.setdefault(target, {"outbound": 0, "inbound": 0})
+        source_degree["outbound"] += 1
+        target_degree["inbound"] += 1
+
+    largest_expansion_contributors: list[dict[str, Any]] = [
+        {
+            "entity_id": identifier,
+            "entity_type": str(primary_records.get(identifier, {}).get("source_entity_type") or ""),
+            "outbound_edges": degree["outbound"],
+            "inbound_edges": degree["inbound"],
+            "total_edges": degree["outbound"] + degree["inbound"],
+        }
+        for identifier, degree in node_degrees.items()
+    ]
+    largest_expansion_contributors.sort(
+        key=lambda value: (-int(value["total_edges"]), str(value["entity_id"]))
+    )
+    largest_expansion_contributors = largest_expansion_contributors[:20]
+
     return {
         "documents": [documents[key] for key in sorted(documents)],
         "entities": sorted(identifier_owners),
@@ -1605,6 +1723,21 @@ async def expand_provenance_graph(
             "relations_excluded_by_policy": accounting_summary(accounting["excluded"]),
             "relations_unclassified": accounting_summary(accounting["unclassified"]),
             "identity_shared_aliases_resolved": len(resolved_shared_aliases),
+            "scope_diagnostics": {
+                "documents_per_depth": depth_distribution(document_depths.values()),
+                "entities_per_depth": depth_distribution(entity_depths.values()),
+                "relations_per_depth": [
+                    {
+                        "depth": key[0],
+                        "role": key[1],
+                        "source_type": key[2],
+                        "target_type": key[3],
+                        "count": count,
+                    }
+                    for key, count in sorted(relation_depth_counts.items())
+                ],
+                "largest_expansion_contributors": largest_expansion_contributors,
+            },
         },
     }
 

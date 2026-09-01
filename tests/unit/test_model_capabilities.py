@@ -64,7 +64,7 @@ async def test_product_planner_uses_capability_aware_request_for_runtime_model(m
     service = SearchService.__new__(SearchService)
     service.models_service = models_service
 
-    plan, error, _elapsed = await service._generate_discovery_plan(
+    plan, error, _elapsed, audit = await service._generate_discovery_plan(
         "all records about contract Alpha",
         max_queries=4,
     )
@@ -75,3 +75,8 @@ async def test_product_planner_uses_capability_aware_request_for_runtime_model(m
     assert request["model"] == "openai/gpt-5.6-sol"
     assert request["max_output_tokens"] == 800
     assert "temperature" not in request
+    assert audit["planner_invoked"] is True
+    assert audit["request_parameters"]["model"] == "openai/gpt-5.6-sol"
+    assert audit["request_parameters"]["max_output_tokens"] == 800
+    assert audit["request_fingerprint"]
+    assert audit["plan_fingerprint"]

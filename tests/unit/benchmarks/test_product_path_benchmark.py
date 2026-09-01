@@ -64,6 +64,12 @@ def _response() -> dict:
         "total_chunks": 2,
         "graph_frontier_empty": True,
         "graph_limit_reached": False,
+        "scope_diagnostics": {
+            "documents_per_depth": [{"depth": 0, "count": 1}],
+            "entities_per_depth": [{"depth": 0, "count": 1}],
+            "relations_per_depth": [],
+            "largest_expansion_contributors": [],
+        },
         "retrieval_execution_complete": True,
         "requested_retrieval_profile": requested,
         "effective_retrieval_profile": effective,
@@ -105,6 +111,16 @@ def _response() -> dict:
             "multi_query_query_count": 2,
             "multi_query_status": "success",
             "final_seed_chunk_budget": 100,
+            "query_hashes": ["server-q0", "server-q1"],
+            "plan_fingerprint": "server-plan",
+            "generated_variants": [{"text": "Project Z documents", "kind": "documentary_subject"}],
+            "normalized_variants": [
+                {
+                    "text": "Project Z documents",
+                    "normalized_text": "project z documents",
+                    "kind": "documentary_subject",
+                }
+            ],
             "queries": [
                 {"query_id": "q0", "query_text": "Project Z", "generation_method": "user"},
                 {
@@ -172,12 +188,14 @@ def test_compact_response_keeps_product_proof_but_never_chunk_text():
     assert run["contract"]["valid"] is True
     assert run["planner"]["model"] == "gpt-test"
     assert run["runtime_behavior_fingerprint"] == "runtime-fingerprint"
-    assert run["plan_fingerprint"]
-    assert len(run["query_hashes"]) == 2
+    assert run["plan_fingerprint"] == "server-plan"
+    assert run["query_hashes"] == ["server-q0", "server-q1"]
+    assert run["discovery"]["normalized_variants"][0]["normalized_text"] == ("project z documents")
     assert all("evidence_sha256" in item for item in run["contract"]["validation_evidence"])
     assert run["final_seeds"][0]["source_entity_id"] == "occ-1"
     assert "text" not in run["final_seeds"][0]
     assert "coverage" not in run["scope_identities"][0]
+    assert run["coverage"]["scope_diagnostics"]["documents_per_depth"] == [{"depth": 0, "count": 1}]
     assert "must not survive" not in repr(run)
     assert "secret chunk text" not in repr(run)
 

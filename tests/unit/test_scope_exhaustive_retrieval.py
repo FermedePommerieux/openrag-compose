@@ -270,6 +270,19 @@ async def test_graph_traversal_forward_reverse_chain_and_cycle():
     assert forward["coverage"]["frontier_empty"] is True
     assert forward["coverage"]["limit_reached"] is False
     assert forward["coverage"]["entities_visited"] == 3
+    diagnostics = forward["coverage"]["scope_diagnostics"]
+    assert diagnostics["documents_per_depth"] == [
+        {"depth": 1, "count": 2},
+        {"depth": 2, "count": 1},
+    ]
+    assert diagnostics["entities_per_depth"] == diagnostics["documents_per_depth"]
+    assert sum(item["count"] for item in diagnostics["relations_per_depth"]) == 3
+    assert [item["entity_id"] for item in diagnostics["largest_expansion_contributors"]] == [
+        "A",
+        "B",
+        "C",
+    ]
+    assert all(item["total_edges"] == 2 for item in diagnostics["largest_expansion_contributors"])
 
 
 @pytest.mark.asyncio
