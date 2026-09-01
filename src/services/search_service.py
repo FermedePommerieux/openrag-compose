@@ -745,11 +745,15 @@ class SearchService:
             for model_name, embedding_vector in query_embeddings.items():
                 field_name = get_embedding_field_name(model_name)
                 embedding_fields_to_check.append(field_name)
-                # A fixed candidate horizon keeps both page membership and the
-                # document cardinality stable while the user moves between
-                # pages. Growing k with the requested page would make the
-                # displayed total change after every click.
-                knn_result_count = DOCUMENT_SEARCH_RESULT_WINDOW if group_by_document else 50
+                # Document browsing needs a fixed window so pagination does
+                # not change membership. Ranked Retrieval v2 instead honors
+                # its configured dense candidate horizon; otherwise values
+                # above the historical default of 50 are silently ineffective.
+                knn_result_count = (
+                    DOCUMENT_SEARCH_RESULT_WINDOW
+                    if group_by_document
+                    else retrieval_settings.vector_candidates
+                )
                 knn_queries.append(
                     {
                         "knn": {

@@ -421,7 +421,7 @@ async def test_search_service_rrf_fuses_lanes_preserves_provenance_and_emits_deb
         retrieval_strategy="rrf",
         retrieval_mode="hybrid",
         retrieval_lexical_candidates=5,
-        retrieval_vector_candidates=5,
+        retrieval_vector_candidates=80,
         retrieval_rrf_k=60,
         retrieval_max_chunks_per_document=1,
         retrieval_reranker_url="",
@@ -522,6 +522,14 @@ async def test_search_service_rrf_fuses_lanes_preserves_provenance_and_emits_deb
         ]
         for body in lane_bodies
     )
+    vector_body = next(
+        body for body in lane_bodies if "dis_max" in body["query"]["bool"]["should"][0]
+    )
+    knn = vector_body["query"]["bool"]["should"][0]["dis_max"]["queries"][0]["knn"]
+    knn_parameters = next(iter(knn.values()))
+    assert vector_body["size"] == 80
+    assert knn_parameters["k"] == 80
+    assert knn_parameters["num_candidates"] == 1000
 
 
 @pytest.mark.asyncio
