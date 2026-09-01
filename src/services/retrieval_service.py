@@ -610,8 +610,16 @@ def reciprocal_rank_fusion(
     safe_k = max(1, int(k))
 
     for ranked in ranked_lists:
+        # One independently ranked lane can contribute at most once for a
+        # logical chunk.  Keep the first occurrence because it has the best
+        # rank in that lane; the same identity may still contribute again from
+        # another lane (for example lexical and dense).
+        seen_in_lane: set[str] = set()
         for rank, hit in enumerate(ranked, start=1):
             identity = hit_identity(hit)
+            if identity in seen_in_lane:
+                continue
+            seen_in_lane.add(identity)
             score_by_id[identity] = score_by_id.get(identity, 0.0) + 1.0 / (safe_k + rank)
             hit_by_id.setdefault(identity, dict(hit))
 

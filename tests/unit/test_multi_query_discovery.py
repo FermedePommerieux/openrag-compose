@@ -171,6 +171,24 @@ def test_hierarchical_rrf_is_stable_deduplicated_and_traceable():
     assert first[0]["fusion_score"] > first[1]["fusion_score"]
 
 
+def test_hierarchical_rrf_duplicate_occurrence_contributes_once_per_query():
+    q0 = _query("q0", "all records about Project Z")
+    q1 = _query("q1", "Project Z correspondence")
+    duplicate = _result("shared", "doc-a", q0, 1)
+
+    fused = multi_query_reciprocal_rank_fusion(
+        [
+            (q0, [duplicate, dict(duplicate)]),
+            (q1, [_result("shared", "doc-a", q1, 1)]),
+        ],
+        k=60,
+    )
+
+    assert [item["chunk_id"] for item in fused] == ["shared"]
+    assert fused[0]["matched_queries"] == ["q0", "q1"]
+    assert fused[0]["fusion_score"] == pytest.approx(2 / 61)
+
+
 @pytest.mark.asyncio
 async def test_multi_query_reuses_dls_filters_and_respects_global_budget(monkeypatch):
     from services import search_service

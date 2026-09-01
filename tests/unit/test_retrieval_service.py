@@ -33,6 +33,50 @@ def test_rrf_rewards_hits_present_in_both_ranked_lists():
     assert "_retrieval_fusion_score" not in lexical[1]
 
 
+def test_rrf_same_identity_twice_in_lexical_lane_contributes_once():
+    first = _hit("shared", "document")
+    duplicate = _hit("shared", "document", text="duplicate serialization")
+
+    fused = reciprocal_rank_fusion([[first, duplicate], [_hit("other", "other")]], k=60)
+
+    by_id = {hit["_id"]: hit for hit in fused}
+    assert by_id["shared"]["_retrieval_fusion_score"] == pytest.approx(1 / 61)
+    assert by_id["shared"]["_source"]["text"] == "text"
+
+
+def test_rrf_same_identity_twice_in_dense_lane_contributes_once():
+    dense = [_hit("shared", "document"), _hit("shared", "document")]
+
+    fused = reciprocal_rank_fusion([[], dense], k=60)
+
+    assert [hit["_id"] for hit in fused] == ["shared"]
+    assert fused[0]["_retrieval_fusion_score"] == pytest.approx(1 / 61)
+
+
+def test_rrf_same_identity_in_lexical_and_dense_contributes_once_per_lane():
+    shared = _hit("shared", "document")
+
+    fused = reciprocal_rank_fusion([[shared, shared], [shared, shared]], k=60)
+
+    assert [hit["_id"] for hit in fused] == ["shared"]
+    assert fused[0]["_retrieval_fusion_score"] == pytest.approx(2 / 61)
+
+
+def test_rrf_duplicate_serialization_variations_preserve_scores_and_order():
+    canonical = _hit("shared", "document", text="canonical")
+    alternate = _hit("shared", "document", text="alternate")
+    other = _hit("other", "other")
+
+    first = reciprocal_rank_fusion([[canonical, other, alternate]], k=60)
+    second = reciprocal_rank_fusion([[alternate, other, canonical]], k=60)
+
+    assert [hit["_id"] for hit in first] == ["shared", "other"]
+    assert [hit["_id"] for hit in second] == ["shared", "other"]
+    assert [hit["_retrieval_fusion_score"] for hit in first] == pytest.approx(
+        [hit["_retrieval_fusion_score"] for hit in second]
+    )
+
+
 def test_rrf_is_deterministic_for_equal_scores():
     first = reciprocal_rank_fusion([[_hit("a", "a")], [_hit("b", "b")]], k=60)
     second = reciprocal_rank_fusion([[_hit("a", "a")], [_hit("b", "b")]], k=60)
