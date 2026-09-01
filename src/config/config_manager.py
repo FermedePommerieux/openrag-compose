@@ -287,9 +287,9 @@ _RETRIEVAL_V2_SYSTEM_PROMPT = _RETRIEVAL_V1_SECURITY_SYSTEM_PROMPT.replace(
     "When uncertain → **Retrieve.**\n"
     "### Retrieval Query Construction\n"
     "Use only stable identifiers and established context. Never add a candidate answer "
-    "for the attribute being looked up. For `DESTINATAIRE: RODA TEST` and "
-    "`ÉMETTEUR: POMMERIEUX TEST`, asking for the emitter permits "
-    '`"émetteur document-146"`, not `"émetteur document-146 RODA TEST"`.',
+    "for the attribute being looked up. For `RECIPIENT: BETA TEST` and "
+    "`SENDER: ALPHA TEST`, asking for the sender permits "
+    '`"sender document-146"`, not `"sender document-146 BETA TEST"`.',
     1,
 )
 
@@ -334,9 +334,9 @@ DEFAULT_SYSTEM_PROMPT = (
     .replace(
         "### Retrieval Query Construction\n"
         "Use only stable identifiers and established context. Never add a candidate answer "
-        "for the attribute being looked up. For `DESTINATAIRE: RODA TEST` and "
-        "`ÉMETTEUR: POMMERIEUX TEST`, asking for the emitter permits "
-        '`"émetteur document-146"`, not `"émetteur document-146 RODA TEST"`.',
+        "for the attribute being looked up. For `RECIPIENT: BETA TEST` and "
+        "`SENDER: ALPHA TEST`, asking for the sender permits "
+        '`"sender document-146"`, not `"sender document-146 BETA TEST"`.',
         "### Retrieval Query Construction\n"
         "Build neutral queries from stable identifiers, established context, and the concept "
         "being requested. Never add a candidate answer for an unknown attribute.",
@@ -394,7 +394,14 @@ except OSError:
 # deployed default configurations to migrate. Operator-edited prompts remain
 # untouched because even a one-character change produces a different digest.
 LEGACY_SYSTEM_PROMPT_SHA256 = frozenset(
-    {"33533d917dacea6cc7293d2d93a3b79f52f025937610d86e6731e2660f515d94"}
+    {
+        "33533d917dacea6cc7293d2d93a3b79f52f025937610d86e6731e2660f515d94",
+        # Historical defaults containing a named local test example are kept
+        # only as digests so upgrades still migrate them without retaining
+        # domain vocabulary in product-functional prompt source.
+        "43d22a596a0d8dafe80d12c97369c6fcd0b2f3f82c84a41d942691ef41128b14",
+        "ea0f046992fe600fc8cd6c58f58c9533cd34ad16bdf2bd286cf31f6ab300f7d2",
+    }
 )
 
 # Recognize every shipped default so an in-place upgrade can safely synchronize

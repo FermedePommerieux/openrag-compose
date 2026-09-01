@@ -11,11 +11,8 @@ LANGFLOW_DOCUMENT_FIELDS = (
     "source_entity_type",
     "source_entity_system",
     "source_entity_alternate_ids",
-    "source_relation_target_ids",
-    "source_relation_roles",
     "source_relative_path",
     "source_path_ancestors",
-    "scope_context_relations",
     "generated_at_time",
     "complete",
     "status_code",
@@ -31,6 +28,26 @@ def _present_fields(value: dict[str, Any], fields: tuple[str, ...]) -> dict[str,
     }
 
 
+def _without_opaque_relation_targets(value: dict[str, Any]) -> dict[str, Any]:
+    """Defence in depth for payloads not produced by SearchService.search()."""
+    projected = {
+        field: field_value
+        for field, field_value in value.items()
+        if field
+        not in {
+            "source_relation_target_ids",
+            "source_relation_roles",
+            "scope_context_relations",
+        }
+    }
+    provenance = projected.get("source_provenance")
+    if isinstance(provenance, dict):
+        projected["source_provenance"] = {
+            field: field_value for field, field_value in provenance.items() if field != "relations"
+        }
+    return projected
+
+
 def project_scope_exhaustive_for_langflow(payload: dict[str, Any]) -> dict[str, Any]:
     """Remove scope-sized evidence before the backend-to-Langflow boundary.
 
@@ -43,7 +60,9 @@ def project_scope_exhaustive_for_langflow(payload: dict[str, Any]) -> dict[str, 
     OpenSearch client.
     """
     model_results = payload.get("model_results", [])
-    projected_results = [dict(item) for item in model_results if isinstance(item, dict)]
+    projected_results = [
+        _without_opaque_relation_targets(item) for item in model_results if isinstance(item, dict)
+    ]
     documents = payload.get("documents", [])
     manifest = [
         _present_fields(item, LANGFLOW_DOCUMENT_FIELDS)

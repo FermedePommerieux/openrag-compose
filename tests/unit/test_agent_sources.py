@@ -106,7 +106,7 @@ def test_streamed_tool_artifact_becomes_frontend_results_and_keeps_provenance():
                 "artifact": [
                     {
                         "filename": "invoice.pdf",
-                        "text": "POMMERIEUX TEST",
+                        "text": "STREAM CANARY",
                         "page": 1,
                         "document_id": "TEST_DOCUMENT_ID",
                         "chunk_id": "TEST_CHUNK_ID",
@@ -124,7 +124,7 @@ def test_streamed_tool_artifact_becomes_frontend_results_and_keeps_provenance():
     assert chunk["item"]["results"] == [
         {
             "filename": "invoice.pdf",
-            "text": "POMMERIEUX TEST",
+            "text": "STREAM CANARY",
             "page": 1,
             "document_id": "TEST_DOCUMENT_ID",
             "chunk_id": "TEST_CHUNK_ID",
@@ -139,7 +139,7 @@ def test_streamed_tool_artifact_becomes_frontend_results_and_keeps_provenance():
 def test_streamed_json_tool_message_becomes_unfenced_frontend_results(encoding_layers):
     source = {
         "filename": "invoice.pdf",
-        "text": "<<<UNTRUSTED_DOC_CHUNK>>>\nPOMMERIEUX TEST\n<<<END_UNTRUSTED_DOC_CHUNK>>>",
+        "text": "<<<UNTRUSTED_DOC_CHUNK>>>\nSTREAM CANARY\n<<<END_UNTRUSTED_DOC_CHUNK>>>",
         "page": 1,
         "document_id": "TEST_DOCUMENT_ID",
         "chunk_id": "TEST_CHUNK_ID",
@@ -169,7 +169,7 @@ def test_streamed_json_tool_message_becomes_unfenced_frontend_results(encoding_l
     assert chunk["item"]["results"] == [
         {
             **source,
-            "text": "POMMERIEUX TEST",
+            "text": "STREAM CANARY",
         }
     ]
 
@@ -192,7 +192,7 @@ def test_streamed_python_repr_tool_message_is_not_parsed():
 def test_streamed_retrieval_artifact_does_not_require_repeated_tool_name():
     source = {
         "filename": "invoice.pdf",
-        "text": "POMMERIEUX TEST",
+        "text": "STREAM CANARY",
         "document_id": "TEST_DOCUMENT_ID",
         "chunk_id": "TEST_CHUNK_ID",
     }

@@ -1,4 +1,5 @@
 import hashlib
+import json
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
@@ -15,11 +16,72 @@ from services.retrieval_service import (
     limit_chunks_per_document,
     reciprocal_rank_fusion,
 )
-from services.search_service import SearchService
+from services.search_service import SearchService, redact_dls_opaque_relation_metadata
 
 
 def _hit(identifier: str, document_id: str, text: str = "text") -> dict:
     return {"_id": identifier, "_source": {"document_id": document_id, "text": text}}
+
+
+def test_public_relation_redaction_keeps_only_dls_resolved_graph_edges():
+    hidden_id = "urn:openrag:hidden:target"
+    payload = {
+        "results": [
+            {
+                "source_entity_id": "urn:openrag:visible:source",
+                "source_relation_target_ids": [hidden_id],
+                "source_relation_roles": ["attachment_of"],
+                "source_provenance": {
+                    "entity": {"id": "urn:openrag:visible:source"},
+                    "relations": [{"target": {"id": hidden_id}}],
+                },
+            }
+        ],
+        "documents": [{"scope_context_relations": [{"target_entity_id": hidden_id}]}],
+        "graph": {
+            "edges": [
+                {
+                    "source_entity_id": "urn:openrag:visible:source",
+                    "target_entity_id": "urn:openrag:visible:target",
+                }
+            ],
+            "context_edges": [{"target_entity_id": hidden_id}],
+        },
+    }
+
+    redacted = redact_dls_opaque_relation_metadata(payload)
+
+    assert redacted["results"][0]["source_provenance"] == {
+        "entity": {"id": "urn:openrag:visible:source"}
+    }
+    assert redacted["graph"]["edges"] == payload["graph"]["edges"]
+    assert redacted["graph"]["context_edges"] == []
+    assert hidden_id not in repr(redacted)
+
+
+@pytest.mark.asyncio
+async def test_public_search_redacts_relation_target_metadata():
+    hidden_id = "urn:openrag:hidden:target"
+    service = SearchService(session_manager=SimpleNamespace())
+    service.search_tool = AsyncMock(
+        return_value={
+            "results": [
+                {
+                    "chunk_id": "visible-chunk",
+                    "source_relation_target_ids": [hidden_id],
+                    "source_provenance": {
+                        "entity": {"id": "urn:openrag:visible:source"},
+                        "relations": [{"target": {"id": hidden_id}}],
+                    },
+                }
+            ]
+        }
+    )
+
+    result = await service.search("visible evidence", user_id="user-a", jwt_token=None)
+
+    assert result["results"][0]["chunk_id"] == "visible-chunk"
+    assert hidden_id not in repr(result)
 
 
 def test_rrf_rewards_hits_present_in_both_ranked_lists():
@@ -107,6 +169,37 @@ def test_rrf_is_reproducible_across_twenty_reordered_equal_score_responses():
         sequences.append(tuple(hit["_id"] for hit in reciprocal_rank_fusion([lexical, vector])))
 
     assert all(sequence == expected for sequence in sequences)
+
+
+def test_rrf_order_survives_json_roundtrip():
+    lanes = [
+        [_hit("b", "b"), _hit("shared", "shared")],
+        [_hit("a", "a"), _hit("shared", "shared")],
+    ]
+
+    before = reciprocal_rank_fusion(lanes, k=60)
+    after = reciprocal_rank_fusion(json.loads(json.dumps(lanes)), k=60)
+
+    assert [hit["_id"] for hit in before] == ["shared", "a", "b"]
+    assert [hit["_id"] for hit in after] == ["shared", "a", "b"]
+    assert [hit["_retrieval_fusion_score"] for hit in before] == (
+        [hit["_retrieval_fusion_score"] for hit in after]
+    )
+
+
+def test_rrf_canonical_tie_break_mutation_guard():
+    """First-seen ordering would fail this lane-permutation sabotage."""
+    canonical = reciprocal_rank_fusion(
+        [[_hit("z", "z")], [_hit("a", "a")]],
+        k=60,
+    )
+    permuted = reciprocal_rank_fusion(
+        [[_hit("a", "a")], [_hit("z", "z")]],
+        k=60,
+    )
+
+    assert [hit["_id"] for hit in canonical] == ["a", "z"]
+    assert [hit["_id"] for hit in permuted] == ["a", "z"]
 
 
 def test_rrf_uses_persisted_chunk_id_across_simulated_shard_ties():
@@ -579,7 +672,7 @@ async def test_document_search_paginates_collapsed_results_with_server_total(mon
                                 "chunk_id": "chunk-a",
                                 "document_id": "document-a",
                                 "filename": "a.pdf",
-                                "text": "pastoral project",
+                                "text": "network incident",
                             },
                         },
                         {
@@ -589,7 +682,7 @@ async def test_document_search_paginates_collapsed_results_with_server_total(mon
                                 "chunk_id": "chunk-b",
                                 "document_id": "document-b",
                                 "filename": "b.pdf",
-                                "text": "pastoral reply",
+                                "text": "network reply",
                             },
                         },
                     ]
@@ -620,7 +713,7 @@ async def test_document_search_paginates_collapsed_results_with_server_total(mon
     session_manager.get_user_opensearch_client.return_value = client
 
     result = await SearchService(session_manager=session_manager).search_tool(
-        "pastoral",
+        "network incident",
         group_by_document=True,
         page=2,
         page_size=100,

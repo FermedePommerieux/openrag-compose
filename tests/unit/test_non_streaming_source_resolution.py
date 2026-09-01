@@ -42,8 +42,18 @@ async def test_resolve_cited_chunks_uses_dls_client_and_preserves_citation_order
                                         "id": "urn:openrag:document:first",
                                         "type": "document",
                                     },
+                                    "relations": [
+                                        {
+                                            "role": "contained_in",
+                                            "target": {
+                                                "id": "urn:openrag:hidden:archive",
+                                                "type": "email_archive",
+                                            },
+                                        }
+                                    ],
                                 },
                                 "source_entity_id": "urn:openrag:document:first",
+                                "source_relation_target_ids": ["urn:openrag:hidden:archive"],
                                 "source_relation_roles": ["contained_in"],
                                 "chunk_index": 3,
                                 "chunking_strategy": "hybrid",
@@ -69,7 +79,11 @@ async def test_resolve_cited_chunks_uses_dls_client_and_preserves_citation_order
     assert sources[0]["source_url"] == "/api/source-files/DOCUMENT_1.token"
     assert sources[0]["document_id"] == "DOCUMENT_1"
     assert sources[0]["source_entity_id"] == "urn:openrag:document:first"
-    assert sources[0]["source_relation_roles"] == ["contained_in"]
+    assert sources[0]["source_provenance"]["entity"]["id"] == "urn:openrag:document:first"
+    assert "relations" not in sources[0]["source_provenance"]
+    assert "source_relation_target_ids" not in sources[0]
+    assert "source_relation_roles" not in sources[0]
+    assert "urn:openrag:hidden:archive" not in repr(sources)
     body = client.search.await_args.kwargs["body"]
     assert body["size"] == 3
     assert "source_provenance" in body["_source"]

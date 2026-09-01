@@ -56,6 +56,7 @@ def _load_guard_namespace() -> dict[str, Any]:
         "_parse_tool_payload",
         "_evidence_identities",
         "_coverage_state",
+        "_uses_canonical_coverage_certificate",
         "_call_args",
         "_retrieval_call_keys",
         "_build_retrieval_guard_snapshot",
@@ -146,6 +147,60 @@ def _snapshot(messages, context=CONTEXT):
     return GUARD["_build_retrieval_guard_snapshot"](messages, context)
 
 
+def _complete_coverage():
+    facts = {
+        "seed_discovery_complete": True,
+        "seed_documents": 1,
+        "valid_provenance_seed_documents": 1,
+        "invalid_provenance_seed_documents": 0,
+        "graph_frontier_empty": True,
+        "graph_limit_reached": False,
+        "graph_stop_reason": "frontier_empty",
+        "graph_failed": False,
+        "retrieval_execution_complete": True,
+        "documents_discovered": 1,
+        "documents_complete": 1,
+        "covered_chunks": 1,
+        "total_chunks": 1,
+        "document_failure_codes": [],
+        "seed_failure_code": None,
+        "unclassified_relations": 0,
+        "retrieval_failure_codes": [],
+    }
+    return {
+        "mode": "scope_exhaustive",
+        "complete": True,
+        "status_code": "complete",
+        "failure_codes": [],
+        **{
+            field: facts[field]
+            for field in (
+                "seed_discovery_complete",
+                "seed_documents",
+                "valid_provenance_seed_documents",
+                "invalid_provenance_seed_documents",
+                "graph_frontier_empty",
+                "graph_limit_reached",
+                "graph_stop_reason",
+                "graph_failed",
+                "retrieval_execution_complete",
+                "documents_discovered",
+                "documents_complete",
+                "covered_chunks",
+                "total_chunks",
+            )
+        },
+        "scope_policy_id": "documentary-prov-o",
+        "scope_policy_version": 1,
+        "certification": {
+            "contract_id": "openrag.scope-coverage",
+            "contract_version": 1,
+            "facts": facts,
+            "facts_sha256": GUARD["_canonical_hash"](facts),
+        },
+    }
+
+
 def test_normalized_intent_is_order_accent_and_plural_insensitive():
     normalize = GUARD["_normalize_retrieval_intent"]
 
@@ -184,15 +239,7 @@ def test_scope_complete_marks_terminal_but_allows_distinct_focused_search():
         _tool(
             "scope",
             chunks=(("doc-1", "chunk-1"),),
-            coverage={
-                "mode": "scope_exhaustive",
-                "complete": True,
-                "retrieval_execution_complete": True,
-                "status_code": "complete",
-                "failure_codes": [],
-                "scope_policy_id": "documentary-prov-o",
-                "scope_policy_version": 1,
-            },
+            coverage=_complete_coverage(),
         ),
     ]
     snapshot = _snapshot(messages)
@@ -204,6 +251,20 @@ def test_scope_complete_marks_terminal_but_allows_distinct_focused_search():
         "scope_already_complete"
     )
     assert GUARD["_retrieval_guard_reason"](snapshot, focused, CONTEXT) is None
+
+
+def test_scope_complete_without_canonical_certificate_is_not_terminal():
+    coverage = _complete_coverage()
+    coverage.pop("certification")
+    snapshot = _snapshot(
+        [
+            _user(),
+            _ai("scope", "all contract records", scope_exhaustive=True),
+            _tool("scope", chunks=(("doc-1", "chunk-1"),), coverage=coverage),
+        ]
+    )
+
+    assert snapshot.exhaustive_scope_satisfied is False
 
 
 def test_guard_rejects_false_complete_when_retrieval_execution_is_degraded():

@@ -85,6 +85,8 @@ SCOPE_COVERAGE_MESSAGES = {
 }
 
 SCOPE_COVERAGE_CODE_ORDER = tuple(SCOPE_COVERAGE_MESSAGES)
+SCOPE_COVERAGE_CONTRACT_ID = "openrag.scope-coverage"
+SCOPE_COVERAGE_CONTRACT_VERSION = 1
 
 
 @dataclass(frozen=True)
@@ -114,6 +116,34 @@ class ScopeCertificationFacts:
     seed_failure_code: str | None = None
     unclassified_relations: int = 0
     retrieval_failure_codes: tuple[str, ...] = ()
+
+
+def _scope_certification_facts_payload(facts: ScopeCertificationFacts) -> dict[str, Any]:
+    """Return the canonical JSON-safe inputs to the scope certifier."""
+    return {
+        "seed_discovery_complete": facts.seed_discovery_complete,
+        "seed_documents": facts.seed_documents,
+        "valid_provenance_seed_documents": facts.valid_provenance_seed_documents,
+        "invalid_provenance_seed_documents": facts.invalid_provenance_seed_documents,
+        "graph_frontier_empty": facts.graph_frontier_empty,
+        "graph_limit_reached": facts.graph_limit_reached,
+        "graph_stop_reason": facts.graph_stop_reason,
+        "graph_failed": facts.graph_failed,
+        "retrieval_execution_complete": facts.retrieval_execution_complete,
+        "documents_discovered": facts.documents_discovered,
+        "documents_complete": facts.documents_complete,
+        "covered_chunks": facts.covered_chunks,
+        "total_chunks": facts.total_chunks,
+        "document_failure_codes": list(facts.document_failure_codes),
+        "seed_failure_code": facts.seed_failure_code,
+        "unclassified_relations": facts.unclassified_relations,
+        "retrieval_failure_codes": list(facts.retrieval_failure_codes),
+    }
+
+
+def _scope_certification_facts_sha256(payload: dict[str, Any]) -> str:
+    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
 def certify_scope_coverage(facts: ScopeCertificationFacts) -> dict[str, Any]:
@@ -160,6 +190,11 @@ def certify_scope_coverage(facts: ScopeCertificationFacts) -> dict[str, Any]:
                 failures.add("graph_limit_reached")
         elif not facts.graph_frontier_empty:
             failures.add("graph_traversal_failed")
+        elif facts.graph_stop_reason != "frontier_empty":
+            # An empty frontier is a measured state, not by itself proof that
+            # traversal stopped naturally.  A contradictory stop reason must
+            # never be upgraded to a complete certificate.
+            failures.add("profile_invalid")
         if facts.unclassified_relations > 0:
             failures.add("scope_policy_unclassified_relation")
 
@@ -200,12 +235,153 @@ def certify_scope_coverage(facts: ScopeCertificationFacts) -> dict[str, Any]:
     ordered_failures = [code for code in SCOPE_COVERAGE_CODE_ORDER if code in failures]
     complete = not ordered_failures
     status_code = "complete" if complete else ordered_failures[0]
+    fact_payload = _scope_certification_facts_payload(facts)
     return {
         "complete": complete,
         "status_code": status_code,
         "status_message": SCOPE_COVERAGE_MESSAGES[status_code],
         "failure_codes": ordered_failures,
+        "certification": {
+            "contract_id": SCOPE_COVERAGE_CONTRACT_ID,
+            "contract_version": SCOPE_COVERAGE_CONTRACT_VERSION,
+            "facts": fact_payload,
+            "facts_sha256": _scope_certification_facts_sha256(fact_payload),
+        },
     }
+
+
+def verify_scope_coverage_certificate(coverage: dict[str, Any]) -> dict[str, Any]:
+    """Re-run the canonical certifier over a transported scope certificate.
+
+    Product and benchmark consumers use this verifier instead of rebuilding a
+    second completion contract.  It detects missing canonical provenance,
+    edited facts, edited decisions, and disagreement between public counters
+    and the facts that were actually certified.
+    """
+    failures: list[str] = []
+    certification = coverage.get("certification")
+    if not isinstance(certification, dict):
+        return {"valid": False, "failure_codes": ["canonical_certification_missing"]}
+    if certification.get("contract_id") != SCOPE_COVERAGE_CONTRACT_ID:
+        failures.append("coverage_contract_id_invalid")
+    if certification.get("contract_version") != SCOPE_COVERAGE_CONTRACT_VERSION:
+        failures.append("coverage_contract_version_invalid")
+
+    raw_facts = certification.get("facts")
+    if not isinstance(raw_facts, dict):
+        return {
+            "valid": False,
+            "failure_codes": sorted({*failures, "certification_facts_invalid"}),
+        }
+    expected_fact_keys = set(_scope_certification_facts_payload(
+        ScopeCertificationFacts(
+            seed_discovery_complete=False,
+            seed_documents=0,
+            valid_provenance_seed_documents=0,
+            invalid_provenance_seed_documents=0,
+            graph_frontier_empty=False,
+            graph_limit_reached=False,
+            graph_stop_reason=None,
+            graph_failed=False,
+            retrieval_execution_complete=False,
+            documents_discovered=0,
+            documents_complete=0,
+            covered_chunks=0,
+            total_chunks=0,
+        )
+    ))
+    if set(raw_facts) != expected_fact_keys:
+        failures.append("certification_facts_invalid")
+
+    bool_fields = (
+        "seed_discovery_complete",
+        "graph_frontier_empty",
+        "graph_limit_reached",
+        "graph_failed",
+        "retrieval_execution_complete",
+    )
+    int_fields = (
+        "seed_documents",
+        "valid_provenance_seed_documents",
+        "invalid_provenance_seed_documents",
+        "documents_discovered",
+        "documents_complete",
+        "covered_chunks",
+        "total_chunks",
+        "unclassified_relations",
+    )
+    if any(type(raw_facts.get(field)) is not bool for field in bool_fields):
+        failures.append("certification_facts_invalid")
+    if any(type(raw_facts.get(field)) is not int for field in int_fields):
+        failures.append("certification_facts_invalid")
+    if raw_facts.get("graph_stop_reason") is not None and not isinstance(
+        raw_facts.get("graph_stop_reason"), str
+    ):
+        failures.append("certification_facts_invalid")
+    if raw_facts.get("seed_failure_code") is not None and not isinstance(
+        raw_facts.get("seed_failure_code"), str
+    ):
+        failures.append("certification_facts_invalid")
+    for field in ("document_failure_codes", "retrieval_failure_codes"):
+        values = raw_facts.get(field)
+        if not isinstance(values, list) or any(not isinstance(value, str) for value in values):
+            failures.append("certification_facts_invalid")
+    if "certification_facts_invalid" in failures:
+        return {"valid": False, "failure_codes": sorted(set(failures))}
+
+    canonical_facts = dict(raw_facts)
+    supplied_digest = certification.get("facts_sha256")
+    expected_digest = _scope_certification_facts_sha256(canonical_facts)
+    if not isinstance(supplied_digest, str) or not hmac.compare_digest(
+        supplied_digest, expected_digest
+    ):
+        failures.append("certification_facts_digest_mismatch")
+
+    facts = ScopeCertificationFacts(
+        **{
+            **canonical_facts,
+            "document_failure_codes": tuple(canonical_facts["document_failure_codes"]),
+            "retrieval_failure_codes": tuple(canonical_facts["retrieval_failure_codes"]),
+        }
+    )
+    expected = certify_scope_coverage(facts)
+    for field in ("complete", "status_code", "status_message", "failure_codes"):
+        if coverage.get(field) != expected[field]:
+            failures.append(f"certified_decision_mismatch:{field}")
+
+    public_fact_fields = (
+        "seed_discovery_complete",
+        "seed_documents",
+        "valid_provenance_seed_documents",
+        "invalid_provenance_seed_documents",
+        "retrieval_execution_complete",
+        "documents_discovered",
+        "documents_complete",
+        "covered_chunks",
+        "total_chunks",
+    )
+    for field in public_fact_fields:
+        if coverage.get(field) != canonical_facts[field]:
+            failures.append(f"certified_public_fact_mismatch:{field}")
+    public_graph_fields = {
+        "graph_frontier_empty": "graph_frontier_empty",
+        "graph_limit_reached": "graph_limit_reached",
+        "graph_stop_reason": "graph_stop_reason",
+        "graph_failed": "graph_failed",
+    }
+    for public_field, fact_field in public_graph_fields.items():
+        if coverage.get(public_field) != canonical_facts[fact_field]:
+            failures.append(f"certified_public_fact_mismatch:{public_field}")
+    unclassified = coverage.get("relations_unclassified")
+    public_unclassified = (
+        unclassified.get("total") if isinstance(unclassified, dict) else None
+    )
+    if public_unclassified != canonical_facts["unclassified_relations"]:
+        failures.append("certified_public_fact_mismatch:unclassified_relations")
+    if coverage.get("retrieval_failure_codes") != canonical_facts["retrieval_failure_codes"]:
+        failures.append("certified_public_fact_mismatch:retrieval_failure_codes")
+
+    return {"valid": not failures, "failure_codes": sorted(set(failures))}
 
 
 def document_content_sha256_from_chunks(chunks: Iterable[dict[str, Any]]) -> str:

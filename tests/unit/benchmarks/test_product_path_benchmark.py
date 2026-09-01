@@ -10,6 +10,7 @@ from benchmarks.discovery.product_path_benchmark import (
     _request_body,
     compact_product_response,
 )
+from services.retrieval_service import ScopeCertificationFacts, certify_scope_coverage
 
 
 def test_repetition_plan_supports_exact_selected_query_counts():
@@ -55,15 +56,36 @@ def _profile(*, multi_query: bool = True) -> tuple[dict, dict]:
 def _response() -> dict:
     requested, effective = _profile()
     coverage = {
-        "complete": True,
-        "status_code": "complete",
-        "failure_codes": [],
+        **certify_scope_coverage(
+            ScopeCertificationFacts(
+                seed_discovery_complete=True,
+                seed_documents=1,
+                valid_provenance_seed_documents=1,
+                invalid_provenance_seed_documents=0,
+                graph_frontier_empty=True,
+                graph_limit_reached=False,
+                graph_stop_reason="frontier_empty",
+                graph_failed=False,
+                retrieval_execution_complete=True,
+                documents_discovered=1,
+                documents_complete=1,
+                covered_chunks=2,
+                total_chunks=2,
+            )
+        ),
+        "seed_discovery_complete": True,
+        "seed_documents": 1,
+        "valid_provenance_seed_documents": 1,
+        "invalid_provenance_seed_documents": 0,
         "documents_discovered": 1,
         "documents_complete": 1,
         "covered_chunks": 2,
         "total_chunks": 2,
         "graph_frontier_empty": True,
         "graph_limit_reached": False,
+        "graph_stop_reason": "frontier_empty",
+        "graph_failed": False,
+        "relations_unclassified": {"total": 0, "by_classification": []},
         "scope_diagnostics": {
             "documents_per_depth": [{"depth": 0, "count": 1}],
             "entities_per_depth": [{"depth": 0, "count": 1}],
@@ -71,6 +93,7 @@ def _response() -> dict:
             "largest_expansion_contributors": [],
         },
         "retrieval_execution_complete": True,
+        "retrieval_failure_codes": [],
         "requested_retrieval_profile": requested,
         "effective_retrieval_profile": effective,
         "performance": {
@@ -219,6 +242,26 @@ def test_contract_assessment_fails_closed_on_counter_or_execution_mismatch():
     assert assessment["valid"] is False
     assert "chunk_counter_mismatch" in assessment["failure_codes"]
     assert "retrieval_execution_incomplete" in assessment["failure_codes"]
+
+
+def test_benchmark_cannot_bypass_the_canonical_scope_certifier():
+    response = _response()
+    response["coverage"].pop("certification")
+    run = compact_product_response(
+        response,
+        query="Project Z",
+        query_count=2,
+        repetition=1,
+        seed_budget=100,
+        started_at="2026-01-01T00:00:00+00:00",
+        http_wall_seconds=3.5,
+        runtime_profile=_runtime_profile(),
+    )
+
+    assert run["contract"]["valid"] is False
+    assert "canonical_certifier:canonical_certification_missing" in (
+        run["contract"]["failure_codes"]
+    )
 
 
 def test_generic_contract_renewal_case_loads_without_engine_changes():

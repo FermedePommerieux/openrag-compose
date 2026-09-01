@@ -54,21 +54,18 @@ def _extract_sources(item: dict) -> list[dict]:
                 "mimetype": result.get("mimetype"),
                 "source_url": result.get("source_url"),
             }
-            # Keep Retrieval v2 provenance intact for API-key clients while
-            # leaving fields optional for legacy indexed documents.
+            # Keep caller-visible Retrieval v2 source identity intact while
+            # omitting relation targets that may identify a DLS-hidden source.
             for field in (
                 "document_id",
                 "chunk_id",
                 "connector_file_id",
                 "chunk_index",
                 "chunking_strategy",
-                "source_provenance",
                 "source_entity_id",
                 "source_entity_type",
                 "source_entity_system",
                 "source_entity_alternate_ids",
-                "source_relation_target_ids",
-                "source_relation_roles",
                 "source_relative_path",
                 "source_path_ancestors",
             ):

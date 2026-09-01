@@ -79,21 +79,29 @@ _RETRIEVAL_GUARD_RESULT_KEY = "openrag_retrieval_guard"
 _RETRIEVAL_GUARD_VERSION = 1
 _RETRIEVAL_SCOPE_POLICY_ID = "documentary-prov-o"
 _RETRIEVAL_SCOPE_POLICY_VERSION = 1
+_RETRIEVAL_COVERAGE_CONTRACT_ID = "openrag.scope-coverage"
+_RETRIEVAL_COVERAGE_CONTRACT_VERSION = 1
 _RETRIEVAL_COVERAGE_FIELDS = (
     "mode",
     "complete",
     "next_cursor",
     "seed_discovery_complete",
+    "seed_documents",
+    "valid_provenance_seed_documents",
+    "invalid_provenance_seed_documents",
     "seed_provenance_complete",
     "scope_policy_id",
     "scope_policy_version",
     "graph_frontier_empty",
     "graph_limit_reached",
     "graph_stop_reason",
+    "graph_failed",
     "graph_stability_verified",
     "documents_discovered",
     "documents_complete",
     "documents_incomplete",
+    "covered_chunks",
+    "total_chunks",
     "requested_retrieval_profile",
     "effective_retrieval_profile",
     "retrieval_execution_complete",
@@ -101,6 +109,7 @@ _RETRIEVAL_COVERAGE_FIELDS = (
     "stop_reason",
     "status_code",
     "failure_codes",
+    "certification",
 )
 _RETRIEVAL_INTENT_STOP_WORDS = frozenset(
     {
@@ -288,6 +297,42 @@ def _coverage_state(payload: dict[str, Any]) -> dict[str, Any]:
     return state
 
 
+def _uses_canonical_coverage_certificate(coverage: dict[str, Any]) -> bool:
+    """Require the backend-authored certificate before treating scope as terminal."""
+    certification = coverage.get("certification")
+    if not isinstance(certification, dict):
+        return False
+    if certification.get("contract_id") != _RETRIEVAL_COVERAGE_CONTRACT_ID:
+        return False
+    if certification.get("contract_version") != _RETRIEVAL_COVERAGE_CONTRACT_VERSION:
+        return False
+    facts = certification.get("facts")
+    facts_sha256 = certification.get("facts_sha256")
+    if not isinstance(facts, dict) or not isinstance(facts_sha256, str):
+        return False
+    if _canonical_hash(facts) != facts_sha256:
+        return False
+    public_fact_projection = {
+        "seed_discovery_complete": "seed_discovery_complete",
+        "seed_documents": "seed_documents",
+        "valid_provenance_seed_documents": "valid_provenance_seed_documents",
+        "invalid_provenance_seed_documents": "invalid_provenance_seed_documents",
+        "retrieval_execution_complete": "retrieval_execution_complete",
+        "documents_discovered": "documents_discovered",
+        "documents_complete": "documents_complete",
+        "covered_chunks": "covered_chunks",
+        "total_chunks": "total_chunks",
+        "graph_frontier_empty": "graph_frontier_empty",
+        "graph_limit_reached": "graph_limit_reached",
+        "graph_stop_reason": "graph_stop_reason",
+        "graph_failed": "graph_failed",
+    }
+    return all(
+        coverage.get(public_field) == facts.get(fact_field)
+        for public_field, fact_field in public_fact_projection.items()
+    )
+
+
 def _call_args(call: dict[str, Any]) -> dict[str, Any]:
     args = call.get("args", {})
     if isinstance(args, str):
@@ -454,6 +499,7 @@ def _build_retrieval_guard_snapshot(
             and record.coverage.get("complete") is True
             and record.coverage.get("status_code") == "complete"
             and record.coverage.get("retrieval_execution_complete") is True
+            and _uses_canonical_coverage_certificate(record.coverage)
         ):
             snapshot.exhaustive_scope_satisfied = True
             snapshot.terminal_scopes.add(record.terminal_scope_fingerprint)

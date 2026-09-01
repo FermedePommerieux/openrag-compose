@@ -154,7 +154,15 @@ def test_backend_tool_forwards_request_and_preserves_provenance(monkeypatch):
         "source_provenance": {
             "schema_version": "1.0",
             "entity": {"id": "urn:openrag:document:42", "type": "document"},
+            "relations": [
+                {
+                    "role": "attachment_of",
+                    "target": {"id": "urn:openrag:hidden:message", "type": "email_message"},
+                }
+            ],
         },
+        "source_relation_target_ids": ["urn:openrag:hidden:message"],
+        "source_relation_roles": ["attachment_of"],
         "filename": "archive.pdf",
         "page": 3,
         "chunk_index": 7,
@@ -215,7 +223,13 @@ def test_backend_tool_forwards_request_and_preserves_provenance(monkeypatch):
     citation_fields = {
         key: value
         for key, value in search_result.items()
-        if key not in {"text", "source_provenance"}
+        if key
+        not in {
+            "text",
+            "source_provenance",
+            "source_relation_target_ids",
+            "source_relation_roles",
+        }
     }
     assert {key: citations[0][key] for key in citation_fields} == citation_fields
 
@@ -243,15 +257,17 @@ def test_backend_tool_forwards_request_and_preserves_provenance(monkeypatch):
     assert "source_url" not in model_payload["results"][0]
     assert "source_provenance" not in model_payload["results"][0]
     assert model_payload["documents"] == [{"document_id": "document-42", "filename": "archive.pdf"}]
-    assert artifact == [
-        {
-            **search_result,
-            "text": (
-                "<<<UNTRUSTED_DOC_CHUNK>>>\nuntrusted document text\n<<<END_UNTRUSTED_DOC_CHUNK>>>"
-            ),
-        }
-    ]
-    assert artifact[0]["source_provenance"] == search_result["source_provenance"]
+    assert artifact[0]["text"] == (
+        "<<<UNTRUSTED_DOC_CHUNK>>>\nuntrusted document text\n<<<END_UNTRUSTED_DOC_CHUNK>>>"
+    )
+    assert artifact[0]["chunk_id"] == "chunk-42"
+    assert artifact[0]["source_provenance"] == {
+        "schema_version": "1.0",
+        "entity": {"id": "urn:openrag:document:42", "type": "document"},
+    }
+    assert "source_relation_target_ids" not in artifact[0]
+    assert "source_relation_roles" not in artifact[0]
+    assert "urn:openrag:hidden:message" not in repr(artifact)
     assert "JSON(text_key=" not in content
 
 
@@ -454,7 +470,7 @@ def test_explicit_scope_investigation_routes_to_scope_exhaustive(monkeypatch):
 
     built_tool = tool.build_tool()
     content, _artifact = built_tool["func"](
-        "tous les échanges avec l'administration sur Surface pastorale",
+        "all correspondence about Project Z",
         scope_exhaustive=True,
     )
 
@@ -475,9 +491,4 @@ def test_explicit_scope_investigation_routes_to_scope_exhaustive(monkeypatch):
         "documents_discovered": 0,
         "stop_reason": "max_depth",
     }
-    assert compact["documents"] == [
-        {
-            "document_id": "document-42",
-            "scope_context_relations": [{"role": "contained_in", "target_type": "email_archive"}],
-        }
-    ]
+    assert compact["documents"] == [{"document_id": "document-42"}]

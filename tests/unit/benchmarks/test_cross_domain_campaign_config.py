@@ -49,3 +49,26 @@ def test_campaign_contains_required_known_closures_without_q4_plans():
         "Donne-moi tous les échanges avec l’administration sur le projet Surface pastorale.",
     } <= queries
     assert all("fixed_queries" not in case for case in cases)
+
+
+def test_campaign_keeps_generic_regression_families_cross_domain():
+    cases = _config()["documentary_target_validation_grid"]
+    families = {case["sampling_family"] for case in cases}
+    queries = {case["query"] for case in cases}
+
+    assert {
+        "contractual_history",
+        "technical_incident",
+        "person_entity_chronology",
+        "precise_entity_lookup",
+        "correspondence_investigation",
+        "project_history",
+        "multi_party_topic",
+        "small_documentary_component",
+    } <= families
+    assert {
+        "Facture FR62442289",
+        "Tous les documents relatifs à une panne réseau intermittente.",
+        "Historique d’un projet de rénovation de bâtiment.",
+        "Échanges entre banque, comptable et fournisseur.",
+    } <= queries

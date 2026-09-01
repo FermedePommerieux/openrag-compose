@@ -88,7 +88,7 @@ def test_langflow_scope_projection_preserves_backend_coverage_and_occurrences(co
     assert len(compact["results"]) == 96
     assert compact["documents"][0]["source_entity_id"] == "occurrence-0"
     assert compact["documents"][1]["source_entity_id"] == "occurrence-1"
-    assert compact["documents"][0]["scope_context_relations"][0]["semantics"] == "contextual"
+    assert "scope_context_relations" not in compact["documents"][0]
     assert "coverage" not in compact["documents"][0]
     assert "source_provenance" not in compact["documents"][0]
     assert "model_results" not in compact
@@ -103,6 +103,27 @@ def test_langflow_scope_projection_preserves_backend_coverage_and_occurrences(co
     assert compact["retrieval_execution_complete"] is False
     assert compact["requested_retrieval_profile"]["mode"] == "hybrid"
     assert compact["effective_retrieval_profile"]["mode"] == "lexical"
+
+
+def test_langflow_projection_redacts_hidden_relation_targets_from_model_evidence():
+    payload = _scope_payload(1)
+    payload["model_results"][0].update(
+        {
+            "source_relation_target_ids": ["urn:openrag:hidden:target"],
+            "source_relation_roles": ["attachment_of"],
+            "source_provenance": {
+                "entity": {"id": "urn:openrag:visible:source"},
+                "relations": [{"target": {"id": "urn:openrag:hidden:target"}}],
+            },
+        }
+    )
+
+    compact = project_scope_exhaustive_for_langflow(payload)
+
+    assert compact["results"][0]["source_provenance"] == {
+        "entity": {"id": "urn:openrag:visible:source"}
+    }
+    assert "urn:openrag:hidden:target" not in repr(compact)
 
 
 def test_langflow_scope_payload_is_independent_of_verified_chunk_text_volume():
@@ -124,7 +145,7 @@ def test_langflow_scope_payload_is_independent_of_verified_chunk_text_volume():
     assert "EXHAUSTIVE-9999" not in json.dumps(large_compact)
 
 
-def test_surface_pastorale_regression_keeps_coverage_but_only_96_source_chunks():
+def test_large_scope_regression_keeps_coverage_but_only_96_source_chunks():
     payload = _scope_payload(9_069)
     compact = project_scope_exhaustive_for_langflow(payload)
 

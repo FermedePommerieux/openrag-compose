@@ -185,7 +185,7 @@ accessible PROV-O graph and run that verified loop for every linked document:
 
 ```python
 scope = await client.search.query(
-    "all exchanges with the administration about Surface pastorale",
+    "all correspondence and attachments about Project Z",
     evidence_mode="scope_exhaustive",
 )
 print(scope.coverage.complete, scope.coverage.status_code, scope.coverage.status_message)

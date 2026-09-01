@@ -25,6 +25,7 @@ from urllib.request import Request, urlopen
 from benchmarks.discovery.corpus import corpus_changed
 from benchmarks.discovery.final_baseline import _view_metrics, _write_json
 from benchmarks.discovery.ground_truth import load_ground_truth
+from services.retrieval_service import verify_scope_coverage_certificate
 
 _RATIO_METRICS = (
     "seed_document_recall",
@@ -82,6 +83,7 @@ _COVERAGE_FIELDS = (
     "graph_frontier_empty",
     "graph_limit_reached",
     "graph_stop_reason",
+    "graph_failed",
     "graph_error",
     "graph_stability_verified",
     "graph_stability_observations",
@@ -103,6 +105,7 @@ _COVERAGE_FIELDS = (
     "model_evidence_chunks",
     "artifact_chunks",
     "performance",
+    "certification",
 )
 
 
@@ -350,6 +353,11 @@ def _generated_queries(response: dict[str, Any], query: str) -> list[dict[str, A
 def _contract_assessment(run: dict[str, Any]) -> dict[str, Any]:
     failures: list[str] = []
     coverage = run["coverage"]
+    canonical_assessment = verify_scope_coverage_certificate(coverage)
+    failures.extend(
+        f"canonical_certifier:{code}"
+        for code in canonical_assessment["failure_codes"]
+    )
     query_count = int(run["configuration"]["query_count"])
     discovery = run["discovery"]
     requested = run.get("requested_retrieval_profile")

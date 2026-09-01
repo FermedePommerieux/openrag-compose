@@ -211,7 +211,7 @@ accessible PROV-O graph and run that verified loop for every linked document:
 
 ```typescript
 const scope = await client.search.query(
-  "all exchanges with the administration about Surface pastorale",
+  "all correspondence and attachments about Project Z",
   { evidenceMode: "scope_exhaustive" },
 );
 console.log(

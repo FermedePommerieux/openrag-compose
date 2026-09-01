@@ -268,6 +268,52 @@ def register_search_service(service: "SearchService") -> None:
     _global_search_service = service
 
 
+_DLS_OPAQUE_RELATION_FIELDS = frozenset(
+    {
+        "source_relation_target_ids",
+        "source_relation_roles",
+        "scope_context_relations",
+    }
+)
+
+
+def redact_dls_opaque_relation_metadata(value: Any, *, _in_provenance: bool = False) -> Any:
+    """Remove relation metadata that can name a DLS-hidden target.
+
+    Provenance relations are useful while the backend closes a caller-scoped
+    graph, but the relation assertion belongs to the visible source document
+    and can still name a target that the caller cannot read. Public retrieval,
+    citation, and tool payloads therefore retain source-entity identity while
+    omitting unresolved relation targets. Graph ``edges`` remain available:
+    they are created only after both endpoint entities resolve through the
+    same DLS-scoped OpenSearch client.
+    """
+    if isinstance(value, list):
+        return [
+            redact_dls_opaque_relation_metadata(item, _in_provenance=_in_provenance)
+            for item in value
+        ]
+    if not isinstance(value, dict):
+        return value
+
+    redacted: dict[str, Any] = {}
+    for field, field_value in value.items():
+        if field in _DLS_OPAQUE_RELATION_FIELDS:
+            continue
+        if _in_provenance and field == "relations":
+            continue
+        if field == "context_edges":
+            # Context-only targets are deliberately not graph-resolved, so
+            # their visibility cannot be certified for the current caller.
+            redacted[field] = []
+            continue
+        redacted[field] = redact_dls_opaque_relation_metadata(
+            field_value,
+            _in_provenance=field == "source_provenance",
+        )
+    return redacted
+
+
 @tool
 async def search_tool(query: str, embedding_model: str = None) -> dict[str, Any]:
     """
@@ -285,7 +331,8 @@ async def search_tool(query: str, embedding_model: str = None) -> dict[str, Any]
     if not _global_search_service:
         logger.error("SearchService tool called before initialization")
         return {"results": [], "error": "Search service not available"}
-    return await _global_search_service.search_tool(query, embedding_model=embedding_model)
+    result = await _global_search_service.search_tool(query, embedding_model=embedding_model)
+    return redact_dls_opaque_relation_metadata(result)
 
 
 class SearchService:
@@ -413,7 +460,8 @@ class SearchService:
             if isinstance(hit_id, str):
                 by_cited_identity[hit_id] = hydrated
 
-        return [by_cited_identity[item] for item in ordered_ids if item in by_cited_identity]
+        resolved = [by_cited_identity[item] for item in ordered_ids if item in by_cited_identity]
+        return redact_dls_opaque_relation_metadata(resolved)
 
     async def search_tool(
         self,
@@ -2126,6 +2174,14 @@ class SearchService:
             "seed_documents": 0,
             "valid_provenance_seed_documents": 0,
             "invalid_provenance_seed_documents": 0,
+            "retrieval_execution_complete": False,
+            "retrieval_failure_codes": [],
+            "graph_frontier_empty": False,
+            "graph_limit_reached": False,
+            "graph_stop_reason": None,
+            "graph_failed": False,
+            "documents_discovered": 0,
+            "documents_complete": 0,
             "covered_chunks": 0,
             "total_chunks": 0,
             "document_read_coverage_ratio": 0.0,
@@ -2476,6 +2532,7 @@ class SearchService:
             "graph_frontier_empty": graph_coverage.get("frontier_empty", False),
             "graph_limit_reached": graph_coverage.get("limit_reached", False),
             "graph_stop_reason": graph_coverage.get("stop_reason"),
+            "graph_failed": graph_failed,
             "graph_error": graph_coverage.get("error"),
             "graph_forward_hits": graph_coverage.get("forward_hits", 0),
             "graph_reverse_hits": graph_coverage.get("reverse_hits", 0),
@@ -2650,7 +2707,7 @@ class SearchService:
         if evidence_mode == "exhaustive":
             if not user_id:
                 return {"results": [], "error": "Authentication required"}
-            return await self.read_document_chunks(
+            result = await self.read_document_chunks(
                 document_id or "",
                 user_id=user_id,
                 jwt_token=jwt_token,
@@ -2658,6 +2715,7 @@ class SearchService:
                 cursor=cursor,
                 batch_size=batch_size,
             )
+            return redact_dls_opaque_relation_metadata(result)
 
         if evidence_mode == "scope_exhaustive":
             if not user_id:
@@ -2665,7 +2723,7 @@ class SearchService:
             if not query.strip():
                 raise ValueError("query is required for scope_exhaustive retrieval")
             settings = ScopeExhaustiveSettings.from_knowledge(get_openrag_config().knowledge)
-            return await self.search_exhaustive_scope(
+            result = await self.search_exhaustive_scope(
                 query,
                 user_id=user_id,
                 jwt_token=jwt_token,
@@ -2676,6 +2734,7 @@ class SearchService:
                 multi_query_max_queries=multi_query_max_queries,
                 multi_query_concurrency=multi_query_concurrency,
             )
+            return redact_dls_opaque_relation_metadata(result)
 
         from auth_context import set_score_threshold, set_search_limit
 
@@ -2685,16 +2744,18 @@ class SearchService:
         if multi_query_discovery:
             if group_by_document:
                 raise ValueError("multi-query discovery is not available for document browsing")
-            return await self._search_multi_query(
+            result = await self._search_multi_query(
                 query,
                 embedding_model=embedding_model,
                 max_queries=multi_query_max_queries,
                 concurrency=multi_query_concurrency,
             )
-        return await self.search_tool(
-            query,
-            embedding_model=embedding_model,
-            group_by_document=group_by_document,
-            page=page,
-            page_size=page_size,
-        )
+        else:
+            result = await self.search_tool(
+                query,
+                embedding_model=embedding_model,
+                group_by_document=group_by_document,
+                page=page,
+                page_size=page_size,
+            )
+        return redact_dls_opaque_relation_metadata(result)

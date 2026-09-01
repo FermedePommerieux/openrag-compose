@@ -209,6 +209,21 @@ def test_hierarchical_rrf_is_stable_deduplicated_and_traceable():
     assert first[0]["fusion_score"] > first[1]["fusion_score"]
 
 
+def test_hierarchical_rrf_query_permutation_has_identical_total_order():
+    q0 = _query("q0", "all records about Project Z")
+    q1 = _query("q1", "Project Z correspondence")
+    inputs = [
+        (q0, [_result("z", "doc-z", q0, 1)]),
+        (q1, [_result("a", "doc-a", q1, 1)]),
+    ]
+
+    forward = multi_query_reciprocal_rank_fusion(inputs, k=60)
+    reverse = multi_query_reciprocal_rank_fusion(list(reversed(inputs)), k=60)
+
+    assert [item["chunk_id"] for item in forward] == ["a", "z"]
+    assert [item["chunk_id"] for item in reverse] == ["a", "z"]
+
+
 def test_hierarchical_rrf_duplicate_occurrence_contributes_once_per_query():
     q0 = _query("q0", "all records about Project Z")
     q1 = _query("q1", "Project Z correspondence")

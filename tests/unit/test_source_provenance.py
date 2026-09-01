@@ -200,9 +200,10 @@ def test_chat_sources_add_provenance_only_when_present():
         }
     )[0]
 
-    assert source["source_provenance"] == payload
     assert source["source_entity_id"] == "urn:openrag:attachment:invoice-1"
-    assert source["source_relation_roles"] == ["attachment_of", "member_of"]
+    assert "source_provenance" not in source
+    assert "source_relation_roles" not in source
+    assert "urn:openrag:email:message-1" not in repr(source)
 
 
 @pytest.mark.asyncio

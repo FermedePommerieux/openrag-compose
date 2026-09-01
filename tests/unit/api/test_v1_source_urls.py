@@ -262,7 +262,7 @@ async def test_scope_exhaustive_search_preserves_graph_and_coverage_contract():
 
     response = await search_endpoint(
         SearchV1Body(
-            query="all exchanges about Surface pastorale",
+            query="all exchanges about Project Z",
             evidence_mode="scope_exhaustive",
         ),
         search_service=search_service,

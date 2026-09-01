@@ -48,12 +48,9 @@ MODEL_DOCUMENT_FIELDS = (
     "source_entity_type",
     "source_entity_system",
     "source_entity_alternate_ids",
-    "source_relation_target_ids",
-    "source_relation_roles",
     "source_relative_path",
     "source_path_ancestors",
     "generated_at_time",
-    "scope_context_relations",
 )
 MODEL_COVERAGE_FIELDS = (
     "mode",
@@ -82,6 +79,7 @@ MODEL_COVERAGE_FIELDS = (
     "graph_frontier_empty",
     "graph_limit_reached",
     "graph_stop_reason",
+    "graph_failed",
     "graph_error",
     "graph_forward_hits",
     "graph_reverse_hits",
@@ -108,6 +106,7 @@ MODEL_COVERAGE_FIELDS = (
     "artifact_chunks",
     "discovery",
     "performance",
+    "certification",
 )
 
 
@@ -165,6 +164,26 @@ def _present_fields(
         for field in fields
         if field in value and (field in keep_null or value[field] not in (None, "", [], {}))
     }
+
+
+def _without_opaque_relation_targets(value: dict[str, Any]) -> dict[str, Any]:
+    """Omit relation targets whose DLS visibility is not independently known."""
+    projected = {
+        field: field_value
+        for field, field_value in value.items()
+        if field
+        not in {
+            "source_relation_target_ids",
+            "source_relation_roles",
+            "scope_context_relations",
+        }
+    }
+    provenance = projected.get("source_provenance")
+    if isinstance(provenance, dict):
+        projected["source_provenance"] = {
+            field: field_value for field, field_value in provenance.items() if field != "relations"
+        }
+    return projected
 
 
 def _model_payload(payload: dict[str, Any]) -> dict[str, Any]:
@@ -383,20 +402,28 @@ class OpenRAGBackendRetrievalComponent(LCToolComponent):
         for item in results:
             if not isinstance(item, dict):
                 continue
-            item = dict(item)
+            item = _without_opaque_relation_targets(item)
             item["text"] = _fence_untrusted_text(str(item.get("text") or ""))
             fenced_results.append(item)
         fenced_model_results: list[dict[str, Any]] = []
         for item in payload.get("model_results", []):
             if not isinstance(item, dict):
                 continue
-            item = dict(item)
+            item = _without_opaque_relation_targets(item)
             item["text"] = _fence_untrusted_text(str(item.get("text") or ""))
             fenced_model_results.append(item)
+        documents = payload.get("documents")
+        if isinstance(documents, list):
+            documents = [
+                _without_opaque_relation_targets(item)
+                for item in documents
+                if isinstance(item, dict)
+            ]
         return {
             **payload,
             "results": fenced_results,
             **({"model_results": fenced_model_results} if "model_results" in payload else {}),
+            **({"documents": documents} if isinstance(documents, list) else {}),
         }
 
     def search_documents(self, search_query: str) -> list[Data]:

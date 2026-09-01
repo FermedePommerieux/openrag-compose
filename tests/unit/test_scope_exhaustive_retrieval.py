@@ -1067,9 +1067,9 @@ async def test_unknown_relation_closes_graph_but_fails_policy_certifiability():
 
 
 @pytest.mark.asyncio
-async def test_surface_pastorale_synthetic_archive_thread_and_attachment_regression():
+async def test_generic_project_synthetic_archive_thread_and_attachment_regression():
     archive_id = "OA1"
-    thread_id = "surface-thread"
+    thread_id = "project-thread"
     seed = _record(
         "seed-message",
         relations=[("member_of", thread_id), ("contained_in", archive_id)],
@@ -1953,12 +1953,59 @@ def test_partition_counter_sabotage_never_certifies(mutation, expected_code):
 def test_exact_partition_counters_can_certify():
     decision = certify_scope_coverage(_complete_certification_facts())
 
-    assert decision == {
-        "complete": True,
-        "status_code": "complete",
-        "status_message": decision["status_message"],
-        "failure_codes": [],
-    }
+    assert decision["complete"] is True
+    assert decision["status_code"] == "complete"
+    assert decision["failure_codes"] == []
+    assert decision["certification"]["contract_id"] == "openrag.scope-coverage"
+
+
+def test_empty_frontier_with_non_natural_stop_reason_never_certifies():
+    decision = certify_scope_coverage(
+        replace(_complete_certification_facts(), graph_stop_reason="max_depth")
+    )
+
+    assert decision["complete"] is False
+    assert decision["status_code"] == "profile_invalid"
+
+
+@pytest.mark.parametrize(
+    ("mutation", "expected_code"),
+    [
+        (
+            {
+                "retrieval_execution_complete": False,
+                "retrieval_failure_codes": ("retrieval_dense_lane_failed",),
+            },
+            "retrieval_dense_lane_failed",
+        ),
+        (
+            {
+                "retrieval_execution_complete": False,
+                "retrieval_failure_codes": ("multi_query_planner_failed",),
+            },
+            "multi_query_planner_failed",
+        ),
+        (
+            {"graph_frontier_empty": False, "graph_stop_reason": "frontier_active"},
+            "graph_traversal_failed",
+        ),
+        (
+            {"graph_limit_reached": True, "graph_stop_reason": "max_documents"},
+            "document_limit_reached",
+        ),
+        (
+            {"graph_limit_reached": True, "graph_stop_reason": "max_entities"},
+            "graph_limit_reached",
+        ),
+    ],
+)
+def test_required_lane_planner_frontier_and_limit_sabotage_fail_closed(
+    mutation, expected_code
+):
+    decision = certify_scope_coverage(replace(_complete_certification_facts(), **mutation))
+
+    assert decision["complete"] is False
+    assert expected_code in decision["failure_codes"]
 
 
 def test_empty_search_never_certifies_even_with_zero_equalities():

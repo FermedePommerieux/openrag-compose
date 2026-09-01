@@ -69,7 +69,11 @@ def test_default_agent_prompt_requires_document_wide_role_evidence():
     assert len(DEFAULT_SYSTEM_PROMPT) <= 5000
     assert len(LEGACY_SYSTEM_PROMPTS) == 6
     assert LEGACY_SYSTEM_PROMPT_SHA256 == frozenset(
-        {"33533d917dacea6cc7293d2d93a3b79f52f025937610d86e6731e2660f515d94"}
+        {
+            "33533d917dacea6cc7293d2d93a3b79f52f025937610d86e6731e2660f515d94",
+            "43d22a596a0d8dafe80d12c97369c6fcd0b2f3f82c84a41d942691ef41128b14",
+            "ea0f046992fe600fc8cd6c58f58c9533cd34ad16bdf2bd286cf31f6ab300f7d2",
+        }
     )
     previous_prompt = subprocess.check_output(
         [

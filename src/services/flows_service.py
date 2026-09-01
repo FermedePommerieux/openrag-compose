@@ -77,6 +77,12 @@ _PREVIOUS_ROLE_EVIDENCE_GRAPH_SHA256 = (
 _PREVIOUS_VERSIONED_ROLE_EVIDENCE_GRAPH_SHA256 = (
     "20012fd2b1e56830e58e2785fd362cc89f87ea766b95cdc23283aaddcf3fd795"
 )
+# Same repository-owned v3 graph with only the historical named query example
+# replaced by its domain-neutral equivalent. Keep both fingerprints so an
+# upgrade can recognize either bundled revision without weakening graph checks.
+_GENERICIZED_VERSIONED_ROLE_EVIDENCE_GRAPH_SHA256 = (
+    "243271a5a255999cffdf8bd3e8616ca812b80741833741ef942104d65d0320da"
+)
 # Exact fingerprints of the evidence-first prompt before relationship
 # attribution became an explicit corpus-wide invariant.
 _PREVIOUS_EVIDENCE_FIRST_GRAPH_SHA256 = (
@@ -1548,6 +1554,7 @@ class FlowsService:
             else {
                 _PREVIOUS_VERSIONED_RETRIEVAL_GRAPH_SHA256,
                 _PREVIOUS_VERSIONED_ROLE_EVIDENCE_GRAPH_SHA256,
+                _GENERICIZED_VERSIONED_ROLE_EVIDENCE_GRAPH_SHA256,
             }
             if marker == 3
             else {_PREVIOUS_VERSIONED_EVIDENCE_FIRST_GRAPH_SHA256}
