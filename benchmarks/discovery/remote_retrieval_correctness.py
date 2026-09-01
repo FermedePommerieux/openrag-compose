@@ -211,10 +211,12 @@ async def _lane_audit(plan: dict[str, Any]) -> list[dict[str, Any]]:
     return observations
 
 
-async def _natural_closure(plan: dict[str, Any], service: Any, client: Any, index_name: str):
+async def _scope_seed_material(plan: dict[str, Any], service: Any) -> dict[str, Any]:
     from models.source_provenance import parse_source_provenance
-    from services.retrieval_service import expand_provenance_graph
-    from services.scope_traversal_policy import DEFAULT_SCOPE_TRAVERSAL_POLICY
+    from services.retrieval_service import (
+        build_discovery_plan,
+        discovery_plan_audit,
+    )
 
     query = str(plan["query"])
     seed_budget = max(1, int(plan.get("seed_budget", 100)))
@@ -231,21 +233,66 @@ async def _natural_closure(plan: dict[str, Any], service: Any, client: Any, inde
         )
         seed_source = "product_selected_chunk_ids"
     else:
-        seed_response = await service.search(
-            query,
-            user_id="anonymous",
-            jwt_token=None,
-            filters={},
-            limit=seed_budget,
-            score_threshold=0,
-        )
+        fixed_queries = [
+            str(value) for value in plan.get("fixed_queries", []) if str(value).strip()
+        ]
+        original_generator = service._generate_discovery_plan
+
+        async def fixed_plan_generator(
+            _self: Any, original_query: str, *, max_queries: int
+        ) -> tuple[list[Any], str | None, float, dict[str, Any]]:
+            generated = {
+                "queries": [
+                    {"text": value, "kind": "conceptual_variant"}
+                    for value in fixed_queries
+                    if value.strip() != original_query.strip()
+                ]
+            }
+            discovery_plan = build_discovery_plan(
+                original_query,
+                generated,
+                max_queries=max_queries,
+                generation_method="benchmark_fixed_plan",
+            )
+            audit = discovery_plan_audit(original_query, generated, discovery_plan)
+            return (
+                discovery_plan,
+                None,
+                0.0,
+                {
+                    **audit,
+                    "planner_invoked": False,
+                    "request_parameters": {"source": "captured_fixed_plan"},
+                    "request_fingerprint": _sha256(audit["query_hashes"]),
+                    "response_model": None,
+                },
+            )
+
+        if fixed_queries:
+            service._generate_discovery_plan = types.MethodType(fixed_plan_generator, service)
+        try:
+            seed_response = await service.search(
+                query,
+                user_id="anonymous",
+                jwt_token=None,
+                filters={},
+                limit=seed_budget,
+                score_threshold=0,
+                multi_query_discovery=bool(fixed_queries),
+                multi_query_max_queries=min(4, max(1, len(fixed_queries))),
+                multi_query_concurrency=max(1, min(4, int(plan.get("concurrency", 2)))),
+            )
+        finally:
+            service._generate_discovery_plan = original_generator
         if seed_response.get("error"):
             raise RuntimeError(str(seed_response["error"]))
         seed_results = [item for item in seed_response.get("results", []) if isinstance(item, dict)]
         normalized_seed_ids = [
             str(item.get("chunk_id")) for item in seed_results if item.get("chunk_id")
         ]
-        seed_source = "focused_product_service"
+        seed_source = (
+            "fixed_multi_query_product_service" if fixed_queries else "focused_product_service"
+        )
     seed_documents: dict[str, dict[str, Any]] = {}
     seed_entities: set[str] = set()
     for item in seed_results:
@@ -260,6 +307,28 @@ async def _natural_closure(plan: dict[str, Any], service: Any, client: Any, inde
         manifest.update(provenance.index_fields())
         seed_documents.setdefault(document_id, manifest)
         seed_entities.add(provenance.entity.id)
+
+    return {
+        "query": query,
+        "seed_source": seed_source,
+        "seed_results": seed_results,
+        "seed_chunk_ids": normalized_seed_ids,
+        "seed_documents": seed_documents,
+        "seed_entities": seed_entities,
+        "fixed_plan_sha256": _sha256(plan.get("fixed_queries", [])),
+    }
+
+
+async def _natural_closure(plan: dict[str, Any], service: Any, client: Any, index_name: str):
+    from services.retrieval_service import expand_provenance_graph
+    from services.scope_traversal_policy import DEFAULT_SCOPE_TRAVERSAL_POLICY
+
+    material = await _scope_seed_material(plan, service)
+    query = material["query"]
+    seed_results = material["seed_results"]
+    normalized_seed_ids = material["seed_chunk_ids"]
+    seed_documents = material["seed_documents"]
+    seed_entities = material["seed_entities"]
 
     rss_before = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
     started = time.perf_counter()
@@ -285,7 +354,7 @@ async def _natural_closure(plan: dict[str, Any], service: Any, client: Any, inde
         "label": str(plan.get("label") or query),
         "query": query,
         "query_sha256": _sha256(query),
-        "seed_source": seed_source,
+        "seed_source": material["seed_source"],
         "seed_chunk_ids_sha256": _sha256(normalized_seed_ids),
         "seed_chunks": len(seed_results),
         "seed_documents": len(seed_documents),
@@ -299,6 +368,265 @@ async def _natural_closure(plan: dict[str, Any], service: Any, client: Any, inde
         "max_rss_kib_after": rss_after,
         "max_rss_kib_delta": max(0, rss_after - rss_before),
         "coverage": graph["coverage"],
+    }
+
+
+def _relation_counts(coverage: dict[str, Any]) -> dict[tuple[str, ...], int]:
+    rows = coverage.get("relations_traversed", {}).get("by_classification", [])
+    return {
+        (
+            str(row.get("role") or ""),
+            str(row.get("source_type") or ""),
+            str(row.get("target_type") or ""),
+            str(row.get("direction") or ""),
+            str(row.get("semantics") or ""),
+        ): int(row.get("count") or 0)
+        for row in rows
+        if isinstance(row, dict)
+    }
+
+
+def _graph_observation(graph: dict[str, Any]) -> dict[str, Any]:
+    coverage = graph["coverage"]
+    documents = {
+        (str(item.get("document_id") or ""), str(item.get("source_entity_id") or ""))
+        for item in graph["documents"]
+        if isinstance(item, dict)
+    }
+    primary_entities = {
+        str(item.get("source_entity_id"))
+        for item in graph["documents"]
+        if isinstance(item, dict) and item.get("source_entity_id")
+    }
+    edges = {
+        (
+            str(item.get("source_entity_id") or ""),
+            str(item.get("role") or ""),
+            str(item.get("target_entity_id") or ""),
+        )
+        for item in graph["edges"]
+        if isinstance(item, dict)
+    }
+    frontier = {str(value) for value in coverage.get("remaining_frontier", []) if str(value)}
+    chunks = sum(
+        int(item.get("document_chunk_count") or 0)
+        for item in graph["documents"]
+        if isinstance(item.get("document_chunk_count"), int)
+    )
+    hubs = coverage.get("scope_diagnostics", {}).get("largest_expansion_contributors", [])
+    degrees = [int(item.get("total_edges") or 0) for item in hubs if isinstance(item, dict)]
+    return {
+        "documents": documents,
+        "entities": primary_entities,
+        "edges": edges,
+        "frontier": frontier,
+        "relations": _relation_counts(coverage),
+        "public": {
+            "documents": len(documents),
+            "entities": int(coverage.get("entities_visited") or len(primary_entities)),
+            "chunks": chunks,
+            "depth": int(coverage.get("depth_reached") or 0),
+            "frontier": len(frontier),
+            "frontier_empty": coverage.get("frontier_empty") is True,
+            "limit_reached": coverage.get("limit_reached") is True,
+            "stop_reason": coverage.get("stop_reason"),
+            "documentary_relations": int(coverage.get("relations_traversed", {}).get("total") or 0),
+            "connected_branches": len(edges),
+            "hub_degree": {
+                "observed_hubs": len(degrees),
+                "max": max(degrees) if degrees else 0,
+                "mean": sum(degrees) / len(degrees) if degrees else 0.0,
+            },
+            "relation_type_distribution": coverage.get("relations_traversed", {}).get(
+                "by_classification", []
+            ),
+        },
+    }
+
+
+def _probe_delta(before: dict[str, Any], after: dict[str, Any]) -> dict[str, Any]:
+    relation_keys = set(before["relations"]) | set(after["relations"])
+    relation_delta = [
+        {
+            "role": key[0],
+            "source_type": key[1],
+            "target_type": key[2],
+            "direction": key[3],
+            "semantics": key[4],
+            "count": after["relations"].get(key, 0) - before["relations"].get(key, 0),
+        }
+        for key in sorted(relation_keys)
+        if after["relations"].get(key, 0) != before["relations"].get(key, 0)
+    ]
+    frontier_before = len(before["frontier"])
+    frontier_after = len(after["frontier"])
+    new_documents = len(after["documents"] - before["documents"])
+    extended_documents = len(after["documents"])
+    return {
+        "frontier_before": frontier_before,
+        "frontier_after": frontier_after,
+        "frontier_growth_rate": (
+            (frontier_after - frontier_before) / frontier_before if frontier_before else None
+        ),
+        "new_documents": new_documents,
+        "new_entities": len(after["entities"] - before["entities"]),
+        "new_documentary_relations": sum(max(0, row["count"]) for row in relation_delta),
+        "new_connected_branches": len(after["edges"] - before["edges"]),
+        "already_covered_ratio": (
+            len(before["documents"] & after["documents"]) / extended_documents
+            if extended_documents
+            else 0.0
+        ),
+        "marginal_document_yield": new_documents,
+        "depth_before": before["public"]["depth"],
+        "depth_after": after["public"]["depth"],
+        "relation_type_delta": relation_delta,
+        "hub_degree_before": before["public"]["hub_degree"],
+        "hub_degree_after": after["public"]["hub_degree"],
+    }
+
+
+async def _documentary_target_validation(
+    plan: dict[str, Any], service: Any, client: Any, index_name: str
+) -> dict[str, Any]:
+    """Prototype target validation by replaying the deterministic product traversal."""
+
+    from services.retrieval_service import expand_provenance_graph
+    from services.scope_traversal_policy import DEFAULT_SCOPE_TRAVERSAL_POLICY
+
+    material = await _scope_seed_material(plan, service)
+    target = max(1, int(plan.get("target_threshold", 250)))
+    probe_size = max(1, int(plan.get("validation_probe_size", 50)))
+    hard_limit = max(target, int(plan.get("hard_safety_limit", 500)))
+    fixed_limits = sorted(
+        {max(1, min(hard_limit, int(value))) for value in plan.get("fixed_limits", [250, 400, 500])}
+        | {hard_limit}
+    )
+    max_depth = max(1, int(plan.get("max_depth", 8)))
+    max_entities = max(1, int(plan.get("max_entities", 500)))
+    graphs: dict[int, dict[str, Any]] = {}
+
+    async def measured_graph(document_limit: int) -> dict[str, Any]:
+        if document_limit in graphs:
+            return graphs[document_limit]
+        rss_before = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+        started = time.perf_counter()
+        graph = await expand_provenance_graph(
+            client,
+            index_name=index_name,
+            seed_entity_ids=material["seed_entities"],
+            seed_documents=material["seed_documents"].values(),
+            policy=DEFAULT_SCOPE_TRAVERSAL_POLICY,
+            max_depth=max_depth,
+            max_entities=max_entities,
+            max_documents=document_limit,
+            filter_clauses=(),
+        )
+        elapsed = time.perf_counter() - started
+        rss_after = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+        observation = _graph_observation(graph)
+        graphs[document_limit] = {
+            "limit": document_limit,
+            "graph": graph,
+            "observation": observation,
+            "graph_latency_seconds": elapsed,
+            "max_rss_kib_delta": max(0, rss_after - rss_before),
+        }
+        return graphs[document_limit]
+
+    for limit in fixed_limits:
+        await measured_graph(limit)
+
+    hard_run = graphs[hard_limit]
+    natural_documents = (
+        hard_run["observation"]["public"]["documents"]
+        if hard_run["observation"]["public"]["frontier_empty"]
+        else None
+    )
+    fixed = []
+    for limit in fixed_limits:
+        run = graphs[limit]
+        public = run["observation"]["public"]
+        fixed.append(
+            {
+                "strategy": f"fixed-{limit}",
+                "document_limit": limit,
+                **public,
+                "natural_closure_recovery": (
+                    public["documents"] / natural_documents if natural_documents else None
+                ),
+                "truncated_legitimate_closure": (
+                    not public["frontier_empty"] and natural_documents is not None
+                ),
+                "coverage_success": public["frontier_empty"],
+                "graph_latency_seconds": run["graph_latency_seconds"],
+                "max_rss_kib_delta": run["max_rss_kib_delta"],
+            }
+        )
+
+    current_limit = min(target, hard_limit)
+    current = await measured_graph(current_limit)
+    initial_target_observation = current["observation"]
+    probes: list[dict[str, Any]] = []
+    replay_latency = current["graph_latency_seconds"]
+    while not current["observation"]["public"]["frontier_empty"] and current_limit < hard_limit:
+        next_limit = min(hard_limit, current_limit + probe_size)
+        extended = await measured_graph(next_limit)
+        replay_latency += extended["graph_latency_seconds"]
+        public = extended["observation"]["public"]
+        probes.append(
+            {
+                "probe": len(probes) + 1,
+                "from_target": current_limit,
+                "to_target": next_limit,
+                **_probe_delta(current["observation"], extended["observation"]),
+                "outcome": (
+                    "NATURAL_COMPLETE"
+                    if public["frontier_empty"]
+                    else "HARD_SAFETY_LIMIT_REACHED"
+                    if next_limit == hard_limit
+                    else "TARGET_TOO_SMALL_FRONTIER_ACTIVE"
+                ),
+            }
+        )
+        current_limit = next_limit
+        current = extended
+
+    final_public = current["observation"]["public"]
+    state = "NATURAL_COMPLETE" if final_public["frontier_empty"] else "HARD_SAFETY_LIMIT_REACHED"
+    return {
+        "label": str(plan.get("label") or material["query"]),
+        "query": material["query"],
+        "query_sha256": _sha256(material["query"]),
+        "seed_source": material["seed_source"],
+        "fixed_plan_sha256": material["fixed_plan_sha256"],
+        "seed_chunks": len(material["seed_results"]),
+        "seed_documents": len(material["seed_documents"]),
+        "seed_entities": len(material["seed_entities"]),
+        "max_depth": max_depth,
+        "max_entities": max_entities,
+        "fixed_strategies": fixed,
+        "documentary_target_validation": {
+            "documentary_semantics": "probe-beyond-target-to-validate-target",
+            "target_threshold": target,
+            "validation_probe_size": probe_size,
+            "hard_safety_limit": hard_limit,
+            "state": state,
+            "coverage_complete": state == "NATURAL_COMPLETE",
+            "false_target_at_threshold": (
+                not initial_target_observation["public"]["frontier_empty"]
+            ),
+            "number_of_probes": len(probes),
+            "target_extensions": len(probes),
+            "final_target": current_limit,
+            "final_observation": final_public,
+            "probes": probes,
+            "prototype_replay_graph_latency_seconds": replay_latency,
+            "execution_note": (
+                "Calibration replay restarts the same deterministic traversal at each target; "
+                "a continuous implementation would retain traversal state."
+            ),
+        },
     }
 
 
@@ -379,6 +707,16 @@ async def _sensitivity_experiment(plan: dict[str, Any], service: Any) -> dict[st
 
     original_config = search_service.get_openrag_config
     original_generator = service._generate_discovery_plan
+    original_graph_expansion = search_service.expand_provenance_graph
+    graph_traversal_seconds = 0.0
+
+    async def timed_graph_expansion(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        nonlocal graph_traversal_seconds
+        graph_started = time.perf_counter()
+        try:
+            return await original_graph_expansion(*args, **kwargs)
+        finally:
+            graph_traversal_seconds += time.perf_counter() - graph_started
 
     async def fixed_plan_generator(
         _self: Any, original_query: str, *, max_queries: int
@@ -410,6 +748,7 @@ async def _sensitivity_experiment(plan: dict[str, Any], service: Any) -> dict[st
         )
 
     search_service.get_openrag_config = lambda: config
+    search_service.expand_provenance_graph = timed_graph_expansion
     set_auth_context("anonymous", None)
     if query_count > 1:
         if not fixed_queries:
@@ -438,10 +777,13 @@ async def _sensitivity_experiment(plan: dict[str, Any], service: Any) -> dict[st
         )
     finally:
         search_service.get_openrag_config = original_config
+        search_service.expand_provenance_graph = original_graph_expansion
         service._generate_discovery_plan = original_generator
     elapsed = time.perf_counter() - started
     rss_after = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
     compact = _compact_sensitivity_response(response)
+    scope_performance = compact.get("coverage", {}).get("performance", {})
+    prov_o_seconds = float(scope_performance.get("prov_o_seconds") or 0.0)
     return {
         "experiment_id": str(plan["experiment_id"]),
         "axis": str(plan["axis"]),
@@ -460,6 +802,8 @@ async def _sensitivity_experiment(plan: dict[str, Any], service: Any) -> dict[st
         "query_sha256": _sha256(query),
         "fixed_plan_sha256": _sha256(fixed_queries),
         "wall_seconds": elapsed,
+        "graph_traversal_seconds": graph_traversal_seconds,
+        "document_read_seconds": max(0.0, prov_o_seconds - graph_traversal_seconds),
         "max_rss_kib_delta": max(0, rss_after - rss_before),
         **compact,
     }
@@ -501,6 +845,12 @@ async def run(plan: dict[str, Any]) -> dict[str, Any]:
             result["natural_closures"] = [
                 await _natural_closure(value, service, client, index_name)
                 for value in plan["natural_closure"]
+                if isinstance(value, dict)
+            ]
+        if isinstance(plan.get("documentary_target_validation"), list):
+            result["documentary_target_validation"] = [
+                await _documentary_target_validation(value, service, client, index_name)
+                for value in plan["documentary_target_validation"]
                 if isinstance(value, dict)
             ]
         if isinstance(plan.get("sensitivity_experiments"), list):
