@@ -89,6 +89,7 @@ def project_scope_exhaustive_for_langflow(payload: dict[str, Any]) -> dict[str, 
         "effective_retrieval_profile",
         "retrieval_execution_complete",
         "retrieval_failure_codes",
+        "retrieval_diagnostics",
         "discovery",
     ):
         if field in payload and payload[field] not in (None, ""):

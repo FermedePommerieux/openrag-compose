@@ -16,11 +16,32 @@ from services.retrieval_service import (
     limit_chunks_per_document,
     reciprocal_rank_fusion,
 )
-from services.search_service import SearchService, redact_dls_opaque_relation_metadata
+from services.search_service import (
+    SearchService,
+    _ranked_lane_diagnostic,
+    redact_dls_opaque_relation_metadata,
+)
 
 
 def _hit(identifier: str, document_id: str, text: str = "text") -> dict:
     return {"_id": identifier, "_source": {"document_id": document_id, "text": text}}
+
+
+def test_lane_diagnostics_separate_membership_from_rank_and_scores():
+    first = [_hit("a", "doc-a"), _hit("b", "doc-b")]
+    second = list(reversed(first))
+    first[0]["_score"] = 0.9
+    first[1]["_score"] = 0.8
+
+    first_diagnostic = _ranked_lane_diagnostic(first)
+    second_diagnostic = _ranked_lane_diagnostic(second)
+
+    assert first_diagnostic["membership_sha256"] == second_diagnostic["membership_sha256"]
+    assert (
+        first_diagnostic["ordered_identities_sha256"]
+        != second_diagnostic["ordered_identities_sha256"]
+    )
+    assert first_diagnostic["ordered_scores_sha256"] != second_diagnostic["ordered_scores_sha256"]
 
 
 def test_public_relation_redaction_keeps_only_dls_resolved_graph_edges():
@@ -605,6 +626,21 @@ async def test_search_service_rrf_fuses_lanes_preserves_provenance_and_emits_deb
     assert result["results"][0]["query_contributions"][0]["lexical_rank"] == 2
     assert result["results"][0]["query_contributions"][0]["dense_rank"] == 1
     assert result["_retrieval_timing"]["total_seconds"] >= 0
+    diagnostics = result["retrieval_diagnostics"]
+    assert diagnostics["contract_id"] == "openrag.retrieval-lane-diagnostics"
+    assert diagnostics["contract_version"] == 1
+    assert diagnostics["lanes"]["lexical"]["candidates"] == 2
+    assert diagnostics["lanes"]["dense"]["candidates"] == 2
+    assert diagnostics["fusion"]["candidates"] == 3
+    assert diagnostics["lanes"]["dense"]["request"] == {
+        "initial_request_sha256": diagnostics["lanes"]["dense"]["request"][
+            "executed_request_sha256"
+        ],
+        "executed_request_sha256": diagnostics["lanes"]["dense"]["request"][
+            "executed_request_sha256"
+        ],
+        "compatibility_retry_without_num_candidates": False,
+    }
     lane_bodies = [body for body in OpenSearchClient.bodies if body.get("size") != 0]
     assert len(lane_bodies) == 2
     assert all(

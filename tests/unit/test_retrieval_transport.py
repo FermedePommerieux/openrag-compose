@@ -73,6 +73,11 @@ def _scope_payload(chunk_count: int, *, complete: bool = False, text_size: int =
         "effective_retrieval_profile": {"version": 1, "mode": "lexical"},
         "retrieval_execution_complete": False,
         "retrieval_failure_codes": ["retrieval_dense_lane_failed"],
+        "retrieval_diagnostics": {
+            "contract_id": "openrag.retrieval-lane-diagnostics",
+            "contract_version": 1,
+            "lanes": {"dense": {"ordered_identities_sha256": "d" * 64}},
+        },
     }
 
 
@@ -103,6 +108,7 @@ def test_langflow_scope_projection_preserves_backend_coverage_and_occurrences(co
     assert compact["retrieval_execution_complete"] is False
     assert compact["requested_retrieval_profile"]["mode"] == "hybrid"
     assert compact["effective_retrieval_profile"]["mode"] == "lexical"
+    assert compact["retrieval_diagnostics"] == payload["retrieval_diagnostics"]
 
 
 def test_langflow_projection_redacts_hidden_relation_targets_from_model_evidence():

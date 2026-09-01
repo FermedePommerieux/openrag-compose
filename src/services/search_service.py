@@ -146,6 +146,34 @@ def _build_file_facet_aggregations() -> dict[str, Any]:
     }
 
 
+def _retrieval_diagnostic_sha256(value: Any) -> str:
+    canonical = json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        default=str,
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _ranked_lane_diagnostic(
+    hits: list[dict[str, Any]], *, score_field: str = "_score"
+) -> dict[str, Any]:
+    """Fingerprint one ranked lane without exposing caller-visible identities."""
+    identities = [hit_identity(hit) for hit in hits]
+    ranked_scores = [
+        [identity, hit.get(score_field)]
+        for identity, hit in zip(identities, hits, strict=True)
+    ]
+    return {
+        "candidates": len(hits),
+        "ordered_identities_sha256": _retrieval_diagnostic_sha256(identities),
+        "membership_sha256": _retrieval_diagnostic_sha256(sorted(set(identities))),
+        "ordered_scores_sha256": _retrieval_diagnostic_sha256(ranked_scores),
+    }
+
+
 def _is_exact_token_query(query: str) -> bool:
     """Return True for code/token-like queries that should not allow partial fuzzy matches."""
     if not query or len(query.strip()) < 3:
@@ -1084,9 +1112,11 @@ class SearchService:
         )
 
         search_params = {"terminate_after": 0}
+        lane_request_diagnostics: dict[str, dict[str, Any]] = {}
 
         async def execute_search(body: dict[str, Any], label: str) -> dict[str, Any]:
             fallback_body = without_num_candidates(body)
+            initial_fingerprint = _retrieval_diagnostic_sha256(body)
             lane_started = time.perf_counter()
             try:
                 index_name = get_index_name()
@@ -1094,6 +1124,11 @@ class SearchService:
                 response = await opensearch_client.search(
                     index=index_name, body=body, params=search_params
                 )
+                lane_request_diagnostics[label] = {
+                    "initial_request_sha256": initial_fingerprint,
+                    "executed_request_sha256": initial_fingerprint,
+                    "compatibility_retry_without_num_candidates": False,
+                }
                 lane_timings[label] = time.perf_counter() - lane_started
                 return response
             except RequestError as error:
@@ -1115,6 +1150,13 @@ class SearchService:
                         response = await opensearch_client.search(
                             index=get_index_name(), body=fallback_body, params=search_params
                         )
+                        lane_request_diagnostics[label] = {
+                            "initial_request_sha256": initial_fingerprint,
+                            "executed_request_sha256": _retrieval_diagnostic_sha256(
+                                fallback_body
+                            ),
+                            "compatibility_retry_without_num_candidates": True,
+                        }
                         lane_timings[label] = time.perf_counter() - lane_started
                         return response
                     except RequestError as retry_error:
@@ -1210,6 +1252,7 @@ class SearchService:
                     effective_profile["lanes"]["dense"].pop("error", None)
 
         raw_hits = results.get("hits", {}).get("hits", [])
+        retrieval_diagnostics: dict[str, Any] | None = None
         if retrieval_results:
             fusion_started = time.perf_counter()
             ranked_lists = [
@@ -1275,6 +1318,34 @@ class SearchService:
                         "matched_lanes": matched_lanes,
                         "query_rrf_score": hit.get("_retrieval_fusion_score"),
                     }
+            public_lane_diagnostics = {
+                ("dense" if lane == "vector" else lane): {
+                    **_ranked_lane_diagnostic(
+                        lane_result.get("hits", {}).get("hits", [])
+                    ),
+                    "request": lane_request_diagnostics.get(lane),
+                }
+                for lane, lane_result in retrieval_results.items()
+            }
+            fusion_diagnostic = _ranked_lane_diagnostic(
+                raw_hits, score_field="_retrieval_fusion_score"
+            )
+            retrieval_diagnostics = {
+                "contract_id": "openrag.retrieval-lane-diagnostics",
+                "contract_version": 1,
+                "guarantee": "deterministic_fusion_for_identical_ordered_input_lanes",
+                "query_vectors_sha256": _retrieval_diagnostic_sha256(query_embeddings),
+                "lanes": public_lane_diagnostics,
+                "fusion": {
+                    **fusion_diagnostic,
+                    "ordered_input_lanes_sha256": _retrieval_diagnostic_sha256(
+                        {
+                            lane: diagnostic["ordered_scores_sha256"]
+                            for lane, diagnostic in sorted(public_lane_diagnostics.items())
+                        }
+                    ),
+                },
+            }
             raw_hits = limit_chunks_per_document(
                 raw_hits,
                 max_chunks_per_document=retrieval_settings.max_chunks_per_document,
@@ -1425,6 +1496,8 @@ class SearchService:
                     ),
                 }
             ]
+        if retrieval_diagnostics is not None:
+            response["retrieval_diagnostics"] = retrieval_diagnostics
         if retrieval_results and retrieval_settings.debug:
             response["retrieval_debug"] = {
                 "strategy": "rrf",
@@ -2657,6 +2730,8 @@ class SearchService:
         }
         if isinstance(discovery_metadata, dict):
             response["discovery"] = discovery_metadata
+        if isinstance(seed_response.get("retrieval_diagnostics"), dict):
+            response["retrieval_diagnostics"] = seed_response["retrieval_diagnostics"]
         if isinstance(seed_response.get("warnings"), list):
             response["warnings"] = seed_response["warnings"]
         return response

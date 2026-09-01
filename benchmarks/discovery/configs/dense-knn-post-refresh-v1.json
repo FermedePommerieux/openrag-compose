@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "audit_id": "dense-knn-post-refresh-v1",
+  "k": 50,
+  "queries": [
+    {
+      "query_id": "gt1-q1-50-50",
+      "text": "Donne-moi tous les échanges avec l’administration sur le projet Surface pastorale."
+    },
+    {
+      "query_id": "gt2-q1-50-50",
+      "text": "Tous les échanges avec Orange au sujet de la fibre."
+    },
+    {
+      "query_id": "generic-technical",
+      "text": "Incidents techniques, erreurs serveur et opérations de maintenance documentées."
+    },
+    {
+      "query_id": "generic-contractual",
+      "text": "Clauses contractuelles, obligations, confidentialité et modalités de paiement."
+    }
+  ],
+  "strategies": [
+    {
+      "strategy_id": "jvector-default-overquery-5-post-refresh",
+      "overquery_factor": null,
+      "runs": 10
+    }
+  ]
+}
