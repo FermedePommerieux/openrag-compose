@@ -1,0 +1,230 @@
+{
+  "schema_version": 1,
+  "campaign_id": "cross-domain-closure-sample-v1",
+  "evidence_context": {
+    "application_evidence_sha": "f126c5439663585da5ff9c6419febfbb7a308a75",
+    "deployed_functional_source_sha": "74263a9b812a2eb0a83bc676cd37d3dfe82c0e1a",
+    "runtime_behavior_fingerprint": "8f5bc0f62c5f2b7ffcb08ff18301257dd97ae0f2add22da2ba647609fa30400b",
+    "corpus_digest": "038987ca2eb70b2e56d674bc45e9b60fe00652e72296249dba0252d6964fafd7",
+    "dls_descriptor": "product no-auth identity; default runtime workspace; empty knowledge filters",
+    "profile": "q1 deterministic; seed budget 100; RRF k=60; documentary-prov-o v1",
+    "production_defaults_changed": false
+  },
+  "sampling_methodology": {
+    "design": "Predeclared stratified sample across documentary form families, ordered before measurement.",
+    "anti_cherry_picking": "Includes exact/small, medium, broad, and deliberately generic pathological candidates; no case is selected from an observed closure size in this campaign.",
+    "order": "Round-robin across entity, correspondence, incident, contract, chronology, project, multi-party, and small-component forms; broad pathological candidates are retained at the end as safety stressors.",
+    "unit": "one q1 deterministic documentary intent"
+  },
+  "documentary_target_validation_defaults": {
+    "seed_budget": 100,
+    "fixed_limits": [250, 400, 500],
+    "max_depth": 8,
+    "max_entities": 1000,
+    "diagnostic_guard_rationale": "Production remains max_entities=500. The benchmark-only 1000 entity guard isolates hard_documents through 750 with 33% headroom for approximately one entity per source occurrence; max_depth remains 8 and traversal batch size remains unchanged.",
+    "validation_configurations": [
+      {"target_threshold": 200, "validation_probe_size": 25, "hard_safety_limit": 750},
+      {"target_threshold": 200, "validation_probe_size": 50, "hard_safety_limit": 750},
+      {"target_threshold": 250, "validation_probe_size": 25, "hard_safety_limit": 750},
+      {"target_threshold": 250, "validation_probe_size": 50, "hard_safety_limit": 400},
+      {"target_threshold": 250, "validation_probe_size": 50, "hard_safety_limit": 500},
+      {"target_threshold": 250, "validation_probe_size": 50, "hard_safety_limit": 750},
+      {"target_threshold": 300, "validation_probe_size": 25, "hard_safety_limit": 750},
+      {"target_threshold": 300, "validation_probe_size": 50, "hard_safety_limit": 750}
+    ]
+  },
+  "documentary_target_validation_grid": [
+    {
+      "label": "Exact invoice identifier",
+      "query": "Facture FR62442289",
+      "sampling_family": "precise_entity_lookup",
+      "sampling_order": 1
+    },
+    {
+      "label": "Orange fibre correspondence",
+      "query": "Tous les échanges avec Orange au sujet de la fibre.",
+      "sampling_family": "correspondence_investigation",
+      "sampling_order": 2
+    },
+    {
+      "label": "Intermittent network outage",
+      "query": "Tous les documents relatifs à une panne réseau intermittente.",
+      "sampling_family": "technical_incident",
+      "sampling_order": 3
+    },
+    {
+      "label": "Contract Alpha renewal",
+      "query": "Tous les échanges concernant le renouvellement du contrat Alpha.",
+      "sampling_family": "contractual_history",
+      "sampling_order": 4
+    },
+    {
+      "label": "Dupont succession chronology",
+      "query": "Retrouve les correspondances concernant la succession Dupont.",
+      "sampling_family": "person_entity_chronology",
+      "sampling_order": 5
+    },
+    {
+      "label": "Surface pastorale project",
+      "query": "Donne-moi tous les échanges avec l’administration sur le projet Surface pastorale.",
+      "sampling_family": "project_history",
+      "sampling_order": 6
+    },
+    {
+      "label": "Municipality supplier operator",
+      "query": "Tous les échanges entre la mairie, un fournisseur et un exploitant.",
+      "sampling_family": "multi_party_topic",
+      "sampling_order": 7
+    },
+    {
+      "label": "Exact meeting document",
+      "query": "Rencontre DDT.pdf",
+      "sampling_family": "small_documentary_component",
+      "sampling_order": 8
+    },
+    {
+      "label": "Enedis entity dossier",
+      "query": "Documents concernant Enedis.",
+      "sampling_family": "precise_entity_lookup",
+      "sampling_order": 9
+    },
+    {
+      "label": "Insurer claim correspondence",
+      "query": "Échanges avec l’assureur au sujet d’un sinistre.",
+      "sampling_family": "correspondence_investigation",
+      "sampling_order": 10
+    },
+    {
+      "label": "Electrical outage incident",
+      "query": "Échanges relatifs à une panne électrique.",
+      "sampling_family": "technical_incident",
+      "sampling_order": 11
+    },
+    {
+      "label": "Rural lease amendments",
+      "query": "Historique d’un bail rural et de ses avenants.",
+      "sampling_family": "contractual_history",
+      "sampling_order": 12
+    },
+    {
+      "label": "Monsieur Martin chronology",
+      "query": "Chronologie des échanges concernant Monsieur Martin.",
+      "sampling_family": "person_entity_chronology",
+      "sampling_order": 13
+    },
+    {
+      "label": "Building renovation project",
+      "query": "Historique d’un projet de rénovation de bâtiment.",
+      "sampling_family": "project_history",
+      "sampling_order": 14
+    },
+    {
+      "label": "Bank accountant supplier",
+      "query": "Échanges entre banque, comptable et fournisseur.",
+      "sampling_family": "multi_party_topic",
+      "sampling_order": 15
+    },
+    {
+      "label": "Exact estimate identifier",
+      "query": "Devis DEV-2024",
+      "sampling_family": "small_documentary_component",
+      "sampling_order": 16
+    },
+    {
+      "label": "MSA entity dossier",
+      "query": "Documents concernant la MSA.",
+      "sampling_family": "precise_entity_lookup",
+      "sampling_order": 17
+    },
+    {
+      "label": "Notary correspondence",
+      "query": "Historique des échanges avec le notaire.",
+      "sampling_family": "correspondence_investigation",
+      "sampling_order": 18
+    },
+    {
+      "label": "Internet connection incident",
+      "query": "Incident de connexion internet.",
+      "sampling_family": "technical_incident",
+      "sampling_order": 19
+    },
+    {
+      "label": "Insurance renewal history",
+      "query": "Contrat d’assurance et renouvellements.",
+      "sampling_family": "contractual_history",
+      "sampling_order": 20
+    },
+    {
+      "label": "Madame Durand chronology",
+      "query": "Chronologie des échanges concernant Madame Durand.",
+      "sampling_family": "person_entity_chronology",
+      "sampling_order": 21
+    },
+    {
+      "label": "Water connection project",
+      "query": "Projet de raccordement à l’eau.",
+      "sampling_family": "project_history",
+      "sampling_order": 22
+    },
+    {
+      "label": "Meeting attachments construction",
+      "query": "Réunion et pièces jointes concernant un chantier.",
+      "sampling_family": "multi_party_topic",
+      "sampling_order": 23
+    },
+    {
+      "label": "Orange invoice component",
+      "query": "Facture et échanges associés concernant Orange.",
+      "sampling_family": "small_documentary_component",
+      "sampling_order": 24
+    },
+    {
+      "label": "EDF entity dossier",
+      "query": "Documents concernant EDF.",
+      "sampling_family": "precise_entity_lookup",
+      "sampling_order": 25
+    },
+    {
+      "label": "Solar panel correspondence",
+      "query": "Correspondances concernant les panneaux photovoltaïques.",
+      "sampling_family": "correspondence_investigation",
+      "sampling_order": 26
+    },
+    {
+      "label": "Network ticket history",
+      "query": "Tickets et échanges concernant des incidents réseau.",
+      "sampling_family": "technical_incident",
+      "sampling_order": 27
+    },
+    {
+      "label": "Supplier contract termination",
+      "query": "Résiliation d’un contrat fournisseur.",
+      "sampling_family": "contractual_history",
+      "sampling_order": 28
+    },
+    {
+      "label": "Photovoltaic installation project",
+      "query": "Projet d’installation photovoltaïque.",
+      "sampling_family": "project_history",
+      "sampling_order": 29
+    },
+    {
+      "label": "All emails and attachments",
+      "query": "Tous les courriels et pièces jointes disponibles.",
+      "sampling_family": "pathological_candidate",
+      "sampling_order": 30
+    },
+    {
+      "label": "All projects and contracts",
+      "query": "Historique complet de tous les projets et contrats.",
+      "sampling_family": "pathological_candidate",
+      "sampling_order": 31
+    },
+    {
+      "label": "All farm exchanges and documents",
+      "query": "Tous les échanges et documents de la ferme.",
+      "sampling_family": "pathological_candidate",
+      "sampling_order": 32
+    }
+  ]
+}

@@ -29,6 +29,14 @@ benchmarks/discovery/results/*
 !benchmarks/discovery/results/surface-pastorale-v1-product-path.json
 !benchmarks/discovery/results/surface-pastorale-v1-product-path.csv
 !benchmarks/discovery/results/surface-pastorale-v1-product-path-report.md
+!benchmarks/discovery/configs/cross-domain-closure-sample-v1.json
+!benchmarks/discovery/results/cross-domain-closure-sample-v1-analysis.json
+!benchmarks/discovery/results/cross-domain-closure-sample-v1-capture.json
+!benchmarks/discovery/results/cross-domain-ground-truth-documentary-target-validation-report.md
+!benchmarks/discovery/results/orange-fibre-cross-domain-v1-compact-candidate-capture.json
+!benchmarks/discovery/results/orange-fibre-cross-domain-v1-human-review-components.csv
+!benchmarks/discovery/results/orange-fibre-cross-domain-v1-human-review-documents.csv
+!benchmarks/discovery/results/orange-fibre-cross-domain-v1-human-review.json
 !**/package.json
 !**/package-lock.json
 !**/tsconfig.json

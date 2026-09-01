@@ -1,4 +1,9 @@
-from benchmarks.discovery.remote_retrieval_correctness import _probe_delta
+import pytest
+
+from benchmarks.discovery.remote_retrieval_correctness import (
+    _probe_delta,
+    _target_validation_decision,
+)
 from benchmarks.discovery.retrieval_correctness_analysis import (
     _planner_analysis,
     _semantic_drift_diagnostics,
@@ -107,9 +112,7 @@ def test_planner_analysis_combines_captures_and_accounts_for_q0_competition():
     assert row["query_contributions"]["q1"]["matched_seed_count"] == 1
 
 
-def _observation(
-    *, documents: set[str], frontier: set[str], depth: int
-) -> dict:
+def _observation(*, documents: set[str], frontier: set[str], depth: int) -> dict:
     return {
         "documents": {(document, document) for document in documents},
         "entities": set(documents),
@@ -151,6 +154,81 @@ def test_probe_diagnostics_show_frontier_and_depth_information_beyond_marginal_y
     assert growing["frontier_growth_rate"] > 0
     assert shrinking["depth_after"] == 2
     assert growing["depth_after"] == 3
+
+
+@pytest.mark.parametrize(
+    (
+        "frontier_empty",
+        "limit_reached",
+        "current_limit",
+        "hard_limit",
+        "stop_reason",
+        "expected",
+    ),
+    [
+        (
+            True,
+            False,
+            180,
+            500,
+            "frontier_empty",
+            ("NATURAL_COMPLETE", True, "STOP"),
+        ),
+        (
+            False,
+            True,
+            250,
+            500,
+            "max_documents",
+            ("TARGET_TOO_SMALL_FRONTIER_ACTIVE", False, "CONTINUE"),
+        ),
+        (
+            False,
+            True,
+            300,
+            500,
+            "max_documents",
+            ("TARGET_TOO_SMALL_FRONTIER_ACTIVE", False, "CONTINUE"),
+        ),
+        (
+            False,
+            True,
+            500,
+            500,
+            "max_documents",
+            ("HARD_SAFETY_LIMIT_REACHED", False, "STOP"),
+        ),
+        (
+            False,
+            True,
+            300,
+            500,
+            "max_entities",
+            ("HARD_SAFETY_LIMIT_REACHED", False, "STOP"),
+        ),
+        (
+            True,
+            True,
+            300,
+            500,
+            "max_entities",
+            ("HARD_SAFETY_LIMIT_REACHED", False, "STOP"),
+        ),
+    ],
+)
+def test_target_validation_state_machine_is_fail_closed(
+    frontier_empty, limit_reached, current_limit, hard_limit, stop_reason, expected
+):
+    assert (
+        _target_validation_decision(
+            frontier_empty=frontier_empty,
+            limit_reached=limit_reached,
+            current_limit=current_limit,
+            hard_limit=hard_limit,
+            stop_reason=stop_reason,
+        )
+        == expected
+    )
 
 
 def test_hard_safety_limit_is_aggregated_as_incomplete():

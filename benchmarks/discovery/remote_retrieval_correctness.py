@@ -407,6 +407,9 @@ def _graph_observation(graph: dict[str, Any]) -> dict[str, Any]:
         for item in graph["edges"]
         if isinstance(item, dict)
     }
+    observed_entities = {
+        value for source, _role, target in edges for value in (source, target) if value
+    } | primary_entities
     frontier = {str(value) for value in coverage.get("remaining_frontier", []) if str(value)}
     chunks = sum(
         int(item.get("document_chunk_count") or 0)
@@ -417,7 +420,7 @@ def _graph_observation(graph: dict[str, Any]) -> dict[str, Any]:
     degrees = [int(item.get("total_edges") or 0) for item in hubs if isinstance(item, dict)]
     return {
         "documents": documents,
-        "entities": primary_entities,
+        "entities": observed_entities,
         "edges": edges,
         "frontier": frontier,
         "relations": _relation_counts(coverage),
@@ -440,6 +443,30 @@ def _graph_observation(graph: dict[str, Any]) -> dict[str, Any]:
             "relation_type_distribution": coverage.get("relations_traversed", {}).get(
                 "by_classification", []
             ),
+            "context_relation_type_distribution": coverage.get("relations_context_only", {}).get(
+                "by_classification", []
+            ),
+            "excluded_relation_type_distribution": coverage.get(
+                "relations_excluded_by_policy", {}
+            ).get("by_classification", []),
+            "unclassified_relation_type_distribution": coverage.get(
+                "relations_unclassified", {}
+            ).get("by_classification", []),
+            "infrastructure_reverse_expansions": [
+                row
+                for row in coverage.get("relations_traversed", {}).get("by_classification", [])
+                if isinstance(row, dict)
+                and row.get("direction") == "reverse"
+                and row.get("target_type")
+                in {
+                    "email_archive",
+                    "directory_collection",
+                    "ingestion-root",
+                    "ingestion_collection",
+                    "ingestion_root",
+                    "ingestion_run",
+                }
+            ],
         },
     }
 
@@ -486,21 +513,66 @@ def _probe_delta(before: dict[str, Any], after: dict[str, Any]) -> dict[str, Any
     }
 
 
-async def _documentary_target_validation(
+def _target_validation_decision(
+    *,
+    frontier_empty: bool,
+    limit_reached: bool,
+    current_limit: int,
+    hard_limit: int,
+    stop_reason: Any,
+) -> tuple[str, bool, str]:
+    """Return the exhaustive state without treating a target as completeness."""
+
+    if frontier_empty and not limit_reached:
+        return "NATURAL_COMPLETE", True, "STOP"
+    if (
+        current_limit >= hard_limit
+        or (limit_reached and stop_reason != "max_documents")
+        or stop_reason in {"max_entities", "max_depth"}
+    ):
+        return "HARD_SAFETY_LIMIT_REACHED", False, "STOP"
+    return "TARGET_TOO_SMALL_FRONTIER_ACTIVE", False, "CONTINUE"
+
+
+async def _documentary_target_validation_cases(
     plan: dict[str, Any], service: Any, client: Any, index_name: str
-) -> dict[str, Any]:
-    """Prototype target validation by replaying the deterministic product traversal."""
+) -> list[dict[str, Any]]:
+    """Replay a target/probe grid while sharing deterministic graph observations."""
 
     from services.retrieval_service import expand_provenance_graph
     from services.scope_traversal_policy import DEFAULT_SCOPE_TRAVERSAL_POLICY
 
     material = await _scope_seed_material(plan, service)
-    target = max(1, int(plan.get("target_threshold", 250)))
-    probe_size = max(1, int(plan.get("validation_probe_size", 50)))
-    hard_limit = max(target, int(plan.get("hard_safety_limit", 500)))
+    configured_grid = plan.get("validation_configurations")
+    if isinstance(configured_grid, list) and configured_grid:
+        configurations = [
+            {
+                "target_threshold": max(1, int(value.get("target_threshold", 250))),
+                "validation_probe_size": max(1, int(value.get("validation_probe_size", 50))),
+                "hard_safety_limit": max(1, int(value.get("hard_safety_limit", 500))),
+            }
+            for value in configured_grid
+            if isinstance(value, dict)
+        ]
+    else:
+        configurations = [
+            {
+                "target_threshold": max(1, int(plan.get("target_threshold", 250))),
+                "validation_probe_size": max(1, int(plan.get("validation_probe_size", 50))),
+                "hard_safety_limit": max(1, int(plan.get("hard_safety_limit", 500))),
+            }
+        ]
+    if not configurations:
+        raise ValueError("documentary target validation needs at least one configuration")
+    for configuration in configurations:
+        configuration["hard_safety_limit"] = max(
+            configuration["target_threshold"], configuration["hard_safety_limit"]
+        )
     fixed_limits = sorted(
-        {max(1, min(hard_limit, int(value))) for value in plan.get("fixed_limits", [250, 400, 500])}
-        | {hard_limit}
+        {max(1, int(value)) for value in plan.get("fixed_limits", [250, 400, 500])}
+    )
+    reference_limit = max(
+        [*fixed_limits, *(value["hard_safety_limit"] for value in configurations)]
     )
     max_depth = max(1, int(plan.get("max_depth", 8)))
     max_entities = max(1, int(plan.get("max_entities", 500)))
@@ -534,16 +606,17 @@ async def _documentary_target_validation(
         }
         return graphs[document_limit]
 
-    for limit in fixed_limits:
+    for limit in sorted({*fixed_limits, reference_limit}):
         await measured_graph(limit)
 
-    hard_run = graphs[hard_limit]
+    hard_run = graphs[reference_limit]
     natural_documents = (
         hard_run["observation"]["public"]["documents"]
         if hard_run["observation"]["public"]["frontier_empty"]
+        and not hard_run["observation"]["public"]["limit_reached"]
         else None
     )
-    fixed = []
+    fixed: list[dict[str, Any]] = []
     for limit in fixed_limits:
         run = graphs[limit]
         public = run["observation"]["public"]
@@ -552,82 +625,125 @@ async def _documentary_target_validation(
                 "strategy": f"fixed-{limit}",
                 "document_limit": limit,
                 **public,
+                "natural_closure_known": natural_documents is not None,
                 "natural_closure_recovery": (
                     public["documents"] / natural_documents if natural_documents else None
                 ),
                 "truncated_legitimate_closure": (
                     not public["frontier_empty"] and natural_documents is not None
                 ),
-                "coverage_success": public["frontier_empty"],
+                "coverage_success": (public["frontier_empty"] and not public["limit_reached"]),
                 "graph_latency_seconds": run["graph_latency_seconds"],
                 "max_rss_kib_delta": run["max_rss_kib_delta"],
             }
         )
 
-    current_limit = min(target, hard_limit)
-    current = await measured_graph(current_limit)
-    initial_target_observation = current["observation"]
-    probes: list[dict[str, Any]] = []
-    replay_latency = current["graph_latency_seconds"]
-    while not current["observation"]["public"]["frontier_empty"] and current_limit < hard_limit:
-        next_limit = min(hard_limit, current_limit + probe_size)
-        extended = await measured_graph(next_limit)
-        replay_latency += extended["graph_latency_seconds"]
-        public = extended["observation"]["public"]
-        probes.append(
+    cases: list[dict[str, Any]] = []
+    for configuration in configurations:
+        target = configuration["target_threshold"]
+        probe_size = configuration["validation_probe_size"]
+        hard_limit = configuration["hard_safety_limit"]
+        current_limit = min(target, hard_limit)
+        current = await measured_graph(current_limit)
+        initial_target_observation = current["observation"]
+        probes: list[dict[str, Any]] = []
+        replay_latency = current["graph_latency_seconds"]
+        state, complete, action = _target_validation_decision(
+            frontier_empty=current["observation"]["public"]["frontier_empty"],
+            limit_reached=current["observation"]["public"]["limit_reached"],
+            current_limit=current_limit,
+            hard_limit=hard_limit,
+            stop_reason=current["observation"]["public"]["stop_reason"],
+        )
+        while action == "CONTINUE":
+            next_limit = min(hard_limit, current_limit + probe_size)
+            extended = await measured_graph(next_limit)
+            replay_latency += extended["graph_latency_seconds"]
+            public = extended["observation"]["public"]
+            state, complete, action = _target_validation_decision(
+                frontier_empty=public["frontier_empty"],
+                limit_reached=public["limit_reached"],
+                current_limit=next_limit,
+                hard_limit=hard_limit,
+                stop_reason=public["stop_reason"],
+            )
+            probes.append(
+                {
+                    "probe": len(probes) + 1,
+                    "from_target": current_limit,
+                    "to_target": next_limit,
+                    **_probe_delta(current["observation"], extended["observation"]),
+                    "outcome": state,
+                }
+            )
+            current_limit = next_limit
+            current = extended
+
+        final_public = current["observation"]["public"]
+        cases.append(
             {
-                "probe": len(probes) + 1,
-                "from_target": current_limit,
-                "to_target": next_limit,
-                **_probe_delta(current["observation"], extended["observation"]),
-                "outcome": (
-                    "NATURAL_COMPLETE"
-                    if public["frontier_empty"]
-                    else "HARD_SAFETY_LIMIT_REACHED"
-                    if next_limit == hard_limit
-                    else "TARGET_TOO_SMALL_FRONTIER_ACTIVE"
-                ),
+                "label": str(plan.get("label") or material["query"]),
+                "sampling_family": plan.get("sampling_family"),
+                "sampling_order": plan.get("sampling_order"),
+                "query": material["query"],
+                "query_sha256": _sha256(material["query"]),
+                "seed_source": material["seed_source"],
+                "fixed_plan_sha256": material["fixed_plan_sha256"],
+                "seed_chunks": len(material["seed_results"]),
+                "seed_documents": len(material["seed_documents"]),
+                "seed_entities": len(material["seed_entities"]),
+                "max_depth": max_depth,
+                "max_entities": max_entities,
+                "fixed_strategies": fixed,
+                "documentary_target_validation": {
+                    "documentary_semantics": "probe-beyond-target-to-validate-target",
+                    "target_threshold": target,
+                    "validation_probe_size": probe_size,
+                    "hard_safety_limit": hard_limit,
+                    "state": state,
+                    "coverage_complete": complete,
+                    "false_target_at_threshold": (
+                        not initial_target_observation["public"]["frontier_empty"]
+                    ),
+                    "number_of_probes": len(probes),
+                    "target_extensions": len(probes),
+                    "extra_graph_queries": len(probes),
+                    "documents_beyond_initial_target": max(0, final_public["documents"] - target),
+                    "final_target": current_limit,
+                    "final_observation": final_public,
+                    "frontier_trajectory": [
+                        initial_target_observation["public"]["frontier"],
+                        *[int(value["frontier_after"]) for value in probes],
+                    ],
+                    "depth_trajectory": [
+                        initial_target_observation["public"]["depth"],
+                        *[int(value["depth_after"]) for value in probes],
+                    ],
+                    "probes": probes,
+                    "final_graph_latency_seconds": current["graph_latency_seconds"],
+                    "prototype_replay_graph_latency_seconds": replay_latency,
+                    "prototype_replay_latency_overhead_seconds": max(
+                        0.0, replay_latency - current["graph_latency_seconds"]
+                    ),
+                    "execution_note": (
+                        "Calibration replay restarts the same deterministic traversal at each "
+                        "target; a continuous implementation would retain traversal state."
+                    ),
+                },
             }
         )
-        current_limit = next_limit
-        current = extended
+    return cases
 
-    final_public = current["observation"]["public"]
-    state = "NATURAL_COMPLETE" if final_public["frontier_empty"] else "HARD_SAFETY_LIMIT_REACHED"
-    return {
-        "label": str(plan.get("label") or material["query"]),
-        "query": material["query"],
-        "query_sha256": _sha256(material["query"]),
-        "seed_source": material["seed_source"],
-        "fixed_plan_sha256": material["fixed_plan_sha256"],
-        "seed_chunks": len(material["seed_results"]),
-        "seed_documents": len(material["seed_documents"]),
-        "seed_entities": len(material["seed_entities"]),
-        "max_depth": max_depth,
-        "max_entities": max_entities,
-        "fixed_strategies": fixed,
-        "documentary_target_validation": {
-            "documentary_semantics": "probe-beyond-target-to-validate-target",
-            "target_threshold": target,
-            "validation_probe_size": probe_size,
-            "hard_safety_limit": hard_limit,
-            "state": state,
-            "coverage_complete": state == "NATURAL_COMPLETE",
-            "false_target_at_threshold": (
-                not initial_target_observation["public"]["frontier_empty"]
-            ),
-            "number_of_probes": len(probes),
-            "target_extensions": len(probes),
-            "final_target": current_limit,
-            "final_observation": final_public,
-            "probes": probes,
-            "prototype_replay_graph_latency_seconds": replay_latency,
-            "execution_note": (
-                "Calibration replay restarts the same deterministic traversal at each target; "
-                "a continuous implementation would retain traversal state."
-            ),
-        },
-    }
+
+async def _documentary_target_validation(
+    plan: dict[str, Any], service: Any, client: Any, index_name: str
+) -> dict[str, Any]:
+    """Backward-compatible single target/probe validation entry point."""
+
+    cases = await _documentary_target_validation_cases(plan, service, client, index_name)
+    if len(cases) != 1:
+        raise ValueError("single target validation received a configuration grid")
+    return cases[0]
 
 
 def _compact_sensitivity_response(response: dict[str, Any]) -> dict[str, Any]:
@@ -853,6 +969,18 @@ async def run(plan: dict[str, Any]) -> dict[str, Any]:
                 for value in plan["documentary_target_validation"]
                 if isinstance(value, dict)
             ]
+        if isinstance(plan.get("documentary_target_validation_grid"), list):
+            defaults = plan.get("documentary_target_validation_defaults")
+            defaults = defaults if isinstance(defaults, dict) else {}
+            grid_cases = [
+                case
+                for value in plan["documentary_target_validation_grid"]
+                if isinstance(value, dict)
+                for case in await _documentary_target_validation_cases(
+                    {**defaults, **value}, service, client, index_name
+                )
+            ]
+            result.setdefault("documentary_target_validation", []).extend(grid_cases)
         if isinstance(plan.get("sensitivity_experiments"), list):
             result["sensitivity_experiments"] = [
                 await _sensitivity_experiment(value, service)

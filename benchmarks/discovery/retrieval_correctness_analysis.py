@@ -371,6 +371,7 @@ def _natural_analysis(captures: list[dict[str, Any]]) -> dict[str, Any]:
         "distribution": {
             "n": len(values),
             "p50": _nearest_rank(values, 0.50),
+            "p75": _nearest_rank(values, 0.75),
             "p90": _nearest_rank(values, 0.90),
             "p95": _nearest_rank(values, 0.95),
             "p99": _nearest_rank(values, 0.99),
@@ -435,12 +436,21 @@ def _target_validation_analysis(
         if isinstance(item, dict)
     ]
     scope_by_identity: dict[tuple[str, str], dict[str, Any]] = {}
+    case_by_identity: dict[tuple[str, str], dict[str, Any]] = {}
     fixed_by_identity: dict[tuple[str, str, int], dict[str, Any]] = {}
     configuration_rows: list[dict[str, Any]] = []
     probes: list[dict[str, Any]] = []
     for item in cases:
         validation = item["documentary_target_validation"]
         identity = (str(item["query_sha256"]), str(item.get("fixed_plan_sha256") or ""))
+        case_by_identity.setdefault(
+            identity,
+            {
+                "label": item["label"],
+                "sampling_family": item.get("sampling_family"),
+                "sampling_order": item.get("sampling_order"),
+            },
+        )
         if validation["state"] == "NATURAL_COMPLETE":
             scope_by_identity.setdefault(
                 identity,
@@ -450,6 +460,19 @@ def _target_validation_analysis(
                     "entities": int(validation["final_observation"]["entities"]),
                     "chunks": int(validation["final_observation"]["chunks"]),
                     "depth": int(validation["final_observation"]["depth"]),
+                    "frontier_trajectory": validation.get("frontier_trajectory", []),
+                    "depth_trajectory": validation.get("depth_trajectory", []),
+                    "largest_degree": int(
+                        validation["final_observation"].get("hub_degree", {}).get("max") or 0
+                    ),
+                    "relation_type_distribution": validation["final_observation"].get(
+                        "relation_type_distribution", []
+                    ),
+                    "infrastructure_reverse_expansions": validation["final_observation"].get(
+                        "infrastructure_reverse_expansions", []
+                    ),
+                    "sampling_family": item.get("sampling_family"),
+                    "sampling_order": item.get("sampling_order"),
                 },
             )
         for fixed in item["fixed_strategies"]:
@@ -468,26 +491,73 @@ def _target_validation_analysis(
                 "target_extensions": int(validation["target_extensions"]),
                 "final_target": int(validation["final_target"]),
                 "final_documents": int(validation["final_observation"]["documents"]),
+                "final_entities": int(validation["final_observation"]["entities"]),
+                "final_chunks": int(validation["final_observation"]["chunks"]),
+                "final_depth": int(validation["final_observation"]["depth"]),
+                "stop_reason": validation["final_observation"].get("stop_reason"),
+                "extra_graph_queries": int(validation.get("extra_graph_queries") or 0),
+                "documents_beyond_initial_target": int(
+                    validation.get("documents_beyond_initial_target") or 0
+                ),
+                "final_graph_latency_seconds": float(
+                    validation.get("final_graph_latency_seconds") or 0.0
+                ),
                 "prototype_replay_graph_latency_seconds": float(
                     validation["prototype_replay_graph_latency_seconds"]
+                ),
+                "prototype_replay_latency_overhead_seconds": float(
+                    validation.get("prototype_replay_latency_overhead_seconds") or 0.0
+                ),
+                "infrastructure_reverse_expansion_count": len(
+                    validation["final_observation"].get("infrastructure_reverse_expansions", [])
                 ),
             }
         )
         probes.extend({"label": item["label"], **probe} for probe in validation.get("probes", []))
 
     closure_values = [int(value["documents"]) for value in scope_by_identity.values()]
+    ordered_closures = sorted(
+        scope_by_identity.values(),
+        key=lambda row: (
+            row.get("sampling_order") is None,
+            int(row.get("sampling_order") or 10**9),
+            str(row["label"]),
+        ),
+    )
+    percentile_convergence = []
+    running_values: list[int] = []
+    for row in ordered_closures:
+        running_values.append(int(row["documents"]))
+        percentile_convergence.append(
+            {
+                "n": len(running_values),
+                "last_label": row["label"],
+                "p50": _nearest_rank(running_values, 0.50),
+                "p75": _nearest_rank(running_values, 0.75),
+                "p90": _nearest_rank(running_values, 0.90),
+                "p95": _nearest_rank(running_values, 0.95),
+                "p99": _nearest_rank(running_values, 0.99),
+                "max": max(running_values),
+            }
+        )
     fixed_groups: dict[int, list[dict[str, Any]]] = {}
     for (*_identity, limit), row in fixed_by_identity.items():
         fixed_groups.setdefault(limit, []).append(row)
     fixed_summary = {
         str(limit): {
             "closures": len(rows),
+            "natural_closure_known": sum(row.get("natural_closure_known") is True for row in rows),
+            "natural_closure_unknown": sum(
+                row.get("natural_closure_known") is not True for row in rows
+            ),
             "coverage_success_rate": sum(row["coverage_success"] is True for row in rows)
             / len(rows),
-            "legitimate_truncation_rate": sum(
-                row["truncated_legitimate_closure"] is True for row in rows
-            )
-            / len(rows),
+            "legitimate_truncation_rate": (
+                sum(row["truncated_legitimate_closure"] is True for row in rows)
+                / sum(row.get("natural_closure_known") is True for row in rows)
+                if any(row.get("natural_closure_known") is True for row in rows)
+                else None
+            ),
             "documents": _range([float(row["documents"]) for row in rows]),
             "chunks": _range([float(row["chunks"]) for row in rows]),
             "graph_latency_seconds": _range([float(row["graph_latency_seconds"]) for row in rows]),
@@ -520,8 +590,21 @@ def _target_validation_analysis(
             "false_target_rate": sum(row["false_target_at_threshold"] for row in rows) / len(rows),
             "coverage_success_rate": sum(row["coverage_complete"] for row in rows) / len(rows),
             "probe_count": _range([float(row["number_of_probes"]) for row in rows]),
+            "extra_graph_queries": _range([float(row["extra_graph_queries"]) for row in rows]),
+            "documents_beyond_initial_target": _range(
+                [float(row["documents_beyond_initial_target"]) for row in rows]
+            ),
+            "final_graph_latency_seconds": _range(
+                [float(row["final_graph_latency_seconds"]) for row in rows]
+            ),
             "prototype_replay_graph_latency_seconds": _range(
                 [float(row["prototype_replay_graph_latency_seconds"]) for row in rows]
+            ),
+            "prototype_replay_latency_overhead_seconds": _range(
+                [float(row["prototype_replay_latency_overhead_seconds"]) for row in rows]
+            ),
+            "infrastructure_reverse_expansion_count": sum(
+                row["infrastructure_reverse_expansion_count"] for row in rows
             ),
         }
         for key, rows in sorted(validation_groups.items())
@@ -601,11 +684,30 @@ def _target_validation_analysis(
             "closures": list(scope_by_identity.values()),
             "distribution": {
                 "p50": _nearest_rank(closure_values, 0.50),
+                "p75": _nearest_rank(closure_values, 0.75),
                 "p90": _nearest_rank(closure_values, 0.90),
                 "p95": _nearest_rank(closure_values, 0.95),
                 "p99": _nearest_rank(closure_values, 0.99),
                 "max": max(closure_values) if closure_values else None,
+                "max_entities": max(
+                    (int(value["entities"]) for value in scope_by_identity.values()),
+                    default=None,
+                ),
+                "max_chunks": max(
+                    (int(value["chunks"]) for value in scope_by_identity.values()),
+                    default=None,
+                ),
+                "max_depth": max(
+                    (int(value["depth"]) for value in scope_by_identity.values()),
+                    default=None,
+                ),
             },
+            "percentile_convergence": percentile_convergence,
+            "unknown_cases": [
+                value
+                for identity, value in case_by_identity.items()
+                if identity not in scope_by_identity
+            ],
         },
         "fixed_strategies": fixed_summary,
         "target_validation_strategies": validation_summary,

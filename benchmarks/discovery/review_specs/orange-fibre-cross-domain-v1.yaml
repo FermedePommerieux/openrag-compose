@@ -1,0 +1,66 @@
+schema_version: 1
+review_id: orange-fibre-cross-domain-v1
+domain: technical connectivity correspondence and fibre installation dossier
+canonical_query: Tous les échanges avec Orange au sujet de la fibre.
+review_protocol:
+  initial_pass: Review every component and document, assigning CORE, CONTEXTUAL, or NOT_RELEVANT.
+  completeness_pass: Re-run disconnected-component, alias, exact-title, thread, and deep-rank controls after initial human review.
+  freeze_rule: Freeze only after every candidate and completeness-control addition has a human decision.
+lane_parameters:
+  lexical_size: 1000
+  dense_size: 1000
+  rrf_k: 60
+queries:
+  - query_id: canonical-q1
+    text: Tous les échanges avec Orange au sujet de la fibre.
+    candidate_class: canonical
+    lanes: [lexical, dense, rrf]
+    inspection_horizon: 200
+  - query_id: alternate-raccordement
+    text: Dossier de raccordement à la fibre optique par Orange.
+    candidate_class: alternate
+    lanes: [lexical, dense, rrf]
+    inspection_horizon: 150
+  - query_id: alternate-travaux
+    text: Courriels et pièces jointes relatifs aux travaux fibre Orange.
+    candidate_class: alternate
+    lanes: [lexical, dense, rrf]
+    inspection_horizon: 150
+  - query_id: entity-orange-fibre
+    text: Orange fibre
+    candidate_class: entity
+    lanes: [lexical, dense, rrf]
+    inspection_horizon: 200
+  - query_id: deep-fibre-optique
+    text: fibre optique
+    candidate_class: alternate
+    lanes: [lexical, dense, rrf]
+    inspection_horizon: 300
+  - query_id: outside-control-raccordement
+    text: raccordement internet haut débit
+    candidate_class: control
+    lanes: [lexical, dense, rrf]
+    inspection_horizon: 75
+  - query_id: outside-control-telecom
+    text: travaux télécoms réseau
+    candidate_class: control
+    lanes: [lexical, dense, rrf]
+    inspection_horizon: 75
+metadata_recovery:
+  enabled: true
+  relation_target_types: [email_thread, email_message, email_message_identifier]
+  max_anchors: 5000
+  anchor_batch_size: 100
+  review_horizon: 10000
+review_selection:
+  max_components: 350
+  required_query_ids: [canonical-q1]
+  minimum_independent_queries: 2
+  max_control_components: 50
+evidence_context:
+  application_evidence_sha: f126c5439663585da5ff9c6419febfbb7a308a75
+  runtime_behavior_fingerprint: 8f5bc0f62c5f2b7ffcb08ff18301257dd97ae0f2add22da2ba647609fa30400b
+  corpus_digest: 038987ca2eb70b2e56d674bc45e9b60fe00652e72296249dba0252d6964fafd7
+  dls_descriptor: product no-auth identity; default runtime workspace; empty knowledge filters
+  retrieval_profile: q1 deterministic; lexical/dense 50/50 production baseline; seed budget 100; RRF k=60
+  scope_policy: documentary-prov-o v1

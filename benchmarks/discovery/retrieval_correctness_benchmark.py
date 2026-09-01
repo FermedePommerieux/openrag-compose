@@ -65,9 +65,13 @@ def _capture(args: argparse.Namespace) -> None:
     capture = {
         "schema_version": 1,
         "captured_at": datetime.now(UTC).isoformat(),
+        "benchmark_driver_sha256": __import__("hashlib")
+        .sha256(Path(__file__).read_bytes())
+        .hexdigest(),
         "remote_script_sha256": __import__("hashlib")
         .sha256(args.remote_script.read_bytes())
         .hexdigest(),
+        "evidence_context": plan.get("evidence_context", {}),
         "plan": plan,
         "result": result,
     }

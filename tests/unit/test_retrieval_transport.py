@@ -18,8 +18,8 @@ def _chunk(index: int, *, text_size: int = 2048) -> dict:
     }
 
 
-def _scope_payload(chunk_count: int, *, complete: bool = False) -> dict:
-    results = [_chunk(index) for index in range(chunk_count)]
+def _scope_payload(chunk_count: int, *, complete: bool = False, text_size: int = 2048) -> dict:
+    results = [_chunk(index, text_size=text_size) for index in range(chunk_count)]
     model_results = results[:96]
     return {
         "results": results,
@@ -134,6 +134,17 @@ def test_surface_pastorale_regression_keeps_coverage_but_only_96_source_chunks()
     assert compact["coverage"]["status_code"] == "document_limit_reached"
     assert len(compact["results"]) == 96
     assert len(compact["documents"]) == 250
+
+
+def test_langflow_transport_remains_bounded_above_largest_calibration_chunk_count():
+    payload = _scope_payload(25_000, text_size=64)
+
+    compact = project_scope_exhaustive_for_langflow(payload)
+
+    assert len(compact["results"]) == 96
+    assert "evidence_batches" not in compact
+    assert "graph" not in compact
+    assert "EXHAUSTIVE-24999" not in json.dumps(compact)
 
 
 @pytest.mark.asyncio
