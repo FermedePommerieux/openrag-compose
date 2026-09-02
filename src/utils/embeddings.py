@@ -29,7 +29,7 @@ async def create_index_body(
     )
 
     from models.document_metadata import document_metadata_mapping
-    from models.source_provenance import source_provenance_mapping
+    from models.source_provenance import source_attachment_mapping, source_provenance_mapping
 
     properties = {
         # Sortable logical chunk identity for Retrieval v2. `_id` cannot be
@@ -54,6 +54,8 @@ async def create_index_body(
         # W3C PROV-O source identity and relations. ``source_url`` remains a
         # mutable access locator and is intentionally not used as identity.
         "source_provenance": source_provenance_mapping(),
+        # Internal, non-retrieval binary contract for OpenArchiver attachments.
+        "source_attachment": source_attachment_mapping(),
         "source_entity_id": {"type": "keyword"},
         "source_entity_type": {"type": "keyword"},
         "source_entity_system": {"type": "keyword"},

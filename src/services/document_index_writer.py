@@ -15,7 +15,11 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from models.document_metadata import document_metadata_mapping
-from models.source_provenance import SourceProvenance, source_provenance_mapping
+from models.source_provenance import (
+    SourceProvenance,
+    source_attachment_mapping,
+    source_provenance_mapping,
+)
 from utils.embedding_fields import ensure_embedding_field_exists
 from utils.embeddings import create_index_body
 from utils.group_acl import unique_acl_principal_labels, unique_acl_principals
@@ -144,6 +148,7 @@ class DocumentIndexWriter:
             dimensions=dimensions,
             ensure_source_provenance=context.source_provenance is not None,
         )
+        await self._validate_attachment_identity(client, index_name=index_name, context=context)
 
         now = datetime.datetime.now(datetime.UTC).isoformat()
         bulk_body: list[dict[str, Any]] = []
@@ -658,6 +663,7 @@ class DocumentIndexWriter:
         """
         required: dict[str, dict[str, Any]] = {
             "source_provenance": source_provenance_mapping(),
+            "source_attachment": source_attachment_mapping(),
             "source_entity_id": {"type": "keyword"},
             "source_entity_type": {"type": "keyword"},
             "source_entity_system": {"type": "keyword"},
@@ -686,7 +692,7 @@ class DocumentIndexWriter:
         incompatible = {
             name: properties[name].get("type")
             for name, definition in required.items()
-            if name != "source_provenance"
+            if name not in {"source_provenance", "source_attachment"}
             and name in properties
             and properties[name].get("type") != definition.get("type")
         }
@@ -787,7 +793,7 @@ class DocumentIndexWriter:
             # Repeat canonical provenance on every chunk. Search hits then
             # remain independently verifiable, even outside a join-capable
             # database, while the flattened fields support reverse traversal.
-            doc.update(context.source_provenance.index_fields())
+            doc.update(context.source_provenance.index_fields(indexed_at=indexed_time))
         for time_field in ("created_time", "modified_time"):
             if metadata.get(time_field):
                 doc[time_field] = metadata[time_field]
@@ -814,6 +820,47 @@ class DocumentIndexWriter:
         if "filesize" in normalized and "file_size" not in normalized:
             normalized["file_size"] = normalized["filesize"]
         return normalized
+
+    async def _validate_attachment_identity(
+        self,
+        client: Any,
+        *,
+        index_name: str,
+        context: DocumentIndexContext,
+    ) -> None:
+        """Reject a stable attachment id that was previously bound to other bytes."""
+        provenance = context.source_provenance
+        contract = provenance.attachment_contract if provenance is not None else None
+        if contract is None:
+            return
+        if context.document_id != contract.document_id:
+            raise ValueError("attachment contract document_id differs from ingestion context")
+        response = await client.search(
+            index=index_name,
+            body={
+                "query": {"term": {"source_entity_id": contract.source_entity_id}},
+                "_source": ["document_id", "source_attachment.sha256"],
+                "size": 100,
+            },
+            request_timeout=self.profile_request_timeout,
+        )
+        for hit in response.get("hits", {}).get("hits", []):
+            source = hit.get("_source", {})
+            existing_document_id = str(source.get("document_id") or "")
+            source_attachment = source.get("source_attachment")
+            existing_sha256 = (
+                str(source_attachment.get("sha256") or "")
+                if isinstance(source_attachment, dict)
+                else ""
+            )
+            if existing_document_id and existing_document_id != contract.document_id:
+                raise RuntimeError(
+                    "OpenArchiver attachment identity conflict: existing document_id differs"
+                )
+            if existing_sha256 and existing_sha256 != contract.sha256:
+                raise RuntimeError(
+                    "OpenArchiver attachment identity conflict: existing SHA-256 differs"
+                )
 
     @staticmethod
     def _raise_for_bulk_errors(result: Any) -> None:

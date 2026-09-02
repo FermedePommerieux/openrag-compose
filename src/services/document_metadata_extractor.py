@@ -80,6 +80,9 @@ class ExtractionResult:
     format_name: str
     bytes_read: int
     elapsed_ms: float
+    context_and_hash_ms: float
+    native_extraction_ms: float
+    normalization_and_digest_ms: float
     native_metadata_supported: bool
     warnings: tuple[str, ...] = field(default_factory=tuple)
 
@@ -849,8 +852,11 @@ def extract_document_metadata(
         raise MetadataExtractionError("archived original exceeds the v1 one-GiB safety limit")
     suffix = Path(context.original_name).suffix.lower() or source.suffix.lower()
     builder = _ProfileBuilder(context, extracted_at or datetime.now(UTC))
+    context_started = time.perf_counter()
     bytes_read = _add_context_facts(source, builder)
+    context_and_hash_ms = (time.perf_counter() - context_started) * 1000
     native_supported = suffix in _NATIVE_EXTRACTORS
+    native_started = time.perf_counter()
     if native_supported:
         format_name, extractor = _NATIVE_EXTRACTORS[suffix]
         extractor(source, builder)
@@ -859,12 +865,18 @@ def extract_document_metadata(
         builder.warnings.append("format_has_no_v1_embedded_metadata_extractor")
     else:
         raise UnsupportedMetadataFormatError(f"unsupported metadata format: {suffix or '[none]'}")
+    native_extraction_ms = (time.perf_counter() - native_started) * 1000
+    normalization_started = time.perf_counter()
     profile = builder.build()
+    normalization_and_digest_ms = (time.perf_counter() - normalization_started) * 1000
     return ExtractionResult(
         profile=profile,
         format_name=format_name,
         bytes_read=bytes_read,
         elapsed_ms=(time.perf_counter() - started) * 1000,
+        context_and_hash_ms=context_and_hash_ms,
+        native_extraction_ms=native_extraction_ms,
+        normalization_and_digest_ms=normalization_and_digest_ms,
         native_metadata_supported=native_supported,
         warnings=tuple(builder.warnings),
     )

@@ -452,6 +452,15 @@ class LangflowFileService:
         resolved_document_id = self._resolve_document_id(
             file_tuples, document_id, connector_file_id
         )
+        if source_provenance is not None:
+            source_provenance.validate_attachment_binary(
+                document_id=resolved_document_id,
+                size_bytes=file_size_bytes,
+            )
+            if source_provenance.attachment_contract is not None and not source_url:
+                raise ValueError(
+                    "OpenArchiver attachment ingestion requires the parent email source_url"
+                )
 
         # Get the current embedding model and provider credentials from config
         from config.settings import get_openrag_config

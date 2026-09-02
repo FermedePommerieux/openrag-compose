@@ -1,0 +1,127 @@
+{
+  "contract": "openrag.openarchiver-attachment-ingestion",
+  "version": 1,
+  "status": "IMPLEMENTED",
+  "scope": "future OpenArchiver attachment ingestion only",
+  "required_fields": {
+    "connector_supplied": [
+      "source_kind",
+      "source_entity_id",
+      "parent_source_entity_id",
+      "attachment_id",
+      "parent_email_id",
+      "filename_original",
+      "size_bytes",
+      "sha256",
+      "document_id",
+      "archive_locator",
+      "connector_version"
+    ],
+    "openrag_supplied": [
+      "source_url",
+      "ingested_at",
+      "owner",
+      "ingest_run_id"
+    ]
+  },
+  "optional_fields": [
+    "mime_type_declared",
+    "mime_type_detected",
+    "parent_archive_source_id"
+  ],
+  "identity_rules": {
+    "source_kind": "openarchiver_attachment",
+    "source_entity_id": "urn:openrag:openarchiver:attachment:<percent-encoded attachment_id>",
+    "parent_source_entity_id": "urn:openrag:openarchiver:email:<percent-encoded parent_archive_source_id>:<percent-encoded parent_email_id> for the deployed source-scoped email identity; unscoped form remains accepted when no source scope exists",
+    "document_id": "base64url(full binary SHA-256 bytes) without padding, first 24 characters",
+    "sufficient_identity": [
+      "stable attachment_id",
+      "verified full binary SHA-256"
+    ],
+    "forbidden_fallbacks": [
+      "filename",
+      "parent source_url",
+      "parent_email_id plus filename",
+      "date or similarity"
+    ]
+  },
+  "hash_rules": {
+    "algorithm": "SHA-256",
+    "coverage": "full binary",
+    "read_mode": "bounded streaming",
+    "pre_commit_checks": [
+      "binary readable",
+      "actual size equals size_bytes",
+      "full SHA-256 computed",
+      "SHA-derived document_id matches",
+      "source and parent identities validated"
+    ]
+  },
+  "parent_relation_rules": {
+    "required_assertion": "attachment_of",
+    "source_url_semantics": "user-facing parent email URL only",
+    "multiple_parents": "all asserted attachment_of parents are preserved; the deterministic first parent supplies the required primary parent fields",
+    "not_inferred": [
+      "version_of",
+      "derived_from",
+      "same_document_as",
+      "author_identity"
+    ]
+  },
+  "failure_modes": {
+    "missing_attachment_id": "REJECT",
+    "missing_parent_email_id": "REJECT",
+    "binary_unavailable": "RETRYABLE_FAILURE",
+    "size_mismatch": "REJECT",
+    "hash_mismatch": "REJECT",
+    "same_id_different_hash": "IDENTITY_CONFLICT",
+    "malformed_mime": "REJECT",
+    "unknown_well_formed_mime": "ACCEPT_AND_PRESERVE",
+    "missing_parent_source_url": "REJECT",
+    "dls_scope_mismatch": "DLS_BLOCKED"
+  },
+  "idempotency_rules": {
+    "same_attachment_id_same_hash": "IDEMPOTENT",
+    "same_attachment_id_different_hash": "EXPLICIT_CONFLICT",
+    "different_attachment_ids_same_hash": "DISTINCT_LEGITIMATE_SOURCE_OCCURRENCES",
+    "filename_collisions": "NEVER_USED_FOR_IDENTITY"
+  },
+  "dls_expectations": {
+    "ownership_source": "authenticated OpenRAG ingestion principal",
+    "preserve": [
+      "owner",
+      "source occurrence",
+      "document generation",
+      "attachment_of relation"
+    ],
+    "internal_only": [
+      "source_attachment",
+      "archive_locator",
+      "binary hash",
+      "connector_version"
+    ],
+    "backfill_write_gate": [
+      "exact document",
+      "exact generation",
+      "exact source occurrence",
+      "exact owner",
+      "exact chunk count",
+      "unique chunk_index=0 representative"
+    ]
+  },
+  "backward_compatibility": {
+    "historical_source_entity_id_preserved": "urn:openrag:openarchiver:attachment:<attachment_id>",
+    "historical_attachment_of_target_identity_preserved": true,
+    "historical_document_id_rule_preserved": true,
+    "historical_documents_rewritten": false,
+    "source_url_changed": false,
+    "connector_private_registry_adapter_retained_for_transitional_backfill": true,
+    "document_metadata_profile": "openrag.document-metadata v1",
+    "metadata_resolution_policy": "openrag.metadata-resolution v1"
+  },
+  "retrieval_behavior": {
+    "scope_expanding": false,
+    "retrieval_defaults_changed": false,
+    "public_projection": "attachment contract excluded"
+  }
+}

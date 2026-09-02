@@ -759,8 +759,10 @@ class DocumentMetadataBackfillJob:
         self,
         query: dict[str, Any],
         profile: DocumentMetadataProfile,
+        *,
+        updated_at: str | None = None,
     ) -> int:
-        now = datetime.now(UTC).isoformat()
+        now = updated_at or datetime.now(UTC).isoformat()
         result = await self.client.update_by_query(
             index=self.index_name,
             body={

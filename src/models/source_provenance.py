@@ -13,9 +13,12 @@ Langflow callback token without giving callers control over index structure.
 
 from __future__ import annotations
 
+import base64
+import hashlib
 from datetime import datetime
 from enum import StrEnum
 from typing import Any, Literal
+from urllib.parse import quote
 
 from pydantic import (
     BaseModel,
@@ -30,6 +33,12 @@ PROV_NAMESPACE = "http://www.w3.org/ns/prov#"
 SOURCE_PROVENANCE_SCHEMA_VERSION = "1.0"
 MAX_SOURCE_RELATIONS = 256
 MAX_SOURCE_RELATIVE_PATH_LENGTH = 4096
+OPENARCHIVER_ATTACHMENT_CONTRACT = "openrag.openarchiver-attachment-ingestion"
+OPENARCHIVER_ATTACHMENT_CONTRACT_VERSION = 1
+
+
+def _sha256_document_id(value: str) -> str:
+    return base64.urlsafe_b64encode(bytes.fromhex(value)).rstrip(b"=").decode("ascii")[:24]
 
 
 def normalize_source_relative_path(value: str) -> str:
@@ -40,9 +49,7 @@ def normalize_source_relative_path(value: str) -> str:
     if not normalized:
         raise ValueError("relative_path must not be empty")
     if normalized.startswith("/") or (
-        len(normalized) >= 3
-        and normalized[0].isalpha()
-        and normalized[1:3] == ":/"
+        len(normalized) >= 3 and normalized[0].isalpha() and normalized[1:3] == ":/"
     ):
         raise ValueError("relative_path must not be absolute")
     parts = normalized.split("/")
@@ -140,6 +147,106 @@ class SourceRelation(BaseModel):
         return self
 
 
+class OpenArchiverAttachmentContract(BaseModel):
+    """Fail-closed binary identity supplied by the OpenArchiver connector.
+
+    This envelope is transported inside the signed ingestion context, but it
+    is indexed separately from public source provenance.  Archive locators and
+    binary verification facts must never become retrieval/model metadata.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    contract: Literal["openrag.openarchiver-attachment-ingestion"] = (
+        "openrag.openarchiver-attachment-ingestion"
+    )
+    version: Literal[1] = 1
+    source_kind: Literal["openarchiver_attachment"] = "openarchiver_attachment"
+    source_entity_id: str
+    parent_source_entity_id: str
+    attachment_id: str
+    parent_email_id: str
+    parent_archive_source_id: str | None = None
+    filename_original: str = Field(max_length=4096)
+    mime_type_declared: str | None = Field(default=None, max_length=255)
+    mime_type_detected: str | None = Field(default=None, max_length=255)
+    size_bytes: int = Field(ge=0)
+    sha256: str
+    document_id: str
+    archive_locator: str = Field(max_length=2048)
+    connector_version: str = Field(max_length=255)
+
+    @field_validator(
+        "source_entity_id",
+        "parent_source_entity_id",
+        "attachment_id",
+        "parent_email_id",
+        "document_id",
+        "archive_locator",
+        "connector_version",
+    )
+    @classmethod
+    def validate_required_identifiers(cls, value: str, info: ValidationInfo) -> str:
+        return _validate_identifier(value, field_name=info.field_name)
+
+    @field_validator("parent_archive_source_id")
+    @classmethod
+    def validate_optional_parent_source(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return _validate_identifier(value, field_name="parent_archive_source_id")
+
+    @field_validator("sha256")
+    @classmethod
+    def validate_sha256(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if len(normalized) != hashlib.sha256().digest_size * 2 or any(
+            character not in "0123456789abcdef" for character in normalized
+        ):
+            raise ValueError("sha256 must be a complete hexadecimal SHA-256")
+        return normalized
+
+    @field_validator("mime_type_declared", "mime_type_detected")
+    @classmethod
+    def validate_mime_type(cls, value: str | None, info: ValidationInfo) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip().lower()
+        if not normalized:
+            return None
+        if len(normalized.split("/")) != 2 or any(
+            not part
+            or any(not (character.isalnum() or character in "!#$&^_.+-") for character in part)
+            for part in normalized.split("/")
+        ):
+            raise ValueError(f"{info.field_name} must be a syntactically valid MIME type")
+        return normalized
+
+    @model_validator(mode="after")
+    def validate_identity_derivations(self) -> OpenArchiverAttachmentContract:
+        expected_entity = "urn:openrag:openarchiver:attachment:" + quote(
+            self.attachment_id, safe=""
+        )
+        parent_parts = ["urn:openrag:openarchiver:email"]
+        if self.parent_archive_source_id:
+            parent_parts.append(quote(self.parent_archive_source_id, safe=""))
+        parent_parts.append(quote(self.parent_email_id, safe=""))
+        expected_parent = ":".join(parent_parts)
+        if self.source_entity_id != expected_entity:
+            raise ValueError("source_entity_id does not match attachment_id")
+        if self.parent_source_entity_id != expected_parent:
+            raise ValueError("parent_source_entity_id does not match parent_email_id")
+        if self.document_id != _sha256_document_id(self.sha256):
+            raise ValueError("document_id does not match the verified binary SHA-256")
+        return self
+
+    def index_value(self, *, ingested_at: str) -> dict[str, Any]:
+        return {
+            **self.model_dump(mode="json", exclude_none=True),
+            "ingested_at": ingested_at,
+        }
+
+
 class SourceProvenance(BaseModel):
     """Versioned provenance envelope attached to one ingested document."""
 
@@ -158,6 +265,7 @@ class SourceProvenance(BaseModel):
         default_factory=list,
         max_length=MAX_SOURCE_RELATIONS,
     )
+    attachment_contract: OpenArchiverAttachmentContract | None = None
 
     @field_validator("relative_path")
     @classmethod
@@ -180,7 +288,44 @@ class SourceProvenance(BaseModel):
             seen.add(identity)
         return relations
 
-    def index_fields(self) -> dict[str, object]:
+    @model_validator(mode="after")
+    def validate_attachment_contract(self) -> SourceProvenance:
+        contract = self.attachment_contract
+        if contract is None:
+            return self
+        if self.entity.id != contract.source_entity_id:
+            raise ValueError("attachment contract source identity differs from provenance entity")
+        if self.entity.type != "email_attachment" or self.entity.source_system != "openarchiver":
+            raise ValueError("attachment contract requires an OpenArchiver email_attachment entity")
+        asserted_parents = {
+            relation.target.id
+            for relation in self.relations
+            if relation.role is SourceRelationRole.ATTACHMENT_OF
+        }
+        if contract.parent_source_entity_id not in asserted_parents:
+            raise ValueError("attachment contract parent is not asserted by attachment_of")
+        if any(
+            relation.role in {SourceRelationRole.DERIVED_FROM, SourceRelationRole.PRIMARY_SOURCE}
+            for relation in self.relations
+        ):
+            raise ValueError("attachment contract forbids inferred derivation relations")
+        return self
+
+    def validate_attachment_binary(
+        self,
+        *,
+        document_id: str,
+        size_bytes: int,
+    ) -> None:
+        contract = self.attachment_contract
+        if contract is None:
+            return
+        if document_id != contract.document_id:
+            raise ValueError("attachment binary hash does not match its contract")
+        if size_bytes != contract.size_bytes:
+            raise ValueError("attachment binary size does not match its contract")
+
+    def index_fields(self, *, indexed_at: str | None = None) -> dict[str, object]:
         """Return the canonical object plus safe denormalized query fields.
 
         OpenSearch has no relational joins.  The flattened keyword arrays make
@@ -189,11 +334,12 @@ class SourceProvenance(BaseModel):
         """
         relative_path = self.relative_path or ""
         path_parts = relative_path.split("/") if relative_path else []
-        path_ancestors = [
-            "/".join(path_parts[:end]) for end in range(1, len(path_parts))
-        ]
-        return {
-            "source_provenance": self.model_dump(mode="json", exclude_none=True),
+        path_ancestors = ["/".join(path_parts[:end]) for end in range(1, len(path_parts))]
+        public_provenance = self.model_dump(
+            mode="json", exclude_none=True, exclude={"attachment_contract"}
+        )
+        fields: dict[str, object] = {
+            "source_provenance": public_provenance,
             "source_entity_id": self.entity.id,
             "source_entity_type": self.entity.type,
             "source_entity_system": self.entity.source_system or "",
@@ -203,6 +349,13 @@ class SourceProvenance(BaseModel):
             "source_relative_path": relative_path,
             "source_path_ancestors": path_ancestors,
         }
+        if self.attachment_contract is not None:
+            if indexed_at is None:
+                raise ValueError("indexed_at is required for an attachment contract")
+            fields["source_attachment"] = self.attachment_contract.index_value(
+                ingested_at=indexed_at
+            )
+        return fields
 
 
 def parse_source_provenance(value: object) -> SourceProvenance | None:
@@ -243,5 +396,30 @@ def source_provenance_mapping() -> dict[str, Any]:
                     "target": {"properties": entity_properties},
                 },
             },
+        }
+    }
+
+
+def source_attachment_mapping() -> dict[str, Any]:
+    """Explicit internal mapping for the future attachment contract."""
+    return {
+        "properties": {
+            "contract": {"type": "keyword"},
+            "version": {"type": "integer"},
+            "source_kind": {"type": "keyword"},
+            "source_entity_id": {"type": "keyword"},
+            "parent_source_entity_id": {"type": "keyword"},
+            "attachment_id": {"type": "keyword"},
+            "parent_email_id": {"type": "keyword"},
+            "parent_archive_source_id": {"type": "keyword"},
+            "filename_original": {"type": "keyword", "ignore_above": 4096},
+            "mime_type_declared": {"type": "keyword"},
+            "mime_type_detected": {"type": "keyword"},
+            "size_bytes": {"type": "long"},
+            "sha256": {"type": "keyword"},
+            "document_id": {"type": "keyword"},
+            "archive_locator": {"type": "keyword", "ignore_above": 2048},
+            "ingested_at": {"type": "date"},
+            "connector_version": {"type": "keyword"},
         }
     }
