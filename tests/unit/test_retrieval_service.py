@@ -50,6 +50,10 @@ def test_public_relation_redaction_keeps_only_dls_resolved_graph_edges():
         "results": [
             {
                 "source_entity_id": "urn:openrag:visible:source",
+                "source_attachment": {
+                    "archive_locator": "private/archive/path",
+                    "parent_source_entity_id": hidden_id,
+                },
                 "source_relation_target_ids": [hidden_id],
                 "source_relation_roles": ["attachment_of"],
                 "source_provenance": {
@@ -75,6 +79,8 @@ def test_public_relation_redaction_keeps_only_dls_resolved_graph_edges():
     assert redacted["results"][0]["source_provenance"] == {
         "entity": {"id": "urn:openrag:visible:source"}
     }
+    assert "source_attachment" not in redacted["results"][0]
+    assert "private/archive/path" not in repr(redacted)
     assert redacted["graph"]["edges"] == payload["graph"]["edges"]
     assert redacted["graph"]["context_edges"] == []
     assert hidden_id not in repr(redacted)

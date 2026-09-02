@@ -413,6 +413,8 @@ class DocumentMetadataCanary:
                     CanaryStatus.VERIFIED,
                     reason="unchanged",
                     changed=False,
+                    bytes_read=extraction.bytes_read,
+                    format=extraction.format_name,
                     pre_metadata=pre_state,
                     expected_metadata=expected,
                     pre_immutable=immutable,

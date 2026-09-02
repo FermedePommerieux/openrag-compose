@@ -309,6 +309,7 @@ _DLS_OPAQUE_RELATION_FIELDS = frozenset(
         "document_metadata_extractor_version",
         "document_metadata_backfill_status",
         "document_metadata_updated_at",
+        "source_attachment",
         "source_relation_target_ids",
         "source_relation_roles",
         "scope_context_relations",

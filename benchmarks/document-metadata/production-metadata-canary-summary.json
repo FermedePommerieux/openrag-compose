@@ -1,0 +1,234 @@
+{
+  "schema": "openrag.document-metadata-production-canary-evidence",
+  "version": 1,
+  "captured_at": "2026-09-02T08:26:00Z",
+  "scope": {
+    "full_historical_backfill_executed": false,
+    "cohort_documents": 100,
+    "formats": {
+      "CSV": 4,
+      "DOCX": 10,
+      "EML": 18,
+      "HTML": 5,
+      "IMAGE": 6,
+      "PDF": 42,
+      "TXT": 5,
+      "XLSX": 10
+    },
+    "archive_kinds": {
+      "openarchiver": 79,
+      "openrag_local_archive": 21
+    },
+    "openarchiver_attachments": 61,
+    "total_source_bytes": 788767328,
+    "largest_source_bytes": 122971990
+  },
+  "execution": {
+    "initial_process_interrupted_after_verified_items": 2,
+    "same_checkpoint_resume": {
+      "verified": 85,
+      "archive_unavailable": 15,
+      "cause": "configured private download directory was absent",
+      "index_writes_before_retry": 85,
+      "source_bytes_read": 766318495
+    },
+    "bounded_retry": {
+      "verified": 100,
+      "changed": 15,
+      "unchanged": 85,
+      "failed": 0,
+      "dls_blocked": 0,
+      "archive_unavailable": 0,
+      "source_bytes_read_on_retry_targets": 22448833
+    },
+    "idempotency": {
+      "verified": 100,
+      "changed": 0,
+      "unchanged": 100,
+      "opensearch_write_ms": {
+        "mean": 0.0,
+        "p50": 0.0,
+        "p95": 0.0,
+        "max": 0.0
+      }
+    },
+    "rollback_subset": {
+      "requested": 10,
+      "restored": 10,
+      "failed": 0,
+      "metadata_profiles_after_rollback": 90,
+      "immutable_snapshots_equal": true
+    },
+    "post_rollback_restore": {
+      "verified": 100,
+      "changed": 10,
+      "unchanged": 90,
+      "metadata_profiles_after_restore": 100
+    }
+  },
+  "timings_ms": {
+    "complete_cohort_observation": {
+      "archive_lookup": {
+        "mean": 18.954668279038742,
+        "p50": 0.3595920279622078,
+        "p95": 103.68769697379321,
+        "p99": 147.3062769509852,
+        "max": 708.7456759763882
+      },
+      "binary_resolve": {
+        "mean": 111.89906507730484,
+        "p50": 90.56432300712913,
+        "p95": 297.577939927578,
+        "p99": 381.38838205486536,
+        "max": 401.98548801708966
+      },
+      "binary_hash_and_context": {
+        "mean": 7.577920247567818,
+        "p50": 0.6012400845065713,
+        "p95": 25.07271198555827,
+        "p99": 33.26712897978723,
+        "max": 105.42432405054569
+      },
+      "metadata_extraction": {
+        "mean": 8.140134674031287,
+        "p50": 1.2871100334450603,
+        "p95": 31.2291489681229,
+        "p99": 113.09655697550625,
+        "max": 127.47289205435663
+      },
+      "normalization_and_digest": {
+        "mean": 0.6944418279454112,
+        "p50": 0.6761479889973998,
+        "p95": 0.8904619608074427,
+        "p99": 1.2911290396004915,
+        "max": 1.3014799915254116
+      },
+      "opensearch_read": {
+        "mean": 271.81550050037913,
+        "p50": 38.5423080297187,
+        "p95": 1234.7181889927015,
+        "p99": 3083.8838850613683,
+        "max": 4065.0217150105163
+      }
+    },
+    "changed_item_write_observation": {
+      "opensearch_write": {
+        "mean": 21.704697543207338,
+        "p50": 18.944071023724973,
+        "p95": 30.978686991147697,
+        "p99": 64.90257498808205,
+        "max": 69.68725402839482
+      },
+      "opensearch_verification_read": {
+        "mean": 306.19758276186667,
+        "p50": 37.57221600972116,
+        "p95": 1255.2939989836887,
+        "p99": 3130.460276035592,
+        "max": 4199.81367199216
+      },
+      "total": {
+        "mean": 874.2525610086673,
+        "p50": 383.6913589620963,
+        "p95": 2791.6816611541435,
+        "p99": 6641.456305980682,
+        "max": 8877.593299839646
+      }
+    }
+  },
+  "resources": {
+    "samples": 143,
+    "interval_seconds": 5,
+    "backend": {
+      "node": "k3s-pi03",
+      "cpu_millicores": {
+        "mean": 232.4,
+        "max": 615
+      },
+      "rss_mib": {
+        "mean": 655.4,
+        "max": 1088
+      }
+    },
+    "opensearch": {
+      "node": "k3s-pi02",
+      "cpu_millicores": {
+        "mean": 151.7,
+        "max": 1281
+      },
+      "rss_mib": {
+        "mean": 5213.0,
+        "max": 5289
+      }
+    },
+    "connector": {
+      "node": "k3s-pi04",
+      "cpu_millicores": {
+        "mean": 201.7,
+        "max": 224
+      },
+      "rss_mib": {
+        "mean": 42.2,
+        "max": 44
+      }
+    },
+    "pod_restarts": 0,
+    "oom_events": 0
+  },
+  "corpus_integrity": {
+    "before": {
+      "distinct_documents": 47400,
+      "occurrences": 47454,
+      "chunks": 380817,
+      "embeddings": 380817,
+      "metadata_profiles": 0,
+      "occurrence_identity_sha256": "038987ca2eb70b2e56d674bc45e9b60fe00652e72296249dba0252d6964fafd7",
+      "opensearch_health": "green"
+    },
+    "after": {
+      "distinct_documents": 47400,
+      "occurrences": 47454,
+      "chunks": 380817,
+      "embeddings": 380817,
+      "metadata_profiles": 100,
+      "occurrence_identity_sha256": "038987ca2eb70b2e56d674bc45e9b60fe00652e72296249dba0252d6964fafd7",
+      "opensearch_health": "green"
+    }
+  },
+  "retrieval_regression": {
+    "runtime_behavior": "MATCH",
+    "defaults_unchanged": true,
+    "gt1": {
+      "valid_runs": "3/3",
+      "seed_membership_jaccard_vs_pre_canary": 0.9305555555555556,
+      "scope_membership_equal": true,
+      "scope_order_equal": true,
+      "coverage_complete": true,
+      "post_scope_strict_document_recall_percent": 45.8,
+      "post_scope_strict_component_recall_percent": 44.7,
+      "ann_contract": "APPROXIMATE_MEMBERSHIP"
+    },
+    "gt2": {
+      "valid_runs": "3/3",
+      "seed_membership_equal": true,
+      "scope_membership_equal": true,
+      "scope_order_equal": true,
+      "coverage_complete": true,
+      "metrics_equal": true
+    }
+  },
+  "historical_missing": {
+    "total": 38,
+    "classification": {
+      "openarchiver_registry_status_failed": 38
+    }
+  },
+  "deployment_evidence": {
+    "backend_tag": "v0.6.0-retrieval-v2.84",
+    "backend_digest": "sha256:7f861010a8e7b74c3c4f97c31c4da48cc0b158115c62df282fde0a81428ef1e4",
+    "connector_source_sha": "6b4741d1861e7d24537f5d6194d056afb6975972",
+    "connector_digest": "sha256:b27baddc6be475a3e2c45a48810c54ae1eec06953054ae4e9748d2e40b8b8ba5",
+    "gitops_sha": "0a826f58b86ced7bbbcf0232796c875cb0575b5d",
+    "fleet_ready": true
+  },
+  "gate": "READY_FOR_EXPLICIT_APPROVAL"
+}

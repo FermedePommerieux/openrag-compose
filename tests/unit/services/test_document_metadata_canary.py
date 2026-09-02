@@ -179,8 +179,10 @@ async def test_canary_writes_verifies_and_second_run_changes_zero(tmp_path: Path
 
     assert first_summary["states"] == {"VERIFIED": 1}
     assert first_summary["changed"] == 1
+    assert first_summary["bytes_read"] == len(b"stable canary content")
     assert second_summary["states"] == {"VERIFIED": 1}
     assert second_summary["changed"] == 0
+    assert second_summary["bytes_read"] == len(b"stable canary content")
     assert client.writes == 1
     item = first.checkpoint.data["items"][record.storage_id]
     assert item["pre_immutable"] == item["post_immutable"]

@@ -385,6 +385,8 @@ class ArchivedOriginalResolver:
             Path(openarchiver_api_key_file) if openarchiver_api_key_file else None
         )
         self.temporary_directory = Path(temporary_directory) if temporary_directory else None
+        if self.temporary_directory is not None:
+            self.temporary_directory.mkdir(mode=0o700, parents=True, exist_ok=True)
         self.timeout_seconds = timeout_seconds
         if download_attempts < 1 or download_attempts > 5:
             raise ValueError("download_attempts must be between 1 and 5")

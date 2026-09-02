@@ -27,6 +27,11 @@ def export_manifest(database_path: Path) -> dict[str, Any]:
     connection = sqlite3.connect(uri, uri=True)
     connection.row_factory = sqlite3.Row
     try:
+        # The production connector has a read-only root filesystem.  Keep
+        # ORDER BY scratch space in memory and make the read-only intent
+        # explicit so an export never needs writable SQLite temp storage.
+        connection.execute("PRAGMA query_only=ON")
+        connection.execute("PRAGMA temp_store=MEMORY")
         email_rows = connection.execute(
             """
             SELECT id, source_id, storage_path, sha256, size_bytes,

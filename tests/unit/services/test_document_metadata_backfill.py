@@ -127,6 +127,14 @@ def test_nonvalidated_manifest_entry_may_preserve_missing_hash():
     assert decision.status is MetadataBackfillStatus.NO_ARCHIVE_SOURCE
 
 
+def test_archive_resolver_creates_configured_private_scratch_directory(tmp_path: Path):
+    scratch = tmp_path / "nested" / "downloads"
+
+    ArchivedOriginalResolver(temporary_directory=scratch)
+
+    assert scratch.is_dir()
+
+
 def test_local_archive_requires_one_hash_matching_regular_file(tmp_path: Path):
     payload = b"local archive payload"
     document_id, _digest = _document_id(payload)
