@@ -1,0 +1,118 @@
+{
+  "schema": "openrag.document-investigation.synthetic-associations",
+  "version": 1,
+  "cases": [
+    {
+      "name": "same_month_only",
+      "left": {"created": "2024-03-02T08:00:00Z"},
+      "right": {"created": "2024-03-27T18:00:00Z"},
+      "expected_contains": ["SAME_PRODUCTION_MONTH", "SAME_PRODUCTION_YEAR"],
+      "expected_excludes": ["SAME_PRODUCTION_DAY", "SAME_SOURCE_SYSTEM"],
+      "strength": "WEAK"
+    },
+    {
+      "name": "same_year_only",
+      "left": {"created": "2024-01-02T08:00:00Z"},
+      "right": {"created": "2024-11-27T18:00:00Z"},
+      "expected_contains": ["SAME_PRODUCTION_YEAR"],
+      "expected_excludes": ["SAME_PRODUCTION_MONTH", "SAME_PRODUCTION_DAY"],
+      "strength": "VERY_WEAK"
+    },
+    {
+      "name": "same_source_only",
+      "left": {"source_system": "openarchiver"},
+      "right": {"source_system": "openarchiver"},
+      "expected_contains": ["SAME_SOURCE_SYSTEM"],
+      "expected_excludes": ["SAME_PARENT_COLLECTION", "SAME_BINARY_HASH"],
+      "strength": "VERY_WEAK"
+    },
+    {
+      "name": "same_format_only",
+      "left": {"mime": "application/pdf"},
+      "right": {"mime": "application/pdf"},
+      "expected_contains": ["SAME_MIME_TYPE", "COMPATIBLE_DOCUMENT_TYPES"],
+      "expected_excludes": ["SAME_DOCUMENT_TYPE", "SAME_FILENAME_BASENAME"],
+      "strength": "VERY_WEAK"
+    },
+    {
+      "name": "same_creator_only",
+      "left": {"creator": "Jean Dupont"},
+      "right": {"creator": "Jean Dupont"},
+      "expected_contains": ["SAME_CREATOR_OBSERVATION"],
+      "expected_excludes": ["SAME_SOURCE_SYSTEM", "SAME_PRODUCTION_YEAR"],
+      "strength": "WEAK"
+    },
+    {
+      "name": "same_month_same_source",
+      "left": {"created": "2024-03-02T08:00:00Z", "source_system": "archive-a"},
+      "right": {"created": "2024-03-27T18:00:00Z", "source_system": "archive-a"},
+      "expected_contains": ["SAME_PRODUCTION_MONTH", "SAME_SOURCE_SYSTEM"],
+      "expected_excludes": ["SAME_CREATOR_OBSERVATION"],
+      "strength": "WEAK"
+    },
+    {
+      "name": "same_month_same_type",
+      "left": {"created": "2024-03-02T08:00:00Z", "documentary_type": "invoice"},
+      "right": {"created": "2024-03-27T18:00:00Z", "documentary_type": "invoice"},
+      "expected_contains": ["SAME_PRODUCTION_MONTH", "SAME_DOCUMENT_TYPE"],
+      "expected_excludes": ["SAME_SOURCE_SYSTEM"],
+      "strength": "WEAK"
+    },
+    {
+      "name": "same_month_same_source_same_creator",
+      "left": {"created": "2024-03-02T08:00:00Z", "source_system": "archive-a", "creator": "Jean Dupont"},
+      "right": {"created": "2024-03-27T18:00:00Z", "source_system": "archive-a", "creator": "Jean Dupont"},
+      "expected_contains": ["SAME_PRODUCTION_MONTH", "SAME_SOURCE_SYSTEM", "SAME_CREATOR_OBSERVATION"],
+      "expected_excludes": ["SAME_PARENT_COLLECTION"],
+      "strength": "MEDIUM"
+    },
+    {
+      "name": "same_hash_different_occurrences",
+      "left": {"sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+      "right": {"sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+      "expected_contains": ["SAME_BINARY_HASH"],
+      "expected_excludes": ["SAME_PARENT_COLLECTION"],
+      "strength": "STRONG"
+    },
+    {
+      "name": "same_basename_different_sources",
+      "left": {"filename": "rapport.docx", "source_system": "archive-a"},
+      "right": {"filename": "rapport.pdf", "source_system": "archive-b"},
+      "expected_contains": ["SAME_FILENAME_BASENAME"],
+      "expected_excludes": ["SAME_SOURCE_SYSTEM", "SAME_EXTENSION"],
+      "strength": "WEAK"
+    },
+    {
+      "name": "same_filename_unrelated_dates",
+      "left": {"filename": "facture.pdf", "extension": ".pdf", "created": "1998-01-02T08:00:00Z"},
+      "right": {"filename": "facture.pdf", "extension": ".pdf", "created": "2025-11-27T18:00:00Z"},
+      "expected_contains": ["SAME_FILENAME_BASENAME", "SAME_EXTENSION"],
+      "expected_excludes": ["SAME_PRODUCTION_YEAR", "SAME_SOURCE_SYSTEM"],
+      "strength": "WEAK"
+    },
+    {
+      "name": "same_creator_distant_years",
+      "left": {"creator": "Jean Dupont", "created": "1998-01-02T08:00:00Z"},
+      "right": {"creator": "Jean Dupont", "created": "2025-11-27T18:00:00Z"},
+      "expected_contains": ["SAME_CREATOR_OBSERVATION"],
+      "expected_excludes": ["SAME_PRODUCTION_YEAR", "SAME_PARENT_COLLECTION"],
+      "strength": "WEAK"
+    },
+    {
+      "name": "same_parent_email_attachments",
+      "left": {"source_system": "openarchiver", "parent_email": "urn:test:email:42", "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+      "right": {"source_system": "openarchiver", "parent_email": "urn:test:email:42", "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"},
+      "expected_contains": ["SAME_PARENT_COLLECTION", "SAME_SOURCE_SYSTEM"],
+      "expected_excludes": ["SAME_BINARY_HASH"],
+      "strength": "STRONG"
+    },
+    {
+      "name": "same_source_system_no_other_similarity",
+      "left": {"source_system": "openarchiver", "creator": "Alice", "mime": "application/pdf"},
+      "right": {"source_system": "openarchiver", "creator": "Bob", "mime": "image/png"},
+      "expected_contains": ["SAME_SOURCE_SYSTEM"],
+      "expected_excludes": ["SAME_CREATOR_OBSERVATION", "SAME_MIME_TYPE", "COMPATIBLE_DOCUMENT_TYPES"],
+      "strength": "VERY_WEAK"
+    }
+  ]
+}
