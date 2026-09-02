@@ -154,7 +154,7 @@ RuntimeBehavior: MATCH
 
 # V. Tests
 
-37 targeted metadata/mapping/checkpoint tests pass; 1,658 unit tests pass with 94 pre-existing warnings. Ruff lint, Mypy on changed sources/scripts/tests, `uv lock --check`, JSON validation and `git diff --check` pass. No Helm render is required because deployment manifests did not change. GitHub CI run 33598896651 is infrastructure-blocked: SDK jobs report a missing/invalid API key and E2E jobs report `OPENAI_API_KEY is not set`; the backend source image was not built in this `use_local_images=false` run.
+37 targeted metadata/mapping/checkpoint tests pass; 1,658 unit tests pass with 94 pre-existing warnings. Ruff lint, Mypy on changed sources/scripts/tests, `uv lock --check`, JSON validation and `git diff --check` pass. No Helm render is required because deployment manifests did not change. GitHub CI run 33598896651 terminated with an infrastructure failure: SDK jobs report a missing/invalid API key, E2E jobs report `OPENAI_API_KEY is not set`, and core spent 2 h 18 retrying Langflow authentication (`401`/`429`) before system-flow startup failed. The backend source image was not built in this `use_local_images=false` run, and no reported failure traverses the metadata-backfill code.
 
 # W. Remaining risks
 
