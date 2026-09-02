@@ -28,6 +28,7 @@ async def create_index_body(
         or OPENAI_DEFAULT_EMBEDDING_MODEL
     )
 
+    from models.document_metadata import document_metadata_mapping
     from models.source_provenance import source_provenance_mapping
 
     properties = {
@@ -76,6 +77,9 @@ async def create_index_body(
         "modified_time": {"type": "date"},
         "indexed_time": {"type": "date"},
         "metadata": {"type": "object"},
+        # V1 native metadata is stored for audit but deliberately disabled for
+        # indexing, filters, ranking, and model retrieval.
+        **document_metadata_mapping(),
     }
 
     if embedding_dimensions:

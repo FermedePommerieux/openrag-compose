@@ -1,0 +1,16 @@
+{
+  "policy_id": "openrag.metadata-resolution",
+  "policy_version": 1,
+  "mode": "preserve_observations",
+  "preferred_value_materialized": false,
+  "conflict_rule": "Different values from different sources remain separate and create an unresolved conflict record.",
+  "source_preference_order_documented_but_not_applied": [
+    "format_native_structured_metadata",
+    "archive_native_metadata",
+    "filesystem_metadata",
+    "inferred_metadata"
+  ],
+  "trust_is_truth": false,
+  "timestamp_collapse": false,
+  "weak_inference": "non_scope_expanding"
+}

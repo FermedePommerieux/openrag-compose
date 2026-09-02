@@ -1,0 +1,100 @@
+{
+  "profile_id": "openrag.document-metadata",
+  "profile_version": 1,
+  "mode": "observational_only",
+  "entity_link": "source_provenance.entity.id",
+  "sections": {
+    "identity": [
+      "original_filename",
+      "extension",
+      "mime_type",
+      "size_bytes",
+      "sha256"
+    ],
+    "embedded": [
+      "title",
+      "subject",
+      "keywords",
+      "creator",
+      "author",
+      "last_modified_by",
+      "embedded_created_at",
+      "embedded_modified_at",
+      "revision",
+      "creator_application",
+      "producer",
+      "company",
+      "manager"
+    ],
+    "filesystem": [
+      "filesystem_birthtime",
+      "filesystem_mtime",
+      "filesystem_ctime",
+      "source_path"
+    ],
+    "archive": [
+      "archived_at",
+      "archive_created_at",
+      "archive_modified_at",
+      "archive_object_id",
+      "archive_source",
+      "archive_original_name",
+      "archive_storage_locator",
+      "parent_entity_ids"
+    ],
+    "ingestion": [
+      "ingested_at",
+      "extractor",
+      "extractor_version",
+      "metadata_profile_id",
+      "metadata_profile_version",
+      "normalization_policy_id",
+      "normalization_policy_version",
+      "resolution_policy_id",
+      "resolution_policy_version"
+    ]
+  },
+  "observation_contract": [
+    "value",
+    "raw_value",
+    "source",
+    "source_type",
+    "trust_class",
+    "exposure_class",
+    "extracted_at",
+    "normalization_id",
+    "normalization_version",
+    "normalization_status",
+    "timezone"
+  ],
+  "trust_classes": [
+    "archive_system",
+    "embedded_document_metadata",
+    "filesystem_metadata",
+    "ingestion_system",
+    "derived_metadata",
+    "inferred_metadata"
+  ],
+  "exposure_classes": [
+    "internal_metadata",
+    "retrieval_visible_metadata",
+    "model_visible_metadata",
+    "public_api_metadata"
+  ],
+  "v1_exposure": "internal_metadata",
+  "timezone_contract": {
+    "raw_preserved": true,
+    "timezone_invented": false,
+    "missing_timezone": "UNKNOWN",
+    "invalid_value": "preserved raw with normalization_status=invalid"
+  },
+  "index_contract": {
+    "profile_mapping": "object enabled=false",
+    "profile_storage": "in-place on the unique chunk_index=0 representative after full occurrence integrity verification",
+    "bm25_visible": false,
+    "dense_visible": false,
+    "ranking_effect": false,
+    "chunk_fields_mutated": false,
+    "embedding_fields_mutated": false
+  }
+}

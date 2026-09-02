@@ -1,0 +1,69 @@
+{
+  "schema_version": 1,
+  "profile": "openrag.document-metadata v1",
+  "mappings": [
+    {
+      "metadata_source": "source_provenance.entity.id",
+      "prov_o_mapping": "prov:Entity identity",
+      "classification": "asserted",
+      "scope_expanding": false,
+      "reason": "The metadata profile enriches the existing entity and creates no second entity."
+    },
+    {
+      "metadata_source": "explicit source-native attachment_of relation",
+      "prov_o_mapping": "existing bounded prov:wasMemberOf profile",
+      "classification": "asserted",
+      "scope_expanding": "unchanged existing policy",
+      "reason": "The source registry explicitly identifies the parent email; no metadata inference is involved."
+    },
+    {
+      "metadata_source": "explicit source-native archive container",
+      "prov_o_mapping": "existing bounded prov:wasMemberOf profile",
+      "classification": "asserted",
+      "scope_expanding": false,
+      "reason": "contained_in remains contextual under documentary-prov-o v1."
+    },
+    {
+      "metadata_source": "embedded creator/author",
+      "prov_o_mapping": "descriptive document field only",
+      "classification": "observed",
+      "scope_expanding": false,
+      "reason": "Embedded metadata may be false and does not prove prov:wasAttributedTo."
+    },
+    {
+      "metadata_source": "embedded creation/modification timestamps",
+      "prov_o_mapping": "descriptive document fields only",
+      "classification": "observed",
+      "scope_expanding": false,
+      "reason": "The timestamps are source-qualified observations, not proven generation activities."
+    },
+    {
+      "metadata_source": "archive timestamps",
+      "prov_o_mapping": "descriptive archive facts only",
+      "classification": "asserted about archive system",
+      "scope_expanding": false,
+      "reason": "Archive timing says when the object was archived, not when it was authored."
+    },
+    {
+      "metadata_source": "filesystem timestamps",
+      "prov_o_mapping": "descriptive filesystem facts only",
+      "classification": "observed",
+      "scope_expanding": false,
+      "reason": "Copy operations can change filesystem timestamps."
+    },
+    {
+      "metadata_source": "same author/date/software/name/folder/MIME",
+      "prov_o_mapping": "none",
+      "classification": "descriptive similarity",
+      "scope_expanding": false,
+      "reason": "Similarity is not proof of derivation, attribution, alternate identity, or specialization."
+    },
+    {
+      "metadata_source": "inferred version/lineage",
+      "prov_o_mapping": "none in v1",
+      "classification": "inferred",
+      "scope_expanding": false,
+      "reason": "Version inference is outside this chantier and weak relations fail closed."
+    }
+  ]
+}

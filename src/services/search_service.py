@@ -298,6 +298,17 @@ def register_search_service(service: "SearchService") -> None:
 
 _DLS_OPAQUE_RELATION_FIELDS = frozenset(
     {
+        # Native/archive/filesystem metadata stays internal in v1.  This also
+        # prevents paths, archive ids, parent ids, authors, or EXIF values from
+        # leaking if a future query accidentally requests the whole _source.
+        "document_metadata_profile",
+        "document_metadata_profile_id",
+        "document_metadata_profile_version",
+        "document_metadata_facts_sha256",
+        "document_metadata_extractor",
+        "document_metadata_extractor_version",
+        "document_metadata_backfill_status",
+        "document_metadata_updated_at",
         "source_relation_target_ids",
         "source_relation_roles",
         "scope_context_relations",

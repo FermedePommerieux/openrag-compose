@@ -1,0 +1,124 @@
+{
+  "schema_version": 1,
+  "captured_at": "2026-09-02T07:45:18+02:00",
+  "mode": "READ_ONLY",
+  "baseline": {
+    "application_repo_sha": "64a874c3719f2fa4cb0f4d4a61f0121539d8e8ab",
+    "runtime_source_sha": "36c5afdec6a09ea809a9a0e733de191de1b578c7",
+    "gitops_sha": "936964ca6cc5c0956ab04564add24dccc6327959",
+    "corpus_occurrence_identity_sha256": "038987ca2eb70b2e56d674bc45e9b60fe00652e72296249dba0252d6964fafd7"
+  },
+  "identity_key_inventory": {
+    "document_id": {
+      "available": true,
+      "role": "content-derived indexed identifier; verified from full SHA-256"
+    },
+    "source_entity_id": {
+      "available": 47451,
+      "role": "stable occurrence/entity identity and primary OpenArchiver registry join"
+    },
+    "occurrence_id": {
+      "available": true,
+      "role": "source_entity_id, otherwise source_url, otherwise document_id fallback"
+    },
+    "archive_id": {
+      "available": true,
+      "role": "local source_id or OpenArchiver email/attachment id after exact registry join"
+    },
+    "source_uri": {
+      "available": true,
+      "role": "navigation/display only; never sufficient proof"
+    },
+    "original_filename": {
+      "available": true,
+      "role": "descriptive only; never used for admission"
+    },
+    "source_path": {
+      "available": true,
+      "role": "archive-internal locator after identity join; never sufficient alone"
+    },
+    "content_hash": {
+      "available": true,
+      "role": "full archive SHA-256 and document_id verification"
+    },
+    "attachment_id": {
+      "available": true,
+      "role": "stable id parsed from attachment source_entity_id"
+    },
+    "email_id": {
+      "available": true,
+      "role": "stable id for email entity and explicit attachment parent relation"
+    },
+    "ingestion_id": {
+      "available": true,
+      "role": "generation-scoped write guard, not archive identity proof"
+    }
+  },
+  "attachment_source_url_contract": {
+    "observed_behavior": "An OpenArchiver attachment source_url points to the archived parent mail UI, where the attachment is downloadable.",
+    "binary_identity": "urn:openrag:openarchiver:attachment:<attachment_id>",
+    "binary_locator": "authoritative connector attachments.storage_path",
+    "download": "<OPENARCHIVER_BASE_URL>/storage/download?path=<urlencoded storage_path>",
+    "source_url_used_as_mapping_proof": false,
+    "filename_used_as_mapping_proof": false,
+    "required_verification": [
+      "exact source_entity_id registry match",
+      "registry status validated",
+      "full SHA-256 match",
+      "SHA-256-derived document_id match"
+    ]
+  },
+  "occurrence_metrics": {
+    "total_indexed_occurrences": 47454,
+    "occurrences_with_archive_reference": 47454,
+    "archived_original_exists": 47416,
+    "exact_stable_mapping": 47416,
+    "ambiguous_mapping": 0,
+    "missing_archive_original": 38,
+    "hash_verifiable_mapping": 47416,
+    "hash_verified_source_bytes": 8318533115,
+    "mapping_coverage_percent": 99.919922,
+    "mapping_ambiguity_percent": 0.0,
+    "missing_original_percent": 0.080078,
+    "hash_verified_percent": 99.919922
+  },
+  "document_metrics": {
+    "total_distinct_documents": 47400,
+    "documents_with_archive_reference": 47400,
+    "archived_original_exists": 47362,
+    "exact_stable_mapping": 47362,
+    "ambiguous_mapping": 0,
+    "missing_archive_original": 38,
+    "hash_verifiable_mapping": 47362,
+    "mapping_coverage_percent": 99.919831,
+    "mapping_ambiguity_percent": 0.0,
+    "missing_original_percent": 0.080169,
+    "hash_verified_percent": 99.919831
+  },
+  "cohorts": {
+    "backfillable_occurrences": 47416,
+    "non_backfillable_occurrences": 38,
+    "reason_distribution": {
+      "openarchiver_registry_status_failed": 38
+    },
+    "verified_by_source": {
+      "openarchiver_manifest_exact": 47138,
+      "openrag_local_archive_exact": 278
+    }
+  },
+  "integrity": {
+    "conflicting_source_entity_document_ids": 0,
+    "local_archive_files_read": 282,
+    "openarchiver_registry_records_read": 64077,
+    "archive_mutated": false,
+    "index_mutated": false
+  },
+  "fail_closed_rules": {
+    "filename_only": "REJECT",
+    "path_and_size_only": "REJECT",
+    "mail_source_url_for_attachment": "REJECT_AS_BINARY_LOCATOR",
+    "stable_archive_id_without_hash": "STRONG_BUT_NOT_ADMITTED_TO_V1_WRITE",
+    "stable_archive_id_and_full_hash": "ADMIT",
+    "ambiguous_or_conflicting_identity": "AMBIGUOUS_SOURCE_AND_NO_METADATA_WRITE"
+  }
+}

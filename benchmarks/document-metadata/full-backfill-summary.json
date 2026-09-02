@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "profile": "openrag.document-metadata v1",
+  "gate": "BLOCKED",
+  "decision_at": "2026-09-02T08:22:00+02:00",
+  "backfillable_cohort": {
+    "indexed_occurrences": 47416,
+    "distinct_documents": 47362,
+    "hash_verified_source_bytes": 8318533115
+  },
+  "non_backfillable_cohort": {
+    "indexed_occurrences": 38,
+    "reason_distribution": {
+      "openarchiver_registry_status_failed": 38
+    }
+  },
+  "validated_gates": [
+    "exact fail-closed archive mapping audit",
+    "60-document stratified read-only extraction sample",
+    "canonical metadata digest idempotence on the sample",
+    "metadata-only OpenSearch update allowlist in unit tests",
+    "no chunk text, id, ordering, hash or vector mutation in the write implementation",
+    "DLS metadata redaction tests",
+    "non-expanding relation and scope-coverage tests",
+    "GT1 and GT2 read-only regressions"
+  ],
+  "blocking_gates": [
+    "No controlled production OpenSearch write canary has been executed.",
+    "Checkpoint and rollback have not been exercised against the production index.",
+    "The 60-document sample is intentionally capped at 750000 bytes, so it cannot establish a reliable 8.32 GB end-to-end duration or Raspberry Pi resource envelope.",
+    "The connector-internal resolver API contract is planned but not yet implemented; the current compatibility adapter depends on a read-only SQLite manifest export."
+  ],
+  "execution": "NOT_EXECUTED",
+  "attempted": 0,
+  "success": 0,
+  "unchanged": 0,
+  "unsupported": 0,
+  "ambiguous": 0,
+  "missing": 0,
+  "failed": 0,
+  "retry_success": 0,
+  "archive_mutated": false,
+  "index_mutated": false
+}

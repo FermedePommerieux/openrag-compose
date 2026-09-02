@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "synthetic_contract_tests": [
+    {
+      "case": "filesystem mtime newer than embedded modified",
+      "expected": "separate source-qualified observations",
+      "status": "PASS"
+    },
+    {
+      "case": "impossible embedded date",
+      "expected": "raw preserved, parsed value absent, normalization invalid",
+      "status": "PASS"
+    },
+    {
+      "case": "timezone missing",
+      "expected": "timezone UNKNOWN without silent assumption",
+      "status": "PASS"
+    },
+    {
+      "case": "PDF XMP and Info disagree",
+      "expected": "both observations and unresolved conflict retained",
+      "status": "PASS"
+    },
+    {
+      "case": "empty author",
+      "expected": "no fabricated observation",
+      "status": "PASS"
+    },
+    {
+      "case": "lastModifiedBy differs from creator",
+      "expected": "separate fields retained",
+      "status": "PASS"
+    },
+    {
+      "case": "same filename appears multiple times",
+      "expected": "filename never used as mapping proof",
+      "status": "PASS"
+    },
+    {
+      "case": "archive mapping ambiguous",
+      "expected": "AMBIGUOUS_SOURCE and no metadata write",
+      "status": "PASS"
+    },
+    {
+      "case": "malformed XMP/XML metadata",
+      "expected": "EXTRACTION_FAILED without partial metadata write",
+      "status": "PASS"
+    },
+    {
+      "case": "embedded Author=CEO and CreationDate=1990",
+      "expected": "observed embedded metadata, never certified truth",
+      "status": "PASS"
+    },
+    {
+      "case": "EXIF GPS or device serial",
+      "expected": "presence marker only; sensitive value omitted",
+      "status": "PASS"
+    },
+    {
+      "case": "attachment source_url points to parent mail",
+      "expected": "URL ignored as binary locator; exact attachment registry id required",
+      "status": "PASS"
+    }
+  ]
+}

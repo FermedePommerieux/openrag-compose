@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "captured_at": "2026-09-02T08:21:47+02:00",
+  "full_backfill": "NOT_EXECUTED",
+  "index": "documents",
+  "distinct_documents": 47400,
+  "visible_occurrences": 47454,
+  "chunk_count": 380817,
+  "embedding_model_markers": 380817,
+  "vector_fields": {
+    "chunk_embedding": 0,
+    "chunk_embedding_text_embedding_3_large": 380817
+  },
+  "document_metadata_profiles": 0,
+  "corpus_digest": "038987ca2eb70b2e56d674bc45e9b60fe00652e72296249dba0252d6964fafd7",
+  "gt1_definition_sha256": "43963a033a203aa29f62d518e6b940749b4cba62ed1cb9c44586ddcac8c97341",
+  "gt2_ground_truth_sha256": "a1f53f7f1e42969b287d4778f846fd7a3c86a0bee0d2c0d0cb46a1cc6e10ff6a",
+  "opensearch": "green",
+  "archive_mutated": false,
+  "index_mutated_by_this_chantier": false,
+  "note": "This is a current integrity capture, not a post-full-backfill validation."
+}

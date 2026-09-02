@@ -1,0 +1,149 @@
+{
+  "schema_version": 1,
+  "captured_at": "2026-09-02T07:45:18+02:00",
+  "classification": "filename extension, with message/rfc822 override",
+  "indexed_occurrences": 47454,
+  "archive_inventory_objects": 64359,
+  "formats": [
+    {
+      "format": "PDF",
+      "indexed_documents": 5468,
+      "archive_available": 5437,
+      "missing": 31,
+      "archive_inventory_objects": 11861,
+      "extractor": "PDF Info dictionary + XMP",
+      "supported": true
+    },
+    {
+      "format": "DOCX",
+      "indexed_documents": 428,
+      "archive_available": 425,
+      "missing": 3,
+      "archive_inventory_objects": 831,
+      "extractor": "OOXML docProps/core.xml + docProps/app.xml",
+      "supported": true
+    },
+    {
+      "format": "XLSX",
+      "indexed_documents": 330,
+      "archive_available": 328,
+      "missing": 2,
+      "archive_inventory_objects": 711,
+      "extractor": "OOXML docProps/core.xml + docProps/app.xml",
+      "supported": true
+    },
+    {
+      "format": "PPTX",
+      "indexed_documents": 0,
+      "archive_available": 0,
+      "missing": 0,
+      "archive_inventory_objects": 33,
+      "extractor": "OOXML docProps/core.xml + docProps/app.xml",
+      "supported": true
+    },
+    {
+      "format": "ODT",
+      "indexed_documents": 0,
+      "archive_available": 0,
+      "missing": 0,
+      "archive_inventory_objects": 29,
+      "extractor": "ODF meta.xml",
+      "supported": true
+    },
+    {
+      "format": "ODS",
+      "indexed_documents": 0,
+      "archive_available": 0,
+      "missing": 0,
+      "archive_inventory_objects": 6,
+      "extractor": "ODF meta.xml",
+      "supported": true
+    },
+    {
+      "format": "ODP",
+      "indexed_documents": 0,
+      "archive_available": 0,
+      "missing": 0,
+      "archive_inventory_objects": 0,
+      "extractor": "ODF meta.xml",
+      "supported": true
+    },
+    {
+      "format": "IMAGE",
+      "indexed_documents": 22,
+      "archive_available": 22,
+      "missing": 0,
+      "archive_inventory_objects": 6169,
+      "extractor": "EXIF + IPTC + bounded XMP; GPS and serial values redacted",
+      "supported": true
+    },
+    {
+      "format": "EML",
+      "indexed_documents": 41080,
+      "archive_available": 41079,
+      "missing": 1,
+      "archive_inventory_objects": 41462,
+      "extractor": "bounded RFC 5322 headers",
+      "supported": true
+    },
+    {
+      "format": "MSG",
+      "indexed_documents": 0,
+      "archive_available": 0,
+      "missing": 0,
+      "archive_inventory_objects": 7,
+      "extractor": "none in v1",
+      "supported": false
+    },
+    {
+      "format": "HTML",
+      "indexed_documents": 35,
+      "archive_available": 34,
+      "missing": 1,
+      "archive_inventory_objects": 68,
+      "extractor": "identity/archive facts only in v1",
+      "supported": true
+    },
+    {
+      "format": "CSV",
+      "indexed_documents": 29,
+      "archive_available": 29,
+      "missing": 0,
+      "archive_inventory_objects": 85,
+      "extractor": "identity/archive facts only in v1",
+      "supported": true
+    },
+    {
+      "format": "TXT/ASCIIDOC",
+      "indexed_documents": 62,
+      "archive_available": 62,
+      "missing": 0,
+      "archive_inventory_objects": 157,
+      "extractor": "identity/archive facts only in v1",
+      "supported": true
+    },
+    {
+      "format": "ZIP",
+      "indexed_documents": 0,
+      "archive_available": 0,
+      "missing": 0,
+      "archive_inventory_objects": 80,
+      "extractor": "none in v1",
+      "supported": false
+    },
+    {
+      "format": "OTHER",
+      "indexed_documents": 0,
+      "archive_available": 0,
+      "missing": 0,
+      "archive_inventory_objects": 2860,
+      "extractor": "none in v1",
+      "supported": false
+    }
+  ],
+  "notes": [
+    "Archive inventory includes non-indexed and non-indexable OpenArchiver objects.",
+    "No extractor was added solely for absent indexed formats.",
+    "PPTX and ODF use the generic package extractors already required by present Office families."
+  ]
+}

@@ -14,6 +14,7 @@ import json
 from dataclasses import dataclass, field
 from typing import Any
 
+from models.document_metadata import document_metadata_mapping
 from models.source_provenance import SourceProvenance, source_provenance_mapping
 from utils.embedding_fields import ensure_embedding_field_exists
 from utils.embeddings import create_index_body
@@ -606,6 +607,7 @@ class DocumentIndexWriter:
             "document_size_class": {"type": "keyword"},
             "document_content_sha256": {"type": "keyword"},
             "document_order_verified": {"type": "boolean"},
+            **document_metadata_mapping(),
         }
         try:
             mappings = await client.indices.get_mapping(index=index_name)

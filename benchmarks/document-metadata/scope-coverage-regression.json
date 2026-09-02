@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "context": "60-document metadata dry-run; no production index write",
+  "retrieval_profile": {
+    "query_count": 1,
+    "lexical_candidates": 50,
+    "dense_candidates": 50,
+    "seed_budget": 100,
+    "rrf_k": 60,
+    "multi_query": false,
+    "scope_policy_id": "documentary-prov-o",
+    "scope_policy_version": 1,
+    "coverage_contract_id": "openrag.scope-coverage",
+    "coverage_contract_version": 1
+  },
+  "gt1": {
+    "definition_sha256": "43963a033a203aa29f62d518e6b940749b4cba62ed1cb9c44586ddcac8c97341",
+    "valid_runs": "3/3",
+    "seed_membership_jaccard_vs_previous": 1.0,
+    "seed_order_equal_vs_previous": false,
+    "seed_order_note": "Same 100-member seed set; lower-rank order variance remains consistent with the validated approximate dense KNN contract.",
+    "scope_membership_jaccard_vs_previous": 1.0,
+    "scope_order_equal_vs_previous": true,
+    "coverage_facts_sha256_equal_vs_previous": true,
+    "coverage_complete": true,
+    "recall_precision_equal_vs_previous": true
+  },
+  "gt2": {
+    "ground_truth_digest": "a1f53f7f1e42969b287d4778f846fd7a3c86a0bee0d2c0d0cb46a1cc6e10ff6a",
+    "benchmark_definition_sha256": "88a58545e4c11dc004ee1585fc9d6192d8a286597f15bc52585afa2c255d23bb",
+    "valid_runs": "3/3",
+    "seed_membership_jaccard_vs_previous": 1.0,
+    "seed_order_equal_vs_previous": true,
+    "scope_membership_jaccard_vs_previous": 1.0,
+    "scope_order_equal_vs_previous": true,
+    "coverage_facts_sha256_equal_vs_previous": true,
+    "coverage_complete": true,
+    "recall_precision_equal_vs_previous": true
+  },
+  "coverage_complete_artificially_relaxed": false,
+  "metadata_scope_expansion": false,
+  "result": "PASS"
+}

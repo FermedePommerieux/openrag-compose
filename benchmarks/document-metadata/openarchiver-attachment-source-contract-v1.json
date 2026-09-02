@@ -1,0 +1,64 @@
+{
+  "schema": "openrag.openarchiver-attachment-source",
+  "version": 1,
+  "status": "PROPOSED_CONNECTOR_CONTRACT",
+  "semantics": {
+    "source_url": "User-facing navigation URL of the archived parent email. It is not an attachment binary locator and must remain unchanged.",
+    "source_entity_id": "Stable identity of the attachment: urn:openrag:openarchiver:attachment:<percent-encoded attachment id>.",
+    "attachment_of": "Asserted source-native relation from the attachment entity to its archived parent email entity.",
+    "archive_object_id": "Stable OpenArchiver attachment id used for internal resolution.",
+    "content_locator": "Internal authenticated locator or endpoint. It is never projected as source_url and is internal-metadata-only.",
+    "content_sha256": "Full binary SHA-256 used to verify the resolved object and its SHA-derived OpenRAG document_id.",
+    "size_bytes": "Expected binary size used as an additional integrity check."
+  },
+  "current_compatibility_adapter": {
+    "source": "OpenArchiver connector SQLite registry opened read-only",
+    "identity_lookup": "Exact source_entity_id to attachments.id lookup",
+    "binary_lookup": "attachments.storage_path passed to the authenticated internal storage download endpoint",
+    "integrity": [
+      "registry status must be validated",
+      "resolved size must match size_bytes",
+      "resolved SHA-256 must match attachments.sha256",
+      "SHA-derived document_id must match the indexed document_id"
+    ],
+    "source_url_used_as_binary_locator": false
+  },
+  "future_connector_change": {
+    "required": true,
+    "reason": "Remove the backfill job's long-term dependency on the connector's private SQLite schema and storage_path representation.",
+    "connector_should_emit": [
+      "stable attachment source_entity_id",
+      "source_entity_type=email_attachment",
+      "parent email source_entity_id through an asserted attachment_of relation",
+      "stable archive_object_id",
+      "content_sha256",
+      "size_bytes",
+      "archive timestamps with their distinct source"
+    ],
+    "connector_should_expose_internally": {
+      "metadata_resolution": "An authenticated service endpoint resolving archive_object_id to status, filename, MIME type, size, SHA-256, parent entity ids and a short-lived content capability or streaming endpoint.",
+      "content_resolution": "An authenticated streaming endpoint addressed by archive_object_id, not by source_url or filename.",
+      "security": "Service-to-service only, bounded streaming, no public storage_path, DLS/tenant binding, audit log and immutable archive reads."
+    },
+    "migration": [
+      "Keep source_url pointing to the parent email so existing download/navigation UI remains valid.",
+      "Add the internal resolver contract without changing retrieval, ranking or ScopeTraversalPolicy.",
+      "Make the backfill client accept both the read-only manifest adapter and the connector resolver API during migration.",
+      "Compare API results with the registry manifest on a controlled cohort.",
+      "Retire the SQLite adapter only after exact identity, hash and DLS parity are proven."
+    ]
+  },
+  "fail_closed": {
+    "missing_stable_attachment_id": "NO_ARCHIVE_SOURCE",
+    "multiple_or_conflicting_registry_rows": "AMBIGUOUS_SOURCE",
+    "filename_only_match": "REJECTED",
+    "parent_mail_source_url_only": "REJECTED_AS_BINARY_PROOF",
+    "hash_or_size_mismatch": "AMBIGUOUS_SOURCE_AND_NO_METADATA_WRITE"
+  },
+  "exposure": {
+    "parent_mail_source_url": "public API only under existing DLS rules",
+    "archive_object_id": "internal metadata",
+    "storage_path_or_content_capability": "internal metadata; never model-visible or public",
+    "attachment_metadata": "internal by default; explicit projection policy required later"
+  }
+}

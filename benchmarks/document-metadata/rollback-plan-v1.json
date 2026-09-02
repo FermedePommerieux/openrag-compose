@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "profile": "openrag.document-metadata v1",
+  "strategy": "FORWARD_ONLY_ADDITIVE_MAPPING_AND_SCOPED_METADATA_REMOVAL",
+  "preconditions": [
+    "Take and verify an OpenSearch snapshot before the first write canary.",
+    "Capture document, occurrence, chunk, embedding and corpus digests.",
+    "Persist the exact document-level result log and checkpoint outside the worker pod.",
+    "Keep the archived originals read-only."
+  ],
+  "canary_rollback": [
+    "Select only occurrences recorded as SUCCESS by the canary result log.",
+    "Require the same document_id, source_entity_id or local source_url, owner, ingest_run_id and document_content_sha256 guards used for the forward write.",
+    "Remove only document_metadata_profile, document_metadata_facts_sha256, document_metadata_profile_id, document_metadata_profile_version, document_metadata_extractor_name and document_metadata_extractor_version from the unique chunk_index=0 representative.",
+    "Verify exactly one representative update per selected occurrence and stop on any count mismatch.",
+    "Re-run DLS, corpus, chunk, embedding, GT1, GT2 and scope-coverage checks."
+  ],
+  "limitations": [
+    "OpenSearch field mappings are additive and remain after field values are removed.",
+    "A snapshot restore is the recovery path for an unexpected mutation outside the metadata allowlist.",
+    "No rollback action is authorized or executed by dry-run mode."
+  ],
+  "status": "DESIGNED_NOT_PRODUCTION_PROVEN"
+}

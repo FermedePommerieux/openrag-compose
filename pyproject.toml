@@ -30,6 +30,7 @@ dependencies = [
     # HybridChunker runs in the backend-owned ingestion path.  The OpenAI
     # tokenizer extra is architecture-independent and supports ARM64 wheels.
     "docling-core[chunking-openai]>=2.0.0",
+    "defusedxml>=0.7.1",
     "click>=8.3.3",
     "google-api-python-client>=2.143.0",
     "google-auth-httplib2>=0.2.0",
@@ -63,6 +64,11 @@ dependencies = [
     "tenacity>=9.1.4",
     "pygments>=2.20.0",
     "pyasn1>=0.6.3",
+    # Native metadata backfill reads retained originals without invoking the
+    # parser/chunker/embedder path. Keep these small, format-specific readers
+    # explicit instead of depending on incidental Docling transitive packages.
+    "pillow>=11.0.0",
+    "pypdf>=6.0.0,<7.0.0",
     "protobuf>=7.35.0,<8",
     "requests>=2.33.0",
     "urllib3>=2.7.0",
