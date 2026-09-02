@@ -1,7 +1,7 @@
 {
   "schema": "openrag.document-metadata-production-canary-evidence",
   "version": 1,
-  "captured_at": "2026-09-02T08:26:00Z",
+  "captured_at": "2026-09-02T08:42:00Z",
   "scope": {
     "full_historical_backfill_executed": false,
     "cohort_documents": 100,
@@ -45,6 +45,9 @@
       "verified": 100,
       "changed": 0,
       "unchanged": 100,
+      "source_bytes_read": 788767328,
+      "private_download_directory_created_automatically": true,
+      "private_download_directory_mode": "0700",
       "opensearch_write_ms": {
         "mean": 0.0,
         "p50": 0.0,
@@ -223,11 +226,12 @@
     }
   },
   "deployment_evidence": {
-    "backend_tag": "v0.6.0-retrieval-v2.84",
-    "backend_digest": "sha256:7f861010a8e7b74c3c4f97c31c4da48cc0b158115c62df282fde0a81428ef1e4",
+    "backend_source_sha": "bfbf3622b84deb234709a5c991b3bbbc51ab4bc7",
+    "backend_tag": "v0.6.0-retrieval-v2.85",
+    "backend_digest": "sha256:39186b9f6e0f418e485dd1764d16254c1809398c02215da54a838989ae114a92",
     "connector_source_sha": "6b4741d1861e7d24537f5d6194d056afb6975972",
     "connector_digest": "sha256:b27baddc6be475a3e2c45a48810c54ae1eec06953054ae4e9748d2e40b8b8ba5",
-    "gitops_sha": "0a826f58b86ced7bbbcf0232796c875cb0575b5d",
+    "gitops_sha": "d5f544adccb324e2035b7e8da8a411c5c2cddb54",
     "fleet_ready": true
   },
   "gate": "READY_FOR_EXPLICIT_APPROVAL"
