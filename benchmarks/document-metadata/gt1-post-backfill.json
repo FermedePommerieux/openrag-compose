@@ -2,8 +2,8 @@
   "schema_version": 1,
   "benchmark_id": "surface-pastorale-v1",
   "benchmark_version": 1,
-  "critical_contract_tag": "DOCUMENT METADATA BACKFILL SAMPLE DRY RUN - OBSERVATIONAL ONLY",
-  "runtime_source_sha": "36c5afdec6a09ea809a9a0e733de191de1b578c7",
+  "critical_contract_tag": "DOCUMENT METADATA FULL BACKFILL COMPLETE - OBSERVATIONAL ONLY",
+  "runtime_source_sha": "bfbf3622b84deb234709a5c991b3bbbc51ab4bc7",
   "product_endpoint": "https://openrag.ferme-de-pommerieux.fr/api/search",
   "execution_path": {
     "planner_shared_with_product": true,
@@ -158,7 +158,7 @@
   },
   "corpus": {
     "before": {
-      "captured_at": "2026-09-02T05:56:10.157775+00:00",
+      "captured_at": "2026-09-02T21:03:12.991883+00:00",
       "visible_occurrences": 47454,
       "enumerated_occurrences": 47454,
       "distinct_document_ids": 47400,
@@ -171,7 +171,7 @@
       "complete": true
     },
     "after": {
-      "captured_at": "2026-09-02T05:56:40.541646+00:00",
+      "captured_at": "2026-09-02T21:03:48.540240+00:00",
       "visible_occurrences": 47454,
       "enumerated_occurrences": 47454,
       "distinct_document_ids": 47400,
@@ -261,9 +261,9 @@
         "scope_policy_id": "documentary-prov-o",
         "scope_policy_version": 1,
         "seed_discovery_complete": true,
-        "seed_documents": 61,
-        "seed_entities": 93,
-        "valid_provenance_seed_documents": 61,
+        "seed_documents": 60,
+        "seed_entities": 92,
+        "valid_provenance_seed_documents": 60,
         "invalid_provenance_seed_documents": 0,
         "seed_provenance_complete": true,
         "requested_retrieval_profile": {
@@ -317,7 +317,7 @@
         },
         "retrieval_execution_complete": true,
         "retrieval_failure_codes": [],
-        "graph_entities_visited": 138,
+        "graph_entities_visited": 136,
         "graph_frontier_empty": true,
         "graph_limit_reached": false,
         "graph_stop_reason": "frontier_empty",
@@ -334,11 +334,11 @@
           "documents_per_depth": [
             {
               "depth": 0,
-              "count": 61
+              "count": 60
             },
             {
               "depth": 1,
-              "count": 60
+              "count": 59
             },
             {
               "depth": 2,
@@ -352,11 +352,11 @@
           "entities_per_depth": [
             {
               "depth": 0,
-              "count": 61
+              "count": 60
             },
             {
               "depth": 1,
-              "count": 60
+              "count": 59
             },
             {
               "depth": 2,
@@ -394,7 +394,7 @@
               "role": "attachment_of",
               "source_type": "email_attachment",
               "target_type": "email_message",
-              "count": 41
+              "count": 40
             },
             {
               "depth": 1,
@@ -582,11 +582,11 @@
             }
           ]
         },
-        "documents_discovered": 138,
-        "documents_complete": 138,
+        "documents_discovered": 136,
+        "documents_complete": 136,
         "documents_incomplete": 0,
-        "covered_chunks": 6239,
-        "total_chunks": 6239,
+        "covered_chunks": 6145,
+        "total_chunks": 6145,
         "document_read_coverage_ratio": 1.0,
         "coverage_ratio": 1.0,
         "complete": true,
@@ -595,48 +595,48 @@
         "failure_codes": [],
         "stop_reason": "complete",
         "model_evidence_chunks": 100,
-        "artifact_chunks": 6239,
+        "artifact_chunks": 6145,
         "performance": {
           "discovery_seconds": 0.0,
-          "prov_o_seconds": 4.746508334064856,
-          "total_seconds": 4.746508334064856
+          "prov_o_seconds": 4.988088620011695,
+          "total_seconds": 4.988088620011695
         },
         "certification": {
           "contract_id": "openrag.scope-coverage",
           "contract_version": 1,
           "facts": {
             "seed_discovery_complete": true,
-            "seed_documents": 61,
-            "valid_provenance_seed_documents": 61,
+            "seed_documents": 60,
+            "valid_provenance_seed_documents": 60,
             "invalid_provenance_seed_documents": 0,
             "graph_frontier_empty": true,
             "graph_limit_reached": false,
             "graph_stop_reason": "frontier_empty",
             "graph_failed": false,
             "retrieval_execution_complete": true,
-            "documents_discovered": 138,
-            "documents_complete": 138,
-            "covered_chunks": 6239,
-            "total_chunks": 6239,
+            "documents_discovered": 136,
+            "documents_complete": 136,
+            "covered_chunks": 6145,
+            "total_chunks": 6145,
             "document_failure_codes": [],
             "seed_failure_code": null,
             "unclassified_relations": 0,
             "retrieval_failure_codes": []
           },
-          "facts_sha256": "0f423f7fd0334cf00cc9f1530d1fe68be08c46dafd93d07584d79cba31c47be8"
+          "facts_sha256": "2a2fa5d8fcfaa45d65a606c7fc171af2e229b8ca943422ce7f43a11c668e8c65"
         }
       },
       "performance": {
         "discovery_seconds": 0.0,
-        "scope_closure_seconds": 4.746508334064856,
-        "total_latency_seconds": 4.746508334064856,
-        "http_wall_seconds": 5.527127584005939
+        "scope_closure_seconds": 4.988088620011695,
+        "total_latency_seconds": 4.988088620011695,
+        "http_wall_seconds": 5.803665415998694
       },
       "metrics": {
         "requested_k": 100,
         "available_seed_chunks": 100,
         "effective_seed_chunks": 100,
-        "seed_documents": 67,
+        "seed_documents": 66,
         "seed_document_recall": {
           "numerator": 51,
           "denominator": 192,
@@ -659,8 +659,8 @@
         },
         "precision": {
           "numerator": 51,
-          "denominator": 67,
-          "value": 0.7611940298507462
+          "denominator": 66,
+          "value": 0.7727272727272727
         },
         "seed_relevant_occurrence_ids": [
           "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:0aea491f65f2e4790480c8bd839b10e17e55f132386db66713208443227e141b",
@@ -902,25 +902,25 @@
           "T051"
         ],
         "unclassified_seed_documents": 0,
-        "documents_discovered_after_prov_o": 138,
+        "documents_discovered_after_prov_o": 136,
         "document_recovery_gain": 37,
         "document_recovery_multiplier": 1.7254901960784315,
         "component_recovery_gain": 10,
         "component_recovery_multiplier": 1.2439024390243902,
-        "expansion_per_seed_document": 2.0597014925373136,
-        "expansion_per_relevant_document_recovered": 1.5681818181818181,
+        "expansion_per_seed_document": 2.0606060606060606,
+        "expansion_per_relevant_document_recovered": 1.5454545454545454,
         "coverage": {
           "complete": true,
           "status_code": "complete",
           "failure_codes": [],
-          "documents_discovered": 138,
-          "documents_complete": 138,
-          "covered_chunks": 6239,
-          "total_chunks": 6239,
+          "documents_discovered": 136,
+          "documents_complete": 136,
+          "covered_chunks": 6145,
+          "total_chunks": 6145,
           "scope_policy_id": "documentary-prov-o",
           "scope_policy_version": 1
         },
-        "total_latency_seconds": 4.746508334064856
+        "total_latency_seconds": 4.988088620011695
       }
     },
     {
@@ -995,9 +995,9 @@
         "scope_policy_id": "documentary-prov-o",
         "scope_policy_version": 1,
         "seed_discovery_complete": true,
-        "seed_documents": 61,
-        "seed_entities": 93,
-        "valid_provenance_seed_documents": 61,
+        "seed_documents": 60,
+        "seed_entities": 92,
+        "valid_provenance_seed_documents": 60,
         "invalid_provenance_seed_documents": 0,
         "seed_provenance_complete": true,
         "requested_retrieval_profile": {
@@ -1051,7 +1051,7 @@
         },
         "retrieval_execution_complete": true,
         "retrieval_failure_codes": [],
-        "graph_entities_visited": 138,
+        "graph_entities_visited": 136,
         "graph_frontier_empty": true,
         "graph_limit_reached": false,
         "graph_stop_reason": "frontier_empty",
@@ -1068,11 +1068,11 @@
           "documents_per_depth": [
             {
               "depth": 0,
-              "count": 61
+              "count": 60
             },
             {
               "depth": 1,
-              "count": 60
+              "count": 59
             },
             {
               "depth": 2,
@@ -1086,11 +1086,11 @@
           "entities_per_depth": [
             {
               "depth": 0,
-              "count": 61
+              "count": 60
             },
             {
               "depth": 1,
-              "count": 60
+              "count": 59
             },
             {
               "depth": 2,
@@ -1128,7 +1128,7 @@
               "role": "attachment_of",
               "source_type": "email_attachment",
               "target_type": "email_message",
-              "count": 41
+              "count": 40
             },
             {
               "depth": 1,
@@ -1316,11 +1316,11 @@
             }
           ]
         },
-        "documents_discovered": 138,
-        "documents_complete": 138,
+        "documents_discovered": 136,
+        "documents_complete": 136,
         "documents_incomplete": 0,
-        "covered_chunks": 6239,
-        "total_chunks": 6239,
+        "covered_chunks": 6145,
+        "total_chunks": 6145,
         "document_read_coverage_ratio": 1.0,
         "coverage_ratio": 1.0,
         "complete": true,
@@ -1329,71 +1329,71 @@
         "failure_codes": [],
         "stop_reason": "complete",
         "model_evidence_chunks": 100,
-        "artifact_chunks": 6239,
+        "artifact_chunks": 6145,
         "performance": {
           "discovery_seconds": 0.0,
-          "prov_o_seconds": 4.746508334064856,
-          "total_seconds": 4.746508334064856
+          "prov_o_seconds": 4.988088620011695,
+          "total_seconds": 4.988088620011695
         },
         "certification": {
           "contract_id": "openrag.scope-coverage",
           "contract_version": 1,
           "facts": {
             "seed_discovery_complete": true,
-            "seed_documents": 61,
-            "valid_provenance_seed_documents": 61,
+            "seed_documents": 60,
+            "valid_provenance_seed_documents": 60,
             "invalid_provenance_seed_documents": 0,
             "graph_frontier_empty": true,
             "graph_limit_reached": false,
             "graph_stop_reason": "frontier_empty",
             "graph_failed": false,
             "retrieval_execution_complete": true,
-            "documents_discovered": 138,
-            "documents_complete": 138,
-            "covered_chunks": 6239,
-            "total_chunks": 6239,
+            "documents_discovered": 136,
+            "documents_complete": 136,
+            "covered_chunks": 6145,
+            "total_chunks": 6145,
             "document_failure_codes": [],
             "seed_failure_code": null,
             "unclassified_relations": 0,
             "retrieval_failure_codes": []
           },
-          "facts_sha256": "0f423f7fd0334cf00cc9f1530d1fe68be08c46dafd93d07584d79cba31c47be8"
+          "facts_sha256": "2a2fa5d8fcfaa45d65a606c7fc171af2e229b8ca943422ce7f43a11c668e8c65"
         }
       },
       "performance": {
         "discovery_seconds": 0.0,
-        "scope_closure_seconds": 4.746508334064856,
-        "total_latency_seconds": 4.746508334064856,
-        "http_wall_seconds": 5.527127584005939
+        "scope_closure_seconds": 4.988088620011695,
+        "total_latency_seconds": 4.988088620011695,
+        "http_wall_seconds": 5.803665415998694
       },
       "metrics": {
         "requested_k": 100,
         "available_seed_chunks": 100,
         "effective_seed_chunks": 100,
-        "seed_documents": 67,
+        "seed_documents": 66,
         "seed_document_recall": {
-          "numerator": 67,
+          "numerator": 66,
           "denominator": 251,
-          "value": 0.26693227091633465
+          "value": 0.26294820717131473
         },
         "seed_component_recall": {
-          "numerator": 54,
+          "numerator": 53,
           "denominator": 142,
-          "value": 0.38028169014084506
+          "value": 0.3732394366197183
         },
         "post_prov_o_document_recall": {
-          "numerator": 135,
+          "numerator": 133,
           "denominator": 251,
-          "value": 0.5378486055776892
+          "value": 0.5298804780876494
         },
         "post_prov_o_component_recall": {
-          "numerator": 72,
+          "numerator": 71,
           "denominator": 142,
-          "value": 0.5070422535211268
+          "value": 0.5
         },
         "precision": {
-          "numerator": 67,
-          "denominator": 67,
+          "numerator": 66,
+          "denominator": 66,
           "value": 1.0
         },
         "seed_relevant_occurrence_ids": [
@@ -1421,7 +1421,6 @@
           "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:f09fe282fc2b5e28a479627b855a9593936d51e87fbc0c95cb4816343bcf32c9",
           "urn:openrag:openarchiver:attachment:02de004c-ba70-48cd-9923-5f56c7acba1b",
           "urn:openrag:openarchiver:attachment:0803976c-9400-4f1e-9edb-ac439c292c5a",
-          "urn:openrag:openarchiver:attachment:0ada2c75-897a-4e51-b2e6-68ccdba3554a",
           "urn:openrag:openarchiver:attachment:12d0740b-f453-488b-9b94-e2f2fad696be",
           "urn:openrag:openarchiver:attachment:14e17d42-43b8-4a78-ae96-6cff631c7c4c",
           "urn:openrag:openarchiver:attachment:4eb71532-265c-4eff-8579-1a39b8668a6e",
@@ -1514,7 +1513,6 @@
           "T037",
           "T038",
           "T041",
-          "T044",
           "T046",
           "T048",
           "T049",
@@ -1547,7 +1545,6 @@
           "urn:openrag:openarchiver:attachment:02de004c-ba70-48cd-9923-5f56c7acba1b",
           "urn:openrag:openarchiver:attachment:05ef151d-34fa-48fc-ad47-ec39945748f8",
           "urn:openrag:openarchiver:attachment:0803976c-9400-4f1e-9edb-ac439c292c5a",
-          "urn:openrag:openarchiver:attachment:0ada2c75-897a-4e51-b2e6-68ccdba3554a",
           "urn:openrag:openarchiver:attachment:0e6dd1ae-cfb3-4834-bffe-fc8fa364776d",
           "urn:openrag:openarchiver:attachment:11f0bf97-fafe-4b43-b927-d9ed6dd0e127",
           "urn:openrag:openarchiver:attachment:12d0740b-f453-488b-9b94-e2f2fad696be",
@@ -1576,7 +1573,6 @@
           "urn:openrag:openarchiver:attachment:78d2f467-a5bc-47f6-b95a-c4a0058e84f3",
           "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:03cd0c56-ea2d-4d27-9e77-c4fff670f02c",
           "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:0842529f-2cb1-4500-929b-ec92aee83725",
-          "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:0b83badc-cc3b-4997-8bc5-dc4d661edca7",
           "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:1254a972-5a65-4e31-833b-32de2845b9a6",
           "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:14a44fa7-b28b-4a81-8083-c3c87877f090",
           "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:16083734-0300-4b22-b381-e077961356d7",
@@ -1724,7 +1720,6 @@
           "T041",
           "T042",
           "T043",
-          "T044",
           "T045",
           "T046",
           "T048",
@@ -1733,25 +1728,25 @@
           "T051"
         ],
         "unclassified_seed_documents": 0,
-        "documents_discovered_after_prov_o": 138,
-        "document_recovery_gain": 68,
-        "document_recovery_multiplier": 2.014925373134328,
+        "documents_discovered_after_prov_o": 136,
+        "document_recovery_gain": 67,
+        "document_recovery_multiplier": 2.015151515151515,
         "component_recovery_gain": 18,
-        "component_recovery_multiplier": 1.3333333333333333,
-        "expansion_per_seed_document": 2.0597014925373136,
-        "expansion_per_relevant_document_recovered": 1.0222222222222221,
+        "component_recovery_multiplier": 1.3396226415094339,
+        "expansion_per_seed_document": 2.0606060606060606,
+        "expansion_per_relevant_document_recovered": 1.0225563909774436,
         "coverage": {
           "complete": true,
           "status_code": "complete",
           "failure_codes": [],
-          "documents_discovered": 138,
-          "documents_complete": 138,
-          "covered_chunks": 6239,
-          "total_chunks": 6239,
+          "documents_discovered": 136,
+          "documents_complete": 136,
+          "covered_chunks": 6145,
+          "total_chunks": 6145,
           "scope_policy_id": "documentary-prov-o",
           "scope_policy_version": 1
         },
-        "total_latency_seconds": 4.746508334064856
+        "total_latency_seconds": 4.988088620011695
       }
     },
     {
@@ -1826,9 +1821,9 @@
         "scope_policy_id": "documentary-prov-o",
         "scope_policy_version": 1,
         "seed_discovery_complete": true,
-        "seed_documents": 61,
-        "seed_entities": 93,
-        "valid_provenance_seed_documents": 61,
+        "seed_documents": 60,
+        "seed_entities": 92,
+        "valid_provenance_seed_documents": 60,
         "invalid_provenance_seed_documents": 0,
         "seed_provenance_complete": true,
         "requested_retrieval_profile": {
@@ -1882,7 +1877,7 @@
         },
         "retrieval_execution_complete": true,
         "retrieval_failure_codes": [],
-        "graph_entities_visited": 138,
+        "graph_entities_visited": 136,
         "graph_frontier_empty": true,
         "graph_limit_reached": false,
         "graph_stop_reason": "frontier_empty",
@@ -1899,11 +1894,11 @@
           "documents_per_depth": [
             {
               "depth": 0,
-              "count": 61
+              "count": 60
             },
             {
               "depth": 1,
-              "count": 60
+              "count": 59
             },
             {
               "depth": 2,
@@ -1917,11 +1912,11 @@
           "entities_per_depth": [
             {
               "depth": 0,
-              "count": 61
+              "count": 60
             },
             {
               "depth": 1,
-              "count": 60
+              "count": 59
             },
             {
               "depth": 2,
@@ -1959,7 +1954,7 @@
               "role": "attachment_of",
               "source_type": "email_attachment",
               "target_type": "email_message",
-              "count": 41
+              "count": 40
             },
             {
               "depth": 1,
@@ -2147,11 +2142,11 @@
             }
           ]
         },
-        "documents_discovered": 138,
-        "documents_complete": 138,
+        "documents_discovered": 136,
+        "documents_complete": 136,
         "documents_incomplete": 0,
-        "covered_chunks": 6239,
-        "total_chunks": 6239,
+        "covered_chunks": 6145,
+        "total_chunks": 6145,
         "document_read_coverage_ratio": 1.0,
         "coverage_ratio": 1.0,
         "complete": true,
@@ -2160,48 +2155,48 @@
         "failure_codes": [],
         "stop_reason": "complete",
         "model_evidence_chunks": 100,
-        "artifact_chunks": 6239,
+        "artifact_chunks": 6145,
         "performance": {
           "discovery_seconds": 0.0,
-          "prov_o_seconds": 3.9665512630017474,
-          "total_seconds": 3.9665512630017474
+          "prov_o_seconds": 4.293325982056558,
+          "total_seconds": 4.293325982056558
         },
         "certification": {
           "contract_id": "openrag.scope-coverage",
           "contract_version": 1,
           "facts": {
             "seed_discovery_complete": true,
-            "seed_documents": 61,
-            "valid_provenance_seed_documents": 61,
+            "seed_documents": 60,
+            "valid_provenance_seed_documents": 60,
             "invalid_provenance_seed_documents": 0,
             "graph_frontier_empty": true,
             "graph_limit_reached": false,
             "graph_stop_reason": "frontier_empty",
             "graph_failed": false,
             "retrieval_execution_complete": true,
-            "documents_discovered": 138,
-            "documents_complete": 138,
-            "covered_chunks": 6239,
-            "total_chunks": 6239,
+            "documents_discovered": 136,
+            "documents_complete": 136,
+            "covered_chunks": 6145,
+            "total_chunks": 6145,
             "document_failure_codes": [],
             "seed_failure_code": null,
             "unclassified_relations": 0,
             "retrieval_failure_codes": []
           },
-          "facts_sha256": "0f423f7fd0334cf00cc9f1530d1fe68be08c46dafd93d07584d79cba31c47be8"
+          "facts_sha256": "2a2fa5d8fcfaa45d65a606c7fc171af2e229b8ca943422ce7f43a11c668e8c65"
         }
       },
       "performance": {
         "discovery_seconds": 0.0,
-        "scope_closure_seconds": 3.9665512630017474,
-        "total_latency_seconds": 3.9665512630017474,
-        "http_wall_seconds": 4.9958175840147305
+        "scope_closure_seconds": 4.293325982056558,
+        "total_latency_seconds": 4.293325982056558,
+        "http_wall_seconds": 5.225070165997749
       },
       "metrics": {
         "requested_k": 100,
         "available_seed_chunks": 100,
         "effective_seed_chunks": 100,
-        "seed_documents": 67,
+        "seed_documents": 66,
         "seed_document_recall": {
           "numerator": 51,
           "denominator": 192,
@@ -2224,8 +2219,8 @@
         },
         "precision": {
           "numerator": 51,
-          "denominator": 67,
-          "value": 0.7611940298507462
+          "denominator": 66,
+          "value": 0.7727272727272727
         },
         "seed_relevant_occurrence_ids": [
           "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:0aea491f65f2e4790480c8bd839b10e17e55f132386db66713208443227e141b",
@@ -2467,25 +2462,25 @@
           "T051"
         ],
         "unclassified_seed_documents": 0,
-        "documents_discovered_after_prov_o": 138,
+        "documents_discovered_after_prov_o": 136,
         "document_recovery_gain": 37,
         "document_recovery_multiplier": 1.7254901960784315,
         "component_recovery_gain": 10,
         "component_recovery_multiplier": 1.2439024390243902,
-        "expansion_per_seed_document": 2.0597014925373136,
-        "expansion_per_relevant_document_recovered": 1.5681818181818181,
+        "expansion_per_seed_document": 2.0606060606060606,
+        "expansion_per_relevant_document_recovered": 1.5454545454545454,
         "coverage": {
           "complete": true,
           "status_code": "complete",
           "failure_codes": [],
-          "documents_discovered": 138,
-          "documents_complete": 138,
-          "covered_chunks": 6239,
-          "total_chunks": 6239,
+          "documents_discovered": 136,
+          "documents_complete": 136,
+          "covered_chunks": 6145,
+          "total_chunks": 6145,
           "scope_policy_id": "documentary-prov-o",
           "scope_policy_version": 1
         },
-        "total_latency_seconds": 3.9665512630017474
+        "total_latency_seconds": 4.293325982056558
       }
     },
     {
@@ -2560,9 +2555,9 @@
         "scope_policy_id": "documentary-prov-o",
         "scope_policy_version": 1,
         "seed_discovery_complete": true,
-        "seed_documents": 61,
-        "seed_entities": 93,
-        "valid_provenance_seed_documents": 61,
+        "seed_documents": 60,
+        "seed_entities": 92,
+        "valid_provenance_seed_documents": 60,
         "invalid_provenance_seed_documents": 0,
         "seed_provenance_complete": true,
         "requested_retrieval_profile": {
@@ -2616,7 +2611,7 @@
         },
         "retrieval_execution_complete": true,
         "retrieval_failure_codes": [],
-        "graph_entities_visited": 138,
+        "graph_entities_visited": 136,
         "graph_frontier_empty": true,
         "graph_limit_reached": false,
         "graph_stop_reason": "frontier_empty",
@@ -2633,11 +2628,11 @@
           "documents_per_depth": [
             {
               "depth": 0,
-              "count": 61
+              "count": 60
             },
             {
               "depth": 1,
-              "count": 60
+              "count": 59
             },
             {
               "depth": 2,
@@ -2651,11 +2646,11 @@
           "entities_per_depth": [
             {
               "depth": 0,
-              "count": 61
+              "count": 60
             },
             {
               "depth": 1,
-              "count": 60
+              "count": 59
             },
             {
               "depth": 2,
@@ -2693,7 +2688,7 @@
               "role": "attachment_of",
               "source_type": "email_attachment",
               "target_type": "email_message",
-              "count": 41
+              "count": 40
             },
             {
               "depth": 1,
@@ -2881,11 +2876,11 @@
             }
           ]
         },
-        "documents_discovered": 138,
-        "documents_complete": 138,
+        "documents_discovered": 136,
+        "documents_complete": 136,
         "documents_incomplete": 0,
-        "covered_chunks": 6239,
-        "total_chunks": 6239,
+        "covered_chunks": 6145,
+        "total_chunks": 6145,
         "document_read_coverage_ratio": 1.0,
         "coverage_ratio": 1.0,
         "complete": true,
@@ -2894,71 +2889,71 @@
         "failure_codes": [],
         "stop_reason": "complete",
         "model_evidence_chunks": 100,
-        "artifact_chunks": 6239,
+        "artifact_chunks": 6145,
         "performance": {
           "discovery_seconds": 0.0,
-          "prov_o_seconds": 3.9665512630017474,
-          "total_seconds": 3.9665512630017474
+          "prov_o_seconds": 4.293325982056558,
+          "total_seconds": 4.293325982056558
         },
         "certification": {
           "contract_id": "openrag.scope-coverage",
           "contract_version": 1,
           "facts": {
             "seed_discovery_complete": true,
-            "seed_documents": 61,
-            "valid_provenance_seed_documents": 61,
+            "seed_documents": 60,
+            "valid_provenance_seed_documents": 60,
             "invalid_provenance_seed_documents": 0,
             "graph_frontier_empty": true,
             "graph_limit_reached": false,
             "graph_stop_reason": "frontier_empty",
             "graph_failed": false,
             "retrieval_execution_complete": true,
-            "documents_discovered": 138,
-            "documents_complete": 138,
-            "covered_chunks": 6239,
-            "total_chunks": 6239,
+            "documents_discovered": 136,
+            "documents_complete": 136,
+            "covered_chunks": 6145,
+            "total_chunks": 6145,
             "document_failure_codes": [],
             "seed_failure_code": null,
             "unclassified_relations": 0,
             "retrieval_failure_codes": []
           },
-          "facts_sha256": "0f423f7fd0334cf00cc9f1530d1fe68be08c46dafd93d07584d79cba31c47be8"
+          "facts_sha256": "2a2fa5d8fcfaa45d65a606c7fc171af2e229b8ca943422ce7f43a11c668e8c65"
         }
       },
       "performance": {
         "discovery_seconds": 0.0,
-        "scope_closure_seconds": 3.9665512630017474,
-        "total_latency_seconds": 3.9665512630017474,
-        "http_wall_seconds": 4.9958175840147305
+        "scope_closure_seconds": 4.293325982056558,
+        "total_latency_seconds": 4.293325982056558,
+        "http_wall_seconds": 5.225070165997749
       },
       "metrics": {
         "requested_k": 100,
         "available_seed_chunks": 100,
         "effective_seed_chunks": 100,
-        "seed_documents": 67,
+        "seed_documents": 66,
         "seed_document_recall": {
-          "numerator": 67,
+          "numerator": 66,
           "denominator": 251,
-          "value": 0.26693227091633465
+          "value": 0.26294820717131473
         },
         "seed_component_recall": {
-          "numerator": 54,
+          "numerator": 53,
           "denominator": 142,
-          "value": 0.38028169014084506
+          "value": 0.3732394366197183
         },
         "post_prov_o_document_recall": {
-          "numerator": 135,
+          "numerator": 133,
           "denominator": 251,
-          "value": 0.5378486055776892
+          "value": 0.5298804780876494
         },
         "post_prov_o_component_recall": {
-          "numerator": 72,
+          "numerator": 71,
           "denominator": 142,
-          "value": 0.5070422535211268
+          "value": 0.5
         },
         "precision": {
-          "numerator": 67,
-          "denominator": 67,
+          "numerator": 66,
+          "denominator": 66,
           "value": 1.0
         },
         "seed_relevant_occurrence_ids": [
@@ -2986,7 +2981,6 @@
           "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:f09fe282fc2b5e28a479627b855a9593936d51e87fbc0c95cb4816343bcf32c9",
           "urn:openrag:openarchiver:attachment:02de004c-ba70-48cd-9923-5f56c7acba1b",
           "urn:openrag:openarchiver:attachment:0803976c-9400-4f1e-9edb-ac439c292c5a",
-          "urn:openrag:openarchiver:attachment:0ada2c75-897a-4e51-b2e6-68ccdba3554a",
           "urn:openrag:openarchiver:attachment:12d0740b-f453-488b-9b94-e2f2fad696be",
           "urn:openrag:openarchiver:attachment:14e17d42-43b8-4a78-ae96-6cff631c7c4c",
           "urn:openrag:openarchiver:attachment:4eb71532-265c-4eff-8579-1a39b8668a6e",
@@ -3079,7 +3073,6 @@
           "T037",
           "T038",
           "T041",
-          "T044",
           "T046",
           "T048",
           "T049",
@@ -3112,7 +3105,6 @@
           "urn:openrag:openarchiver:attachment:02de004c-ba70-48cd-9923-5f56c7acba1b",
           "urn:openrag:openarchiver:attachment:05ef151d-34fa-48fc-ad47-ec39945748f8",
           "urn:openrag:openarchiver:attachment:0803976c-9400-4f1e-9edb-ac439c292c5a",
-          "urn:openrag:openarchiver:attachment:0ada2c75-897a-4e51-b2e6-68ccdba3554a",
           "urn:openrag:openarchiver:attachment:0e6dd1ae-cfb3-4834-bffe-fc8fa364776d",
           "urn:openrag:openarchiver:attachment:11f0bf97-fafe-4b43-b927-d9ed6dd0e127",
           "urn:openrag:openarchiver:attachment:12d0740b-f453-488b-9b94-e2f2fad696be",
@@ -3141,7 +3133,6 @@
           "urn:openrag:openarchiver:attachment:78d2f467-a5bc-47f6-b95a-c4a0058e84f3",
           "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:03cd0c56-ea2d-4d27-9e77-c4fff670f02c",
           "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:0842529f-2cb1-4500-929b-ec92aee83725",
-          "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:0b83badc-cc3b-4997-8bc5-dc4d661edca7",
           "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:1254a972-5a65-4e31-833b-32de2845b9a6",
           "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:14a44fa7-b28b-4a81-8083-c3c87877f090",
           "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:16083734-0300-4b22-b381-e077961356d7",
@@ -3289,7 +3280,6 @@
           "T041",
           "T042",
           "T043",
-          "T044",
           "T045",
           "T046",
           "T048",
@@ -3298,25 +3288,25 @@
           "T051"
         ],
         "unclassified_seed_documents": 0,
-        "documents_discovered_after_prov_o": 138,
-        "document_recovery_gain": 68,
-        "document_recovery_multiplier": 2.014925373134328,
+        "documents_discovered_after_prov_o": 136,
+        "document_recovery_gain": 67,
+        "document_recovery_multiplier": 2.015151515151515,
         "component_recovery_gain": 18,
-        "component_recovery_multiplier": 1.3333333333333333,
-        "expansion_per_seed_document": 2.0597014925373136,
-        "expansion_per_relevant_document_recovered": 1.0222222222222221,
+        "component_recovery_multiplier": 1.3396226415094339,
+        "expansion_per_seed_document": 2.0606060606060606,
+        "expansion_per_relevant_document_recovered": 1.0225563909774436,
         "coverage": {
           "complete": true,
           "status_code": "complete",
           "failure_codes": [],
-          "documents_discovered": 138,
-          "documents_complete": 138,
-          "covered_chunks": 6239,
-          "total_chunks": 6239,
+          "documents_discovered": 136,
+          "documents_complete": 136,
+          "covered_chunks": 6145,
+          "total_chunks": 6145,
           "scope_policy_id": "documentary-prov-o",
           "scope_policy_version": 1
         },
-        "total_latency_seconds": 3.9665512630017474
+        "total_latency_seconds": 4.293325982056558
       }
     },
     {
@@ -3391,9 +3381,9 @@
         "scope_policy_id": "documentary-prov-o",
         "scope_policy_version": 1,
         "seed_discovery_complete": true,
-        "seed_documents": 61,
-        "seed_entities": 93,
-        "valid_provenance_seed_documents": 61,
+        "seed_documents": 60,
+        "seed_entities": 92,
+        "valid_provenance_seed_documents": 60,
         "invalid_provenance_seed_documents": 0,
         "seed_provenance_complete": true,
         "requested_retrieval_profile": {
@@ -3447,7 +3437,7 @@
         },
         "retrieval_execution_complete": true,
         "retrieval_failure_codes": [],
-        "graph_entities_visited": 138,
+        "graph_entities_visited": 136,
         "graph_frontier_empty": true,
         "graph_limit_reached": false,
         "graph_stop_reason": "frontier_empty",
@@ -3464,11 +3454,11 @@
           "documents_per_depth": [
             {
               "depth": 0,
-              "count": 61
+              "count": 60
             },
             {
               "depth": 1,
-              "count": 60
+              "count": 59
             },
             {
               "depth": 2,
@@ -3482,11 +3472,11 @@
           "entities_per_depth": [
             {
               "depth": 0,
-              "count": 61
+              "count": 60
             },
             {
               "depth": 1,
-              "count": 60
+              "count": 59
             },
             {
               "depth": 2,
@@ -3524,7 +3514,7 @@
               "role": "attachment_of",
               "source_type": "email_attachment",
               "target_type": "email_message",
-              "count": 41
+              "count": 40
             },
             {
               "depth": 1,
@@ -3712,11 +3702,11 @@
             }
           ]
         },
-        "documents_discovered": 138,
-        "documents_complete": 138,
+        "documents_discovered": 136,
+        "documents_complete": 136,
         "documents_incomplete": 0,
-        "covered_chunks": 6239,
-        "total_chunks": 6239,
+        "covered_chunks": 6145,
+        "total_chunks": 6145,
         "document_read_coverage_ratio": 1.0,
         "coverage_ratio": 1.0,
         "complete": true,
@@ -3725,48 +3715,48 @@
         "failure_codes": [],
         "stop_reason": "complete",
         "model_evidence_chunks": 100,
-        "artifact_chunks": 6239,
+        "artifact_chunks": 6145,
         "performance": {
           "discovery_seconds": 0.0,
-          "prov_o_seconds": 4.119227366987616,
-          "total_seconds": 4.119227366987616
+          "prov_o_seconds": 3.869865760905668,
+          "total_seconds": 3.869865760905668
         },
         "certification": {
           "contract_id": "openrag.scope-coverage",
           "contract_version": 1,
           "facts": {
             "seed_discovery_complete": true,
-            "seed_documents": 61,
-            "valid_provenance_seed_documents": 61,
+            "seed_documents": 60,
+            "valid_provenance_seed_documents": 60,
             "invalid_provenance_seed_documents": 0,
             "graph_frontier_empty": true,
             "graph_limit_reached": false,
             "graph_stop_reason": "frontier_empty",
             "graph_failed": false,
             "retrieval_execution_complete": true,
-            "documents_discovered": 138,
-            "documents_complete": 138,
-            "covered_chunks": 6239,
-            "total_chunks": 6239,
+            "documents_discovered": 136,
+            "documents_complete": 136,
+            "covered_chunks": 6145,
+            "total_chunks": 6145,
             "document_failure_codes": [],
             "seed_failure_code": null,
             "unclassified_relations": 0,
             "retrieval_failure_codes": []
           },
-          "facts_sha256": "0f423f7fd0334cf00cc9f1530d1fe68be08c46dafd93d07584d79cba31c47be8"
+          "facts_sha256": "2a2fa5d8fcfaa45d65a606c7fc171af2e229b8ca943422ce7f43a11c668e8c65"
         }
       },
       "performance": {
         "discovery_seconds": 0.0,
-        "scope_closure_seconds": 4.119227366987616,
-        "total_latency_seconds": 4.119227366987616,
-        "http_wall_seconds": 4.760666749993106
+        "scope_closure_seconds": 3.869865760905668,
+        "total_latency_seconds": 3.869865760905668,
+        "http_wall_seconds": 4.583146207998652
       },
       "metrics": {
         "requested_k": 100,
         "available_seed_chunks": 100,
         "effective_seed_chunks": 100,
-        "seed_documents": 67,
+        "seed_documents": 66,
         "seed_document_recall": {
           "numerator": 51,
           "denominator": 192,
@@ -3789,8 +3779,8 @@
         },
         "precision": {
           "numerator": 51,
-          "denominator": 67,
-          "value": 0.7611940298507462
+          "denominator": 66,
+          "value": 0.7727272727272727
         },
         "seed_relevant_occurrence_ids": [
           "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:0aea491f65f2e4790480c8bd839b10e17e55f132386db66713208443227e141b",
@@ -4032,25 +4022,25 @@
           "T051"
         ],
         "unclassified_seed_documents": 0,
-        "documents_discovered_after_prov_o": 138,
+        "documents_discovered_after_prov_o": 136,
         "document_recovery_gain": 37,
         "document_recovery_multiplier": 1.7254901960784315,
         "component_recovery_gain": 10,
         "component_recovery_multiplier": 1.2439024390243902,
-        "expansion_per_seed_document": 2.0597014925373136,
-        "expansion_per_relevant_document_recovered": 1.5681818181818181,
+        "expansion_per_seed_document": 2.0606060606060606,
+        "expansion_per_relevant_document_recovered": 1.5454545454545454,
         "coverage": {
           "complete": true,
           "status_code": "complete",
           "failure_codes": [],
-          "documents_discovered": 138,
-          "documents_complete": 138,
-          "covered_chunks": 6239,
-          "total_chunks": 6239,
+          "documents_discovered": 136,
+          "documents_complete": 136,
+          "covered_chunks": 6145,
+          "total_chunks": 6145,
           "scope_policy_id": "documentary-prov-o",
           "scope_policy_version": 1
         },
-        "total_latency_seconds": 4.119227366987616
+        "total_latency_seconds": 3.869865760905668
       }
     },
     {
@@ -4125,9 +4115,9 @@
         "scope_policy_id": "documentary-prov-o",
         "scope_policy_version": 1,
         "seed_discovery_complete": true,
-        "seed_documents": 61,
-        "seed_entities": 93,
-        "valid_provenance_seed_documents": 61,
+        "seed_documents": 60,
+        "seed_entities": 92,
+        "valid_provenance_seed_documents": 60,
         "invalid_provenance_seed_documents": 0,
         "seed_provenance_complete": true,
         "requested_retrieval_profile": {
@@ -4181,7 +4171,7 @@
         },
         "retrieval_execution_complete": true,
         "retrieval_failure_codes": [],
-        "graph_entities_visited": 138,
+        "graph_entities_visited": 136,
         "graph_frontier_empty": true,
         "graph_limit_reached": false,
         "graph_stop_reason": "frontier_empty",
@@ -4198,11 +4188,11 @@
           "documents_per_depth": [
             {
               "depth": 0,
-              "count": 61
+              "count": 60
             },
             {
               "depth": 1,
-              "count": 60
+              "count": 59
             },
             {
               "depth": 2,
@@ -4216,11 +4206,11 @@
           "entities_per_depth": [
             {
               "depth": 0,
-              "count": 61
+              "count": 60
             },
             {
               "depth": 1,
-              "count": 60
+              "count": 59
             },
             {
               "depth": 2,
@@ -4258,7 +4248,7 @@
               "role": "attachment_of",
               "source_type": "email_attachment",
               "target_type": "email_message",
-              "count": 41
+              "count": 40
             },
             {
               "depth": 1,
@@ -4446,11 +4436,11 @@
             }
           ]
         },
-        "documents_discovered": 138,
-        "documents_complete": 138,
+        "documents_discovered": 136,
+        "documents_complete": 136,
         "documents_incomplete": 0,
-        "covered_chunks": 6239,
-        "total_chunks": 6239,
+        "covered_chunks": 6145,
+        "total_chunks": 6145,
         "document_read_coverage_ratio": 1.0,
         "coverage_ratio": 1.0,
         "complete": true,
@@ -4459,71 +4449,71 @@
         "failure_codes": [],
         "stop_reason": "complete",
         "model_evidence_chunks": 100,
-        "artifact_chunks": 6239,
+        "artifact_chunks": 6145,
         "performance": {
           "discovery_seconds": 0.0,
-          "prov_o_seconds": 4.119227366987616,
-          "total_seconds": 4.119227366987616
+          "prov_o_seconds": 3.869865760905668,
+          "total_seconds": 3.869865760905668
         },
         "certification": {
           "contract_id": "openrag.scope-coverage",
           "contract_version": 1,
           "facts": {
             "seed_discovery_complete": true,
-            "seed_documents": 61,
-            "valid_provenance_seed_documents": 61,
+            "seed_documents": 60,
+            "valid_provenance_seed_documents": 60,
             "invalid_provenance_seed_documents": 0,
             "graph_frontier_empty": true,
             "graph_limit_reached": false,
             "graph_stop_reason": "frontier_empty",
             "graph_failed": false,
             "retrieval_execution_complete": true,
-            "documents_discovered": 138,
-            "documents_complete": 138,
-            "covered_chunks": 6239,
-            "total_chunks": 6239,
+            "documents_discovered": 136,
+            "documents_complete": 136,
+            "covered_chunks": 6145,
+            "total_chunks": 6145,
             "document_failure_codes": [],
             "seed_failure_code": null,
             "unclassified_relations": 0,
             "retrieval_failure_codes": []
           },
-          "facts_sha256": "0f423f7fd0334cf00cc9f1530d1fe68be08c46dafd93d07584d79cba31c47be8"
+          "facts_sha256": "2a2fa5d8fcfaa45d65a606c7fc171af2e229b8ca943422ce7f43a11c668e8c65"
         }
       },
       "performance": {
         "discovery_seconds": 0.0,
-        "scope_closure_seconds": 4.119227366987616,
-        "total_latency_seconds": 4.119227366987616,
-        "http_wall_seconds": 4.760666749993106
+        "scope_closure_seconds": 3.869865760905668,
+        "total_latency_seconds": 3.869865760905668,
+        "http_wall_seconds": 4.583146207998652
       },
       "metrics": {
         "requested_k": 100,
         "available_seed_chunks": 100,
         "effective_seed_chunks": 100,
-        "seed_documents": 67,
+        "seed_documents": 66,
         "seed_document_recall": {
-          "numerator": 67,
+          "numerator": 66,
           "denominator": 251,
-          "value": 0.26693227091633465
+          "value": 0.26294820717131473
         },
         "seed_component_recall": {
-          "numerator": 54,
+          "numerator": 53,
           "denominator": 142,
-          "value": 0.38028169014084506
+          "value": 0.3732394366197183
         },
         "post_prov_o_document_recall": {
-          "numerator": 135,
+          "numerator": 133,
           "denominator": 251,
-          "value": 0.5378486055776892
+          "value": 0.5298804780876494
         },
         "post_prov_o_component_recall": {
-          "numerator": 72,
+          "numerator": 71,
           "denominator": 142,
-          "value": 0.5070422535211268
+          "value": 0.5
         },
         "precision": {
-          "numerator": 67,
-          "denominator": 67,
+          "numerator": 66,
+          "denominator": 66,
           "value": 1.0
         },
         "seed_relevant_occurrence_ids": [
@@ -4551,7 +4541,6 @@
           "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:f09fe282fc2b5e28a479627b855a9593936d51e87fbc0c95cb4816343bcf32c9",
           "urn:openrag:openarchiver:attachment:02de004c-ba70-48cd-9923-5f56c7acba1b",
           "urn:openrag:openarchiver:attachment:0803976c-9400-4f1e-9edb-ac439c292c5a",
-          "urn:openrag:openarchiver:attachment:0ada2c75-897a-4e51-b2e6-68ccdba3554a",
           "urn:openrag:openarchiver:attachment:12d0740b-f453-488b-9b94-e2f2fad696be",
           "urn:openrag:openarchiver:attachment:14e17d42-43b8-4a78-ae96-6cff631c7c4c",
           "urn:openrag:openarchiver:attachment:4eb71532-265c-4eff-8579-1a39b8668a6e",
@@ -4644,7 +4633,6 @@
           "T037",
           "T038",
           "T041",
-          "T044",
           "T046",
           "T048",
           "T049",
@@ -4677,7 +4665,6 @@
           "urn:openrag:openarchiver:attachment:02de004c-ba70-48cd-9923-5f56c7acba1b",
           "urn:openrag:openarchiver:attachment:05ef151d-34fa-48fc-ad47-ec39945748f8",
           "urn:openrag:openarchiver:attachment:0803976c-9400-4f1e-9edb-ac439c292c5a",
-          "urn:openrag:openarchiver:attachment:0ada2c75-897a-4e51-b2e6-68ccdba3554a",
           "urn:openrag:openarchiver:attachment:0e6dd1ae-cfb3-4834-bffe-fc8fa364776d",
           "urn:openrag:openarchiver:attachment:11f0bf97-fafe-4b43-b927-d9ed6dd0e127",
           "urn:openrag:openarchiver:attachment:12d0740b-f453-488b-9b94-e2f2fad696be",
@@ -4706,7 +4693,6 @@
           "urn:openrag:openarchiver:attachment:78d2f467-a5bc-47f6-b95a-c4a0058e84f3",
           "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:03cd0c56-ea2d-4d27-9e77-c4fff670f02c",
           "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:0842529f-2cb1-4500-929b-ec92aee83725",
-          "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:0b83badc-cc3b-4997-8bc5-dc4d661edca7",
           "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:1254a972-5a65-4e31-833b-32de2845b9a6",
           "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:14a44fa7-b28b-4a81-8083-c3c87877f090",
           "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:16083734-0300-4b22-b381-e077961356d7",
@@ -4854,7 +4840,6 @@
           "T041",
           "T042",
           "T043",
-          "T044",
           "T045",
           "T046",
           "T048",
@@ -4863,25 +4848,25 @@
           "T051"
         ],
         "unclassified_seed_documents": 0,
-        "documents_discovered_after_prov_o": 138,
-        "document_recovery_gain": 68,
-        "document_recovery_multiplier": 2.014925373134328,
+        "documents_discovered_after_prov_o": 136,
+        "document_recovery_gain": 67,
+        "document_recovery_multiplier": 2.015151515151515,
         "component_recovery_gain": 18,
-        "component_recovery_multiplier": 1.3333333333333333,
-        "expansion_per_seed_document": 2.0597014925373136,
-        "expansion_per_relevant_document_recovered": 1.0222222222222221,
+        "component_recovery_multiplier": 1.3396226415094339,
+        "expansion_per_seed_document": 2.0606060606060606,
+        "expansion_per_relevant_document_recovered": 1.0225563909774436,
         "coverage": {
           "complete": true,
           "status_code": "complete",
           "failure_codes": [],
-          "documents_discovered": 138,
-          "documents_complete": 138,
-          "covered_chunks": 6239,
-          "total_chunks": 6239,
+          "documents_discovered": 136,
+          "documents_complete": 136,
+          "covered_chunks": 6145,
+          "total_chunks": 6145,
           "scope_policy_id": "documentary-prov-o",
           "scope_policy_version": 1
         },
-        "total_latency_seconds": 4.119227366987616
+        "total_latency_seconds": 3.869865760905668
       }
     }
   ],
@@ -4960,25 +4945,25 @@
             "denominator": 114
           },
           "precision": {
-            "min": 0.7611940298507462,
-            "mean": 0.7611940298507461,
-            "max": 0.7611940298507462,
+            "min": 0.7727272727272727,
+            "mean": 0.7727272727272728,
+            "max": 0.7727272727272727,
             "numerator": {
               "min": 51.0,
               "mean": 51.0,
               "max": 51.0
             },
-            "denominator": 67
+            "denominator": 66
           },
           "expansion_per_seed_document": {
-            "min": 2.0597014925373136,
-            "mean": 2.0597014925373136,
-            "max": 2.0597014925373136
+            "min": 2.0606060606060606,
+            "mean": 2.0606060606060606,
+            "max": 2.0606060606060606
           },
           "total_latency_seconds": {
-            "min": 3.9665512630017474,
-            "mean": 4.277428988018073,
-            "max": 4.746508334064856
+            "min": 3.869865760905668,
+            "mean": 4.383760120991307,
+            "max": 4.988088620011695
           }
         }
       }
@@ -5013,46 +4998,46 @@
         "retrieval_execution_success_rate": 1.0,
         "metrics": {
           "seed_document_recall": {
-            "min": 0.26693227091633465,
-            "mean": 0.26693227091633465,
-            "max": 0.26693227091633465,
+            "min": 0.26294820717131473,
+            "mean": 0.26294820717131473,
+            "max": 0.26294820717131473,
             "numerator": {
-              "min": 67.0,
-              "mean": 67.0,
-              "max": 67.0
+              "min": 66.0,
+              "mean": 66.0,
+              "max": 66.0
             },
             "denominator": 251
           },
           "seed_component_recall": {
-            "min": 0.38028169014084506,
-            "mean": 0.38028169014084506,
-            "max": 0.38028169014084506,
+            "min": 0.3732394366197183,
+            "mean": 0.3732394366197183,
+            "max": 0.3732394366197183,
             "numerator": {
-              "min": 54.0,
-              "mean": 54.0,
-              "max": 54.0
+              "min": 53.0,
+              "mean": 53.0,
+              "max": 53.0
             },
             "denominator": 142
           },
           "post_prov_o_document_recall": {
-            "min": 0.5378486055776892,
-            "mean": 0.5378486055776892,
-            "max": 0.5378486055776892,
+            "min": 0.5298804780876494,
+            "mean": 0.5298804780876494,
+            "max": 0.5298804780876494,
             "numerator": {
-              "min": 135.0,
-              "mean": 135.0,
-              "max": 135.0
+              "min": 133.0,
+              "mean": 133.0,
+              "max": 133.0
             },
             "denominator": 251
           },
           "post_prov_o_component_recall": {
-            "min": 0.5070422535211268,
-            "mean": 0.5070422535211268,
-            "max": 0.5070422535211268,
+            "min": 0.5,
+            "mean": 0.5,
+            "max": 0.5,
             "numerator": {
-              "min": 72.0,
-              "mean": 72.0,
-              "max": 72.0
+              "min": 71.0,
+              "mean": 71.0,
+              "max": 71.0
             },
             "denominator": 142
           },
@@ -5061,21 +5046,21 @@
             "mean": 1.0,
             "max": 1.0,
             "numerator": {
-              "min": 67.0,
-              "mean": 67.0,
-              "max": 67.0
+              "min": 66.0,
+              "mean": 66.0,
+              "max": 66.0
             },
-            "denominator": 67
+            "denominator": 66
           },
           "expansion_per_seed_document": {
-            "min": 2.0597014925373136,
-            "mean": 2.0597014925373136,
-            "max": 2.0597014925373136
+            "min": 2.0606060606060606,
+            "mean": 2.0606060606060606,
+            "max": 2.0606060606060606
           },
           "total_latency_seconds": {
-            "min": 3.9665512630017474,
-            "mean": 4.277428988018073,
-            "max": 4.746508334064856
+            "min": 3.869865760905668,
+            "mean": 4.383760120991307,
+            "max": 4.988088620011695
           }
         }
       }
@@ -5132,22 +5117,22 @@
       "query_count": 1,
       "metric": "precision",
       "historical": 0.7611940298507462,
-      "product_path_mean": 0.7611940298507461,
-      "delta": -1.1102230246251565e-16
+      "product_path_mean": 0.7727272727272728,
+      "delta": 0.011533242876526573
     },
     {
       "query_count": 1,
       "metric": "expansion_per_seed_document",
       "historical": 2.0597014925373136,
-      "product_path_mean": 2.0597014925373136,
-      "delta": 0.0
+      "product_path_mean": 2.0606060606060606,
+      "delta": 0.0009045680687469471
     },
     {
       "query_count": 1,
       "metric": "total_latency_seconds",
       "historical": 4.813135467004031,
-      "product_path_mean": 4.277428988018073,
-      "delta": -0.5357064789859578
+      "product_path_mean": 4.383760120991307,
+      "delta": -0.42937534601272365
     },
     {
       "query_count": 1,
@@ -5174,22 +5159,22 @@
       "query_count": 1,
       "metric": "precision",
       "historical": 0.7611940298507462,
-      "product_path_mean": 0.7611940298507461,
-      "delta": -1.1102230246251565e-16
+      "product_path_mean": 0.7727272727272728,
+      "delta": 0.011533242876526573
     },
     {
       "query_count": 1,
       "metric": "expansion_per_seed_document",
       "historical": 2.0597014925373136,
-      "product_path_mean": 2.0597014925373136,
-      "delta": 0.0
+      "product_path_mean": 2.0606060606060606,
+      "delta": 0.0009045680687469471
     },
     {
       "query_count": 1,
       "metric": "total_latency_seconds",
       "historical": 4.528052146080881,
-      "product_path_mean": 4.277428988018073,
-      "delta": -0.2506231580628082
+      "product_path_mean": 4.383760120991307,
+      "delta": -0.14429202508957406
     },
     {
       "query_count": 1,
@@ -5216,22 +5201,22 @@
       "query_count": 1,
       "metric": "precision",
       "historical": 0.7611940298507462,
-      "product_path_mean": 0.7611940298507461,
-      "delta": -1.1102230246251565e-16
+      "product_path_mean": 0.7727272727272728,
+      "delta": 0.011533242876526573
     },
     {
       "query_count": 1,
       "metric": "expansion_per_seed_document",
       "historical": 2.0597014925373136,
-      "product_path_mean": 2.0597014925373136,
-      "delta": 0.0
+      "product_path_mean": 2.0606060606060606,
+      "delta": 0.0009045680687469471
     },
     {
       "query_count": 1,
       "metric": "total_latency_seconds",
       "historical": 3.9633437750162557,
-      "product_path_mean": 4.277428988018073,
-      "delta": 0.31408521300181746
+      "product_path_mean": 4.383760120991307,
+      "delta": 0.4204163459750516
     }
   ],
   "q4_gain_vs_q1": null

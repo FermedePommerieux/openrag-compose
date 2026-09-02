@@ -3,11 +3,11 @@ from __future__ import annotations
 import base64
 import hashlib
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pytest
 
-from services.document_metadata_backfill import IndexedDocumentRecord
+from services.document_metadata_backfill import ArchivedOriginalResolver, IndexedDocumentRecord
 from services.document_metadata_canary import (
     METADATA_FIELDS,
     CanaryCheckpoint,
@@ -72,7 +72,8 @@ class FakeOpenSearch:
         excludes = body.get("_source", {}).get("excludes", [])
         hits = []
         for storage_id, source in sorted(
-            self.documents.items(), key=lambda item: item[1]["chunk_index"]
+            self.documents.items(),
+            key=lambda item: cast(int, item[1]["chunk_index"]),
         ):
             projected = {key: value for key, value in source.items() if key not in excludes}
             hits.append(
@@ -319,7 +320,7 @@ async def test_canary_archive_read_failure_is_explicit_and_retry_safe(tmp_path: 
         index_name="documents",
         checkpoint=checkpoint,
         local_archive_root=tmp_path,
-        resolver=FailingResolver(),  # type: ignore[arg-type]
+        resolver=cast(ArchivedOriginalResolver, FailingResolver()),
     )
 
     summary = await canary.run()

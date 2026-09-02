@@ -1,22 +1,44 @@
 {
   "schema_version": 1,
-  "captured_at": "2026-09-02T08:21:47+02:00",
-  "full_backfill": "NOT_EXECUTED",
+  "captured_at": "2026-09-02T21:02:00Z",
+  "full_backfill": "COMPLETED_WITH_FAIL_CLOSED_EXCLUSIONS",
   "index": "documents",
   "distinct_documents": 47400,
   "visible_occurrences": 47454,
+  "distinct_source_ids": 47451,
   "chunk_count": 380817,
-  "embedding_model_markers": 380817,
+  "embedding_count": 380817,
   "vector_fields": {
     "chunk_embedding": 0,
     "chunk_embedding_text_embedding_3_large": 380817
   },
-  "document_metadata_profiles": 0,
+  "document_metadata_profiles_in_index": 47133,
+  "selected_distinct_document_profiles": 47130,
+  "selected_distinct_document_profile_gap": 270,
+  "pre_existing_duplicate_occurrence_profiles": 3,
   "corpus_digest": "038987ca2eb70b2e56d674bc45e9b60fe00652e72296249dba0252d6964fafd7",
+  "corpus_digest_unchanged": true,
   "gt1_definition_sha256": "43963a033a203aa29f62d518e6b940749b4cba62ed1cb9c44586ddcac8c97341",
   "gt2_ground_truth_sha256": "a1f53f7f1e42969b287d4778f846fd7a3c86a0bee0d2c0d0cb46a1cc6e10ff6a",
-  "opensearch": "green",
+  "document_count_unchanged": true,
+  "chunk_count_unchanged": true,
+  "embedding_count_unchanged": true,
+  "chunk_text_or_identity_mutated": false,
+  "embedding_values_mutated": false,
+  "prov_o_edges_mutated": false,
+  "public_dls_projection": "PASS",
+  "opensearch": {
+    "health": "green",
+    "unassigned_shards": 0
+  },
   "archive_mutated": false,
-  "index_mutated_by_this_chantier": false,
-  "note": "This is a current integrity capture, not a post-full-backfill validation."
+  "index_mutated_by_this_chantier": true,
+  "index_mutation": "metadata-only in-place representative updates",
+  "runtime": {
+    "backend_source_sha": "bfbf3622b84deb234709a5c991b3bbbc51ab4bc7",
+    "backend_tag": "v0.6.0-retrieval-v2.85",
+    "backend_digest": "sha256:39186b9f6e0f418e485dd1764d16254c1809398c02215da54a838989ae114a92",
+    "gitops_sha": "d5f544adccb324e2035b7e8da8a411c5c2cddb54",
+    "runtime_behavior": "MATCH"
+  }
 }

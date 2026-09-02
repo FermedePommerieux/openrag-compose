@@ -2,8 +2,8 @@
   "schema_version": 1,
   "benchmark_id": "orange-fibre-cross-domain-v1",
   "benchmark_version": 1,
-  "critical_contract_tag": "DOCUMENT METADATA BACKFILL SAMPLE DRY RUN - OBSERVATIONAL ONLY",
-  "runtime_source_sha": "36c5afdec6a09ea809a9a0e733de191de1b578c7",
+  "critical_contract_tag": "DOCUMENT METADATA FULL BACKFILL COMPLETE - OBSERVATIONAL ONLY",
+  "runtime_source_sha": "bfbf3622b84deb234709a5c991b3bbbc51ab4bc7",
   "product_endpoint": "https://openrag.ferme-de-pommerieux.fr/api/search",
   "execution_path": {
     "planner_shared_with_product": true,
@@ -158,7 +158,7 @@
   },
   "corpus": {
     "before": {
-      "captured_at": "2026-09-02T05:57:08.187868+00:00",
+      "captured_at": "2026-09-02T21:04:16.998283+00:00",
       "visible_occurrences": 47454,
       "enumerated_occurrences": 47454,
       "distinct_document_ids": 47400,
@@ -171,7 +171,7 @@
       "complete": true
     },
     "after": {
-      "captured_at": "2026-09-02T05:57:36.022998+00:00",
+      "captured_at": "2026-09-02T21:04:51.397983+00:00",
       "visible_occurrences": 47454,
       "enumerated_occurrences": 47454,
       "distinct_document_ids": 47400,
@@ -261,9 +261,9 @@
         "scope_policy_id": "documentary-prov-o",
         "scope_policy_version": 1,
         "seed_discovery_complete": true,
-        "seed_documents": 72,
+        "seed_documents": 73,
         "seed_entities": 126,
-        "valid_provenance_seed_documents": 72,
+        "valid_provenance_seed_documents": 73,
         "invalid_provenance_seed_documents": 0,
         "seed_provenance_complete": true,
         "requested_retrieval_profile": {
@@ -317,7 +317,7 @@
         },
         "retrieval_execution_complete": true,
         "retrieval_failure_codes": [],
-        "graph_entities_visited": 205,
+        "graph_entities_visited": 183,
         "graph_frontier_empty": true,
         "graph_limit_reached": false,
         "graph_stop_reason": "frontier_empty",
@@ -334,37 +334,37 @@
           "documents_per_depth": [
             {
               "depth": 0,
-              "count": 72
+              "count": 73
             },
             {
               "depth": 1,
-              "count": 104
+              "count": 87
             },
             {
               "depth": 2,
-              "count": 25
+              "count": 20
             },
             {
               "depth": 3,
-              "count": 4
+              "count": 3
             }
           ],
           "entities_per_depth": [
             {
               "depth": 0,
-              "count": 72
+              "count": 73
             },
             {
               "depth": 1,
-              "count": 104
+              "count": 87
             },
             {
               "depth": 2,
-              "count": 25
+              "count": 20
             },
             {
               "depth": 3,
-              "count": 4
+              "count": 3
             }
           ],
           "relations_per_depth": [
@@ -387,42 +387,42 @@
               "role": "attachment_of",
               "source_type": "email_attachment",
               "target_type": "email_message",
-              "count": 42
+              "count": 35
             },
             {
               "depth": 1,
               "role": "references",
               "source_type": "email_message",
               "target_type": "email_message",
-              "count": 222
+              "count": 201
             },
             {
               "depth": 1,
               "role": "reply_to",
               "source_type": "email_message",
               "target_type": "email_message",
-              "count": 73
+              "count": 60
             },
             {
               "depth": 2,
               "role": "attachment_of",
               "source_type": "email_attachment",
               "target_type": "email_message",
-              "count": 15
+              "count": 10
             },
             {
               "depth": 2,
               "role": "references",
               "source_type": "email_message",
               "target_type": "email_message",
-              "count": 20
+              "count": 19
             },
             {
               "depth": 2,
               "role": "reply_to",
               "source_type": "email_message",
               "target_type": "email_message",
-              "count": 12
+              "count": 11
             },
             {
               "depth": 3,
@@ -436,14 +436,14 @@
               "role": "references",
               "source_type": "email_message",
               "target_type": "email_message",
-              "count": 2
+              "count": 1
             },
             {
               "depth": 3,
               "role": "reply_to",
               "source_type": "email_message",
               "target_type": "email_message",
-              "count": 2
+              "count": 1
             }
           ],
           "largest_expansion_contributors": [
@@ -467,13 +467,6 @@
               "outbound_edges": 3,
               "inbound_edges": 14,
               "total_edges": 17
-            },
-            {
-              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:04c205c3-01eb-410b-93e3-f1f3568adddd",
-              "entity_type": "email_message",
-              "outbound_edges": 0,
-              "inbound_edges": 16,
-              "total_edges": 16
             },
             {
               "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:3e9aafdd-217a-48cc-8239-7033dc3a0302",
@@ -586,14 +579,21 @@
               "outbound_edges": 0,
               "inbound_edges": 13,
               "total_edges": 13
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:f5f6b611-1ad4-4324-8c47-2f7db1ad978c",
+              "entity_type": "email_message",
+              "outbound_edges": 6,
+              "inbound_edges": 5,
+              "total_edges": 11
             }
           ]
         },
-        "documents_discovered": 205,
-        "documents_complete": 205,
+        "documents_discovered": 183,
+        "documents_complete": 183,
         "documents_incomplete": 0,
-        "covered_chunks": 3656,
-        "total_chunks": 3656,
+        "covered_chunks": 3269,
+        "total_chunks": 3269,
         "document_read_coverage_ratio": 1.0,
         "coverage_ratio": 1.0,
         "complete": true,
@@ -602,48 +602,48 @@
         "failure_codes": [],
         "stop_reason": "complete",
         "model_evidence_chunks": 100,
-        "artifact_chunks": 3656,
+        "artifact_chunks": 3269,
         "performance": {
           "discovery_seconds": 0.0,
-          "prov_o_seconds": 3.6624132790602744,
-          "total_seconds": 3.6624132790602744
+          "prov_o_seconds": 4.122847668011673,
+          "total_seconds": 4.122847668011673
         },
         "certification": {
           "contract_id": "openrag.scope-coverage",
           "contract_version": 1,
           "facts": {
             "seed_discovery_complete": true,
-            "seed_documents": 72,
-            "valid_provenance_seed_documents": 72,
+            "seed_documents": 73,
+            "valid_provenance_seed_documents": 73,
             "invalid_provenance_seed_documents": 0,
             "graph_frontier_empty": true,
             "graph_limit_reached": false,
             "graph_stop_reason": "frontier_empty",
             "graph_failed": false,
             "retrieval_execution_complete": true,
-            "documents_discovered": 205,
-            "documents_complete": 205,
-            "covered_chunks": 3656,
-            "total_chunks": 3656,
+            "documents_discovered": 183,
+            "documents_complete": 183,
+            "covered_chunks": 3269,
+            "total_chunks": 3269,
             "document_failure_codes": [],
             "seed_failure_code": null,
             "unclassified_relations": 0,
             "retrieval_failure_codes": []
           },
-          "facts_sha256": "6d67c7edc6aba7139945c20f4e93de93f8c6aa5ec94d212ab2d085a6c19f4119"
+          "facts_sha256": "25875a8c9909300762d0189a0c4b398153231bf957a6ac54e0986b472ca93a18"
         }
       },
       "performance": {
         "discovery_seconds": 0.0,
-        "scope_closure_seconds": 3.6624132790602744,
-        "total_latency_seconds": 3.6624132790602744,
-        "http_wall_seconds": 4.248692666995339
+        "scope_closure_seconds": 4.122847668011673,
+        "total_latency_seconds": 4.122847668011673,
+        "http_wall_seconds": 4.688430292000703
       },
       "metrics": {
         "requested_k": 100,
         "available_seed_chunks": 100,
         "effective_seed_chunks": 100,
-        "seed_documents": 80,
+        "seed_documents": 81,
         "seed_document_recall": {
           "numerator": 24,
           "denominator": 105,
@@ -666,8 +666,8 @@
         },
         "precision": {
           "numerator": 24,
-          "denominator": 80,
-          "value": 0.3
+          "denominator": 81,
+          "value": 0.2962962962962963
         },
         "seed_relevant_occurrence_ids": [
           "urn:openrag:openarchiver:attachment:01dc5f1d-4699-4467-a5db-8c6683917c43",
@@ -780,26 +780,26 @@
           "component-f875a34b7c9d0a32",
           "component-fe87c27fe64ba8d7"
         ],
-        "unclassified_seed_documents": 38,
-        "documents_discovered_after_prov_o": 205,
+        "unclassified_seed_documents": 37,
+        "documents_discovered_after_prov_o": 183,
         "document_recovery_gain": 7,
         "document_recovery_multiplier": 1.2916666666666667,
         "component_recovery_gain": 0,
         "component_recovery_multiplier": 1.0,
-        "expansion_per_seed_document": 2.5625,
-        "expansion_per_relevant_document_recovered": 6.612903225806452,
+        "expansion_per_seed_document": 2.259259259259259,
+        "expansion_per_relevant_document_recovered": 5.903225806451613,
         "coverage": {
           "complete": true,
           "status_code": "complete",
           "failure_codes": [],
-          "documents_discovered": 205,
-          "documents_complete": 205,
-          "covered_chunks": 3656,
-          "total_chunks": 3656,
+          "documents_discovered": 183,
+          "documents_complete": 183,
+          "covered_chunks": 3269,
+          "total_chunks": 3269,
           "scope_policy_id": "documentary-prov-o",
           "scope_policy_version": 1
         },
-        "total_latency_seconds": 3.6624132790602744
+        "total_latency_seconds": 4.122847668011673
       }
     },
     {
@@ -874,9 +874,9 @@
         "scope_policy_id": "documentary-prov-o",
         "scope_policy_version": 1,
         "seed_discovery_complete": true,
-        "seed_documents": 72,
+        "seed_documents": 73,
         "seed_entities": 126,
-        "valid_provenance_seed_documents": 72,
+        "valid_provenance_seed_documents": 73,
         "invalid_provenance_seed_documents": 0,
         "seed_provenance_complete": true,
         "requested_retrieval_profile": {
@@ -930,7 +930,7 @@
         },
         "retrieval_execution_complete": true,
         "retrieval_failure_codes": [],
-        "graph_entities_visited": 205,
+        "graph_entities_visited": 183,
         "graph_frontier_empty": true,
         "graph_limit_reached": false,
         "graph_stop_reason": "frontier_empty",
@@ -947,37 +947,37 @@
           "documents_per_depth": [
             {
               "depth": 0,
-              "count": 72
+              "count": 73
             },
             {
               "depth": 1,
-              "count": 104
+              "count": 87
             },
             {
               "depth": 2,
-              "count": 25
+              "count": 20
             },
             {
               "depth": 3,
-              "count": 4
+              "count": 3
             }
           ],
           "entities_per_depth": [
             {
               "depth": 0,
-              "count": 72
+              "count": 73
             },
             {
               "depth": 1,
-              "count": 104
+              "count": 87
             },
             {
               "depth": 2,
-              "count": 25
+              "count": 20
             },
             {
               "depth": 3,
-              "count": 4
+              "count": 3
             }
           ],
           "relations_per_depth": [
@@ -1000,42 +1000,42 @@
               "role": "attachment_of",
               "source_type": "email_attachment",
               "target_type": "email_message",
-              "count": 42
+              "count": 35
             },
             {
               "depth": 1,
               "role": "references",
               "source_type": "email_message",
               "target_type": "email_message",
-              "count": 222
+              "count": 201
             },
             {
               "depth": 1,
               "role": "reply_to",
               "source_type": "email_message",
               "target_type": "email_message",
-              "count": 73
+              "count": 60
             },
             {
               "depth": 2,
               "role": "attachment_of",
               "source_type": "email_attachment",
               "target_type": "email_message",
-              "count": 15
+              "count": 10
             },
             {
               "depth": 2,
               "role": "references",
               "source_type": "email_message",
               "target_type": "email_message",
-              "count": 20
+              "count": 19
             },
             {
               "depth": 2,
               "role": "reply_to",
               "source_type": "email_message",
               "target_type": "email_message",
-              "count": 12
+              "count": 11
             },
             {
               "depth": 3,
@@ -1049,14 +1049,14 @@
               "role": "references",
               "source_type": "email_message",
               "target_type": "email_message",
-              "count": 2
+              "count": 1
             },
             {
               "depth": 3,
               "role": "reply_to",
               "source_type": "email_message",
               "target_type": "email_message",
-              "count": 2
+              "count": 1
             }
           ],
           "largest_expansion_contributors": [
@@ -1080,13 +1080,6 @@
               "outbound_edges": 3,
               "inbound_edges": 14,
               "total_edges": 17
-            },
-            {
-              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:04c205c3-01eb-410b-93e3-f1f3568adddd",
-              "entity_type": "email_message",
-              "outbound_edges": 0,
-              "inbound_edges": 16,
-              "total_edges": 16
             },
             {
               "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:3e9aafdd-217a-48cc-8239-7033dc3a0302",
@@ -1199,14 +1192,21 @@
               "outbound_edges": 0,
               "inbound_edges": 13,
               "total_edges": 13
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:f5f6b611-1ad4-4324-8c47-2f7db1ad978c",
+              "entity_type": "email_message",
+              "outbound_edges": 6,
+              "inbound_edges": 5,
+              "total_edges": 11
             }
           ]
         },
-        "documents_discovered": 205,
-        "documents_complete": 205,
+        "documents_discovered": 183,
+        "documents_complete": 183,
         "documents_incomplete": 0,
-        "covered_chunks": 3656,
-        "total_chunks": 3656,
+        "covered_chunks": 3269,
+        "total_chunks": 3269,
         "document_read_coverage_ratio": 1.0,
         "coverage_ratio": 1.0,
         "complete": true,
@@ -1215,48 +1215,48 @@
         "failure_codes": [],
         "stop_reason": "complete",
         "model_evidence_chunks": 100,
-        "artifact_chunks": 3656,
+        "artifact_chunks": 3269,
         "performance": {
           "discovery_seconds": 0.0,
-          "prov_o_seconds": 3.6624132790602744,
-          "total_seconds": 3.6624132790602744
+          "prov_o_seconds": 4.122847668011673,
+          "total_seconds": 4.122847668011673
         },
         "certification": {
           "contract_id": "openrag.scope-coverage",
           "contract_version": 1,
           "facts": {
             "seed_discovery_complete": true,
-            "seed_documents": 72,
-            "valid_provenance_seed_documents": 72,
+            "seed_documents": 73,
+            "valid_provenance_seed_documents": 73,
             "invalid_provenance_seed_documents": 0,
             "graph_frontier_empty": true,
             "graph_limit_reached": false,
             "graph_stop_reason": "frontier_empty",
             "graph_failed": false,
             "retrieval_execution_complete": true,
-            "documents_discovered": 205,
-            "documents_complete": 205,
-            "covered_chunks": 3656,
-            "total_chunks": 3656,
+            "documents_discovered": 183,
+            "documents_complete": 183,
+            "covered_chunks": 3269,
+            "total_chunks": 3269,
             "document_failure_codes": [],
             "seed_failure_code": null,
             "unclassified_relations": 0,
             "retrieval_failure_codes": []
           },
-          "facts_sha256": "6d67c7edc6aba7139945c20f4e93de93f8c6aa5ec94d212ab2d085a6c19f4119"
+          "facts_sha256": "25875a8c9909300762d0189a0c4b398153231bf957a6ac54e0986b472ca93a18"
         }
       },
       "performance": {
         "discovery_seconds": 0.0,
-        "scope_closure_seconds": 3.6624132790602744,
-        "total_latency_seconds": 3.6624132790602744,
-        "http_wall_seconds": 4.248692666995339
+        "scope_closure_seconds": 4.122847668011673,
+        "total_latency_seconds": 4.122847668011673,
+        "http_wall_seconds": 4.688430292000703
       },
       "metrics": {
         "requested_k": 100,
         "available_seed_chunks": 100,
         "effective_seed_chunks": 100,
-        "seed_documents": 80,
+        "seed_documents": 81,
         "seed_document_recall": {
           "numerator": 22,
           "denominator": 48,
@@ -1279,8 +1279,8 @@
         },
         "precision": {
           "numerator": 22,
-          "denominator": 80,
-          "value": 0.275
+          "denominator": 81,
+          "value": 0.2716049382716049
         },
         "seed_relevant_occurrence_ids": [
           "urn:openrag:openarchiver:attachment:01dc5f1d-4699-4467-a5db-8c6683917c43",
@@ -1385,26 +1385,26 @@
           "component-f875a34b7c9d0a32",
           "component-fe87c27fe64ba8d7"
         ],
-        "unclassified_seed_documents": 38,
-        "documents_discovered_after_prov_o": 205,
+        "unclassified_seed_documents": 37,
+        "documents_discovered_after_prov_o": 183,
         "document_recovery_gain": 7,
         "document_recovery_multiplier": 1.3181818181818181,
         "component_recovery_gain": 0,
         "component_recovery_multiplier": 1.0,
-        "expansion_per_seed_document": 2.5625,
-        "expansion_per_relevant_document_recovered": 7.068965517241379,
+        "expansion_per_seed_document": 2.259259259259259,
+        "expansion_per_relevant_document_recovered": 6.310344827586207,
         "coverage": {
           "complete": true,
           "status_code": "complete",
           "failure_codes": [],
-          "documents_discovered": 205,
-          "documents_complete": 205,
-          "covered_chunks": 3656,
-          "total_chunks": 3656,
+          "documents_discovered": 183,
+          "documents_complete": 183,
+          "covered_chunks": 3269,
+          "total_chunks": 3269,
           "scope_policy_id": "documentary-prov-o",
           "scope_policy_version": 1
         },
-        "total_latency_seconds": 3.6624132790602744
+        "total_latency_seconds": 4.122847668011673
       }
     },
     {
@@ -1479,9 +1479,9 @@
         "scope_policy_id": "documentary-prov-o",
         "scope_policy_version": 1,
         "seed_discovery_complete": true,
-        "seed_documents": 72,
+        "seed_documents": 73,
         "seed_entities": 126,
-        "valid_provenance_seed_documents": 72,
+        "valid_provenance_seed_documents": 73,
         "invalid_provenance_seed_documents": 0,
         "seed_provenance_complete": true,
         "requested_retrieval_profile": {
@@ -1535,7 +1535,7 @@
         },
         "retrieval_execution_complete": true,
         "retrieval_failure_codes": [],
-        "graph_entities_visited": 205,
+        "graph_entities_visited": 183,
         "graph_frontier_empty": true,
         "graph_limit_reached": false,
         "graph_stop_reason": "frontier_empty",
@@ -1552,37 +1552,37 @@
           "documents_per_depth": [
             {
               "depth": 0,
-              "count": 72
+              "count": 73
             },
             {
               "depth": 1,
-              "count": 104
+              "count": 87
             },
             {
               "depth": 2,
-              "count": 25
+              "count": 20
             },
             {
               "depth": 3,
-              "count": 4
+              "count": 3
             }
           ],
           "entities_per_depth": [
             {
               "depth": 0,
-              "count": 72
+              "count": 73
             },
             {
               "depth": 1,
-              "count": 104
+              "count": 87
             },
             {
               "depth": 2,
-              "count": 25
+              "count": 20
             },
             {
               "depth": 3,
-              "count": 4
+              "count": 3
             }
           ],
           "relations_per_depth": [
@@ -1605,42 +1605,42 @@
               "role": "attachment_of",
               "source_type": "email_attachment",
               "target_type": "email_message",
-              "count": 42
+              "count": 35
             },
             {
               "depth": 1,
               "role": "references",
               "source_type": "email_message",
               "target_type": "email_message",
-              "count": 222
+              "count": 201
             },
             {
               "depth": 1,
               "role": "reply_to",
               "source_type": "email_message",
               "target_type": "email_message",
-              "count": 73
+              "count": 60
             },
             {
               "depth": 2,
               "role": "attachment_of",
               "source_type": "email_attachment",
               "target_type": "email_message",
-              "count": 15
+              "count": 10
             },
             {
               "depth": 2,
               "role": "references",
               "source_type": "email_message",
               "target_type": "email_message",
-              "count": 20
+              "count": 19
             },
             {
               "depth": 2,
               "role": "reply_to",
               "source_type": "email_message",
               "target_type": "email_message",
-              "count": 12
+              "count": 11
             },
             {
               "depth": 3,
@@ -1654,14 +1654,14 @@
               "role": "references",
               "source_type": "email_message",
               "target_type": "email_message",
-              "count": 2
+              "count": 1
             },
             {
               "depth": 3,
               "role": "reply_to",
               "source_type": "email_message",
               "target_type": "email_message",
-              "count": 2
+              "count": 1
             }
           ],
           "largest_expansion_contributors": [
@@ -1685,13 +1685,6 @@
               "outbound_edges": 3,
               "inbound_edges": 14,
               "total_edges": 17
-            },
-            {
-              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:04c205c3-01eb-410b-93e3-f1f3568adddd",
-              "entity_type": "email_message",
-              "outbound_edges": 0,
-              "inbound_edges": 16,
-              "total_edges": 16
             },
             {
               "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:3e9aafdd-217a-48cc-8239-7033dc3a0302",
@@ -1804,14 +1797,21 @@
               "outbound_edges": 0,
               "inbound_edges": 13,
               "total_edges": 13
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:f5f6b611-1ad4-4324-8c47-2f7db1ad978c",
+              "entity_type": "email_message",
+              "outbound_edges": 6,
+              "inbound_edges": 5,
+              "total_edges": 11
             }
           ]
         },
-        "documents_discovered": 205,
-        "documents_complete": 205,
+        "documents_discovered": 183,
+        "documents_complete": 183,
         "documents_incomplete": 0,
-        "covered_chunks": 3656,
-        "total_chunks": 3656,
+        "covered_chunks": 3269,
+        "total_chunks": 3269,
         "document_read_coverage_ratio": 1.0,
         "coverage_ratio": 1.0,
         "complete": true,
@@ -1820,48 +1820,48 @@
         "failure_codes": [],
         "stop_reason": "complete",
         "model_evidence_chunks": 100,
-        "artifact_chunks": 3656,
+        "artifact_chunks": 3269,
         "performance": {
           "discovery_seconds": 0.0,
-          "prov_o_seconds": 3.4421335919760168,
-          "total_seconds": 3.4421335919760168
+          "prov_o_seconds": 4.518826222978532,
+          "total_seconds": 4.518826222978532
         },
         "certification": {
           "contract_id": "openrag.scope-coverage",
           "contract_version": 1,
           "facts": {
             "seed_discovery_complete": true,
-            "seed_documents": 72,
-            "valid_provenance_seed_documents": 72,
+            "seed_documents": 73,
+            "valid_provenance_seed_documents": 73,
             "invalid_provenance_seed_documents": 0,
             "graph_frontier_empty": true,
             "graph_limit_reached": false,
             "graph_stop_reason": "frontier_empty",
             "graph_failed": false,
             "retrieval_execution_complete": true,
-            "documents_discovered": 205,
-            "documents_complete": 205,
-            "covered_chunks": 3656,
-            "total_chunks": 3656,
+            "documents_discovered": 183,
+            "documents_complete": 183,
+            "covered_chunks": 3269,
+            "total_chunks": 3269,
             "document_failure_codes": [],
             "seed_failure_code": null,
             "unclassified_relations": 0,
             "retrieval_failure_codes": []
           },
-          "facts_sha256": "6d67c7edc6aba7139945c20f4e93de93f8c6aa5ec94d212ab2d085a6c19f4119"
+          "facts_sha256": "25875a8c9909300762d0189a0c4b398153231bf957a6ac54e0986b472ca93a18"
         }
       },
       "performance": {
         "discovery_seconds": 0.0,
-        "scope_closure_seconds": 3.4421335919760168,
-        "total_latency_seconds": 3.4421335919760168,
-        "http_wall_seconds": 4.028873290983029
+        "scope_closure_seconds": 4.518826222978532,
+        "total_latency_seconds": 4.518826222978532,
+        "http_wall_seconds": 5.045842917003029
       },
       "metrics": {
         "requested_k": 100,
         "available_seed_chunks": 100,
         "effective_seed_chunks": 100,
-        "seed_documents": 80,
+        "seed_documents": 81,
         "seed_document_recall": {
           "numerator": 24,
           "denominator": 105,
@@ -1884,8 +1884,8 @@
         },
         "precision": {
           "numerator": 24,
-          "denominator": 80,
-          "value": 0.3
+          "denominator": 81,
+          "value": 0.2962962962962963
         },
         "seed_relevant_occurrence_ids": [
           "urn:openrag:openarchiver:attachment:01dc5f1d-4699-4467-a5db-8c6683917c43",
@@ -1998,26 +1998,26 @@
           "component-f875a34b7c9d0a32",
           "component-fe87c27fe64ba8d7"
         ],
-        "unclassified_seed_documents": 38,
-        "documents_discovered_after_prov_o": 205,
+        "unclassified_seed_documents": 37,
+        "documents_discovered_after_prov_o": 183,
         "document_recovery_gain": 7,
         "document_recovery_multiplier": 1.2916666666666667,
         "component_recovery_gain": 0,
         "component_recovery_multiplier": 1.0,
-        "expansion_per_seed_document": 2.5625,
-        "expansion_per_relevant_document_recovered": 6.612903225806452,
+        "expansion_per_seed_document": 2.259259259259259,
+        "expansion_per_relevant_document_recovered": 5.903225806451613,
         "coverage": {
           "complete": true,
           "status_code": "complete",
           "failure_codes": [],
-          "documents_discovered": 205,
-          "documents_complete": 205,
-          "covered_chunks": 3656,
-          "total_chunks": 3656,
+          "documents_discovered": 183,
+          "documents_complete": 183,
+          "covered_chunks": 3269,
+          "total_chunks": 3269,
           "scope_policy_id": "documentary-prov-o",
           "scope_policy_version": 1
         },
-        "total_latency_seconds": 3.4421335919760168
+        "total_latency_seconds": 4.518826222978532
       }
     },
     {
@@ -2092,9 +2092,9 @@
         "scope_policy_id": "documentary-prov-o",
         "scope_policy_version": 1,
         "seed_discovery_complete": true,
-        "seed_documents": 72,
+        "seed_documents": 73,
         "seed_entities": 126,
-        "valid_provenance_seed_documents": 72,
+        "valid_provenance_seed_documents": 73,
         "invalid_provenance_seed_documents": 0,
         "seed_provenance_complete": true,
         "requested_retrieval_profile": {
@@ -2148,7 +2148,7 @@
         },
         "retrieval_execution_complete": true,
         "retrieval_failure_codes": [],
-        "graph_entities_visited": 205,
+        "graph_entities_visited": 183,
         "graph_frontier_empty": true,
         "graph_limit_reached": false,
         "graph_stop_reason": "frontier_empty",
@@ -2165,37 +2165,37 @@
           "documents_per_depth": [
             {
               "depth": 0,
-              "count": 72
+              "count": 73
             },
             {
               "depth": 1,
-              "count": 104
+              "count": 87
             },
             {
               "depth": 2,
-              "count": 25
+              "count": 20
             },
             {
               "depth": 3,
-              "count": 4
+              "count": 3
             }
           ],
           "entities_per_depth": [
             {
               "depth": 0,
-              "count": 72
+              "count": 73
             },
             {
               "depth": 1,
-              "count": 104
+              "count": 87
             },
             {
               "depth": 2,
-              "count": 25
+              "count": 20
             },
             {
               "depth": 3,
-              "count": 4
+              "count": 3
             }
           ],
           "relations_per_depth": [
@@ -2218,42 +2218,42 @@
               "role": "attachment_of",
               "source_type": "email_attachment",
               "target_type": "email_message",
-              "count": 42
+              "count": 35
             },
             {
               "depth": 1,
               "role": "references",
               "source_type": "email_message",
               "target_type": "email_message",
-              "count": 222
+              "count": 201
             },
             {
               "depth": 1,
               "role": "reply_to",
               "source_type": "email_message",
               "target_type": "email_message",
-              "count": 73
+              "count": 60
             },
             {
               "depth": 2,
               "role": "attachment_of",
               "source_type": "email_attachment",
               "target_type": "email_message",
-              "count": 15
+              "count": 10
             },
             {
               "depth": 2,
               "role": "references",
               "source_type": "email_message",
               "target_type": "email_message",
-              "count": 20
+              "count": 19
             },
             {
               "depth": 2,
               "role": "reply_to",
               "source_type": "email_message",
               "target_type": "email_message",
-              "count": 12
+              "count": 11
             },
             {
               "depth": 3,
@@ -2267,14 +2267,14 @@
               "role": "references",
               "source_type": "email_message",
               "target_type": "email_message",
-              "count": 2
+              "count": 1
             },
             {
               "depth": 3,
               "role": "reply_to",
               "source_type": "email_message",
               "target_type": "email_message",
-              "count": 2
+              "count": 1
             }
           ],
           "largest_expansion_contributors": [
@@ -2298,13 +2298,6 @@
               "outbound_edges": 3,
               "inbound_edges": 14,
               "total_edges": 17
-            },
-            {
-              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:04c205c3-01eb-410b-93e3-f1f3568adddd",
-              "entity_type": "email_message",
-              "outbound_edges": 0,
-              "inbound_edges": 16,
-              "total_edges": 16
             },
             {
               "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:3e9aafdd-217a-48cc-8239-7033dc3a0302",
@@ -2417,14 +2410,21 @@
               "outbound_edges": 0,
               "inbound_edges": 13,
               "total_edges": 13
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:f5f6b611-1ad4-4324-8c47-2f7db1ad978c",
+              "entity_type": "email_message",
+              "outbound_edges": 6,
+              "inbound_edges": 5,
+              "total_edges": 11
             }
           ]
         },
-        "documents_discovered": 205,
-        "documents_complete": 205,
+        "documents_discovered": 183,
+        "documents_complete": 183,
         "documents_incomplete": 0,
-        "covered_chunks": 3656,
-        "total_chunks": 3656,
+        "covered_chunks": 3269,
+        "total_chunks": 3269,
         "document_read_coverage_ratio": 1.0,
         "coverage_ratio": 1.0,
         "complete": true,
@@ -2433,48 +2433,48 @@
         "failure_codes": [],
         "stop_reason": "complete",
         "model_evidence_chunks": 100,
-        "artifact_chunks": 3656,
+        "artifact_chunks": 3269,
         "performance": {
           "discovery_seconds": 0.0,
-          "prov_o_seconds": 3.4421335919760168,
-          "total_seconds": 3.4421335919760168
+          "prov_o_seconds": 4.518826222978532,
+          "total_seconds": 4.518826222978532
         },
         "certification": {
           "contract_id": "openrag.scope-coverage",
           "contract_version": 1,
           "facts": {
             "seed_discovery_complete": true,
-            "seed_documents": 72,
-            "valid_provenance_seed_documents": 72,
+            "seed_documents": 73,
+            "valid_provenance_seed_documents": 73,
             "invalid_provenance_seed_documents": 0,
             "graph_frontier_empty": true,
             "graph_limit_reached": false,
             "graph_stop_reason": "frontier_empty",
             "graph_failed": false,
             "retrieval_execution_complete": true,
-            "documents_discovered": 205,
-            "documents_complete": 205,
-            "covered_chunks": 3656,
-            "total_chunks": 3656,
+            "documents_discovered": 183,
+            "documents_complete": 183,
+            "covered_chunks": 3269,
+            "total_chunks": 3269,
             "document_failure_codes": [],
             "seed_failure_code": null,
             "unclassified_relations": 0,
             "retrieval_failure_codes": []
           },
-          "facts_sha256": "6d67c7edc6aba7139945c20f4e93de93f8c6aa5ec94d212ab2d085a6c19f4119"
+          "facts_sha256": "25875a8c9909300762d0189a0c4b398153231bf957a6ac54e0986b472ca93a18"
         }
       },
       "performance": {
         "discovery_seconds": 0.0,
-        "scope_closure_seconds": 3.4421335919760168,
-        "total_latency_seconds": 3.4421335919760168,
-        "http_wall_seconds": 4.028873290983029
+        "scope_closure_seconds": 4.518826222978532,
+        "total_latency_seconds": 4.518826222978532,
+        "http_wall_seconds": 5.045842917003029
       },
       "metrics": {
         "requested_k": 100,
         "available_seed_chunks": 100,
         "effective_seed_chunks": 100,
-        "seed_documents": 80,
+        "seed_documents": 81,
         "seed_document_recall": {
           "numerator": 22,
           "denominator": 48,
@@ -2497,8 +2497,8 @@
         },
         "precision": {
           "numerator": 22,
-          "denominator": 80,
-          "value": 0.275
+          "denominator": 81,
+          "value": 0.2716049382716049
         },
         "seed_relevant_occurrence_ids": [
           "urn:openrag:openarchiver:attachment:01dc5f1d-4699-4467-a5db-8c6683917c43",
@@ -2603,26 +2603,26 @@
           "component-f875a34b7c9d0a32",
           "component-fe87c27fe64ba8d7"
         ],
-        "unclassified_seed_documents": 38,
-        "documents_discovered_after_prov_o": 205,
+        "unclassified_seed_documents": 37,
+        "documents_discovered_after_prov_o": 183,
         "document_recovery_gain": 7,
         "document_recovery_multiplier": 1.3181818181818181,
         "component_recovery_gain": 0,
         "component_recovery_multiplier": 1.0,
-        "expansion_per_seed_document": 2.5625,
-        "expansion_per_relevant_document_recovered": 7.068965517241379,
+        "expansion_per_seed_document": 2.259259259259259,
+        "expansion_per_relevant_document_recovered": 6.310344827586207,
         "coverage": {
           "complete": true,
           "status_code": "complete",
           "failure_codes": [],
-          "documents_discovered": 205,
-          "documents_complete": 205,
-          "covered_chunks": 3656,
-          "total_chunks": 3656,
+          "documents_discovered": 183,
+          "documents_complete": 183,
+          "covered_chunks": 3269,
+          "total_chunks": 3269,
           "scope_policy_id": "documentary-prov-o",
           "scope_policy_version": 1
         },
-        "total_latency_seconds": 3.4421335919760168
+        "total_latency_seconds": 4.518826222978532
       }
     },
     {
@@ -2697,9 +2697,9 @@
         "scope_policy_id": "documentary-prov-o",
         "scope_policy_version": 1,
         "seed_discovery_complete": true,
-        "seed_documents": 72,
+        "seed_documents": 73,
         "seed_entities": 126,
-        "valid_provenance_seed_documents": 72,
+        "valid_provenance_seed_documents": 73,
         "invalid_provenance_seed_documents": 0,
         "seed_provenance_complete": true,
         "requested_retrieval_profile": {
@@ -2753,7 +2753,7 @@
         },
         "retrieval_execution_complete": true,
         "retrieval_failure_codes": [],
-        "graph_entities_visited": 205,
+        "graph_entities_visited": 183,
         "graph_frontier_empty": true,
         "graph_limit_reached": false,
         "graph_stop_reason": "frontier_empty",
@@ -2770,37 +2770,37 @@
           "documents_per_depth": [
             {
               "depth": 0,
-              "count": 72
+              "count": 73
             },
             {
               "depth": 1,
-              "count": 104
+              "count": 87
             },
             {
               "depth": 2,
-              "count": 25
+              "count": 20
             },
             {
               "depth": 3,
-              "count": 4
+              "count": 3
             }
           ],
           "entities_per_depth": [
             {
               "depth": 0,
-              "count": 72
+              "count": 73
             },
             {
               "depth": 1,
-              "count": 104
+              "count": 87
             },
             {
               "depth": 2,
-              "count": 25
+              "count": 20
             },
             {
               "depth": 3,
-              "count": 4
+              "count": 3
             }
           ],
           "relations_per_depth": [
@@ -2823,42 +2823,42 @@
               "role": "attachment_of",
               "source_type": "email_attachment",
               "target_type": "email_message",
-              "count": 42
+              "count": 35
             },
             {
               "depth": 1,
               "role": "references",
               "source_type": "email_message",
               "target_type": "email_message",
-              "count": 222
+              "count": 201
             },
             {
               "depth": 1,
               "role": "reply_to",
               "source_type": "email_message",
               "target_type": "email_message",
-              "count": 73
+              "count": 60
             },
             {
               "depth": 2,
               "role": "attachment_of",
               "source_type": "email_attachment",
               "target_type": "email_message",
-              "count": 15
+              "count": 10
             },
             {
               "depth": 2,
               "role": "references",
               "source_type": "email_message",
               "target_type": "email_message",
-              "count": 20
+              "count": 19
             },
             {
               "depth": 2,
               "role": "reply_to",
               "source_type": "email_message",
               "target_type": "email_message",
-              "count": 12
+              "count": 11
             },
             {
               "depth": 3,
@@ -2872,14 +2872,14 @@
               "role": "references",
               "source_type": "email_message",
               "target_type": "email_message",
-              "count": 2
+              "count": 1
             },
             {
               "depth": 3,
               "role": "reply_to",
               "source_type": "email_message",
               "target_type": "email_message",
-              "count": 2
+              "count": 1
             }
           ],
           "largest_expansion_contributors": [
@@ -2903,13 +2903,6 @@
               "outbound_edges": 3,
               "inbound_edges": 14,
               "total_edges": 17
-            },
-            {
-              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:04c205c3-01eb-410b-93e3-f1f3568adddd",
-              "entity_type": "email_message",
-              "outbound_edges": 0,
-              "inbound_edges": 16,
-              "total_edges": 16
             },
             {
               "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:3e9aafdd-217a-48cc-8239-7033dc3a0302",
@@ -3022,14 +3015,21 @@
               "outbound_edges": 0,
               "inbound_edges": 13,
               "total_edges": 13
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:f5f6b611-1ad4-4324-8c47-2f7db1ad978c",
+              "entity_type": "email_message",
+              "outbound_edges": 6,
+              "inbound_edges": 5,
+              "total_edges": 11
             }
           ]
         },
-        "documents_discovered": 205,
-        "documents_complete": 205,
+        "documents_discovered": 183,
+        "documents_complete": 183,
         "documents_incomplete": 0,
-        "covered_chunks": 3656,
-        "total_chunks": 3656,
+        "covered_chunks": 3269,
+        "total_chunks": 3269,
         "document_read_coverage_ratio": 1.0,
         "coverage_ratio": 1.0,
         "complete": true,
@@ -3038,48 +3038,48 @@
         "failure_codes": [],
         "stop_reason": "complete",
         "model_evidence_chunks": 100,
-        "artifact_chunks": 3656,
+        "artifact_chunks": 3269,
         "performance": {
           "discovery_seconds": 0.0,
-          "prov_o_seconds": 4.2384159750072286,
-          "total_seconds": 4.2384159750072286
+          "prov_o_seconds": 5.105203022016212,
+          "total_seconds": 5.105203022016212
         },
         "certification": {
           "contract_id": "openrag.scope-coverage",
           "contract_version": 1,
           "facts": {
             "seed_discovery_complete": true,
-            "seed_documents": 72,
-            "valid_provenance_seed_documents": 72,
+            "seed_documents": 73,
+            "valid_provenance_seed_documents": 73,
             "invalid_provenance_seed_documents": 0,
             "graph_frontier_empty": true,
             "graph_limit_reached": false,
             "graph_stop_reason": "frontier_empty",
             "graph_failed": false,
             "retrieval_execution_complete": true,
-            "documents_discovered": 205,
-            "documents_complete": 205,
-            "covered_chunks": 3656,
-            "total_chunks": 3656,
+            "documents_discovered": 183,
+            "documents_complete": 183,
+            "covered_chunks": 3269,
+            "total_chunks": 3269,
             "document_failure_codes": [],
             "seed_failure_code": null,
             "unclassified_relations": 0,
             "retrieval_failure_codes": []
           },
-          "facts_sha256": "6d67c7edc6aba7139945c20f4e93de93f8c6aa5ec94d212ab2d085a6c19f4119"
+          "facts_sha256": "25875a8c9909300762d0189a0c4b398153231bf957a6ac54e0986b472ca93a18"
         }
       },
       "performance": {
         "discovery_seconds": 0.0,
-        "scope_closure_seconds": 4.2384159750072286,
-        "total_latency_seconds": 4.2384159750072286,
-        "http_wall_seconds": 4.845426707994193
+        "scope_closure_seconds": 5.105203022016212,
+        "total_latency_seconds": 5.105203022016212,
+        "http_wall_seconds": 5.61805270900004
       },
       "metrics": {
         "requested_k": 100,
         "available_seed_chunks": 100,
         "effective_seed_chunks": 100,
-        "seed_documents": 80,
+        "seed_documents": 81,
         "seed_document_recall": {
           "numerator": 24,
           "denominator": 105,
@@ -3102,8 +3102,8 @@
         },
         "precision": {
           "numerator": 24,
-          "denominator": 80,
-          "value": 0.3
+          "denominator": 81,
+          "value": 0.2962962962962963
         },
         "seed_relevant_occurrence_ids": [
           "urn:openrag:openarchiver:attachment:01dc5f1d-4699-4467-a5db-8c6683917c43",
@@ -3216,26 +3216,26 @@
           "component-f875a34b7c9d0a32",
           "component-fe87c27fe64ba8d7"
         ],
-        "unclassified_seed_documents": 38,
-        "documents_discovered_after_prov_o": 205,
+        "unclassified_seed_documents": 37,
+        "documents_discovered_after_prov_o": 183,
         "document_recovery_gain": 7,
         "document_recovery_multiplier": 1.2916666666666667,
         "component_recovery_gain": 0,
         "component_recovery_multiplier": 1.0,
-        "expansion_per_seed_document": 2.5625,
-        "expansion_per_relevant_document_recovered": 6.612903225806452,
+        "expansion_per_seed_document": 2.259259259259259,
+        "expansion_per_relevant_document_recovered": 5.903225806451613,
         "coverage": {
           "complete": true,
           "status_code": "complete",
           "failure_codes": [],
-          "documents_discovered": 205,
-          "documents_complete": 205,
-          "covered_chunks": 3656,
-          "total_chunks": 3656,
+          "documents_discovered": 183,
+          "documents_complete": 183,
+          "covered_chunks": 3269,
+          "total_chunks": 3269,
           "scope_policy_id": "documentary-prov-o",
           "scope_policy_version": 1
         },
-        "total_latency_seconds": 4.2384159750072286
+        "total_latency_seconds": 5.105203022016212
       }
     },
     {
@@ -3310,9 +3310,9 @@
         "scope_policy_id": "documentary-prov-o",
         "scope_policy_version": 1,
         "seed_discovery_complete": true,
-        "seed_documents": 72,
+        "seed_documents": 73,
         "seed_entities": 126,
-        "valid_provenance_seed_documents": 72,
+        "valid_provenance_seed_documents": 73,
         "invalid_provenance_seed_documents": 0,
         "seed_provenance_complete": true,
         "requested_retrieval_profile": {
@@ -3366,7 +3366,7 @@
         },
         "retrieval_execution_complete": true,
         "retrieval_failure_codes": [],
-        "graph_entities_visited": 205,
+        "graph_entities_visited": 183,
         "graph_frontier_empty": true,
         "graph_limit_reached": false,
         "graph_stop_reason": "frontier_empty",
@@ -3383,37 +3383,37 @@
           "documents_per_depth": [
             {
               "depth": 0,
-              "count": 72
+              "count": 73
             },
             {
               "depth": 1,
-              "count": 104
+              "count": 87
             },
             {
               "depth": 2,
-              "count": 25
+              "count": 20
             },
             {
               "depth": 3,
-              "count": 4
+              "count": 3
             }
           ],
           "entities_per_depth": [
             {
               "depth": 0,
-              "count": 72
+              "count": 73
             },
             {
               "depth": 1,
-              "count": 104
+              "count": 87
             },
             {
               "depth": 2,
-              "count": 25
+              "count": 20
             },
             {
               "depth": 3,
-              "count": 4
+              "count": 3
             }
           ],
           "relations_per_depth": [
@@ -3436,42 +3436,42 @@
               "role": "attachment_of",
               "source_type": "email_attachment",
               "target_type": "email_message",
-              "count": 42
+              "count": 35
             },
             {
               "depth": 1,
               "role": "references",
               "source_type": "email_message",
               "target_type": "email_message",
-              "count": 222
+              "count": 201
             },
             {
               "depth": 1,
               "role": "reply_to",
               "source_type": "email_message",
               "target_type": "email_message",
-              "count": 73
+              "count": 60
             },
             {
               "depth": 2,
               "role": "attachment_of",
               "source_type": "email_attachment",
               "target_type": "email_message",
-              "count": 15
+              "count": 10
             },
             {
               "depth": 2,
               "role": "references",
               "source_type": "email_message",
               "target_type": "email_message",
-              "count": 20
+              "count": 19
             },
             {
               "depth": 2,
               "role": "reply_to",
               "source_type": "email_message",
               "target_type": "email_message",
-              "count": 12
+              "count": 11
             },
             {
               "depth": 3,
@@ -3485,14 +3485,14 @@
               "role": "references",
               "source_type": "email_message",
               "target_type": "email_message",
-              "count": 2
+              "count": 1
             },
             {
               "depth": 3,
               "role": "reply_to",
               "source_type": "email_message",
               "target_type": "email_message",
-              "count": 2
+              "count": 1
             }
           ],
           "largest_expansion_contributors": [
@@ -3516,13 +3516,6 @@
               "outbound_edges": 3,
               "inbound_edges": 14,
               "total_edges": 17
-            },
-            {
-              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:04c205c3-01eb-410b-93e3-f1f3568adddd",
-              "entity_type": "email_message",
-              "outbound_edges": 0,
-              "inbound_edges": 16,
-              "total_edges": 16
             },
             {
               "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:3e9aafdd-217a-48cc-8239-7033dc3a0302",
@@ -3635,14 +3628,21 @@
               "outbound_edges": 0,
               "inbound_edges": 13,
               "total_edges": 13
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:f5f6b611-1ad4-4324-8c47-2f7db1ad978c",
+              "entity_type": "email_message",
+              "outbound_edges": 6,
+              "inbound_edges": 5,
+              "total_edges": 11
             }
           ]
         },
-        "documents_discovered": 205,
-        "documents_complete": 205,
+        "documents_discovered": 183,
+        "documents_complete": 183,
         "documents_incomplete": 0,
-        "covered_chunks": 3656,
-        "total_chunks": 3656,
+        "covered_chunks": 3269,
+        "total_chunks": 3269,
         "document_read_coverage_ratio": 1.0,
         "coverage_ratio": 1.0,
         "complete": true,
@@ -3651,48 +3651,48 @@
         "failure_codes": [],
         "stop_reason": "complete",
         "model_evidence_chunks": 100,
-        "artifact_chunks": 3656,
+        "artifact_chunks": 3269,
         "performance": {
           "discovery_seconds": 0.0,
-          "prov_o_seconds": 4.2384159750072286,
-          "total_seconds": 4.2384159750072286
+          "prov_o_seconds": 5.105203022016212,
+          "total_seconds": 5.105203022016212
         },
         "certification": {
           "contract_id": "openrag.scope-coverage",
           "contract_version": 1,
           "facts": {
             "seed_discovery_complete": true,
-            "seed_documents": 72,
-            "valid_provenance_seed_documents": 72,
+            "seed_documents": 73,
+            "valid_provenance_seed_documents": 73,
             "invalid_provenance_seed_documents": 0,
             "graph_frontier_empty": true,
             "graph_limit_reached": false,
             "graph_stop_reason": "frontier_empty",
             "graph_failed": false,
             "retrieval_execution_complete": true,
-            "documents_discovered": 205,
-            "documents_complete": 205,
-            "covered_chunks": 3656,
-            "total_chunks": 3656,
+            "documents_discovered": 183,
+            "documents_complete": 183,
+            "covered_chunks": 3269,
+            "total_chunks": 3269,
             "document_failure_codes": [],
             "seed_failure_code": null,
             "unclassified_relations": 0,
             "retrieval_failure_codes": []
           },
-          "facts_sha256": "6d67c7edc6aba7139945c20f4e93de93f8c6aa5ec94d212ab2d085a6c19f4119"
+          "facts_sha256": "25875a8c9909300762d0189a0c4b398153231bf957a6ac54e0986b472ca93a18"
         }
       },
       "performance": {
         "discovery_seconds": 0.0,
-        "scope_closure_seconds": 4.2384159750072286,
-        "total_latency_seconds": 4.2384159750072286,
-        "http_wall_seconds": 4.845426707994193
+        "scope_closure_seconds": 5.105203022016212,
+        "total_latency_seconds": 5.105203022016212,
+        "http_wall_seconds": 5.61805270900004
       },
       "metrics": {
         "requested_k": 100,
         "available_seed_chunks": 100,
         "effective_seed_chunks": 100,
-        "seed_documents": 80,
+        "seed_documents": 81,
         "seed_document_recall": {
           "numerator": 22,
           "denominator": 48,
@@ -3715,8 +3715,8 @@
         },
         "precision": {
           "numerator": 22,
-          "denominator": 80,
-          "value": 0.275
+          "denominator": 81,
+          "value": 0.2716049382716049
         },
         "seed_relevant_occurrence_ids": [
           "urn:openrag:openarchiver:attachment:01dc5f1d-4699-4467-a5db-8c6683917c43",
@@ -3821,26 +3821,26 @@
           "component-f875a34b7c9d0a32",
           "component-fe87c27fe64ba8d7"
         ],
-        "unclassified_seed_documents": 38,
-        "documents_discovered_after_prov_o": 205,
+        "unclassified_seed_documents": 37,
+        "documents_discovered_after_prov_o": 183,
         "document_recovery_gain": 7,
         "document_recovery_multiplier": 1.3181818181818181,
         "component_recovery_gain": 0,
         "component_recovery_multiplier": 1.0,
-        "expansion_per_seed_document": 2.5625,
-        "expansion_per_relevant_document_recovered": 7.068965517241379,
+        "expansion_per_seed_document": 2.259259259259259,
+        "expansion_per_relevant_document_recovered": 6.310344827586207,
         "coverage": {
           "complete": true,
           "status_code": "complete",
           "failure_codes": [],
-          "documents_discovered": 205,
-          "documents_complete": 205,
-          "covered_chunks": 3656,
-          "total_chunks": 3656,
+          "documents_discovered": 183,
+          "documents_complete": 183,
+          "covered_chunks": 3269,
+          "total_chunks": 3269,
           "scope_policy_id": "documentary-prov-o",
           "scope_policy_version": 1
         },
-        "total_latency_seconds": 4.2384159750072286
+        "total_latency_seconds": 5.105203022016212
       }
     }
   ],
@@ -3919,25 +3919,25 @@
             "denominator": 84
           },
           "precision": {
-            "min": 0.3,
-            "mean": 0.3,
-            "max": 0.3,
+            "min": 0.2962962962962963,
+            "mean": 0.2962962962962963,
+            "max": 0.2962962962962963,
             "numerator": {
               "min": 24.0,
               "mean": 24.0,
               "max": 24.0
             },
-            "denominator": 80
+            "denominator": 81
           },
           "expansion_per_seed_document": {
-            "min": 2.5625,
-            "mean": 2.5625,
-            "max": 2.5625
+            "min": 2.259259259259259,
+            "mean": 2.259259259259259,
+            "max": 2.259259259259259
           },
           "total_latency_seconds": {
-            "min": 3.4421335919760168,
-            "mean": 3.78098761534784,
-            "max": 4.2384159750072286
+            "min": 4.122847668011673,
+            "mean": 4.582292304335472,
+            "max": 5.105203022016212
           }
         }
       }
@@ -4016,25 +4016,25 @@
             "denominator": 33
           },
           "precision": {
-            "min": 0.275,
-            "mean": 0.275,
-            "max": 0.275,
+            "min": 0.2716049382716049,
+            "mean": 0.2716049382716049,
+            "max": 0.2716049382716049,
             "numerator": {
               "min": 22.0,
               "mean": 22.0,
               "max": 22.0
             },
-            "denominator": 80
+            "denominator": 81
           },
           "expansion_per_seed_document": {
-            "min": 2.5625,
-            "mean": 2.5625,
-            "max": 2.5625
+            "min": 2.259259259259259,
+            "mean": 2.259259259259259,
+            "max": 2.259259259259259
           },
           "total_latency_seconds": {
-            "min": 3.4421335919760168,
-            "mean": 3.78098761534784,
-            "max": 4.2384159750072286
+            "min": 4.122847668011673,
+            "mean": 4.582292304335472,
+            "max": 5.105203022016212
           }
         }
       }
@@ -4091,22 +4091,22 @@
       "query_count": 1,
       "metric": "precision",
       "historical": 0.275,
-      "product_path_mean": 0.275,
-      "delta": 0.0
+      "product_path_mean": 0.2716049382716049,
+      "delta": -0.003395061728395099
     },
     {
       "query_count": 1,
       "metric": "expansion_per_seed_document",
       "historical": 2.5625,
-      "product_path_mean": 2.5625,
-      "delta": 0.0
+      "product_path_mean": 2.259259259259259,
+      "delta": -0.3032407407407409
     },
     {
       "query_count": 1,
       "metric": "total_latency_seconds",
       "historical": 3.884786000009626,
-      "product_path_mean": 3.78098761534784,
-      "delta": -0.10379838466178626
+      "product_path_mean": 4.582292304335472,
+      "delta": 0.697506304325846
     },
     {
       "query_count": 1,
@@ -4133,22 +4133,22 @@
       "query_count": 1,
       "metric": "precision",
       "historical": 0.275,
-      "product_path_mean": 0.275,
-      "delta": 0.0
+      "product_path_mean": 0.2716049382716049,
+      "delta": -0.003395061728395099
     },
     {
       "query_count": 1,
       "metric": "expansion_per_seed_document",
       "historical": 2.5625,
-      "product_path_mean": 2.5625,
-      "delta": 0.0
+      "product_path_mean": 2.259259259259259,
+      "delta": -0.3032407407407409
     },
     {
       "query_count": 1,
       "metric": "total_latency_seconds",
       "historical": 3.7745957240695134,
-      "product_path_mean": 3.78098761534784,
-      "delta": 0.006391891278326511
+      "product_path_mean": 4.582292304335472,
+      "delta": 0.8076965802659588
     },
     {
       "query_count": 1,
@@ -4175,22 +4175,22 @@
       "query_count": 1,
       "metric": "precision",
       "historical": 0.275,
-      "product_path_mean": 0.275,
-      "delta": 0.0
+      "product_path_mean": 0.2716049382716049,
+      "delta": -0.003395061728395099
     },
     {
       "query_count": 1,
       "metric": "expansion_per_seed_document",
       "historical": 2.5625,
-      "product_path_mean": 2.5625,
-      "delta": 0.0
+      "product_path_mean": 2.259259259259259,
+      "delta": -0.3032407407407409
     },
     {
       "query_count": 1,
       "metric": "total_latency_seconds",
       "historical": 3.6109235560288653,
-      "product_path_mean": 3.78098761534784,
-      "delta": 0.17006405931897461
+      "product_path_mean": 4.582292304335472,
+      "delta": 0.9713687483066069
     }
   ],
   "q4_gain_vs_q1": null

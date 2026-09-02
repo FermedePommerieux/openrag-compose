@@ -1,44 +1,90 @@
 {
   "schema_version": 1,
   "profile": "openrag.document-metadata v1",
-  "gate": "BLOCKED",
-  "decision_at": "2026-09-02T08:22:00+02:00",
-  "backfillable_cohort": {
-    "indexed_occurrences": 47416,
-    "distinct_documents": 47362,
-    "hash_verified_source_bytes": 8318533115
+  "gate": "READY",
+  "gate_evidence": "100-document production write/readback, checkpoint/resume, idempotency and rollback canary",
+  "execution": "COMPLETED_WITH_FAIL_CLOSED_EXCLUSIONS",
+  "original_started_at": "2026-09-02T09:58:38Z",
+  "resumed_at": "2026-09-02T17:13:54.808442Z",
+  "finished_at": "2026-09-02T20:55:59.420457Z",
+  "attempted": 47400,
+  "states": {
+    "VERIFIED": 47033,
+    "UNCHANGED": 97,
+    "ARCHIVE_UNAVAILABLE": 270
   },
-  "non_backfillable_cohort": {
-    "indexed_occurrences": 38,
-    "reason_distribution": {
-      "openarchiver_registry_status_failed": 38
-    }
-  },
-  "validated_gates": [
-    "exact fail-closed archive mapping audit",
-    "60-document stratified read-only extraction sample",
-    "canonical metadata digest idempotence on the sample",
-    "metadata-only OpenSearch update allowlist in unit tests",
-    "no chunk text, id, ordering, hash or vector mutation in the write implementation",
-    "DLS metadata redaction tests",
-    "non-expanding relation and scope-coverage tests",
-    "GT1 and GT2 read-only regressions"
-  ],
-  "blocking_gates": [
-    "No controlled production OpenSearch write canary has been executed.",
-    "Checkpoint and rollback have not been exercised against the production index.",
-    "The 60-document sample is intentionally capped at 750000 bytes, so it cannot establish a reliable 8.32 GB end-to-end duration or Raspberry Pi resource envelope.",
-    "The connector-internal resolver API contract is planned but not yet implemented; the current compatibility adapter depends on a read-only SQLite manifest export."
-  ],
-  "execution": "NOT_EXECUTED",
-  "attempted": 0,
-  "success": 0,
-  "unchanged": 0,
+  "successful_profiles": 47130,
+  "successful_profile_coverage_percent": 99.43038,
   "unsupported": 0,
   "ambiguous": 0,
-  "missing": 0,
-  "failed": 0,
+  "missing_source": 38,
+  "extraction_failed": 232,
+  "dls_blocked": 0,
+  "write_failed": 0,
   "retry_success": 0,
+  "failure_reasons": {
+    "archive_read_failed:MetadataExtractionError": 232,
+    "archive_registry_status_failed": 38
+  },
+  "format_profiles": {
+    "CSV": 29,
+    "DOCX": 421,
+    "EML": 40885,
+    "HTML": 34,
+    "IMAGE": 22,
+    "PDF": 5351,
+    "TXT": 62,
+    "XLSX": 326
+  },
+  "observations": 1052417,
+  "bytes_read": 8751176161,
+  "opensearch_reads": 330649,
+  "opensearch_writes": 47033,
+  "checkpoint_batches": 474,
+  "safe_restarts": 1,
+  "durable_documents_before_restart": 25900,
+  "resume_elapsed_seconds": 13324.612046214985,
+  "estimated_active_elapsed_seconds": 30909.612046214985,
+  "wall_elapsed_seconds": 39441.420457,
+  "estimated_active_documents_per_second": 1.533,
+  "timings_ms": {
+    "metadata_extraction": {
+      "mean": 1.488292,
+      "p95": 2.091516973,
+      "p99": 10.898125,
+      "max": 398.815815
+    },
+    "binary_resolve": {
+      "mean": 97.174882,
+      "p95": 112.489514
+    },
+    "opensearch_write": {
+      "mean": 19.321919,
+      "p95": 25.826704
+    },
+    "total": {
+      "mean": 223.640503,
+      "p95": 376.44859,
+      "p99": 1569.222462,
+      "max": 41562.063509
+    }
+  },
+  "resources": {
+    "backend_cgroup_peak_bytes": 3239280640,
+    "backend_oom_events": 0,
+    "backend_oom_kills": 0,
+    "opensearch_health": "green",
+    "opensearch_unassigned_shards": 0
+  },
   "archive_mutated": false,
-  "index_mutated": false
+  "index_mutated": true,
+  "index_mutation": "metadata fields only on the chunk_index=0 representative",
+  "chunk_text_or_identity_mutated": false,
+  "embedding_values_mutated": false,
+  "prov_o_edges_mutated": false,
+  "notes": [
+    "The first process stopped fail-closed at its 3 GiB backend memory guard and resumed from the same durable checkpoint after the aggregation/resume fix.",
+    "No document-level FAILED or ARCHIVE_UNAVAILABLE state later transitioned to VERIFIED; retry_success is therefore zero.",
+    "The index contains 47133 representative chunks with profiles: 47130 selected distinct-document successes plus three pre-existing duplicate-occurrence canary/sample profiles."
+  ]
 }

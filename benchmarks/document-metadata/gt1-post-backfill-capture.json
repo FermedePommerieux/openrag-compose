@@ -3,10 +3,10 @@
   "benchmark_id": "surface-pastorale-v1",
   "benchmark_version": 1,
   "benchmark_definition_sha": "43963a033a203aa29f62d518e6b940749b4cba62ed1cb9c44586ddcac8c97341",
-  "critical_contract_tag": "DOCUMENT METADATA BACKFILL SAMPLE DRY RUN - OBSERVATIONAL ONLY",
-  "runtime_source_sha": "36c5afdec6a09ea809a9a0e733de191de1b578c7",
-  "started_at": "2026-09-02T05:56:10.221442+00:00",
-  "finished_at": "2026-09-02T05:56:40.606700+00:00",
+  "critical_contract_tag": "DOCUMENT METADATA FULL BACKFILL COMPLETE - OBSERVATIONAL ONLY",
+  "runtime_source_sha": "bfbf3622b84deb234709a5c991b3bbbc51ab4bc7",
+  "started_at": "2026-09-02T21:03:13.072882+00:00",
+  "finished_at": "2026-09-02T21:03:48.622297+00:00",
   "product_endpoint": "https://openrag.ferme-de-pommerieux.fr/api/search",
   "execution_path": {
     "planner_shared_with_product": true,
@@ -160,7 +160,7 @@
     "multi_query_concurrency": 2
   },
   "corpus_before": {
-    "captured_at": "2026-09-02T05:56:10.157775+00:00",
+    "captured_at": "2026-09-02T21:03:12.991883+00:00",
     "visible_occurrences": 47454,
     "enumerated_occurrences": 47454,
     "distinct_document_ids": 47400,
@@ -173,7 +173,7 @@
     "complete": true
   },
   "corpus_after": {
-    "captured_at": "2026-09-02T05:56:40.541646+00:00",
+    "captured_at": "2026-09-02T21:03:48.540240+00:00",
     "visible_occurrences": 47454,
     "enumerated_occurrences": 47454,
     "distinct_document_ids": 47400,
@@ -189,8 +189,8 @@
   "runs": [
     {
       "run_id": "q1-r1",
-      "started_at": "2026-09-02T05:56:10.274833+00:00",
-      "finished_at": "2026-09-02T05:56:15.804195+00:00",
+      "started_at": "2026-09-02T21:03:13.124502+00:00",
+      "finished_at": "2026-09-02T21:03:18.928198+00:00",
       "configuration": {
         "query_count": 1,
         "repetition": 1,
@@ -435,7 +435,7 @@
           "document_id": "T09N88kAJdTi2SS3hB4go2iU",
           "source_entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:61f558bd-2682-411d-8fb5-2eff9934034b",
           "filename": "RE-NOFU-dossier-complet-anciennes-surfaces-pastorales--61f558bd2682.eml",
-          "score": 0.0210239651416122
+          "score": 0.020887166236003445
         },
         {
           "seed_rank": 3,
@@ -703,10 +703,10 @@
         },
         {
           "seed_rank": 36,
-          "chunk_id": "d6268dcd05d175878ece5b2d_CSpYAKQcy8ksZo_u_jXcnXJj_2",
-          "document_id": "CSpYAKQcy8ksZo_u_jXcnXJj",
-          "source_entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:cae54aa7-a3f3-42d6-a5a8-50a05c216a58",
-          "filename": "Re-Demande-de-rendez-vous-relatif-au-projet-de-reouverture-des-anciens-espaces-a-vocation-pastorale-sur-la-commune-de-Nouan-le-Fuzelier--cae54aa7a3f3.eml",
+          "chunk_id": "d6268dcd05d175878ece5b2d_LFz5HOtQVs-Mn2FdH2j442DY_22",
+          "document_id": "LFz5HOtQVs-Mn2FdH2j442DY",
+          "source_entity_id": "urn:openrag:openarchiver:attachment:4eb71532-265c-4eff-8579-1a39b8668a6e",
+          "filename": "EPA-Lilian--7c56c1522e44--EPA-pour-Lilian--4eb71532265c.pdf",
           "score": 0.01282051282051282
         },
         {
@@ -719,10 +719,10 @@
         },
         {
           "seed_rank": 38,
-          "chunk_id": "d6268dcd05d175878ece5b2d__ZdYUKNdoAnzAnN3SrUxeGpy_2",
-          "document_id": "_ZdYUKNdoAnzAnN3SrUxeGpy",
-          "source_entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:2d54531d-b00a-4773-b63c-2c1cf71d82ad",
-          "filename": "Fwd-Demande-de-rendez-vous-relatif-au-projet-de-reouverture-des-anciens-espaces-a-vocation-pastorale-sur-la-commune-de-Nouan-le-Fuzelier--2d54531db00a.eml",
+          "chunk_id": "d6268dcd05d175878ece5b2d_NR_o6r5k0OFNxaNG1dOA05TB_43",
+          "document_id": "NR_o6r5k0OFNxaNG1dOA05TB",
+          "source_entity_id": "urn:openrag:openarchiver:attachment:02de004c-ba70-48cd-9923-5f56c7acba1b",
+          "filename": "EPA--b0d2f52b796c--EPA-Nouan-le-Fuzelier-avis-FDP-190123--02de004cba70.pdf",
           "score": 0.012658227848101266
         },
         {
@@ -735,10 +735,10 @@
         },
         {
           "seed_rank": 40,
-          "chunk_id": "d6268dcd05d175878ece5b2d_GnibXcfu6dF9uq-lfKN34M-E_0",
-          "document_id": "GnibXcfu6dF9uq-lfKN34M-E",
-          "source_entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:ebef1cfb-f972-43e3-9d4e-7f232300692b",
-          "filename": "Demande-de-rendez-vous-relatif-au-projet-de-reouverture-des-anciens-espaces-a-vocation-pastorale-sur-la-commune-de-Nouan-le-Fuzelier--ebef1cfbf972.eml",
+          "chunk_id": "d6268dcd05d175878ece5b2d_CSpYAKQcy8ksZo_u_jXcnXJj_2",
+          "document_id": "CSpYAKQcy8ksZo_u_jXcnXJj",
+          "source_entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:cae54aa7-a3f3-42d6-a5a8-50a05c216a58",
+          "filename": "Re-Demande-de-rendez-vous-relatif-au-projet-de-reouverture-des-anciens-espaces-a-vocation-pastorale-sur-la-commune-de-Nouan-le-Fuzelier--cae54aa7a3f3.eml",
           "score": 0.0125
         },
         {
@@ -751,10 +751,10 @@
         },
         {
           "seed_rank": 42,
-          "chunk_id": "d6268dcd05d175878ece5b2d_LFz5HOtQVs-Mn2FdH2j442DY_22",
-          "document_id": "LFz5HOtQVs-Mn2FdH2j442DY",
-          "source_entity_id": "urn:openrag:openarchiver:attachment:4eb71532-265c-4eff-8579-1a39b8668a6e",
-          "filename": "EPA-Lilian--7c56c1522e44--EPA-pour-Lilian--4eb71532265c.pdf",
+          "chunk_id": "d6268dcd05d175878ece5b2d__ZdYUKNdoAnzAnN3SrUxeGpy_2",
+          "document_id": "_ZdYUKNdoAnzAnN3SrUxeGpy",
+          "source_entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:2d54531d-b00a-4773-b63c-2c1cf71d82ad",
+          "filename": "Fwd-Demande-de-rendez-vous-relatif-au-projet-de-reouverture-des-anciens-espaces-a-vocation-pastorale-sur-la-commune-de-Nouan-le-Fuzelier--2d54531db00a.eml",
           "score": 0.012345679012345678
         },
         {
@@ -775,18 +775,18 @@
         },
         {
           "seed_rank": 45,
-          "chunk_id": "d6268dcd05d175878ece5b2d_NR_o6r5k0OFNxaNG1dOA05TB_43",
-          "document_id": "NR_o6r5k0OFNxaNG1dOA05TB",
-          "source_entity_id": "urn:openrag:openarchiver:attachment:02de004c-ba70-48cd-9923-5f56c7acba1b",
-          "filename": "EPA--b0d2f52b796c--EPA-Nouan-le-Fuzelier-avis-FDP-190123--02de004cba70.pdf",
+          "chunk_id": "d6268dcd05d175878ece5b2d_GnibXcfu6dF9uq-lfKN34M-E_0",
+          "document_id": "GnibXcfu6dF9uq-lfKN34M-E",
+          "source_entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:ebef1cfb-f972-43e3-9d4e-7f232300692b",
+          "filename": "Demande-de-rendez-vous-relatif-au-projet-de-reouverture-des-anciens-espaces-a-vocation-pastorale-sur-la-commune-de-Nouan-le-Fuzelier--ebef1cfbf972.eml",
           "score": 0.012195121951219513
         },
         {
           "seed_rank": 46,
-          "chunk_id": "d6268dcd05d175878ece5b2d_BWXWHgRh7WXlX-aC2RD-x4_H_2",
-          "document_id": "BWXWHgRh7WXlX-aC2RD-x4_H",
-          "source_entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:b91d529c-6acc-4a4d-ae56-9f0b892a04b5",
-          "filename": "Proposition-de-mail-pour-Tangy-de-Gavelle-confidentiel-preparation-defense--b91d529c6acc.eml",
+          "chunk_id": "a4d26868017c0ccffe2efe50_4RnUdIiWpU_UmIgSmkllDMc2_41",
+          "document_id": "4RnUdIiWpU_UmIgSmkllDMc2",
+          "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:ef6220c41079ab5f450517ff175d61118d2b8a48b3ae7f847adcf81f978f6068",
+          "filename": "EPA_Nouan-Le-Fuzelier-Corps-de-texte.pdf",
           "score": 0.012048192771084338
         },
         {
@@ -799,10 +799,10 @@
         },
         {
           "seed_rank": 48,
-          "chunk_id": "a4d26868017c0ccffe2efe50_4RnUdIiWpU_UmIgSmkllDMc2_41",
-          "document_id": "4RnUdIiWpU_UmIgSmkllDMc2",
-          "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:ef6220c41079ab5f450517ff175d61118d2b8a48b3ae7f847adcf81f978f6068",
-          "filename": "EPA_Nouan-Le-Fuzelier-Corps-de-texte.pdf",
+          "chunk_id": "d6268dcd05d175878ece5b2d_BWXWHgRh7WXlX-aC2RD-x4_H_2",
+          "document_id": "BWXWHgRh7WXlX-aC2RD-x4_H",
+          "source_entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:b91d529c-6acc-4a4d-ae56-9f0b892a04b5",
+          "filename": "Proposition-de-mail-pour-Tangy-de-Gavelle-confidentiel-preparation-defense--b91d529c6acc.eml",
           "score": 0.011904761904761904
         },
         {
@@ -815,19 +815,19 @@
         },
         {
           "seed_rank": 50,
+          "chunk_id": "a4d26868017c0ccffe2efe50_opkHxZMFc87DCUfP1v3FpTcH_252",
+          "document_id": "opkHxZMFc87DCUfP1v3FpTcH",
+          "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:ee7c613bb74047f0b2de72ee23fd6f45a2dd743f172b50d1ff8b95515a9aa85b",
+          "filename": "Eloi Primaux - Procès verbal de constatation d'infraction au code forestier.PDF",
+          "score": 0.011764705882352941
+        },
+        {
+          "seed_rank": 51,
           "chunk_id": "d6268dcd05d175878ece5b2d_n0zYgmmFrKKFQ_UTuNnGXkys_13",
           "document_id": "n0zYgmmFrKKFQ_UTuNnGXkys",
           "source_entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:39dec967-c4fe-4def-b4f4-72078073b93a",
           "filename": "Fwd-Aff.-EARL-FERME-DE-POMMERIEUX-PRIMAUX-PREFET-DE-LOIR-ET-CHER-MP--39dec967c4fe.eml",
           "score": 0.011764705882352941
-        },
-        {
-          "seed_rank": 51,
-          "chunk_id": "a4d26868017c0ccffe2efe50_opkHxZMFc87DCUfP1v3FpTcH_252",
-          "document_id": "opkHxZMFc87DCUfP1v3FpTcH",
-          "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:ee7c613bb74047f0b2de72ee23fd6f45a2dd743f172b50d1ff8b95515a9aa85b",
-          "filename": "Eloi Primaux - Procès verbal de constatation d'infraction au code forestier.PDF",
-          "score": 0.011627906976744186
         },
         {
           "seed_rank": 52,
@@ -855,10 +855,10 @@
         },
         {
           "seed_rank": 55,
-          "chunk_id": "d6268dcd05d175878ece5b2d_e6Hw71qrPa7iVnWwjrJWFaYN_18",
-          "document_id": "e6Hw71qrPa7iVnWwjrJWFaYN",
-          "source_entity_id": "urn:openrag:openarchiver:attachment:0ada2c75-897a-4e51-b2e6-68ccdba3554a",
-          "filename": "Projet-agrivoltaique-Memoires-en-defense-PC-et-autorisation-de-defrichement--0b83badccc3b--MD-Nouan-le-Fuzelier_PC-29102024_VF--0ada2c75897a.pdf",
+          "chunk_id": "a4d26868017c0ccffe2efe50_-U8A65kxQK4Q34GkQMpWB9Zo_24",
+          "document_id": "-U8A65kxQK4Q34GkQMpWB9Zo",
+          "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:cdc33e8f457f868435d6c791da441a3fb737ee455ee2856fe6c4948641887492",
+          "filename": "Anciennes surfaces pastorales pour affichage 2A0.pdf",
           "score": 0.011363636363636364
         },
         {
@@ -871,10 +871,10 @@
         },
         {
           "seed_rank": 57,
-          "chunk_id": "a4d26868017c0ccffe2efe50_-U8A65kxQK4Q34GkQMpWB9Zo_24",
-          "document_id": "-U8A65kxQK4Q34GkQMpWB9Zo",
-          "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:cdc33e8f457f868435d6c791da441a3fb737ee455ee2856fe6c4948641887492",
-          "filename": "Anciennes surfaces pastorales pour affichage 2A0.pdf",
+          "chunk_id": "a4d26868017c0ccffe2efe50_Cf8rAMVFWcLnt64LF9pf-0BA_24",
+          "document_id": "Cf8rAMVFWcLnt64LF9pf-0BA",
+          "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:a86f6614ab714ebd05946010f17a0d257ffb1fbdbd775125c1bcc40ac57a44cf",
+          "filename": "Anciennes surfaces pastorales pour affichage 1200900.pdf",
           "score": 0.011235955056179775
         },
         {
@@ -887,10 +887,10 @@
         },
         {
           "seed_rank": 59,
-          "chunk_id": "a4d26868017c0ccffe2efe50_Cf8rAMVFWcLnt64LF9pf-0BA_24",
-          "document_id": "Cf8rAMVFWcLnt64LF9pf-0BA",
-          "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:a86f6614ab714ebd05946010f17a0d257ffb1fbdbd775125c1bcc40ac57a44cf",
-          "filename": "Anciennes surfaces pastorales pour affichage 1200900.pdf",
+          "chunk_id": "a4d26868017c0ccffe2efe50_FFTiaF5b9Zqoy6nmEkHbi4FG_24",
+          "document_id": "FFTiaF5b9Zqoy6nmEkHbi4FG",
+          "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:a42d1754e87cfba342e9ebded7fc88ded40863f9ccafec5761cd1c4aaa5fd1d1",
+          "filename": "Anciennes surfaces pastorales pour affichage 12001900.pdf",
           "score": 0.011111111111111112
         },
         {
@@ -903,26 +903,26 @@
         },
         {
           "seed_rank": 61,
-          "chunk_id": "a4d26868017c0ccffe2efe50_FFTiaF5b9Zqoy6nmEkHbi4FG_24",
-          "document_id": "FFTiaF5b9Zqoy6nmEkHbi4FG",
-          "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:a42d1754e87cfba342e9ebded7fc88ded40863f9ccafec5761cd1c4aaa5fd1d1",
-          "filename": "Anciennes surfaces pastorales pour affichage 12001900.pdf",
-          "score": 0.01098901098901099
-        },
-        {
-          "seed_rank": 62,
           "chunk_id": "a4d26868017c0ccffe2efe50_Fa7UN1kqOi1LDLTWz-plL4CB_20",
           "document_id": "Fa7UN1kqOi1LDLTWz-plL4CB",
           "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:f0090b9cf14977aac68fb2450478e921a91d9933c64db96d8289484f21e7c692",
           "filename": "Projet de réouverture d'anciennes surfaces pastorales.pdf",
-          "score": 0.010869565217391304
+          "score": 0.01098901098901099
         },
         {
-          "seed_rank": 63,
+          "seed_rank": 62,
           "chunk_id": "a4d26868017c0ccffe2efe50_Ky_A5bauRHmkKkbdyrAV-rgr_9",
           "document_id": "Ky_A5bauRHmkKkbdyrAV-rgr",
           "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:1529acbdf0d41f68886328461091d75cac2871633e3e7bfbef0307a20bec391b",
           "filename": "Copie de secours de Anciennes surfaces pastorales.docx",
+          "score": 0.010869565217391304
+        },
+        {
+          "seed_rank": 63,
+          "chunk_id": "a4d26868017c0ccffe2efe50_LOwWvqlBN8mcmDSJCFvjj3EY_60",
+          "document_id": "LOwWvqlBN8mcmDSJCFvjj3EY",
+          "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:2d2d4665af57f6a7740b033b307e1e48a97fc2c14335fa32bbc25bdfb446d107",
+          "filename": "Dossier anciennes surfaces pastorales - complet.pdf",
           "score": 0.010752688172043012
         },
         {
@@ -935,10 +935,10 @@
         },
         {
           "seed_rank": 65,
-          "chunk_id": "a4d26868017c0ccffe2efe50_LOwWvqlBN8mcmDSJCFvjj3EY_60",
-          "document_id": "LOwWvqlBN8mcmDSJCFvjj3EY",
-          "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:2d2d4665af57f6a7740b033b307e1e48a97fc2c14335fa32bbc25bdfb446d107",
-          "filename": "Dossier anciennes surfaces pastorales - complet.pdf",
+          "chunk_id": "a4d26868017c0ccffe2efe50_PwO2g4ULtkttPYSs0blww_wB_24",
+          "document_id": "PwO2g4ULtkttPYSs0blww_wB",
+          "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:cf43242ca877f26bed55e1d5a6c05e042890dde1eeb6fbdffe52fa1f5390dd81",
+          "filename": "VISTAPRINT Anciennes surfaces pastorales pour affichage 1200900.pdf",
           "score": 0.010638297872340425
         },
         {
@@ -951,10 +951,10 @@
         },
         {
           "seed_rank": 67,
-          "chunk_id": "a4d26868017c0ccffe2efe50_PwO2g4ULtkttPYSs0blww_wB_24",
-          "document_id": "PwO2g4ULtkttPYSs0blww_wB",
-          "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:cf43242ca877f26bed55e1d5a6c05e042890dde1eeb6fbdffe52fa1f5390dd81",
-          "filename": "VISTAPRINT Anciennes surfaces pastorales pour affichage 1200900.pdf",
+          "chunk_id": "a4d26868017c0ccffe2efe50_WdCVHaLlSmjYw1gCwRjYRreC_20",
+          "document_id": "WdCVHaLlSmjYw1gCwRjYRreC",
+          "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:14456dc44681d75107d41a067fda88871b8616e4cf8589a47b473ccafa81f523",
+          "filename": "Anciennes surfaces pastorales -  hors annexes.pdf",
           "score": 0.010526315789473684
         },
         {
@@ -967,10 +967,10 @@
         },
         {
           "seed_rank": 69,
-          "chunk_id": "a4d26868017c0ccffe2efe50_WdCVHaLlSmjYw1gCwRjYRreC_20",
-          "document_id": "WdCVHaLlSmjYw1gCwRjYRreC",
-          "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:14456dc44681d75107d41a067fda88871b8616e4cf8589a47b473ccafa81f523",
-          "filename": "Anciennes surfaces pastorales -  hors annexes.pdf",
+          "chunk_id": "a4d26868017c0ccffe2efe50_Y57XdgEvmdlsSd41WLSiNaTw_9",
+          "document_id": "Y57XdgEvmdlsSd41WLSiNaTw",
+          "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:91d0219876562fe8441f1d9eb02cf4f1897ec50c81afcba6aa1ee4dcbc99abc3",
+          "filename": "Copie de secours de Projet de réouverture d'anciennes surfaces pastorales.docx",
           "score": 0.010416666666666666
         },
         {
@@ -983,10 +983,10 @@
         },
         {
           "seed_rank": 71,
-          "chunk_id": "a4d26868017c0ccffe2efe50_Y57XdgEvmdlsSd41WLSiNaTw_9",
-          "document_id": "Y57XdgEvmdlsSd41WLSiNaTw",
-          "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:91d0219876562fe8441f1d9eb02cf4f1897ec50c81afcba6aa1ee4dcbc99abc3",
-          "filename": "Copie de secours de Projet de réouverture d'anciennes surfaces pastorales.docx",
+          "chunk_id": "a4d26868017c0ccffe2efe50_augYzpS8_kdkA9jtoOIWjAXT_9",
+          "document_id": "augYzpS8_kdkA9jtoOIWjAXT",
+          "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:f09fe282fc2b5e28a479627b855a9593936d51e87fbc0c95cb4816343bcf32c9",
+          "filename": "Anciennes surfaces pastorales pour affichage.docx",
           "score": 0.010309278350515464
         },
         {
@@ -999,10 +999,10 @@
         },
         {
           "seed_rank": 73,
-          "chunk_id": "a4d26868017c0ccffe2efe50_augYzpS8_kdkA9jtoOIWjAXT_9",
-          "document_id": "augYzpS8_kdkA9jtoOIWjAXT",
-          "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:f09fe282fc2b5e28a479627b855a9593936d51e87fbc0c95cb4816343bcf32c9",
-          "filename": "Anciennes surfaces pastorales pour affichage.docx",
+          "chunk_id": "a4d26868017c0ccffe2efe50_kI9AL0bg5GiRIAaQtuFmgmLM_9",
+          "document_id": "kI9AL0bg5GiRIAaQtuFmgmLM",
+          "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:6097eb439057bcd154aa2e54402c1dacd6018e7d74319bd38e1545e500939f6a",
+          "filename": "Anciennes surfaces pastorales.docx",
           "score": 0.01020408163265306
         },
         {
@@ -1015,10 +1015,10 @@
         },
         {
           "seed_rank": 75,
-          "chunk_id": "a4d26868017c0ccffe2efe50_kI9AL0bg5GiRIAaQtuFmgmLM_9",
-          "document_id": "kI9AL0bg5GiRIAaQtuFmgmLM",
-          "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:6097eb439057bcd154aa2e54402c1dacd6018e7d74319bd38e1545e500939f6a",
-          "filename": "Anciennes surfaces pastorales.docx",
+          "chunk_id": "a4d26868017c0ccffe2efe50_kwioMeekg1QaFfRtU27JF_Bj_26",
+          "document_id": "kwioMeekg1QaFfRtU27JF_Bj",
+          "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:ea4d7c7a265ab8857d40b2a3372fa2e6ea7e44ad9f3ff4a0a12ac919e8f4855f",
+          "filename": "Dossier anciennes surfaces pastorales.pdf",
           "score": 0.010101010101010102
         },
         {
@@ -1031,34 +1031,34 @@
         },
         {
           "seed_rank": 77,
-          "chunk_id": "a4d26868017c0ccffe2efe50_kwioMeekg1QaFfRtU27JF_Bj_26",
-          "document_id": "kwioMeekg1QaFfRtU27JF_Bj",
-          "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:ea4d7c7a265ab8857d40b2a3372fa2e6ea7e44ad9f3ff4a0a12ac919e8f4855f",
-          "filename": "Dossier anciennes surfaces pastorales.pdf",
-          "score": 0.01
-        },
-        {
-          "seed_rank": 78,
           "chunk_id": "a4d26868017c0ccffe2efe50_mLoZjmT2LLee64B2Caq24OWs_22",
           "document_id": "mLoZjmT2LLee64B2Caq24OWs",
           "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:7a8044dfbdb85e3f16cb01118041235653554f6d2b2ed493e3818242205ffda0",
           "filename": "Anciennes surfaces pastorales pour affichage.pdf",
-          "score": 0.009900990099009901
+          "score": 0.01
         },
         {
-          "seed_rank": 79,
+          "seed_rank": 78,
           "chunk_id": "a4d26868017c0ccffe2efe50_okFy_Bb5NYUH2GgGtxqBN0_1_9",
           "document_id": "okFy_Bb5NYUH2GgGtxqBN0_1",
           "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:5c714a8d60148d6e62f8031c1a656ae56b720a54fbd8e3c28a47f57106f5ac59",
           "filename": "Anciennes surfaces pastorales pour affichage 12001900.docx",
-          "score": 0.00980392156862745
+          "score": 0.009900990099009901
         },
         {
-          "seed_rank": 80,
+          "seed_rank": 79,
           "chunk_id": "a4d26868017c0ccffe2efe50_z5MhoXn-NIzLStNF0CS7-2to_9",
           "document_id": "z5MhoXn-NIzLStNF0CS7-2to",
           "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:69da312f0bf23d5c8481943191b3fa992a218a32fc83e23ee9d485d044417bda",
           "filename": "Projet de réouverture d'anciennes surfaces pastorales.docx",
+          "score": 0.00980392156862745
+        },
+        {
+          "seed_rank": 80,
+          "chunk_id": "a4d26868017c0ccffe2efe50_-U8A65kxQK4Q34GkQMpWB9Zo_25",
+          "document_id": "-U8A65kxQK4Q34GkQMpWB9Zo",
+          "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:cdc33e8f457f868435d6c791da441a3fb737ee455ee2856fe6c4948641887492",
+          "filename": "Anciennes surfaces pastorales pour affichage 2A0.pdf",
           "score": 0.009708737864077669
         },
         {
@@ -1071,10 +1071,10 @@
         },
         {
           "seed_rank": 82,
-          "chunk_id": "a4d26868017c0ccffe2efe50_-U8A65kxQK4Q34GkQMpWB9Zo_25",
-          "document_id": "-U8A65kxQK4Q34GkQMpWB9Zo",
-          "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:cdc33e8f457f868435d6c791da441a3fb737ee455ee2856fe6c4948641887492",
-          "filename": "Anciennes surfaces pastorales pour affichage 2A0.pdf",
+          "chunk_id": "a4d26868017c0ccffe2efe50_Cf8rAMVFWcLnt64LF9pf-0BA_25",
+          "document_id": "Cf8rAMVFWcLnt64LF9pf-0BA",
+          "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:a86f6614ab714ebd05946010f17a0d257ffb1fbdbd775125c1bcc40ac57a44cf",
+          "filename": "Anciennes surfaces pastorales pour affichage 1200900.pdf",
           "score": 0.009615384615384616
         },
         {
@@ -1087,18 +1087,18 @@
         },
         {
           "seed_rank": 84,
-          "chunk_id": "a4d26868017c0ccffe2efe50_Cf8rAMVFWcLnt64LF9pf-0BA_25",
-          "document_id": "Cf8rAMVFWcLnt64LF9pf-0BA",
-          "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:a86f6614ab714ebd05946010f17a0d257ffb1fbdbd775125c1bcc40ac57a44cf",
-          "filename": "Anciennes surfaces pastorales pour affichage 1200900.pdf",
-          "score": 0.009523809523809525
-        },
-        {
-          "seed_rank": 85,
           "chunk_id": "a4d26868017c0ccffe2efe50_FFTiaF5b9Zqoy6nmEkHbi4FG_25",
           "document_id": "FFTiaF5b9Zqoy6nmEkHbi4FG",
           "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:a42d1754e87cfba342e9ebded7fc88ded40863f9ccafec5761cd1c4aaa5fd1d1",
           "filename": "Anciennes surfaces pastorales pour affichage 12001900.pdf",
+          "score": 0.009523809523809525
+        },
+        {
+          "seed_rank": 85,
+          "chunk_id": "a4d26868017c0ccffe2efe50_Fa7UN1kqOi1LDLTWz-plL4CB_21",
+          "document_id": "Fa7UN1kqOi1LDLTWz-plL4CB",
+          "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:f0090b9cf14977aac68fb2450478e921a91d9933c64db96d8289484f21e7c692",
+          "filename": "Projet de réouverture d'anciennes surfaces pastorales.pdf",
           "score": 0.009433962264150943
         },
         {
@@ -1111,26 +1111,26 @@
         },
         {
           "seed_rank": 87,
-          "chunk_id": "a4d26868017c0ccffe2efe50_Fa7UN1kqOi1LDLTWz-plL4CB_21",
-          "document_id": "Fa7UN1kqOi1LDLTWz-plL4CB",
-          "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:f0090b9cf14977aac68fb2450478e921a91d9933c64db96d8289484f21e7c692",
-          "filename": "Projet de réouverture d'anciennes surfaces pastorales.pdf",
-          "score": 0.009345794392523364
-        },
-        {
-          "seed_rank": 88,
           "chunk_id": "a4d26868017c0ccffe2efe50_GDh494ZmzcYzhxpanToefEUS_249",
           "document_id": "GDh494ZmzcYzhxpanToefEUS",
           "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:7da1ab995ab6749e25c2b04424c8e908c1a684c88cdcbd5accc7a3ae7b9b12a7",
           "filename": "EARL FERME DE POMMERIEUX - Procès verbal de constatation d'infraction au code forestier.PDF",
-          "score": 0.009259259259259259
+          "score": 0.009345794392523364
         },
         {
-          "seed_rank": 89,
+          "seed_rank": 88,
           "chunk_id": "a4d26868017c0ccffe2efe50_Ky_A5bauRHmkKkbdyrAV-rgr_10",
           "document_id": "Ky_A5bauRHmkKkbdyrAV-rgr",
           "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:1529acbdf0d41f68886328461091d75cac2871633e3e7bfbef0307a20bec391b",
           "filename": "Copie de secours de Anciennes surfaces pastorales.docx",
+          "score": 0.009259259259259259
+        },
+        {
+          "seed_rank": 89,
+          "chunk_id": "a4d26868017c0ccffe2efe50_LOwWvqlBN8mcmDSJCFvjj3EY_61",
+          "document_id": "LOwWvqlBN8mcmDSJCFvjj3EY",
+          "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:2d2d4665af57f6a7740b033b307e1e48a97fc2c14335fa32bbc25bdfb446d107",
+          "filename": "Dossier anciennes surfaces pastorales - complet.pdf",
           "score": 0.009174311926605505
         },
         {
@@ -1151,10 +1151,10 @@
         },
         {
           "seed_rank": 92,
-          "chunk_id": "a4d26868017c0ccffe2efe50_LOwWvqlBN8mcmDSJCFvjj3EY_61",
-          "document_id": "LOwWvqlBN8mcmDSJCFvjj3EY",
-          "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:2d2d4665af57f6a7740b033b307e1e48a97fc2c14335fa32bbc25bdfb446d107",
-          "filename": "Dossier anciennes surfaces pastorales - complet.pdf",
+          "chunk_id": "a4d26868017c0ccffe2efe50_PwO2g4ULtkttPYSs0blww_wB_25",
+          "document_id": "PwO2g4ULtkttPYSs0blww_wB",
+          "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:cf43242ca877f26bed55e1d5a6c05e042890dde1eeb6fbdffe52fa1f5390dd81",
+          "filename": "VISTAPRINT Anciennes surfaces pastorales pour affichage 1200900.pdf",
           "score": 0.00909090909090909
         },
         {
@@ -1845,15 +1845,6 @@
           "status_code": "complete"
         },
         {
-          "document_id": "siIixi9WFH5NdOzVjRXu9Bd6",
-          "source_entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:0b83badc-cc3b-4997-8bc5-dc4d661edca7",
-          "filename": "Projet-agrivoltaique-Memoires-en-defense-PC-et-autorisation-de-defrichement--0b83badccc3b.eml",
-          "source_entity_type": "email_message",
-          "source_entity_system": "openarchiver",
-          "complete": true,
-          "status_code": "complete"
-        },
-        {
           "document_id": "hFDBugWmrh2QReZVJ_7AXOP4",
           "source_entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:0842529f-2cb1-4500-929b-ec92aee83725",
           "filename": "Memoires-en-defense-Prefecture--0842529f2cb1.eml",
@@ -2367,15 +2358,6 @@
           "status_code": "complete"
         },
         {
-          "document_id": "e6Hw71qrPa7iVnWwjrJWFaYN",
-          "source_entity_id": "urn:openrag:openarchiver:attachment:0ada2c75-897a-4e51-b2e6-68ccdba3554a",
-          "filename": "Projet-agrivoltaique-Memoires-en-defense-PC-et-autorisation-de-defrichement--0b83badccc3b--MD-Nouan-le-Fuzelier_PC-29102024_VF--0ada2c75897a.pdf",
-          "source_entity_type": "email_attachment",
-          "source_entity_system": "openarchiver",
-          "complete": true,
-          "status_code": "complete"
-        },
-        {
           "document_id": "_jzOi9e5wMThiX3BczIHVVYv",
           "source_entity_id": "urn:openrag:openarchiver:attachment:55c3a5ca-8bfa-4378-a74b-79d0a3e6d534",
           "filename": "RE-INTERNET-Projet-photovoaltaique-Nouan-le-Fuzelier-Reconnaissance-des-bois-a-defricher--ed18c5d1b0ba--FR_S_NOFU_2312_Reponse_Autorisation_defrichement_V2--55c3a5ca8bfa.pdf",
@@ -2472,9 +2454,9 @@
         "scope_policy_id": "documentary-prov-o",
         "scope_policy_version": 1,
         "seed_discovery_complete": true,
-        "seed_documents": 61,
-        "seed_entities": 93,
-        "valid_provenance_seed_documents": 61,
+        "seed_documents": 60,
+        "seed_entities": 92,
+        "valid_provenance_seed_documents": 60,
         "invalid_provenance_seed_documents": 0,
         "seed_provenance_complete": true,
         "requested_retrieval_profile": {
@@ -2528,7 +2510,7 @@
         },
         "retrieval_execution_complete": true,
         "retrieval_failure_codes": [],
-        "graph_entities_visited": 138,
+        "graph_entities_visited": 136,
         "graph_frontier_empty": true,
         "graph_limit_reached": false,
         "graph_stop_reason": "frontier_empty",
@@ -2545,11 +2527,11 @@
           "documents_per_depth": [
             {
               "depth": 0,
-              "count": 61
+              "count": 60
             },
             {
               "depth": 1,
-              "count": 60
+              "count": 59
             },
             {
               "depth": 2,
@@ -2563,11 +2545,11 @@
           "entities_per_depth": [
             {
               "depth": 0,
-              "count": 61
+              "count": 60
             },
             {
               "depth": 1,
-              "count": 60
+              "count": 59
             },
             {
               "depth": 2,
@@ -2605,7 +2587,7 @@
               "role": "attachment_of",
               "source_type": "email_attachment",
               "target_type": "email_message",
-              "count": 41
+              "count": 40
             },
             {
               "depth": 1,
@@ -2793,11 +2775,11 @@
             }
           ]
         },
-        "documents_discovered": 138,
-        "documents_complete": 138,
+        "documents_discovered": 136,
+        "documents_complete": 136,
         "documents_incomplete": 0,
-        "covered_chunks": 6239,
-        "total_chunks": 6239,
+        "covered_chunks": 6145,
+        "total_chunks": 6145,
         "document_read_coverage_ratio": 1.0,
         "coverage_ratio": 1.0,
         "complete": true,
@@ -2806,42 +2788,42 @@
         "failure_codes": [],
         "stop_reason": "complete",
         "model_evidence_chunks": 100,
-        "artifact_chunks": 6239,
+        "artifact_chunks": 6145,
         "performance": {
           "discovery_seconds": 0.0,
-          "prov_o_seconds": 4.746508334064856,
-          "total_seconds": 4.746508334064856
+          "prov_o_seconds": 4.988088620011695,
+          "total_seconds": 4.988088620011695
         },
         "certification": {
           "contract_id": "openrag.scope-coverage",
           "contract_version": 1,
           "facts": {
             "seed_discovery_complete": true,
-            "seed_documents": 61,
-            "valid_provenance_seed_documents": 61,
+            "seed_documents": 60,
+            "valid_provenance_seed_documents": 60,
             "invalid_provenance_seed_documents": 0,
             "graph_frontier_empty": true,
             "graph_limit_reached": false,
             "graph_stop_reason": "frontier_empty",
             "graph_failed": false,
             "retrieval_execution_complete": true,
-            "documents_discovered": 138,
-            "documents_complete": 138,
-            "covered_chunks": 6239,
-            "total_chunks": 6239,
+            "documents_discovered": 136,
+            "documents_complete": 136,
+            "covered_chunks": 6145,
+            "total_chunks": 6145,
             "document_failure_codes": [],
             "seed_failure_code": null,
             "unclassified_relations": 0,
             "retrieval_failure_codes": []
           },
-          "facts_sha256": "0f423f7fd0334cf00cc9f1530d1fe68be08c46dafd93d07584d79cba31c47be8"
+          "facts_sha256": "2a2fa5d8fcfaa45d65a606c7fc171af2e229b8ca943422ce7f43a11c668e8c65"
         }
       },
       "latencies": {
         "discovery_seconds": 0.0,
-        "scope_closure_seconds": 4.746508334064856,
-        "total_latency_seconds": 4.746508334064856,
-        "http_wall_seconds": 5.527127584005939
+        "scope_closure_seconds": 4.988088620011695,
+        "total_latency_seconds": 4.988088620011695,
+        "http_wall_seconds": 5.803665415998694
       },
       "error": null,
       "contract": {
@@ -2902,8 +2884,8 @@
     },
     {
       "run_id": "q1-r2",
-      "started_at": "2026-09-02T05:56:15.849915+00:00",
-      "finished_at": "2026-09-02T05:56:20.845784+00:00",
+      "started_at": "2026-09-02T21:03:18.985835+00:00",
+      "finished_at": "2026-09-02T21:03:24.210932+00:00",
       "configuration": {
         "query_count": 1,
         "repetition": 2,
@@ -3148,7 +3130,7 @@
           "document_id": "T09N88kAJdTi2SS3hB4go2iU",
           "source_entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:61f558bd-2682-411d-8fb5-2eff9934034b",
           "filename": "RE-NOFU-dossier-complet-anciennes-surfaces-pastorales--61f558bd2682.eml",
-          "score": 0.0210239651416122
+          "score": 0.020887166236003445
         },
         {
           "seed_rank": 3,
@@ -3416,10 +3398,10 @@
         },
         {
           "seed_rank": 36,
-          "chunk_id": "d6268dcd05d175878ece5b2d_CSpYAKQcy8ksZo_u_jXcnXJj_2",
-          "document_id": "CSpYAKQcy8ksZo_u_jXcnXJj",
-          "source_entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:cae54aa7-a3f3-42d6-a5a8-50a05c216a58",
-          "filename": "Re-Demande-de-rendez-vous-relatif-au-projet-de-reouverture-des-anciens-espaces-a-vocation-pastorale-sur-la-commune-de-Nouan-le-Fuzelier--cae54aa7a3f3.eml",
+          "chunk_id": "d6268dcd05d175878ece5b2d_LFz5HOtQVs-Mn2FdH2j442DY_22",
+          "document_id": "LFz5HOtQVs-Mn2FdH2j442DY",
+          "source_entity_id": "urn:openrag:openarchiver:attachment:4eb71532-265c-4eff-8579-1a39b8668a6e",
+          "filename": "EPA-Lilian--7c56c1522e44--EPA-pour-Lilian--4eb71532265c.pdf",
           "score": 0.01282051282051282
         },
         {
@@ -3432,10 +3414,10 @@
         },
         {
           "seed_rank": 38,
-          "chunk_id": "d6268dcd05d175878ece5b2d__ZdYUKNdoAnzAnN3SrUxeGpy_2",
-          "document_id": "_ZdYUKNdoAnzAnN3SrUxeGpy",
-          "source_entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:2d54531d-b00a-4773-b63c-2c1cf71d82ad",
-          "filename": "Fwd-Demande-de-rendez-vous-relatif-au-projet-de-reouverture-des-anciens-espaces-a-vocation-pastorale-sur-la-commune-de-Nouan-le-Fuzelier--2d54531db00a.eml",
+          "chunk_id": "d6268dcd05d175878ece5b2d_NR_o6r5k0OFNxaNG1dOA05TB_43",
+          "document_id": "NR_o6r5k0OFNxaNG1dOA05TB",
+          "source_entity_id": "urn:openrag:openarchiver:attachment:02de004c-ba70-48cd-9923-5f56c7acba1b",
+          "filename": "EPA--b0d2f52b796c--EPA-Nouan-le-Fuzelier-avis-FDP-190123--02de004cba70.pdf",
           "score": 0.012658227848101266
         },
         {
@@ -3448,10 +3430,10 @@
         },
         {
           "seed_rank": 40,
-          "chunk_id": "d6268dcd05d175878ece5b2d_GnibXcfu6dF9uq-lfKN34M-E_0",
-          "document_id": "GnibXcfu6dF9uq-lfKN34M-E",
-          "source_entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:ebef1cfb-f972-43e3-9d4e-7f232300692b",
-          "filename": "Demande-de-rendez-vous-relatif-au-projet-de-reouverture-des-anciens-espaces-a-vocation-pastorale-sur-la-commune-de-Nouan-le-Fuzelier--ebef1cfbf972.eml",
+          "chunk_id": "d6268dcd05d175878ece5b2d_CSpYAKQcy8ksZo_u_jXcnXJj_2",
+          "document_id": "CSpYAKQcy8ksZo_u_jXcnXJj",
+          "source_entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:cae54aa7-a3f3-42d6-a5a8-50a05c216a58",
+          "filename": "Re-Demande-de-rendez-vous-relatif-au-projet-de-reouverture-des-anciens-espaces-a-vocation-pastorale-sur-la-commune-de-Nouan-le-Fuzelier--cae54aa7a3f3.eml",
           "score": 0.0125
         },
         {
@@ -3464,10 +3446,10 @@
         },
         {
           "seed_rank": 42,
-          "chunk_id": "d6268dcd05d175878ece5b2d_LFz5HOtQVs-Mn2FdH2j442DY_22",
-          "document_id": "LFz5HOtQVs-Mn2FdH2j442DY",
-          "source_entity_id": "urn:openrag:openarchiver:attachment:4eb71532-265c-4eff-8579-1a39b8668a6e",
-          "filename": "EPA-Lilian--7c56c1522e44--EPA-pour-Lilian--4eb71532265c.pdf",
+          "chunk_id": "d6268dcd05d175878ece5b2d__ZdYUKNdoAnzAnN3SrUxeGpy_2",
+          "document_id": "_ZdYUKNdoAnzAnN3SrUxeGpy",
+          "source_entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:2d54531d-b00a-4773-b63c-2c1cf71d82ad",
+          "filename": "Fwd-Demande-de-rendez-vous-relatif-au-projet-de-reouverture-des-anciens-espaces-a-vocation-pastorale-sur-la-commune-de-Nouan-le-Fuzelier--2d54531db00a.eml",
           "score": 0.012345679012345678
         },
         {
@@ -3488,18 +3470,18 @@
         },
         {
           "seed_rank": 45,
-          "chunk_id": "d6268dcd05d175878ece5b2d_NR_o6r5k0OFNxaNG1dOA05TB_43",
-          "document_id": "NR_o6r5k0OFNxaNG1dOA05TB",
-          "source_entity_id": "urn:openrag:openarchiver:attachment:02de004c-ba70-48cd-9923-5f56c7acba1b",
-          "filename": "EPA--b0d2f52b796c--EPA-Nouan-le-Fuzelier-avis-FDP-190123--02de004cba70.pdf",
+          "chunk_id": "d6268dcd05d175878ece5b2d_GnibXcfu6dF9uq-lfKN34M-E_0",
+          "document_id": "GnibXcfu6dF9uq-lfKN34M-E",
+          "source_entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:ebef1cfb-f972-43e3-9d4e-7f232300692b",
+          "filename": "Demande-de-rendez-vous-relatif-au-projet-de-reouverture-des-anciens-espaces-a-vocation-pastorale-sur-la-commune-de-Nouan-le-Fuzelier--ebef1cfbf972.eml",
           "score": 0.012195121951219513
         },
         {
           "seed_rank": 46,
-          "chunk_id": "d6268dcd05d175878ece5b2d_BWXWHgRh7WXlX-aC2RD-x4_H_2",
-          "document_id": "BWXWHgRh7WXlX-aC2RD-x4_H",
-          "source_entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:b91d529c-6acc-4a4d-ae56-9f0b892a04b5",
-          "filename": "Proposition-de-mail-pour-Tangy-de-Gavelle-confidentiel-preparation-defense--b91d529c6acc.eml",
+          "chunk_id": "a4d26868017c0ccffe2efe50_4RnUdIiWpU_UmIgSmkllDMc2_41",
+          "document_id": "4RnUdIiWpU_UmIgSmkllDMc2",
+          "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:ef6220c41079ab5f450517ff175d61118d2b8a48b3ae7f847adcf81f978f6068",
+          "filename": "EPA_Nouan-Le-Fuzelier-Corps-de-texte.pdf",
           "score": 0.012048192771084338
         },
         {
@@ -3512,10 +3494,10 @@
         },
         {
           "seed_rank": 48,
-          "chunk_id": "a4d26868017c0ccffe2efe50_4RnUdIiWpU_UmIgSmkllDMc2_41",
-          "document_id": "4RnUdIiWpU_UmIgSmkllDMc2",
-          "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:ef6220c41079ab5f450517ff175d61118d2b8a48b3ae7f847adcf81f978f6068",
-          "filename": "EPA_Nouan-Le-Fuzelier-Corps-de-texte.pdf",
+          "chunk_id": "d6268dcd05d175878ece5b2d_BWXWHgRh7WXlX-aC2RD-x4_H_2",
+          "document_id": "BWXWHgRh7WXlX-aC2RD-x4_H",
+          "source_entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:b91d529c-6acc-4a4d-ae56-9f0b892a04b5",
+          "filename": "Proposition-de-mail-pour-Tangy-de-Gavelle-confidentiel-preparation-defense--b91d529c6acc.eml",
           "score": 0.011904761904761904
         },
         {
@@ -3528,19 +3510,19 @@
         },
         {
           "seed_rank": 50,
+          "chunk_id": "a4d26868017c0ccffe2efe50_opkHxZMFc87DCUfP1v3FpTcH_252",
+          "document_id": "opkHxZMFc87DCUfP1v3FpTcH",
+          "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:ee7c613bb74047f0b2de72ee23fd6f45a2dd743f172b50d1ff8b95515a9aa85b",
+          "filename": "Eloi Primaux - Procès verbal de constatation d'infraction au code forestier.PDF",
+          "score": 0.011764705882352941
+        },
+        {
+          "seed_rank": 51,
           "chunk_id": "d6268dcd05d175878ece5b2d_n0zYgmmFrKKFQ_UTuNnGXkys_13",
           "document_id": "n0zYgmmFrKKFQ_UTuNnGXkys",
           "source_entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:39dec967-c4fe-4def-b4f4-72078073b93a",
           "filename": "Fwd-Aff.-EARL-FERME-DE-POMMERIEUX-PRIMAUX-PREFET-DE-LOIR-ET-CHER-MP--39dec967c4fe.eml",
           "score": 0.011764705882352941
-        },
-        {
-          "seed_rank": 51,
-          "chunk_id": "a4d26868017c0ccffe2efe50_opkHxZMFc87DCUfP1v3FpTcH_252",
-          "document_id": "opkHxZMFc87DCUfP1v3FpTcH",
-          "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:ee7c613bb74047f0b2de72ee23fd6f45a2dd743f172b50d1ff8b95515a9aa85b",
-          "filename": "Eloi Primaux - Procès verbal de constatation d'infraction au code forestier.PDF",
-          "score": 0.011627906976744186
         },
         {
           "seed_rank": 52,
@@ -3568,10 +3550,10 @@
         },
         {
           "seed_rank": 55,
-          "chunk_id": "d6268dcd05d175878ece5b2d_e6Hw71qrPa7iVnWwjrJWFaYN_18",
-          "document_id": "e6Hw71qrPa7iVnWwjrJWFaYN",
-          "source_entity_id": "urn:openrag:openarchiver:attachment:0ada2c75-897a-4e51-b2e6-68ccdba3554a",
-          "filename": "Projet-agrivoltaique-Memoires-en-defense-PC-et-autorisation-de-defrichement--0b83badccc3b--MD-Nouan-le-Fuzelier_PC-29102024_VF--0ada2c75897a.pdf",
+          "chunk_id": "a4d26868017c0ccffe2efe50_-U8A65kxQK4Q34GkQMpWB9Zo_24",
+          "document_id": "-U8A65kxQK4Q34GkQMpWB9Zo",
+          "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:cdc33e8f457f868435d6c791da441a3fb737ee455ee2856fe6c4948641887492",
+          "filename": "Anciennes surfaces pastorales pour affichage 2A0.pdf",
           "score": 0.011363636363636364
         },
         {
@@ -3584,10 +3566,10 @@
         },
         {
           "seed_rank": 57,
-          "chunk_id": "a4d26868017c0ccffe2efe50_-U8A65kxQK4Q34GkQMpWB9Zo_24",
-          "document_id": "-U8A65kxQK4Q34GkQMpWB9Zo",
-          "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:cdc33e8f457f868435d6c791da441a3fb737ee455ee2856fe6c4948641887492",
-          "filename": "Anciennes surfaces pastorales pour affichage 2A0.pdf",
+          "chunk_id": "a4d26868017c0ccffe2efe50_Cf8rAMVFWcLnt64LF9pf-0BA_24",
+          "document_id": "Cf8rAMVFWcLnt64LF9pf-0BA",
+          "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:a86f6614ab714ebd05946010f17a0d257ffb1fbdbd775125c1bcc40ac57a44cf",
+          "filename": "Anciennes surfaces pastorales pour affichage 1200900.pdf",
           "score": 0.011235955056179775
         },
         {
@@ -3600,10 +3582,10 @@
         },
         {
           "seed_rank": 59,
-          "chunk_id": "a4d26868017c0ccffe2efe50_Cf8rAMVFWcLnt64LF9pf-0BA_24",
-          "document_id": "Cf8rAMVFWcLnt64LF9pf-0BA",
-          "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:a86f6614ab714ebd05946010f17a0d257ffb1fbdbd775125c1bcc40ac57a44cf",
-          "filename": "Anciennes surfaces pastorales pour affichage 1200900.pdf",
+          "chunk_id": "a4d26868017c0ccffe2efe50_FFTiaF5b9Zqoy6nmEkHbi4FG_24",
+          "document_id": "FFTiaF5b9Zqoy6nmEkHbi4FG",
+          "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:a42d1754e87cfba342e9ebded7fc88ded40863f9ccafec5761cd1c4aaa5fd1d1",
+          "filename": "Anciennes surfaces pastorales pour affichage 12001900.pdf",
           "score": 0.011111111111111112
         },
         {
@@ -3616,26 +3598,26 @@
         },
         {
           "seed_rank": 61,
-          "chunk_id": "a4d26868017c0ccffe2efe50_FFTiaF5b9Zqoy6nmEkHbi4FG_24",
-          "document_id": "FFTiaF5b9Zqoy6nmEkHbi4FG",
-          "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:a42d1754e87cfba342e9ebded7fc88ded40863f9ccafec5761cd1c4aaa5fd1d1",
-          "filename": "Anciennes surfaces pastorales pour affichage 12001900.pdf",
-          "score": 0.01098901098901099
-        },
-        {
-          "seed_rank": 62,
           "chunk_id": "a4d26868017c0ccffe2efe50_Fa7UN1kqOi1LDLTWz-plL4CB_20",
           "document_id": "Fa7UN1kqOi1LDLTWz-plL4CB",
           "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:f0090b9cf14977aac68fb2450478e921a91d9933c64db96d8289484f21e7c692",
           "filename": "Projet de réouverture d'anciennes surfaces pastorales.pdf",
-          "score": 0.010869565217391304
+          "score": 0.01098901098901099
         },
         {
-          "seed_rank": 63,
+          "seed_rank": 62,
           "chunk_id": "a4d26868017c0ccffe2efe50_Ky_A5bauRHmkKkbdyrAV-rgr_9",
           "document_id": "Ky_A5bauRHmkKkbdyrAV-rgr",
           "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:1529acbdf0d41f68886328461091d75cac2871633e3e7bfbef0307a20bec391b",
           "filename": "Copie de secours de Anciennes surfaces pastorales.docx",
+          "score": 0.010869565217391304
+        },
+        {
+          "seed_rank": 63,
+          "chunk_id": "a4d26868017c0ccffe2efe50_LOwWvqlBN8mcmDSJCFvjj3EY_60",
+          "document_id": "LOwWvqlBN8mcmDSJCFvjj3EY",
+          "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:2d2d4665af57f6a7740b033b307e1e48a97fc2c14335fa32bbc25bdfb446d107",
+          "filename": "Dossier anciennes surfaces pastorales - complet.pdf",
           "score": 0.010752688172043012
         },
         {
@@ -3648,10 +3630,10 @@
         },
         {
           "seed_rank": 65,
-          "chunk_id": "a4d26868017c0ccffe2efe50_LOwWvqlBN8mcmDSJCFvjj3EY_60",
-          "document_id": "LOwWvqlBN8mcmDSJCFvjj3EY",
-          "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:2d2d4665af57f6a7740b033b307e1e48a97fc2c14335fa32bbc25bdfb446d107",
-          "filename": "Dossier anciennes surfaces pastorales - complet.pdf",
+          "chunk_id": "a4d26868017c0ccffe2efe50_PwO2g4ULtkttPYSs0blww_wB_24",
+          "document_id": "PwO2g4ULtkttPYSs0blww_wB",
+          "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:cf43242ca877f26bed55e1d5a6c05e042890dde1eeb6fbdffe52fa1f5390dd81",
+          "filename": "VISTAPRINT Anciennes surfaces pastorales pour affichage 1200900.pdf",
           "score": 0.010638297872340425
         },
         {
@@ -3664,10 +3646,10 @@
         },
         {
           "seed_rank": 67,
-          "chunk_id": "a4d26868017c0ccffe2efe50_PwO2g4ULtkttPYSs0blww_wB_24",
-          "document_id": "PwO2g4ULtkttPYSs0blww_wB",
-          "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:cf43242ca877f26bed55e1d5a6c05e042890dde1eeb6fbdffe52fa1f5390dd81",
-          "filename": "VISTAPRINT Anciennes surfaces pastorales pour affichage 1200900.pdf",
+          "chunk_id": "a4d26868017c0ccffe2efe50_WdCVHaLlSmjYw1gCwRjYRreC_20",
+          "document_id": "WdCVHaLlSmjYw1gCwRjYRreC",
+          "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:14456dc44681d75107d41a067fda88871b8616e4cf8589a47b473ccafa81f523",
+          "filename": "Anciennes surfaces pastorales -  hors annexes.pdf",
           "score": 0.010526315789473684
         },
         {
@@ -3680,10 +3662,10 @@
         },
         {
           "seed_rank": 69,
-          "chunk_id": "a4d26868017c0ccffe2efe50_WdCVHaLlSmjYw1gCwRjYRreC_20",
-          "document_id": "WdCVHaLlSmjYw1gCwRjYRreC",
-          "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:14456dc44681d75107d41a067fda88871b8616e4cf8589a47b473ccafa81f523",
-          "filename": "Anciennes surfaces pastorales -  hors annexes.pdf",
+          "chunk_id": "a4d26868017c0ccffe2efe50_Y57XdgEvmdlsSd41WLSiNaTw_9",
+          "document_id": "Y57XdgEvmdlsSd41WLSiNaTw",
+          "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:91d0219876562fe8441f1d9eb02cf4f1897ec50c81afcba6aa1ee4dcbc99abc3",
+          "filename": "Copie de secours de Projet de réouverture d'anciennes surfaces pastorales.docx",
           "score": 0.010416666666666666
         },
         {
@@ -3696,10 +3678,10 @@
         },
         {
           "seed_rank": 71,
-          "chunk_id": "a4d26868017c0ccffe2efe50_Y57XdgEvmdlsSd41WLSiNaTw_9",
-          "document_id": "Y57XdgEvmdlsSd41WLSiNaTw",
-          "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:91d0219876562fe8441f1d9eb02cf4f1897ec50c81afcba6aa1ee4dcbc99abc3",
-          "filename": "Copie de secours de Projet de réouverture d'anciennes surfaces pastorales.docx",
+          "chunk_id": "a4d26868017c0ccffe2efe50_augYzpS8_kdkA9jtoOIWjAXT_9",
+          "document_id": "augYzpS8_kdkA9jtoOIWjAXT",
+          "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:f09fe282fc2b5e28a479627b855a9593936d51e87fbc0c95cb4816343bcf32c9",
+          "filename": "Anciennes surfaces pastorales pour affichage.docx",
           "score": 0.010309278350515464
         },
         {
@@ -3712,10 +3694,10 @@
         },
         {
           "seed_rank": 73,
-          "chunk_id": "a4d26868017c0ccffe2efe50_augYzpS8_kdkA9jtoOIWjAXT_9",
-          "document_id": "augYzpS8_kdkA9jtoOIWjAXT",
-          "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:f09fe282fc2b5e28a479627b855a9593936d51e87fbc0c95cb4816343bcf32c9",
-          "filename": "Anciennes surfaces pastorales pour affichage.docx",
+          "chunk_id": "a4d26868017c0ccffe2efe50_kI9AL0bg5GiRIAaQtuFmgmLM_9",
+          "document_id": "kI9AL0bg5GiRIAaQtuFmgmLM",
+          "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:6097eb439057bcd154aa2e54402c1dacd6018e7d74319bd38e1545e500939f6a",
+          "filename": "Anciennes surfaces pastorales.docx",
           "score": 0.01020408163265306
         },
         {
@@ -3728,10 +3710,10 @@
         },
         {
           "seed_rank": 75,
-          "chunk_id": "a4d26868017c0ccffe2efe50_kI9AL0bg5GiRIAaQtuFmgmLM_9",
-          "document_id": "kI9AL0bg5GiRIAaQtuFmgmLM",
-          "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:6097eb439057bcd154aa2e54402c1dacd6018e7d74319bd38e1545e500939f6a",
-          "filename": "Anciennes surfaces pastorales.docx",
+          "chunk_id": "a4d26868017c0ccffe2efe50_kwioMeekg1QaFfRtU27JF_Bj_26",
+          "document_id": "kwioMeekg1QaFfRtU27JF_Bj",
+          "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:ea4d7c7a265ab8857d40b2a3372fa2e6ea7e44ad9f3ff4a0a12ac919e8f4855f",
+          "filename": "Dossier anciennes surfaces pastorales.pdf",
           "score": 0.010101010101010102
         },
         {
@@ -3744,34 +3726,34 @@
         },
         {
           "seed_rank": 77,
-          "chunk_id": "a4d26868017c0ccffe2efe50_kwioMeekg1QaFfRtU27JF_Bj_26",
-          "document_id": "kwioMeekg1QaFfRtU27JF_Bj",
-          "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:ea4d7c7a265ab8857d40b2a3372fa2e6ea7e44ad9f3ff4a0a12ac919e8f4855f",
-          "filename": "Dossier anciennes surfaces pastorales.pdf",
-          "score": 0.01
-        },
-        {
-          "seed_rank": 78,
           "chunk_id": "a4d26868017c0ccffe2efe50_mLoZjmT2LLee64B2Caq24OWs_22",
           "document_id": "mLoZjmT2LLee64B2Caq24OWs",
           "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:7a8044dfbdb85e3f16cb01118041235653554f6d2b2ed493e3818242205ffda0",
           "filename": "Anciennes surfaces pastorales pour affichage.pdf",
-          "score": 0.009900990099009901
+          "score": 0.01
         },
         {
-          "seed_rank": 79,
+          "seed_rank": 78,
           "chunk_id": "a4d26868017c0ccffe2efe50_okFy_Bb5NYUH2GgGtxqBN0_1_9",
           "document_id": "okFy_Bb5NYUH2GgGtxqBN0_1",
           "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:5c714a8d60148d6e62f8031c1a656ae56b720a54fbd8e3c28a47f57106f5ac59",
           "filename": "Anciennes surfaces pastorales pour affichage 12001900.docx",
-          "score": 0.00980392156862745
+          "score": 0.009900990099009901
         },
         {
-          "seed_rank": 80,
+          "seed_rank": 79,
           "chunk_id": "a4d26868017c0ccffe2efe50_z5MhoXn-NIzLStNF0CS7-2to_9",
           "document_id": "z5MhoXn-NIzLStNF0CS7-2to",
           "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:69da312f0bf23d5c8481943191b3fa992a218a32fc83e23ee9d485d044417bda",
           "filename": "Projet de réouverture d'anciennes surfaces pastorales.docx",
+          "score": 0.00980392156862745
+        },
+        {
+          "seed_rank": 80,
+          "chunk_id": "a4d26868017c0ccffe2efe50_-U8A65kxQK4Q34GkQMpWB9Zo_25",
+          "document_id": "-U8A65kxQK4Q34GkQMpWB9Zo",
+          "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:cdc33e8f457f868435d6c791da441a3fb737ee455ee2856fe6c4948641887492",
+          "filename": "Anciennes surfaces pastorales pour affichage 2A0.pdf",
           "score": 0.009708737864077669
         },
         {
@@ -3784,10 +3766,10 @@
         },
         {
           "seed_rank": 82,
-          "chunk_id": "a4d26868017c0ccffe2efe50_-U8A65kxQK4Q34GkQMpWB9Zo_25",
-          "document_id": "-U8A65kxQK4Q34GkQMpWB9Zo",
-          "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:cdc33e8f457f868435d6c791da441a3fb737ee455ee2856fe6c4948641887492",
-          "filename": "Anciennes surfaces pastorales pour affichage 2A0.pdf",
+          "chunk_id": "a4d26868017c0ccffe2efe50_Cf8rAMVFWcLnt64LF9pf-0BA_25",
+          "document_id": "Cf8rAMVFWcLnt64LF9pf-0BA",
+          "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:a86f6614ab714ebd05946010f17a0d257ffb1fbdbd775125c1bcc40ac57a44cf",
+          "filename": "Anciennes surfaces pastorales pour affichage 1200900.pdf",
           "score": 0.009615384615384616
         },
         {
@@ -3800,18 +3782,18 @@
         },
         {
           "seed_rank": 84,
-          "chunk_id": "a4d26868017c0ccffe2efe50_Cf8rAMVFWcLnt64LF9pf-0BA_25",
-          "document_id": "Cf8rAMVFWcLnt64LF9pf-0BA",
-          "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:a86f6614ab714ebd05946010f17a0d257ffb1fbdbd775125c1bcc40ac57a44cf",
-          "filename": "Anciennes surfaces pastorales pour affichage 1200900.pdf",
-          "score": 0.009523809523809525
-        },
-        {
-          "seed_rank": 85,
           "chunk_id": "a4d26868017c0ccffe2efe50_FFTiaF5b9Zqoy6nmEkHbi4FG_25",
           "document_id": "FFTiaF5b9Zqoy6nmEkHbi4FG",
           "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:a42d1754e87cfba342e9ebded7fc88ded40863f9ccafec5761cd1c4aaa5fd1d1",
           "filename": "Anciennes surfaces pastorales pour affichage 12001900.pdf",
+          "score": 0.009523809523809525
+        },
+        {
+          "seed_rank": 85,
+          "chunk_id": "a4d26868017c0ccffe2efe50_Fa7UN1kqOi1LDLTWz-plL4CB_21",
+          "document_id": "Fa7UN1kqOi1LDLTWz-plL4CB",
+          "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:f0090b9cf14977aac68fb2450478e921a91d9933c64db96d8289484f21e7c692",
+          "filename": "Projet de réouverture d'anciennes surfaces pastorales.pdf",
           "score": 0.009433962264150943
         },
         {
@@ -3824,26 +3806,26 @@
         },
         {
           "seed_rank": 87,
-          "chunk_id": "a4d26868017c0ccffe2efe50_Fa7UN1kqOi1LDLTWz-plL4CB_21",
-          "document_id": "Fa7UN1kqOi1LDLTWz-plL4CB",
-          "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:f0090b9cf14977aac68fb2450478e921a91d9933c64db96d8289484f21e7c692",
-          "filename": "Projet de réouverture d'anciennes surfaces pastorales.pdf",
-          "score": 0.009345794392523364
-        },
-        {
-          "seed_rank": 88,
           "chunk_id": "a4d26868017c0ccffe2efe50_GDh494ZmzcYzhxpanToefEUS_249",
           "document_id": "GDh494ZmzcYzhxpanToefEUS",
           "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:7da1ab995ab6749e25c2b04424c8e908c1a684c88cdcbd5accc7a3ae7b9b12a7",
           "filename": "EARL FERME DE POMMERIEUX - Procès verbal de constatation d'infraction au code forestier.PDF",
-          "score": 0.009259259259259259
+          "score": 0.009345794392523364
         },
         {
-          "seed_rank": 89,
+          "seed_rank": 88,
           "chunk_id": "a4d26868017c0ccffe2efe50_Ky_A5bauRHmkKkbdyrAV-rgr_10",
           "document_id": "Ky_A5bauRHmkKkbdyrAV-rgr",
           "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:1529acbdf0d41f68886328461091d75cac2871633e3e7bfbef0307a20bec391b",
           "filename": "Copie de secours de Anciennes surfaces pastorales.docx",
+          "score": 0.009259259259259259
+        },
+        {
+          "seed_rank": 89,
+          "chunk_id": "a4d26868017c0ccffe2efe50_LOwWvqlBN8mcmDSJCFvjj3EY_61",
+          "document_id": "LOwWvqlBN8mcmDSJCFvjj3EY",
+          "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:2d2d4665af57f6a7740b033b307e1e48a97fc2c14335fa32bbc25bdfb446d107",
+          "filename": "Dossier anciennes surfaces pastorales - complet.pdf",
           "score": 0.009174311926605505
         },
         {
@@ -3864,10 +3846,10 @@
         },
         {
           "seed_rank": 92,
-          "chunk_id": "a4d26868017c0ccffe2efe50_LOwWvqlBN8mcmDSJCFvjj3EY_61",
-          "document_id": "LOwWvqlBN8mcmDSJCFvjj3EY",
-          "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:2d2d4665af57f6a7740b033b307e1e48a97fc2c14335fa32bbc25bdfb446d107",
-          "filename": "Dossier anciennes surfaces pastorales - complet.pdf",
+          "chunk_id": "a4d26868017c0ccffe2efe50_PwO2g4ULtkttPYSs0blww_wB_25",
+          "document_id": "PwO2g4ULtkttPYSs0blww_wB",
+          "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:cf43242ca877f26bed55e1d5a6c05e042890dde1eeb6fbdffe52fa1f5390dd81",
+          "filename": "VISTAPRINT Anciennes surfaces pastorales pour affichage 1200900.pdf",
           "score": 0.00909090909090909
         },
         {
@@ -4558,15 +4540,6 @@
           "status_code": "complete"
         },
         {
-          "document_id": "siIixi9WFH5NdOzVjRXu9Bd6",
-          "source_entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:0b83badc-cc3b-4997-8bc5-dc4d661edca7",
-          "filename": "Projet-agrivoltaique-Memoires-en-defense-PC-et-autorisation-de-defrichement--0b83badccc3b.eml",
-          "source_entity_type": "email_message",
-          "source_entity_system": "openarchiver",
-          "complete": true,
-          "status_code": "complete"
-        },
-        {
           "document_id": "hFDBugWmrh2QReZVJ_7AXOP4",
           "source_entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:0842529f-2cb1-4500-929b-ec92aee83725",
           "filename": "Memoires-en-defense-Prefecture--0842529f2cb1.eml",
@@ -5080,15 +5053,6 @@
           "status_code": "complete"
         },
         {
-          "document_id": "e6Hw71qrPa7iVnWwjrJWFaYN",
-          "source_entity_id": "urn:openrag:openarchiver:attachment:0ada2c75-897a-4e51-b2e6-68ccdba3554a",
-          "filename": "Projet-agrivoltaique-Memoires-en-defense-PC-et-autorisation-de-defrichement--0b83badccc3b--MD-Nouan-le-Fuzelier_PC-29102024_VF--0ada2c75897a.pdf",
-          "source_entity_type": "email_attachment",
-          "source_entity_system": "openarchiver",
-          "complete": true,
-          "status_code": "complete"
-        },
-        {
           "document_id": "_jzOi9e5wMThiX3BczIHVVYv",
           "source_entity_id": "urn:openrag:openarchiver:attachment:55c3a5ca-8bfa-4378-a74b-79d0a3e6d534",
           "filename": "RE-INTERNET-Projet-photovoaltaique-Nouan-le-Fuzelier-Reconnaissance-des-bois-a-defricher--ed18c5d1b0ba--FR_S_NOFU_2312_Reponse_Autorisation_defrichement_V2--55c3a5ca8bfa.pdf",
@@ -5185,9 +5149,9 @@
         "scope_policy_id": "documentary-prov-o",
         "scope_policy_version": 1,
         "seed_discovery_complete": true,
-        "seed_documents": 61,
-        "seed_entities": 93,
-        "valid_provenance_seed_documents": 61,
+        "seed_documents": 60,
+        "seed_entities": 92,
+        "valid_provenance_seed_documents": 60,
         "invalid_provenance_seed_documents": 0,
         "seed_provenance_complete": true,
         "requested_retrieval_profile": {
@@ -5241,7 +5205,7 @@
         },
         "retrieval_execution_complete": true,
         "retrieval_failure_codes": [],
-        "graph_entities_visited": 138,
+        "graph_entities_visited": 136,
         "graph_frontier_empty": true,
         "graph_limit_reached": false,
         "graph_stop_reason": "frontier_empty",
@@ -5258,11 +5222,11 @@
           "documents_per_depth": [
             {
               "depth": 0,
-              "count": 61
+              "count": 60
             },
             {
               "depth": 1,
-              "count": 60
+              "count": 59
             },
             {
               "depth": 2,
@@ -5276,11 +5240,11 @@
           "entities_per_depth": [
             {
               "depth": 0,
-              "count": 61
+              "count": 60
             },
             {
               "depth": 1,
-              "count": 60
+              "count": 59
             },
             {
               "depth": 2,
@@ -5318,7 +5282,7 @@
               "role": "attachment_of",
               "source_type": "email_attachment",
               "target_type": "email_message",
-              "count": 41
+              "count": 40
             },
             {
               "depth": 1,
@@ -5506,11 +5470,11 @@
             }
           ]
         },
-        "documents_discovered": 138,
-        "documents_complete": 138,
+        "documents_discovered": 136,
+        "documents_complete": 136,
         "documents_incomplete": 0,
-        "covered_chunks": 6239,
-        "total_chunks": 6239,
+        "covered_chunks": 6145,
+        "total_chunks": 6145,
         "document_read_coverage_ratio": 1.0,
         "coverage_ratio": 1.0,
         "complete": true,
@@ -5519,42 +5483,42 @@
         "failure_codes": [],
         "stop_reason": "complete",
         "model_evidence_chunks": 100,
-        "artifact_chunks": 6239,
+        "artifact_chunks": 6145,
         "performance": {
           "discovery_seconds": 0.0,
-          "prov_o_seconds": 3.9665512630017474,
-          "total_seconds": 3.9665512630017474
+          "prov_o_seconds": 4.293325982056558,
+          "total_seconds": 4.293325982056558
         },
         "certification": {
           "contract_id": "openrag.scope-coverage",
           "contract_version": 1,
           "facts": {
             "seed_discovery_complete": true,
-            "seed_documents": 61,
-            "valid_provenance_seed_documents": 61,
+            "seed_documents": 60,
+            "valid_provenance_seed_documents": 60,
             "invalid_provenance_seed_documents": 0,
             "graph_frontier_empty": true,
             "graph_limit_reached": false,
             "graph_stop_reason": "frontier_empty",
             "graph_failed": false,
             "retrieval_execution_complete": true,
-            "documents_discovered": 138,
-            "documents_complete": 138,
-            "covered_chunks": 6239,
-            "total_chunks": 6239,
+            "documents_discovered": 136,
+            "documents_complete": 136,
+            "covered_chunks": 6145,
+            "total_chunks": 6145,
             "document_failure_codes": [],
             "seed_failure_code": null,
             "unclassified_relations": 0,
             "retrieval_failure_codes": []
           },
-          "facts_sha256": "0f423f7fd0334cf00cc9f1530d1fe68be08c46dafd93d07584d79cba31c47be8"
+          "facts_sha256": "2a2fa5d8fcfaa45d65a606c7fc171af2e229b8ca943422ce7f43a11c668e8c65"
         }
       },
       "latencies": {
         "discovery_seconds": 0.0,
-        "scope_closure_seconds": 3.9665512630017474,
-        "total_latency_seconds": 3.9665512630017474,
-        "http_wall_seconds": 4.9958175840147305
+        "scope_closure_seconds": 4.293325982056558,
+        "total_latency_seconds": 4.293325982056558,
+        "http_wall_seconds": 5.225070165997749
       },
       "error": null,
       "contract": {
@@ -5615,8 +5579,8 @@
     },
     {
       "run_id": "q1-r3",
-      "started_at": "2026-09-02T05:56:20.893308+00:00",
-      "finished_at": "2026-09-02T05:56:25.654026+00:00",
+      "started_at": "2026-09-02T21:03:24.257755+00:00",
+      "finished_at": "2026-09-02T21:03:28.840923+00:00",
       "configuration": {
         "query_count": 1,
         "repetition": 3,
@@ -5861,7 +5825,7 @@
           "document_id": "T09N88kAJdTi2SS3hB4go2iU",
           "source_entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:61f558bd-2682-411d-8fb5-2eff9934034b",
           "filename": "RE-NOFU-dossier-complet-anciennes-surfaces-pastorales--61f558bd2682.eml",
-          "score": 0.0210239651416122
+          "score": 0.020887166236003445
         },
         {
           "seed_rank": 3,
@@ -6129,10 +6093,10 @@
         },
         {
           "seed_rank": 36,
-          "chunk_id": "d6268dcd05d175878ece5b2d_CSpYAKQcy8ksZo_u_jXcnXJj_2",
-          "document_id": "CSpYAKQcy8ksZo_u_jXcnXJj",
-          "source_entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:cae54aa7-a3f3-42d6-a5a8-50a05c216a58",
-          "filename": "Re-Demande-de-rendez-vous-relatif-au-projet-de-reouverture-des-anciens-espaces-a-vocation-pastorale-sur-la-commune-de-Nouan-le-Fuzelier--cae54aa7a3f3.eml",
+          "chunk_id": "d6268dcd05d175878ece5b2d_LFz5HOtQVs-Mn2FdH2j442DY_22",
+          "document_id": "LFz5HOtQVs-Mn2FdH2j442DY",
+          "source_entity_id": "urn:openrag:openarchiver:attachment:4eb71532-265c-4eff-8579-1a39b8668a6e",
+          "filename": "EPA-Lilian--7c56c1522e44--EPA-pour-Lilian--4eb71532265c.pdf",
           "score": 0.01282051282051282
         },
         {
@@ -6145,10 +6109,10 @@
         },
         {
           "seed_rank": 38,
-          "chunk_id": "d6268dcd05d175878ece5b2d__ZdYUKNdoAnzAnN3SrUxeGpy_2",
-          "document_id": "_ZdYUKNdoAnzAnN3SrUxeGpy",
-          "source_entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:2d54531d-b00a-4773-b63c-2c1cf71d82ad",
-          "filename": "Fwd-Demande-de-rendez-vous-relatif-au-projet-de-reouverture-des-anciens-espaces-a-vocation-pastorale-sur-la-commune-de-Nouan-le-Fuzelier--2d54531db00a.eml",
+          "chunk_id": "d6268dcd05d175878ece5b2d_NR_o6r5k0OFNxaNG1dOA05TB_43",
+          "document_id": "NR_o6r5k0OFNxaNG1dOA05TB",
+          "source_entity_id": "urn:openrag:openarchiver:attachment:02de004c-ba70-48cd-9923-5f56c7acba1b",
+          "filename": "EPA--b0d2f52b796c--EPA-Nouan-le-Fuzelier-avis-FDP-190123--02de004cba70.pdf",
           "score": 0.012658227848101266
         },
         {
@@ -6161,10 +6125,10 @@
         },
         {
           "seed_rank": 40,
-          "chunk_id": "d6268dcd05d175878ece5b2d_GnibXcfu6dF9uq-lfKN34M-E_0",
-          "document_id": "GnibXcfu6dF9uq-lfKN34M-E",
-          "source_entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:ebef1cfb-f972-43e3-9d4e-7f232300692b",
-          "filename": "Demande-de-rendez-vous-relatif-au-projet-de-reouverture-des-anciens-espaces-a-vocation-pastorale-sur-la-commune-de-Nouan-le-Fuzelier--ebef1cfbf972.eml",
+          "chunk_id": "d6268dcd05d175878ece5b2d_CSpYAKQcy8ksZo_u_jXcnXJj_2",
+          "document_id": "CSpYAKQcy8ksZo_u_jXcnXJj",
+          "source_entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:cae54aa7-a3f3-42d6-a5a8-50a05c216a58",
+          "filename": "Re-Demande-de-rendez-vous-relatif-au-projet-de-reouverture-des-anciens-espaces-a-vocation-pastorale-sur-la-commune-de-Nouan-le-Fuzelier--cae54aa7a3f3.eml",
           "score": 0.0125
         },
         {
@@ -6177,10 +6141,10 @@
         },
         {
           "seed_rank": 42,
-          "chunk_id": "d6268dcd05d175878ece5b2d_LFz5HOtQVs-Mn2FdH2j442DY_22",
-          "document_id": "LFz5HOtQVs-Mn2FdH2j442DY",
-          "source_entity_id": "urn:openrag:openarchiver:attachment:4eb71532-265c-4eff-8579-1a39b8668a6e",
-          "filename": "EPA-Lilian--7c56c1522e44--EPA-pour-Lilian--4eb71532265c.pdf",
+          "chunk_id": "d6268dcd05d175878ece5b2d__ZdYUKNdoAnzAnN3SrUxeGpy_2",
+          "document_id": "_ZdYUKNdoAnzAnN3SrUxeGpy",
+          "source_entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:2d54531d-b00a-4773-b63c-2c1cf71d82ad",
+          "filename": "Fwd-Demande-de-rendez-vous-relatif-au-projet-de-reouverture-des-anciens-espaces-a-vocation-pastorale-sur-la-commune-de-Nouan-le-Fuzelier--2d54531db00a.eml",
           "score": 0.012345679012345678
         },
         {
@@ -6201,18 +6165,18 @@
         },
         {
           "seed_rank": 45,
-          "chunk_id": "d6268dcd05d175878ece5b2d_NR_o6r5k0OFNxaNG1dOA05TB_43",
-          "document_id": "NR_o6r5k0OFNxaNG1dOA05TB",
-          "source_entity_id": "urn:openrag:openarchiver:attachment:02de004c-ba70-48cd-9923-5f56c7acba1b",
-          "filename": "EPA--b0d2f52b796c--EPA-Nouan-le-Fuzelier-avis-FDP-190123--02de004cba70.pdf",
+          "chunk_id": "d6268dcd05d175878ece5b2d_GnibXcfu6dF9uq-lfKN34M-E_0",
+          "document_id": "GnibXcfu6dF9uq-lfKN34M-E",
+          "source_entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:ebef1cfb-f972-43e3-9d4e-7f232300692b",
+          "filename": "Demande-de-rendez-vous-relatif-au-projet-de-reouverture-des-anciens-espaces-a-vocation-pastorale-sur-la-commune-de-Nouan-le-Fuzelier--ebef1cfbf972.eml",
           "score": 0.012195121951219513
         },
         {
           "seed_rank": 46,
-          "chunk_id": "d6268dcd05d175878ece5b2d_BWXWHgRh7WXlX-aC2RD-x4_H_2",
-          "document_id": "BWXWHgRh7WXlX-aC2RD-x4_H",
-          "source_entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:b91d529c-6acc-4a4d-ae56-9f0b892a04b5",
-          "filename": "Proposition-de-mail-pour-Tangy-de-Gavelle-confidentiel-preparation-defense--b91d529c6acc.eml",
+          "chunk_id": "a4d26868017c0ccffe2efe50_4RnUdIiWpU_UmIgSmkllDMc2_41",
+          "document_id": "4RnUdIiWpU_UmIgSmkllDMc2",
+          "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:ef6220c41079ab5f450517ff175d61118d2b8a48b3ae7f847adcf81f978f6068",
+          "filename": "EPA_Nouan-Le-Fuzelier-Corps-de-texte.pdf",
           "score": 0.012048192771084338
         },
         {
@@ -6225,10 +6189,10 @@
         },
         {
           "seed_rank": 48,
-          "chunk_id": "a4d26868017c0ccffe2efe50_4RnUdIiWpU_UmIgSmkllDMc2_41",
-          "document_id": "4RnUdIiWpU_UmIgSmkllDMc2",
-          "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:ef6220c41079ab5f450517ff175d61118d2b8a48b3ae7f847adcf81f978f6068",
-          "filename": "EPA_Nouan-Le-Fuzelier-Corps-de-texte.pdf",
+          "chunk_id": "d6268dcd05d175878ece5b2d_BWXWHgRh7WXlX-aC2RD-x4_H_2",
+          "document_id": "BWXWHgRh7WXlX-aC2RD-x4_H",
+          "source_entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:b91d529c-6acc-4a4d-ae56-9f0b892a04b5",
+          "filename": "Proposition-de-mail-pour-Tangy-de-Gavelle-confidentiel-preparation-defense--b91d529c6acc.eml",
           "score": 0.011904761904761904
         },
         {
@@ -6241,19 +6205,19 @@
         },
         {
           "seed_rank": 50,
+          "chunk_id": "a4d26868017c0ccffe2efe50_opkHxZMFc87DCUfP1v3FpTcH_252",
+          "document_id": "opkHxZMFc87DCUfP1v3FpTcH",
+          "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:ee7c613bb74047f0b2de72ee23fd6f45a2dd743f172b50d1ff8b95515a9aa85b",
+          "filename": "Eloi Primaux - Procès verbal de constatation d'infraction au code forestier.PDF",
+          "score": 0.011764705882352941
+        },
+        {
+          "seed_rank": 51,
           "chunk_id": "d6268dcd05d175878ece5b2d_n0zYgmmFrKKFQ_UTuNnGXkys_13",
           "document_id": "n0zYgmmFrKKFQ_UTuNnGXkys",
           "source_entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:39dec967-c4fe-4def-b4f4-72078073b93a",
           "filename": "Fwd-Aff.-EARL-FERME-DE-POMMERIEUX-PRIMAUX-PREFET-DE-LOIR-ET-CHER-MP--39dec967c4fe.eml",
           "score": 0.011764705882352941
-        },
-        {
-          "seed_rank": 51,
-          "chunk_id": "a4d26868017c0ccffe2efe50_opkHxZMFc87DCUfP1v3FpTcH_252",
-          "document_id": "opkHxZMFc87DCUfP1v3FpTcH",
-          "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:ee7c613bb74047f0b2de72ee23fd6f45a2dd743f172b50d1ff8b95515a9aa85b",
-          "filename": "Eloi Primaux - Procès verbal de constatation d'infraction au code forestier.PDF",
-          "score": 0.011627906976744186
         },
         {
           "seed_rank": 52,
@@ -6281,10 +6245,10 @@
         },
         {
           "seed_rank": 55,
-          "chunk_id": "d6268dcd05d175878ece5b2d_e6Hw71qrPa7iVnWwjrJWFaYN_18",
-          "document_id": "e6Hw71qrPa7iVnWwjrJWFaYN",
-          "source_entity_id": "urn:openrag:openarchiver:attachment:0ada2c75-897a-4e51-b2e6-68ccdba3554a",
-          "filename": "Projet-agrivoltaique-Memoires-en-defense-PC-et-autorisation-de-defrichement--0b83badccc3b--MD-Nouan-le-Fuzelier_PC-29102024_VF--0ada2c75897a.pdf",
+          "chunk_id": "a4d26868017c0ccffe2efe50_-U8A65kxQK4Q34GkQMpWB9Zo_24",
+          "document_id": "-U8A65kxQK4Q34GkQMpWB9Zo",
+          "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:cdc33e8f457f868435d6c791da441a3fb737ee455ee2856fe6c4948641887492",
+          "filename": "Anciennes surfaces pastorales pour affichage 2A0.pdf",
           "score": 0.011363636363636364
         },
         {
@@ -6297,10 +6261,10 @@
         },
         {
           "seed_rank": 57,
-          "chunk_id": "a4d26868017c0ccffe2efe50_-U8A65kxQK4Q34GkQMpWB9Zo_24",
-          "document_id": "-U8A65kxQK4Q34GkQMpWB9Zo",
-          "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:cdc33e8f457f868435d6c791da441a3fb737ee455ee2856fe6c4948641887492",
-          "filename": "Anciennes surfaces pastorales pour affichage 2A0.pdf",
+          "chunk_id": "a4d26868017c0ccffe2efe50_Cf8rAMVFWcLnt64LF9pf-0BA_24",
+          "document_id": "Cf8rAMVFWcLnt64LF9pf-0BA",
+          "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:a86f6614ab714ebd05946010f17a0d257ffb1fbdbd775125c1bcc40ac57a44cf",
+          "filename": "Anciennes surfaces pastorales pour affichage 1200900.pdf",
           "score": 0.011235955056179775
         },
         {
@@ -6313,10 +6277,10 @@
         },
         {
           "seed_rank": 59,
-          "chunk_id": "a4d26868017c0ccffe2efe50_Cf8rAMVFWcLnt64LF9pf-0BA_24",
-          "document_id": "Cf8rAMVFWcLnt64LF9pf-0BA",
-          "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:a86f6614ab714ebd05946010f17a0d257ffb1fbdbd775125c1bcc40ac57a44cf",
-          "filename": "Anciennes surfaces pastorales pour affichage 1200900.pdf",
+          "chunk_id": "a4d26868017c0ccffe2efe50_FFTiaF5b9Zqoy6nmEkHbi4FG_24",
+          "document_id": "FFTiaF5b9Zqoy6nmEkHbi4FG",
+          "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:a42d1754e87cfba342e9ebded7fc88ded40863f9ccafec5761cd1c4aaa5fd1d1",
+          "filename": "Anciennes surfaces pastorales pour affichage 12001900.pdf",
           "score": 0.011111111111111112
         },
         {
@@ -6329,26 +6293,26 @@
         },
         {
           "seed_rank": 61,
-          "chunk_id": "a4d26868017c0ccffe2efe50_FFTiaF5b9Zqoy6nmEkHbi4FG_24",
-          "document_id": "FFTiaF5b9Zqoy6nmEkHbi4FG",
-          "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:a42d1754e87cfba342e9ebded7fc88ded40863f9ccafec5761cd1c4aaa5fd1d1",
-          "filename": "Anciennes surfaces pastorales pour affichage 12001900.pdf",
-          "score": 0.01098901098901099
-        },
-        {
-          "seed_rank": 62,
           "chunk_id": "a4d26868017c0ccffe2efe50_Fa7UN1kqOi1LDLTWz-plL4CB_20",
           "document_id": "Fa7UN1kqOi1LDLTWz-plL4CB",
           "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:f0090b9cf14977aac68fb2450478e921a91d9933c64db96d8289484f21e7c692",
           "filename": "Projet de réouverture d'anciennes surfaces pastorales.pdf",
-          "score": 0.010869565217391304
+          "score": 0.01098901098901099
         },
         {
-          "seed_rank": 63,
+          "seed_rank": 62,
           "chunk_id": "a4d26868017c0ccffe2efe50_Ky_A5bauRHmkKkbdyrAV-rgr_9",
           "document_id": "Ky_A5bauRHmkKkbdyrAV-rgr",
           "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:1529acbdf0d41f68886328461091d75cac2871633e3e7bfbef0307a20bec391b",
           "filename": "Copie de secours de Anciennes surfaces pastorales.docx",
+          "score": 0.010869565217391304
+        },
+        {
+          "seed_rank": 63,
+          "chunk_id": "a4d26868017c0ccffe2efe50_LOwWvqlBN8mcmDSJCFvjj3EY_60",
+          "document_id": "LOwWvqlBN8mcmDSJCFvjj3EY",
+          "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:2d2d4665af57f6a7740b033b307e1e48a97fc2c14335fa32bbc25bdfb446d107",
+          "filename": "Dossier anciennes surfaces pastorales - complet.pdf",
           "score": 0.010752688172043012
         },
         {
@@ -6361,10 +6325,10 @@
         },
         {
           "seed_rank": 65,
-          "chunk_id": "a4d26868017c0ccffe2efe50_LOwWvqlBN8mcmDSJCFvjj3EY_60",
-          "document_id": "LOwWvqlBN8mcmDSJCFvjj3EY",
-          "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:2d2d4665af57f6a7740b033b307e1e48a97fc2c14335fa32bbc25bdfb446d107",
-          "filename": "Dossier anciennes surfaces pastorales - complet.pdf",
+          "chunk_id": "a4d26868017c0ccffe2efe50_PwO2g4ULtkttPYSs0blww_wB_24",
+          "document_id": "PwO2g4ULtkttPYSs0blww_wB",
+          "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:cf43242ca877f26bed55e1d5a6c05e042890dde1eeb6fbdffe52fa1f5390dd81",
+          "filename": "VISTAPRINT Anciennes surfaces pastorales pour affichage 1200900.pdf",
           "score": 0.010638297872340425
         },
         {
@@ -6377,10 +6341,10 @@
         },
         {
           "seed_rank": 67,
-          "chunk_id": "a4d26868017c0ccffe2efe50_PwO2g4ULtkttPYSs0blww_wB_24",
-          "document_id": "PwO2g4ULtkttPYSs0blww_wB",
-          "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:cf43242ca877f26bed55e1d5a6c05e042890dde1eeb6fbdffe52fa1f5390dd81",
-          "filename": "VISTAPRINT Anciennes surfaces pastorales pour affichage 1200900.pdf",
+          "chunk_id": "a4d26868017c0ccffe2efe50_WdCVHaLlSmjYw1gCwRjYRreC_20",
+          "document_id": "WdCVHaLlSmjYw1gCwRjYRreC",
+          "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:14456dc44681d75107d41a067fda88871b8616e4cf8589a47b473ccafa81f523",
+          "filename": "Anciennes surfaces pastorales -  hors annexes.pdf",
           "score": 0.010526315789473684
         },
         {
@@ -6393,10 +6357,10 @@
         },
         {
           "seed_rank": 69,
-          "chunk_id": "a4d26868017c0ccffe2efe50_WdCVHaLlSmjYw1gCwRjYRreC_20",
-          "document_id": "WdCVHaLlSmjYw1gCwRjYRreC",
-          "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:14456dc44681d75107d41a067fda88871b8616e4cf8589a47b473ccafa81f523",
-          "filename": "Anciennes surfaces pastorales -  hors annexes.pdf",
+          "chunk_id": "a4d26868017c0ccffe2efe50_Y57XdgEvmdlsSd41WLSiNaTw_9",
+          "document_id": "Y57XdgEvmdlsSd41WLSiNaTw",
+          "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:91d0219876562fe8441f1d9eb02cf4f1897ec50c81afcba6aa1ee4dcbc99abc3",
+          "filename": "Copie de secours de Projet de réouverture d'anciennes surfaces pastorales.docx",
           "score": 0.010416666666666666
         },
         {
@@ -6409,10 +6373,10 @@
         },
         {
           "seed_rank": 71,
-          "chunk_id": "a4d26868017c0ccffe2efe50_Y57XdgEvmdlsSd41WLSiNaTw_9",
-          "document_id": "Y57XdgEvmdlsSd41WLSiNaTw",
-          "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:91d0219876562fe8441f1d9eb02cf4f1897ec50c81afcba6aa1ee4dcbc99abc3",
-          "filename": "Copie de secours de Projet de réouverture d'anciennes surfaces pastorales.docx",
+          "chunk_id": "a4d26868017c0ccffe2efe50_augYzpS8_kdkA9jtoOIWjAXT_9",
+          "document_id": "augYzpS8_kdkA9jtoOIWjAXT",
+          "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:f09fe282fc2b5e28a479627b855a9593936d51e87fbc0c95cb4816343bcf32c9",
+          "filename": "Anciennes surfaces pastorales pour affichage.docx",
           "score": 0.010309278350515464
         },
         {
@@ -6425,10 +6389,10 @@
         },
         {
           "seed_rank": 73,
-          "chunk_id": "a4d26868017c0ccffe2efe50_augYzpS8_kdkA9jtoOIWjAXT_9",
-          "document_id": "augYzpS8_kdkA9jtoOIWjAXT",
-          "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:f09fe282fc2b5e28a479627b855a9593936d51e87fbc0c95cb4816343bcf32c9",
-          "filename": "Anciennes surfaces pastorales pour affichage.docx",
+          "chunk_id": "a4d26868017c0ccffe2efe50_kI9AL0bg5GiRIAaQtuFmgmLM_9",
+          "document_id": "kI9AL0bg5GiRIAaQtuFmgmLM",
+          "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:6097eb439057bcd154aa2e54402c1dacd6018e7d74319bd38e1545e500939f6a",
+          "filename": "Anciennes surfaces pastorales.docx",
           "score": 0.01020408163265306
         },
         {
@@ -6441,10 +6405,10 @@
         },
         {
           "seed_rank": 75,
-          "chunk_id": "a4d26868017c0ccffe2efe50_kI9AL0bg5GiRIAaQtuFmgmLM_9",
-          "document_id": "kI9AL0bg5GiRIAaQtuFmgmLM",
-          "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:6097eb439057bcd154aa2e54402c1dacd6018e7d74319bd38e1545e500939f6a",
-          "filename": "Anciennes surfaces pastorales.docx",
+          "chunk_id": "a4d26868017c0ccffe2efe50_kwioMeekg1QaFfRtU27JF_Bj_26",
+          "document_id": "kwioMeekg1QaFfRtU27JF_Bj",
+          "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:ea4d7c7a265ab8857d40b2a3372fa2e6ea7e44ad9f3ff4a0a12ac919e8f4855f",
+          "filename": "Dossier anciennes surfaces pastorales.pdf",
           "score": 0.010101010101010102
         },
         {
@@ -6457,34 +6421,34 @@
         },
         {
           "seed_rank": 77,
-          "chunk_id": "a4d26868017c0ccffe2efe50_kwioMeekg1QaFfRtU27JF_Bj_26",
-          "document_id": "kwioMeekg1QaFfRtU27JF_Bj",
-          "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:ea4d7c7a265ab8857d40b2a3372fa2e6ea7e44ad9f3ff4a0a12ac919e8f4855f",
-          "filename": "Dossier anciennes surfaces pastorales.pdf",
-          "score": 0.01
-        },
-        {
-          "seed_rank": 78,
           "chunk_id": "a4d26868017c0ccffe2efe50_mLoZjmT2LLee64B2Caq24OWs_22",
           "document_id": "mLoZjmT2LLee64B2Caq24OWs",
           "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:7a8044dfbdb85e3f16cb01118041235653554f6d2b2ed493e3818242205ffda0",
           "filename": "Anciennes surfaces pastorales pour affichage.pdf",
-          "score": 0.009900990099009901
+          "score": 0.01
         },
         {
-          "seed_rank": 79,
+          "seed_rank": 78,
           "chunk_id": "a4d26868017c0ccffe2efe50_okFy_Bb5NYUH2GgGtxqBN0_1_9",
           "document_id": "okFy_Bb5NYUH2GgGtxqBN0_1",
           "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:5c714a8d60148d6e62f8031c1a656ae56b720a54fbd8e3c28a47f57106f5ac59",
           "filename": "Anciennes surfaces pastorales pour affichage 12001900.docx",
-          "score": 0.00980392156862745
+          "score": 0.009900990099009901
         },
         {
-          "seed_rank": 80,
+          "seed_rank": 79,
           "chunk_id": "a4d26868017c0ccffe2efe50_z5MhoXn-NIzLStNF0CS7-2to_9",
           "document_id": "z5MhoXn-NIzLStNF0CS7-2to",
           "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:69da312f0bf23d5c8481943191b3fa992a218a32fc83e23ee9d485d044417bda",
           "filename": "Projet de réouverture d'anciennes surfaces pastorales.docx",
+          "score": 0.00980392156862745
+        },
+        {
+          "seed_rank": 80,
+          "chunk_id": "a4d26868017c0ccffe2efe50_-U8A65kxQK4Q34GkQMpWB9Zo_25",
+          "document_id": "-U8A65kxQK4Q34GkQMpWB9Zo",
+          "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:cdc33e8f457f868435d6c791da441a3fb737ee455ee2856fe6c4948641887492",
+          "filename": "Anciennes surfaces pastorales pour affichage 2A0.pdf",
           "score": 0.009708737864077669
         },
         {
@@ -6497,10 +6461,10 @@
         },
         {
           "seed_rank": 82,
-          "chunk_id": "a4d26868017c0ccffe2efe50_-U8A65kxQK4Q34GkQMpWB9Zo_25",
-          "document_id": "-U8A65kxQK4Q34GkQMpWB9Zo",
-          "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:cdc33e8f457f868435d6c791da441a3fb737ee455ee2856fe6c4948641887492",
-          "filename": "Anciennes surfaces pastorales pour affichage 2A0.pdf",
+          "chunk_id": "a4d26868017c0ccffe2efe50_Cf8rAMVFWcLnt64LF9pf-0BA_25",
+          "document_id": "Cf8rAMVFWcLnt64LF9pf-0BA",
+          "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:a86f6614ab714ebd05946010f17a0d257ffb1fbdbd775125c1bcc40ac57a44cf",
+          "filename": "Anciennes surfaces pastorales pour affichage 1200900.pdf",
           "score": 0.009615384615384616
         },
         {
@@ -6513,18 +6477,18 @@
         },
         {
           "seed_rank": 84,
-          "chunk_id": "a4d26868017c0ccffe2efe50_Cf8rAMVFWcLnt64LF9pf-0BA_25",
-          "document_id": "Cf8rAMVFWcLnt64LF9pf-0BA",
-          "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:a86f6614ab714ebd05946010f17a0d257ffb1fbdbd775125c1bcc40ac57a44cf",
-          "filename": "Anciennes surfaces pastorales pour affichage 1200900.pdf",
-          "score": 0.009523809523809525
-        },
-        {
-          "seed_rank": 85,
           "chunk_id": "a4d26868017c0ccffe2efe50_FFTiaF5b9Zqoy6nmEkHbi4FG_25",
           "document_id": "FFTiaF5b9Zqoy6nmEkHbi4FG",
           "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:a42d1754e87cfba342e9ebded7fc88ded40863f9ccafec5761cd1c4aaa5fd1d1",
           "filename": "Anciennes surfaces pastorales pour affichage 12001900.pdf",
+          "score": 0.009523809523809525
+        },
+        {
+          "seed_rank": 85,
+          "chunk_id": "a4d26868017c0ccffe2efe50_Fa7UN1kqOi1LDLTWz-plL4CB_21",
+          "document_id": "Fa7UN1kqOi1LDLTWz-plL4CB",
+          "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:f0090b9cf14977aac68fb2450478e921a91d9933c64db96d8289484f21e7c692",
+          "filename": "Projet de réouverture d'anciennes surfaces pastorales.pdf",
           "score": 0.009433962264150943
         },
         {
@@ -6537,26 +6501,26 @@
         },
         {
           "seed_rank": 87,
-          "chunk_id": "a4d26868017c0ccffe2efe50_Fa7UN1kqOi1LDLTWz-plL4CB_21",
-          "document_id": "Fa7UN1kqOi1LDLTWz-plL4CB",
-          "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:f0090b9cf14977aac68fb2450478e921a91d9933c64db96d8289484f21e7c692",
-          "filename": "Projet de réouverture d'anciennes surfaces pastorales.pdf",
-          "score": 0.009345794392523364
-        },
-        {
-          "seed_rank": 88,
           "chunk_id": "a4d26868017c0ccffe2efe50_GDh494ZmzcYzhxpanToefEUS_249",
           "document_id": "GDh494ZmzcYzhxpanToefEUS",
           "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:7da1ab995ab6749e25c2b04424c8e908c1a684c88cdcbd5accc7a3ae7b9b12a7",
           "filename": "EARL FERME DE POMMERIEUX - Procès verbal de constatation d'infraction au code forestier.PDF",
-          "score": 0.009259259259259259
+          "score": 0.009345794392523364
         },
         {
-          "seed_rank": 89,
+          "seed_rank": 88,
           "chunk_id": "a4d26868017c0ccffe2efe50_Ky_A5bauRHmkKkbdyrAV-rgr_10",
           "document_id": "Ky_A5bauRHmkKkbdyrAV-rgr",
           "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:1529acbdf0d41f68886328461091d75cac2871633e3e7bfbef0307a20bec391b",
           "filename": "Copie de secours de Anciennes surfaces pastorales.docx",
+          "score": 0.009259259259259259
+        },
+        {
+          "seed_rank": 89,
+          "chunk_id": "a4d26868017c0ccffe2efe50_LOwWvqlBN8mcmDSJCFvjj3EY_61",
+          "document_id": "LOwWvqlBN8mcmDSJCFvjj3EY",
+          "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:2d2d4665af57f6a7740b033b307e1e48a97fc2c14335fa32bbc25bdfb446d107",
+          "filename": "Dossier anciennes surfaces pastorales - complet.pdf",
           "score": 0.009174311926605505
         },
         {
@@ -6577,10 +6541,10 @@
         },
         {
           "seed_rank": 92,
-          "chunk_id": "a4d26868017c0ccffe2efe50_LOwWvqlBN8mcmDSJCFvjj3EY_61",
-          "document_id": "LOwWvqlBN8mcmDSJCFvjj3EY",
-          "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:2d2d4665af57f6a7740b033b307e1e48a97fc2c14335fa32bbc25bdfb446d107",
-          "filename": "Dossier anciennes surfaces pastorales - complet.pdf",
+          "chunk_id": "a4d26868017c0ccffe2efe50_PwO2g4ULtkttPYSs0blww_wB_25",
+          "document_id": "PwO2g4ULtkttPYSs0blww_wB",
+          "source_entity_id": "urn:openrag:local-file:cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8:cf43242ca877f26bed55e1d5a6c05e042890dde1eeb6fbdffe52fa1f5390dd81",
+          "filename": "VISTAPRINT Anciennes surfaces pastorales pour affichage 1200900.pdf",
           "score": 0.00909090909090909
         },
         {
@@ -7271,15 +7235,6 @@
           "status_code": "complete"
         },
         {
-          "document_id": "siIixi9WFH5NdOzVjRXu9Bd6",
-          "source_entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:0b83badc-cc3b-4997-8bc5-dc4d661edca7",
-          "filename": "Projet-agrivoltaique-Memoires-en-defense-PC-et-autorisation-de-defrichement--0b83badccc3b.eml",
-          "source_entity_type": "email_message",
-          "source_entity_system": "openarchiver",
-          "complete": true,
-          "status_code": "complete"
-        },
-        {
           "document_id": "hFDBugWmrh2QReZVJ_7AXOP4",
           "source_entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:0842529f-2cb1-4500-929b-ec92aee83725",
           "filename": "Memoires-en-defense-Prefecture--0842529f2cb1.eml",
@@ -7793,15 +7748,6 @@
           "status_code": "complete"
         },
         {
-          "document_id": "e6Hw71qrPa7iVnWwjrJWFaYN",
-          "source_entity_id": "urn:openrag:openarchiver:attachment:0ada2c75-897a-4e51-b2e6-68ccdba3554a",
-          "filename": "Projet-agrivoltaique-Memoires-en-defense-PC-et-autorisation-de-defrichement--0b83badccc3b--MD-Nouan-le-Fuzelier_PC-29102024_VF--0ada2c75897a.pdf",
-          "source_entity_type": "email_attachment",
-          "source_entity_system": "openarchiver",
-          "complete": true,
-          "status_code": "complete"
-        },
-        {
           "document_id": "_jzOi9e5wMThiX3BczIHVVYv",
           "source_entity_id": "urn:openrag:openarchiver:attachment:55c3a5ca-8bfa-4378-a74b-79d0a3e6d534",
           "filename": "RE-INTERNET-Projet-photovoaltaique-Nouan-le-Fuzelier-Reconnaissance-des-bois-a-defricher--ed18c5d1b0ba--FR_S_NOFU_2312_Reponse_Autorisation_defrichement_V2--55c3a5ca8bfa.pdf",
@@ -7898,9 +7844,9 @@
         "scope_policy_id": "documentary-prov-o",
         "scope_policy_version": 1,
         "seed_discovery_complete": true,
-        "seed_documents": 61,
-        "seed_entities": 93,
-        "valid_provenance_seed_documents": 61,
+        "seed_documents": 60,
+        "seed_entities": 92,
+        "valid_provenance_seed_documents": 60,
         "invalid_provenance_seed_documents": 0,
         "seed_provenance_complete": true,
         "requested_retrieval_profile": {
@@ -7954,7 +7900,7 @@
         },
         "retrieval_execution_complete": true,
         "retrieval_failure_codes": [],
-        "graph_entities_visited": 138,
+        "graph_entities_visited": 136,
         "graph_frontier_empty": true,
         "graph_limit_reached": false,
         "graph_stop_reason": "frontier_empty",
@@ -7971,11 +7917,11 @@
           "documents_per_depth": [
             {
               "depth": 0,
-              "count": 61
+              "count": 60
             },
             {
               "depth": 1,
-              "count": 60
+              "count": 59
             },
             {
               "depth": 2,
@@ -7989,11 +7935,11 @@
           "entities_per_depth": [
             {
               "depth": 0,
-              "count": 61
+              "count": 60
             },
             {
               "depth": 1,
-              "count": 60
+              "count": 59
             },
             {
               "depth": 2,
@@ -8031,7 +7977,7 @@
               "role": "attachment_of",
               "source_type": "email_attachment",
               "target_type": "email_message",
-              "count": 41
+              "count": 40
             },
             {
               "depth": 1,
@@ -8219,11 +8165,11 @@
             }
           ]
         },
-        "documents_discovered": 138,
-        "documents_complete": 138,
+        "documents_discovered": 136,
+        "documents_complete": 136,
         "documents_incomplete": 0,
-        "covered_chunks": 6239,
-        "total_chunks": 6239,
+        "covered_chunks": 6145,
+        "total_chunks": 6145,
         "document_read_coverage_ratio": 1.0,
         "coverage_ratio": 1.0,
         "complete": true,
@@ -8232,42 +8178,42 @@
         "failure_codes": [],
         "stop_reason": "complete",
         "model_evidence_chunks": 100,
-        "artifact_chunks": 6239,
+        "artifact_chunks": 6145,
         "performance": {
           "discovery_seconds": 0.0,
-          "prov_o_seconds": 4.119227366987616,
-          "total_seconds": 4.119227366987616
+          "prov_o_seconds": 3.869865760905668,
+          "total_seconds": 3.869865760905668
         },
         "certification": {
           "contract_id": "openrag.scope-coverage",
           "contract_version": 1,
           "facts": {
             "seed_discovery_complete": true,
-            "seed_documents": 61,
-            "valid_provenance_seed_documents": 61,
+            "seed_documents": 60,
+            "valid_provenance_seed_documents": 60,
             "invalid_provenance_seed_documents": 0,
             "graph_frontier_empty": true,
             "graph_limit_reached": false,
             "graph_stop_reason": "frontier_empty",
             "graph_failed": false,
             "retrieval_execution_complete": true,
-            "documents_discovered": 138,
-            "documents_complete": 138,
-            "covered_chunks": 6239,
-            "total_chunks": 6239,
+            "documents_discovered": 136,
+            "documents_complete": 136,
+            "covered_chunks": 6145,
+            "total_chunks": 6145,
             "document_failure_codes": [],
             "seed_failure_code": null,
             "unclassified_relations": 0,
             "retrieval_failure_codes": []
           },
-          "facts_sha256": "0f423f7fd0334cf00cc9f1530d1fe68be08c46dafd93d07584d79cba31c47be8"
+          "facts_sha256": "2a2fa5d8fcfaa45d65a606c7fc171af2e229b8ca943422ce7f43a11c668e8c65"
         }
       },
       "latencies": {
         "discovery_seconds": 0.0,
-        "scope_closure_seconds": 4.119227366987616,
-        "total_latency_seconds": 4.119227366987616,
-        "http_wall_seconds": 4.760666749993106
+        "scope_closure_seconds": 3.869865760905668,
+        "total_latency_seconds": 3.869865760905668,
+        "http_wall_seconds": 4.583146207998652
       },
       "error": null,
       "contract": {

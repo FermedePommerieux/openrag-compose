@@ -1,12 +1,12 @@
 # Product-path discovery benchmark
 
-Validation context: the 60-document metadata cohort was executed in dry-run mode; no OpenSearch document, chunk, relation, or embedding was changed.
-
 benchmark_id: orange-fibre-cross-domain-v1
-runtime_source_sha: 36c5afdec6a09ea809a9a0e733de191de1b578c7
+runtime_source_sha: bfbf3622b84deb234709a5c991b3bbbc51ab4bc7
 product_endpoint: https://openrag.ferme-de-pommerieux.fr/api/search
 DLS_identity: anonymous
 global_seed_budget: 100
+
+Validation context: the full 47,400-document metadata backfill completed with observational fields only; chunk text, embedding values, and graph edges were not mutated.
 
 ## Corpus
 
@@ -20,13 +20,13 @@ comparable: true
 
 | q | Seed Doc Recall | Seed Component Recall | Post-PROV-O Doc Recall | Post-PROV-O Component Recall | Precision | Expansion | Latency | Valid |
 |---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| q1 | 22.9% [22.9%, 22.9%] | 28.6% [28.6%, 28.6%] | 29.5% [29.5%, 29.5%] | 28.6% [28.6%, 28.6%] | 30.0% [30.0%, 30.0%] | 2.562 [2.562, 2.562] | 3.781 [3.442, 4.238]s | 3/3 |
+| q1 | 22.9% [22.9%, 22.9%] | 28.6% [28.6%, 28.6%] | 29.5% [29.5%, 29.5%] | 28.6% [28.6%, 28.6%] | 29.6% [29.6%, 29.6%] | 2.259 [2.259, 2.259] | 4.582 [4.123, 5.105]s | 3/3 |
 
 ## STRICT
 
 | q | Seed Doc Recall | Seed Component Recall | Post-PROV-O Doc Recall | Post-PROV-O Component Recall | Precision | Expansion | Latency | Valid |
 |---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| q1 | 45.8% [45.8%, 45.8%] | 66.7% [66.7%, 66.7%] | 60.4% [60.4%, 60.4%] | 66.7% [66.7%, 66.7%] | 27.5% [27.5%, 27.5%] | 2.562 [2.562, 2.562] | 3.781 [3.442, 4.238]s | 3/3 |
+| q1 | 45.8% [45.8%, 45.8%] | 66.7% [66.7%, 66.7%] | 60.4% [60.4%, 60.4%] | 66.7% [66.7%, 66.7%] | 27.2% [27.2%, 27.2%] | 2.259 [2.259, 2.259] | 4.582 [4.123, 5.105]s | 3/3 |
 
 ## Variance
 
@@ -45,21 +45,21 @@ None.
 | q1 | seed_component_recall | 66.7% | 66.7% | +0.0% |
 | q1 | post_prov_o_component_recall | 66.7% | 66.7% | +0.0% |
 | q1 | post_prov_o_document_recall | 60.4% | 60.4% | +0.0% |
-| q1 | precision | 27.5% | 27.5% | +0.0% |
-| q1 | expansion_per_seed_document | 2.562 | 2.562 | +0.000 |
-| q1 | total_latency_seconds | 3.885 | 3.781 | -0.104 |
+| q1 | precision | 27.5% | 27.2% | -0.3% |
+| q1 | expansion_per_seed_document | 2.562 | 2.259 | -0.303 |
+| q1 | total_latency_seconds | 3.885 | 4.582 | +0.698 |
 | q1 | seed_component_recall | 66.7% | 66.7% | +0.0% |
 | q1 | post_prov_o_component_recall | 66.7% | 66.7% | +0.0% |
 | q1 | post_prov_o_document_recall | 60.4% | 60.4% | +0.0% |
-| q1 | precision | 27.5% | 27.5% | +0.0% |
-| q1 | expansion_per_seed_document | 2.562 | 2.562 | +0.000 |
-| q1 | total_latency_seconds | 3.775 | 3.781 | +0.006 |
+| q1 | precision | 27.5% | 27.2% | -0.3% |
+| q1 | expansion_per_seed_document | 2.562 | 2.259 | -0.303 |
+| q1 | total_latency_seconds | 3.775 | 4.582 | +0.808 |
 | q1 | seed_component_recall | 66.7% | 66.7% | +0.0% |
 | q1 | post_prov_o_component_recall | 66.7% | 66.7% | +0.0% |
 | q1 | post_prov_o_document_recall | 60.4% | 60.4% | +0.0% |
-| q1 | precision | 27.5% | 27.5% | +0.0% |
-| q1 | expansion_per_seed_document | 2.562 | 2.562 | +0.000 |
-| q1 | total_latency_seconds | 3.611 | 3.781 | +0.170 |
+| q1 | precision | 27.5% | 27.2% | -0.3% |
+| q1 | expansion_per_seed_document | 2.562 | 2.259 | -0.303 |
+| q1 | total_latency_seconds | 3.611 | 4.582 | +0.971 |
 
 ## Contract audit
 

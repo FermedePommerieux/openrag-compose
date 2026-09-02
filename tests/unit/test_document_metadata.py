@@ -5,6 +5,7 @@ from __future__ import annotations
 import zipfile
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 import pytest
 from PIL import Image
@@ -31,7 +32,7 @@ from services.document_metadata_extractor import (
 )
 
 
-def _context(filename: str, **kwargs: object) -> ArchiveMetadataContext:
+def _context(filename: str, **kwargs: Any) -> ArchiveMetadataContext:
     return ArchiveMetadataContext(
         entity_id="urn:openrag:test:document-1",
         archive_source="test_archive",
