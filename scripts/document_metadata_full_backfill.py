@@ -112,14 +112,21 @@ def _item_terminal_class(item: dict[str, Any]) -> str | None:
     return None
 
 
-def _aggregate(checkpoint_root: Path, batch_count: int) -> dict[str, Any]:
+def _aggregate(
+    checkpoint_root: Path,
+    batch_count: int,
+    *,
+    batch_indexes: range | tuple[int, ...] | None = None,
+    include_timings: bool = True,
+) -> dict[str, Any]:
     states: Counter[str] = Counter()
     bytes_read = writes = 0
     formats: Counter[str] = Counter()
     reasons: Counter[str] = Counter()
     timing_values: dict[str, list[float]] = defaultdict(list)
     processed = 0
-    for batch_index in range(batch_count):
+    indexes = range(batch_count) if batch_indexes is None else batch_indexes
+    for batch_index in indexes:
         path = _batch_checkpoint_path(checkpoint_root, batch_index)
         if not path.exists():
             continue
@@ -138,8 +145,9 @@ def _aggregate(checkpoint_root: Path, batch_count: int) -> dict[str, Any]:
             history_states = {str(value.get("state")) for value in item.get("history", [])}
             if CanaryStatus.WRITTEN.value in history_states:
                 writes += 1
-            for phase, value in (item.get("timings") or {}).items():
-                timing_values[str(phase)].append(float(value))
+            if include_timings:
+                for phase, value in (item.get("timings") or {}).items():
+                    timing_values[str(phase)].append(float(value))
     return {
         "processed": processed,
         "states": dict(sorted(states.items())),
@@ -149,6 +157,44 @@ def _aggregate(checkpoint_root: Path, batch_count: int) -> dict[str, Any]:
         "failure_reasons": dict(sorted(reasons.items())),
         "timing_values": timing_values,
     }
+
+
+def _apply_aggregate_delta(
+    aggregate: dict[str, Any],
+    before: dict[str, Any],
+    after: dict[str, Any],
+) -> None:
+    for key in ("processed", "bytes_read", "opensearch_writes"):
+        aggregate[key] = int(aggregate[key]) - int(before[key]) + int(after[key])
+    for key in ("states", "formats", "failure_reasons"):
+        values = Counter(aggregate[key])
+        values.subtract(before[key])
+        values.update(after[key])
+        aggregate[key] = dict(sorted((name, count) for name, count in values.items() if count))
+
+
+def _checkpoint_is_terminal(checkpoint: CanaryCheckpoint) -> bool:
+    items = checkpoint.data.get("items", {}).values()
+    return bool(checkpoint.data.get("items")) and all(
+        str(item.get("state")) in EXPECTED_TERMINAL_STATES for item in items
+    )
+
+
+def _resolve_run_identity(identity_path: Path, candidate: dict[str, Any]) -> dict[str, Any]:
+    """Keep the initial profile count as evidence, not as a mutable resume key."""
+    if not identity_path.exists():
+        _atomic_private_json(identity_path, candidate)
+        return candidate
+    observed = json.loads(identity_path.read_text(encoding="utf-8"))
+    immutable_candidate = {key: value for key, value in candidate.items() if key != "existing_profiles"}
+    immutable_observed = {
+        key: observed.get(key) for key in immutable_candidate
+    }
+    if immutable_observed != immutable_candidate:
+        raise RuntimeError("run identity differs from durable checkpoint")
+    if not isinstance(observed.get("existing_profiles"), int):
+        raise RuntimeError("durable run identity has no initial profile count")
+    return observed
 
 
 def _percentile(values: list[float], quantile: float) -> float | None:
@@ -311,10 +357,9 @@ async def _select_records(
     return selected, dict(sorted(eligibility.items()))
 
 
-def _validate_existing_batch(path: Path, records: list[IndexedDocumentRecord]) -> None:
-    if not path.exists():
-        return
-    payload = json.loads(path.read_text(encoding="utf-8"))
+def _validate_existing_batch(
+    payload: dict[str, Any], records: list[IndexedDocumentRecord], path: Path
+) -> None:
     observed = {
         storage_id: _record_identity(IndexedDocumentRecord.model_validate(item["record"]))
         for storage_id, item in payload.get("items", {}).items()
@@ -405,7 +450,7 @@ async def run(args: argparse.Namespace) -> int:
             )
         identities = [_record_identity(record) for record in records]
         cohort_digest = _canonical_sha256(identities)
-        run_identity = {
+        candidate_run_identity = {
             "schema": "openrag.document-metadata-full-backfill-run",
             "version": 1,
             "index": args.index,
@@ -418,12 +463,7 @@ async def run(args: argparse.Namespace) -> int:
             "cohort_sha256": cohort_digest,
         }
         identity_path = root / "run-identity.json"
-        if identity_path.exists():
-            observed_identity = json.loads(identity_path.read_text(encoding="utf-8"))
-            if observed_identity != run_identity:
-                raise RuntimeError("run identity differs from durable checkpoint")
-        else:
-            _atomic_private_json(identity_path, run_identity)
+        run_identity = _resolve_run_identity(identity_path, candidate_run_identity)
         batch_count = (len(records) + args.batch_size - 1) // args.batch_size
         output_path = Path(args.output)
         progress_path = Path(args.progress_log)
@@ -441,18 +481,29 @@ async def run(args: argparse.Namespace) -> int:
         next_progress = {
             value for value in (1000, 5000, 10000, 25000, len(records)) if value <= len(records)
         }
-        previous_processed = _aggregate(root, batch_count)["processed"]
+        aggregate = _aggregate(root, batch_count, include_timings=False)
+        previous_processed = aggregate["processed"]
         for batch_index in range(batch_count):
             batch = records[
                 batch_index * args.batch_size : (batch_index + 1) * args.batch_size
             ]
             checkpoint_path = _batch_checkpoint_path(root, batch_index)
-            _validate_existing_batch(checkpoint_path, batch)
+            checkpoint_existed = checkpoint_path.exists()
             checkpoint = CanaryCheckpoint(checkpoint_path)
             checkpoint.initialize(
                 index_name=args.index,
                 records=batch,
                 run_id=f"{cohort_digest[:16]}-{batch_index:05d}",
+            )
+            if checkpoint_existed:
+                _validate_existing_batch(checkpoint.data, batch, checkpoint_path)
+            if _checkpoint_is_terminal(checkpoint):
+                continue
+            before_batch = _aggregate(
+                root,
+                batch_count,
+                batch_indexes=(batch_index,),
+                include_timings=False,
             )
             resolver = ArchivedOriginalResolver(
                 openarchiver_base_url=args.openarchiver_base_url,
@@ -489,7 +540,13 @@ async def run(args: argparse.Namespace) -> int:
                 raise RuntimeError(
                     f"batch {batch_index} retained {len(remaining_nonterminal)} nonterminal items"
                 )
-            aggregate = _aggregate(root, batch_count)
+            after_batch = _aggregate(
+                root,
+                batch_count,
+                batch_indexes=(batch_index,),
+                include_timings=False,
+            )
+            _apply_aggregate_delta(aggregate, before_batch, after_batch)
             _atomic_private_json(counter_path, counters)
             sample = await _resource_sample(raw_client)
             _guard_sample(sample, initial_oom_kill=initial_oom_kill)
@@ -528,14 +585,25 @@ async def run(args: argparse.Namespace) -> int:
                 print(json.dumps(progress, sort_keys=True), flush=True)
                 next_progress.difference_update(crossed)
             previous_processed = processed
-        aggregate = _aggregate(root, batch_count)
-        final_sample = await _resource_sample(raw_client)
-        _guard_sample(final_sample, initial_oom_kill=initial_oom_kill)
-        finished_at = datetime.now(UTC).isoformat()
-        elapsed = time.monotonic() - started_monotonic
         terminal_total = sum(int(value) for value in aggregate["states"].values())
         if terminal_total != len(records):
             raise RuntimeError(f"terminal accounting mismatch:{terminal_total}!={len(records)}")
+        final_sample = await _resource_sample(raw_client)
+        _guard_sample(final_sample, initial_oom_kill=initial_oom_kill)
+        final_aggregate = _aggregate(root, batch_count)
+        for key in (
+            "processed",
+            "states",
+            "bytes_read",
+            "opensearch_writes",
+            "formats",
+            "failure_reasons",
+        ):
+            if final_aggregate[key] != aggregate[key]:
+                raise RuntimeError(f"final aggregate differs for {key}")
+        aggregate = final_aggregate
+        finished_at = datetime.now(UTC).isoformat()
+        elapsed = time.monotonic() - started_monotonic
         result = {
             "schema": "openrag.document-metadata-full-backfill-summary",
             "version": 1,
