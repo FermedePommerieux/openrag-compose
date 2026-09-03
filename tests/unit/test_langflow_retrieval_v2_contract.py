@@ -599,6 +599,7 @@ def test_metadata_tool_forwards_only_the_exact_deterministic_plan(monkeypatch):
     tool.number_of_results = 10
 
     built = tool.build_metadata_tool()
+    assert "MetadataToolFilter" not in str(inspect.signature(built["func"]))
     content, artifact = built["func"](
         "factures Orange",
         filters=[

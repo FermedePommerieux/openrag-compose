@@ -700,7 +700,7 @@ class OpenRAGBackendRetrievalComponent(LCToolComponent):
 
         def document_search_with_metadata(
             free_text: str,
-            filters: list[MetadataToolFilter],
+            filters: list[dict],
             limit: int = 10,
         ) -> tuple[str, list[dict[str, Any]]]:
             """Search with an exact, bounded metadata plan validated by OpenRAG."""

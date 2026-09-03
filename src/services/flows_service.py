@@ -203,6 +203,11 @@ _PREMATURE_VERSIONED_METADATA_BASELINE_MANAGED_GRAPH_SHA256 = (
 _PREVIOUS_VERSIONED_METADATA_TOOL_MANAGED_GRAPH_SHA256 = (
     "fd0c1fed5a7b8cf07c473aa0337d12dc6c3abe7c02c40d8ad876cad8d4f5de96"
 )
+# Exact v15 graph after rebuilding the models but before removing the local
+# model class from LangChain's dynamically inspected function annotation.
+_PREVIOUS_VERSIONED_METADATA_TOOL_REBUILD_MANAGED_GRAPH_SHA256 = (
+    "180546a884f07474ba6e268e9e156e541a3c06473032f870da7dd50b52880e31"
+)
 
 
 class FlowsService:
@@ -1636,6 +1641,7 @@ class FlowsService:
                 in {
                     _PREMATURE_VERSIONED_METADATA_BASELINE_MANAGED_GRAPH_SHA256,
                     _PREVIOUS_VERSIONED_METADATA_TOOL_MANAGED_GRAPH_SHA256,
+                    _PREVIOUS_VERSIONED_METADATA_TOOL_REBUILD_MANAGED_GRAPH_SHA256,
                 }
             )
         if marker not in {6, 7, 8, 9, 10, 11, 12}:
