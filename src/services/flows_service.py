@@ -187,6 +187,16 @@ _PREVIOUS_VERSIONED_METADATA_BASELINE_GRAPH_SHA256 = (
 _PREVIOUS_VERSIONED_METADATA_BASELINE_MANAGED_GRAPH_SHA256 = (
     "58554de842a543b1fbf47345e61081b0686292536e7664851cfe28756f58976d"
 )
+# The same immutable v14 graph with the v15 marker can exist if a deployment
+# changes the backend image before its mounted flow-source revision.  The
+# first startup then legitimately migrates against the still-mounted v14
+# template and persists only the newer marker.  Recognise exactly that
+# settings-normalized intermediate state so the next startup can complete the
+# graph replacement; any code, topology, or non-managed value change remains
+# fail-closed.
+_PREMATURE_VERSIONED_METADATA_BASELINE_MANAGED_GRAPH_SHA256 = (
+    "94df34155532566437733c443f627b145074504fd0bf06c357c4e149c3274032"
+)
 
 
 class FlowsService:
@@ -1613,6 +1623,11 @@ class FlowsService:
                 exact_match
                 or self._managed_behavior_normalized_graph_fingerprint(flow_data)
                 == _PREVIOUS_VERSIONED_METADATA_BASELINE_MANAGED_GRAPH_SHA256
+            )
+        if marker == 15:
+            return (
+                self._managed_behavior_normalized_graph_fingerprint(flow_data)
+                == _PREMATURE_VERSIONED_METADATA_BASELINE_MANAGED_GRAPH_SHA256
             )
         if marker not in {6, 7, 8, 9, 10, 11, 12}:
             return exact_match

@@ -1073,6 +1073,28 @@ def test_exact_version_14_graph_is_eligible_only_without_operator_changes():
     assert service._is_known_previous_retrieval_v2_flow(flow) is False
 
 
+def test_premature_version_15_marker_is_eligible_only_on_exact_version_14_graph():
+    service = FlowsService()
+    flow = _versioned_retrieval_v14_flow()
+    flow["data"]["openrag_retrieval_version"] = 15
+    agent = next(
+        node
+        for node in flow["data"]["nodes"]
+        if node.get("data", {}).get("node", {}).get("display_name") == "Agent"
+    )
+    agent["data"]["node"]["template"]["system_prompt"]["value"] = "configured live prompt"
+
+    assert service._is_known_previous_retrieval_v2_flow(flow) is True
+
+    retrieval = next(
+        node
+        for node in flow["data"]["nodes"]
+        if node.get("data", {}).get("node", {}).get("display_name") == "OpenRAG Retrieval v2"
+    )
+    retrieval["data"]["node"]["template"]["code"]["value"] += "\n# operator customization"
+    assert service._is_known_previous_retrieval_v2_flow(flow) is False
+
+
 @pytest.mark.asyncio
 async def test_migrate_exact_version_14_to_bounded_metadata_tool_version_15():
     service = FlowsService()
@@ -1100,6 +1122,34 @@ async def test_migrate_exact_version_14_to_bounded_metadata_tool_version_15():
         "metadata_search_tool",
     }
     assert "document_search_with_metadata" in retrieval["data"]["node"]["template"]["code"]["value"]
+
+
+@pytest.mark.asyncio
+async def test_recover_premature_version_15_marker_on_exact_version_14_graph():
+    service = FlowsService()
+    transport = _RetrievalMigrationTransport()
+    transport.flow = _versioned_retrieval_v14_flow()
+    transport.flow["data"]["openrag_retrieval_version"] = 15
+
+    with (
+        patch("services.flows_service.clients.langflow_request", side_effect=transport.__call__),
+        patch.object(
+            service, "_backup_flow", new_callable=AsyncMock, return_value="/tmp/flow.json"
+        ),
+    ):
+        result = await service.migrate_persisted_retrieval_flow()
+
+    assert result["status"] == "migrated"
+    assert transport.flow["locked"] is True
+    retrieval = next(
+        node
+        for node in transport.flow["data"]["nodes"]
+        if node.get("data", {}).get("node", {}).get("display_name") == "OpenRAG Retrieval v2"
+    )
+    assert {output["name"] for output in retrieval["data"]["node"]["outputs"]} == {
+        "component_as_tool",
+        "metadata_search_tool",
+    }
 
 
 @pytest.mark.asyncio
