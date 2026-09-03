@@ -46,7 +46,7 @@ The evidence classifications used below are:
 
 | Capability | Comparison basis | Upstream/reference behavior | Fork behavior | Evidence |
 | --- | --- | --- | --- | --- |
-| Hybrid retrieval execution | Fork point + current upstream | The fork point performs semantic/keyword hybrid retrieval in the Langflow OpenSearch component. Current upstream performs a combined boosted semantic/keyword OpenSearch query in backend `SearchService`. Neither compared tree contains the fork's backend Retrieval v2/RRF contract. | The backend owns separate lexical and dense lanes, RRF, stable `chunk_id` tie-breaking, retrieval profiles and lane diagnostics. | **VERIFIED AGAINST FORK POINT**, **VERIFIED AGAINST CURRENT UPSTREAM**, **FORK-SPECIFIC CONTRACT**. [Fork-point flow](https://github.com/langflow-ai/openrag/blob/1fd0ff6f0ad8134749c1d237cfb883ee807bf65b/flows/openrag_agent.json), [current upstream search](https://github.com/langflow-ai/openrag/blob/1e228bb0ef7e45959f241a6f3163fb2182303785/src/services/search_service.py), [fork search](https://github.com/FermedePommerieux/openrag-compose/blob/975f933fa3149dd60a0f481d5a51ae184d6ddf0d/src/services/search_service.py) |
+| Retrieval v2 execution | Fork point + current upstream | This comparison does not assign a named retrieval mode to official OpenRAG. Neither compared tree contains the fork's backend Retrieval v2/RRF contract. | The backend owns separate lexical and dense lanes, RRF, stable `chunk_id` tie-breaking, retrieval profiles and lane diagnostics. | **VERIFIED AGAINST FORK POINT**, **VERIFIED AGAINST CURRENT UPSTREAM**, **FORK-SPECIFIC CONTRACT**. [Fork search](https://github.com/FermedePommerieux/openrag-compose/blob/975f933fa3149dd60a0f481d5a51ae184d6ddf0d/src/services/search_service.py) |
 | Strong documentary closure and coverage | Fork point + current upstream | Neither compared upstream tree contains `scope_exhaustive` or the `openrag.scope-coverage` identifier. This statement is limited to those exact paths/contracts. | Policy-approved typed PROV-O traversal, verified complete document reads and fail-closed `openrag.scope-coverage v1`. | **VERIFIED AGAINST FORK POINT**, **VERIFIED AGAINST CURRENT UPSTREAM**, **FORK-SPECIFIC CONTRACT**. [Fork coverage](https://github.com/FermedePommerieux/openrag-compose/blob/975f933fa3149dd60a0f481d5a51ae184d6ddf0d/src/services/retrieval_service.py), [policy](https://github.com/FermedePommerieux/openrag-compose/blob/975f933fa3149dd60a0f481d5a51ae184d6ddf0d/src/services/scope_traversal_policy.py) |
 | Source provenance profile | Fork point + current upstream | The compared upstream trees do not contain this fork's bounded source-provenance/PROV-O model. This does not deny upstream's other operational provenance fields. | Stable source entity identity, typed role/target pairs and fixed PROV-O predicates are validated at ingestion and transported through retrieval. | **VERIFIED AGAINST FORK POINT**, **VERIFIED AGAINST CURRENT UPSTREAM**, **FORK-SPECIFIC CONTRACT**. [Fork provenance model](https://github.com/FermedePommerieux/openrag-compose/blob/975f933fa3149dd60a0f481d5a51ae184d6ddf0d/src/models/source_provenance.py) |
 | Document metadata provenance | Fork point + current upstream | Neither compared upstream tree contains `openrag.document-metadata` or `openrag.metadata-resolution`. The comparison concerns the fork's source-qualified profile, not all uses of generic document metadata upstream. | Raw source-qualified observations, normalization/trust status, preserved conflicts and no preferred truth in v1. | **VERIFIED AGAINST FORK POINT**, **VERIFIED AGAINST CURRENT UPSTREAM**, **FORK-SPECIFIC CONTRACT**. [Fork metadata model](https://github.com/FermedePommerieux/openrag-compose/blob/975f933fa3149dd60a0f481d5a51ae184d6ddf0d/src/models/document_metadata.py) |
@@ -59,11 +59,10 @@ The evidence classifications used below are:
 
 ## What is not claimed
 
-This documentation does not claim that upstream OpenRAG has no hybrid search,
-security, workspace configuration, ordinary metadata or provenance-related
-operational fields. It claims that the pinned upstream revisions do not contain
-the named fork contracts and execution paths above, and describes the
-different upstream architecture where comparison is meaningful.
+This documentation does not assign fork setting names or modes to upstream
+OpenRAG. It claims only that the pinned upstream revisions do not contain the
+named fork contracts and execution paths above, and describes different
+upstream architecture only where the comparison is directly evidenced.
 
 Upstream can evolve after the pinned current-upstream check. Future comparisons
 must fetch again, pin a new revision and keep fork-point differences separate

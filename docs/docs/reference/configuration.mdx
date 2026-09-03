@@ -9,11 +9,11 @@ OpenRAG's `.env` file owns deployment and provider-connectivity settings.
 Functional runtime behavior is different: in the supported production baseline,
 `WorkspaceConfigService` persists Agent, planner, prompt, embedding and
 retrieval settings in the SQLite workspace configuration, then applies them to
-the managed flow and backend services. See [Runtime and GitOps ownership](/operations/runtime-ownership).
+the managed flow and backend services.
 
 Environment variables in `.env` take precedence for the deployment settings
-they own. They do not make GitOps or `.env` the owner of the functional Agent
-model, planner model, system prompt or retrieval behavior.
+they own. They do not override functional Agent model, planner model, system
+prompt or retrieval settings stored in the workspace configuration.
 
 For deployments managed with an OpenRAG terminal session, this file is located at `~/.openrag/tui`, and it can be created automatically during [installation](/install-options).
 
@@ -60,7 +60,7 @@ ingestion. You only need to provide credentials for the providers you are using.
 
 The agent model, planner model, and managed system prompt are application-runtime
 settings. OpenRAG persists them in the workspace configuration and applies them
-to the managed flow without rebuilding an image or changing Kubernetes/GitOps.
+to the managed flow without rebuilding an image or changing deployment manifests.
 They are not deployment environment variables. The planner follows the agent by
 default and can be selected independently through `POST /api/settings` with
 `planner_provider` and `planner_model`.
@@ -82,7 +82,6 @@ These variables are initially set during the [application onboarding process](/i
 
 | Setting | Owner | Configured source | Effective source |
 |---------|-------|-------------------|------------------|
-| Images, replicas, resources, ingress | Deployment/GitOps | Deployment manifests | Kubernetes runtime |
 | Provider credentials and endpoints | Provider infrastructure | Secret or deployment connectivity settings | Provider client |
 | Agent provider/model | OpenRAG runtime | Workspace `agent` settings | Managed Langflow Agent model |
 | Planner provider/model | OpenRAG runtime | Workspace `agent.planner` settings (agent fallback when empty) | Backend search planner |
@@ -97,9 +96,9 @@ deterministic `runtime_behavior_fingerprint`. A managed flow mismatch is a
 startup or settings-update error; OpenRAG does not silently accept drift.
 
 The default `OPENRAG_STORAGE_MODE=db` makes the SQLite workspace configuration
-the sole persistence authority. Legacy `config.yaml` is retained only for
-migration and the explicitly selected `hybrid`/`files` compatibility modes; it
-is not the authority for the DB-backed production baseline.
+the persistence authority for application settings. Legacy configuration is
+retained for migration compatibility and is not the authority for the default
+DB-backed baseline.
 
 ## Document processing settings {#document-processing-settings}
 
@@ -220,7 +219,7 @@ Configure general system components, session management, and logging.
 | `MAX_WORKERS_FALLBACK` | `2` | Ingestion capacity used at automatic-mode startup, when no live `convert` worker is reported, or after the metrics failure threshold is reached. It is bounded by `MAX_WORKERS_MIN` and `MAX_WORKERS_MAX`. |
 | `MAX_WORKERS_MIN` | `1` | Lower bound for automatically detected ingestion capacity. |
 | `MAX_WORKERS_MAX` | `6` | Upper bound for automatically detected ingestion capacity. Keep this consistent with Docling CPU, memory, and storage resources. |
-| `DOCLING_METRICS_URL` | `http://docling-serve.docling.svc.cluster.local:5001/metrics` | Prometheus endpoint used in `MAX_WORKERS=auto` mode to discover live Docling RQ workers. |
+| `DOCLING_METRICS_URL` | Deployment-specific | Prometheus endpoint used in `MAX_WORKERS=auto` mode to discover live Docling RQ workers. |
 | `DOCLING_WORKER_REFRESH_SECONDS` | `15` | Interval in seconds between automatic worker-topology reads. |
 | `DOCLING_WORKER_FAILURE_THRESHOLD` | `3` | Consecutive failed metrics reads allowed before automatic mode switches from its last valid capacity to `MAX_WORKERS_FALLBACK`. |
 | `OPENRAG_LARGE_INGEST_FILE_BYTES` | `33554432` | Local files at or above this size use one serialized heavy-ingestion lane. Smaller files may still use the other Docling workers concurrently. |
@@ -233,8 +232,8 @@ Configure general system components, session management, and logging.
 | `SESSION_SECRET` | Automatically generated | Secret key for session management. If not provided, a secure random key is generated automatically. |
 
 `MAX_WORKERS` controls ingestion slots inside the single OpenRAG backend; it
-does not create backend processes, Kubernetes replicas, Langflow workers, or
-Docling workers. In automatic mode, OpenRAG counts both idle and busy live RQ
+does not create backend processes, Langflow workers, or Docling workers. In
+automatic mode, OpenRAG counts both idle and busy live RQ
 workers on Docling's `convert` queue and changes its admission capacity without
 a restart. Capacity increases wake queued files. Capacity decreases never
 cancel active files: new files wait until the active count is below the new

@@ -85,11 +85,17 @@ This is because the agent cannot access the model to generate a query embedding 
 
 ## Set the chunking strategy
 
+:::note Fork-specific feature
+The **Chunking strategy** selector and its Hybrid default are implemented by
+this fork. They are not presented as official upstream OpenRAG settings.
+:::
+
 In **Settings > Langflow**, under **Knowledge Ingest**, choose one chunking
 strategy for new documents:
 
 * **Character** uses fixed-size chunks. **Chunk size** and **Chunk overlap**
   are active only for this strategy.
+
 * **Hybrid** uses Docling document structure to create semantically coherent
   chunks. Its active settings are **Hybrid max tokens** and **Merge peers**.
   Hybrid is explicit and fail-fast: if Docling's HybridChunker is unavailable,

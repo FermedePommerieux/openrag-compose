@@ -97,7 +97,6 @@ const sidebars = {
       label: "Security and operations",
       items: [
         "security/dls",
-        "operations/runtime-ownership",
         "reference/configuration",
       ],
     },
@@ -107,7 +106,11 @@ const sidebars = {
       items: [
         "upstream/differences",
         "reference/versioned-contracts",
-        "audits/index",
+        {
+          type: "doc",
+          id: "audits/index",
+          label: "Validation",
+        },
       ],
     },
     {

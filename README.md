@@ -54,7 +54,7 @@ separately inspected upstream revision documented on the comparison page.
 
 | Capability | Upstream comparison references | Pommerieux fork |
 | --- | --- | --- |
-| Hybrid discovery | Upstream uses hybrid semantic/keyword retrieval; the compared revisions do not contain this fork's Retrieval v2 contract | Separate lexical and dense lanes, deterministic RRF, stable chunk tie-breaking and lane diagnostics |
+| Retrieval v2 discovery | No upstream product-mode claim is made here; the comparison is limited to the absence of this fork's Retrieval v2 contract | Separate lexical and dense lanes, deterministic RRF, stable chunk tie-breaking and lane diagnostics |
 | Documentary investigation | No `openrag.scope-coverage` contract in either compared upstream revision | Strong typed PROV-O closure followed by verified document reads and fail-closed scoped coverage |
 | Structured metadata search | No `openrag.metadata-filter` or `openrag.metadata-agent-search` contract in either compared upstream revision | DLS-first side-index restriction, three-valued logic and a bounded Agent tool |
 | Metadata provenance | No `openrag.document-metadata` contract in either compared upstream revision | Source-qualified observations, conflicts preserved, no preferred truth in v1 |
@@ -116,7 +116,7 @@ the retrieval and certificate rules in
 
 | Capability | Status |
 | --- | --- |
-| Hybrid lexical+dense RRF discovery | Available now |
+| Fork-specific lexical+dense RRF discovery | Available now |
 | Strong PROV-O scope closure and `openrag.scope-coverage v1` | Available now |
 | Structured metadata API and Agent search | Available now |
 | Deterministic natural-language metadata planning | Available now; intentionally bounded grammar |
@@ -126,12 +126,12 @@ the retrieval and certificate rules in
 | Candidate lineage evidence | Internal only; not trusted as provenance and not activated |
 | OpenArchiver attachment connector flow | Planned; OpenRAG contract exists, OpenArchiver is unmodified |
 
-Example: “Find the PDFs produced in March 2024 containing Orange” is
-deterministically decomposed into free text `Orange` plus `format = PDF` and source-local
+Example: “Find the PDFs produced in March 2024 containing budget” is
+deterministically decomposed into free text `budget` plus `format = PDF` and source-local
 `production_month = 2024-03`. Only a valid deterministic plan uses metadata
 search; unsupported or ambiguous constraints fail explicitly instead of
-silently broadening retrieval. “Orange/fibre” and “Surface pastorale” are
-human-ground-truth benchmark topics, never product heuristics.
+silently broadening retrieval. Domain-specific topic names are not product
+heuristics.
 
 ## Documentation
 
@@ -144,9 +144,8 @@ human-ground-truth benchmark topics, never product heuristics.
 - [Document associations](docs/docs/architecture/document-associations.mdx)
 - [Structured metadata search](docs/docs/product/structured-metadata-search.mdx)
 - [Security and DLS](docs/docs/security/dls.mdx)
-- [Runtime and GitOps ownership](docs/docs/operations/runtime-ownership.mdx)
 - [Versioned contracts](docs/docs/reference/versioned-contracts.mdx)
-- [Audits and benchmarks](docs/docs/audits/index.mdx)
+- [Validation methodology](docs/docs/audits/index.mdx)
 
 ## Quick start
 

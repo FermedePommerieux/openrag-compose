@@ -1,67 +1,41 @@
 ---
-title: Audits and benchmarks
-description: Index of current evidence without turning historical reports into normative behavior.
+title: Validation
+description: Public overview of the fork's validation approach without internal corpus data.
 ---
 
-# Audits and benchmarks
+# Validation
 
-These artifacts are evidence for behavior at their recorded revisions and
-environments. They are not normative product documentation. Current contracts
-are defined by the architecture pages and current code; historical reports are
-not silently rewritten when implementation status changes.
-
-## Retrieval correctness and coverage
-
-- [GT1 final baseline](https://github.com/FermedePommerieux/openrag-compose/blob/975f933fa3149dd60a0f481d5a51ae184d6ddf0d/benchmarks/discovery/results/surface-pastorale-v1-final-report.md)
-- [GT1 product-path audit AUD004/AUD005](https://github.com/FermedePommerieux/openrag-compose/blob/975f933fa3149dd60a0f481d5a51ae184d6ddf0d/benchmarks/discovery/results/surface-pastorale-v1-aud004-aud005-product-path-report.md)
-- [GT1 corrected retrieval audit AUD006/AUD007](https://github.com/FermedePommerieux/openrag-compose/blob/975f933fa3149dd60a0f481d5a51ae184d6ddf0d/benchmarks/discovery/results/surface-pastorale-v1-aud006-aud007-corrected-report.md)
-- [GT1 final retrieval regression](https://github.com/FermedePommerieux/openrag-compose/blob/975f933fa3149dd60a0f481d5a51ae184d6ddf0d/benchmarks/discovery/results/surface-pastorale-v1-aud006-aud007-final-regression-report.md)
-- [GT2 frozen human review](https://github.com/FermedePommerieux/openrag-compose/blob/975f933fa3149dd60a0f481d5a51ae184d6ddf0d/benchmarks/discovery/gt2/orange-fibre-cross-domain-v1-freeze-report.md)
-- [Cross-domain documentary-target validation](https://github.com/FermedePommerieux/openrag-compose/blob/975f933fa3149dd60a0f481d5a51ae184d6ddf0d/benchmarks/discovery/results/cross-domain-ground-truth-documentary-target-validation-report.md)
-- [GT1 dense KNN contract](https://github.com/FermedePommerieux/openrag-compose/blob/975f933fa3149dd60a0f481d5a51ae184d6ddf0d/benchmarks/discovery/results/surface-pastorale-v1-knn-contract-q1-report.md)
-- [GT2 dense KNN contract](https://github.com/FermedePommerieux/openrag-compose/blob/975f933fa3149dd60a0f481d5a51ae184d6ddf0d/benchmarks/discovery/results/orange-fibre-cross-domain-v1-knn-contract-q1-report.md)
-
-GT1 (“Surface pastorale”) and GT2 (“Orange/fibre”) are human-ground-truth
-benchmark topics used to measure generic retrieval behavior. They are not
-product domains. No domain-specific ranking rule or query rewrite is authorized
-by these evaluations.
-
-## Planner calibration and multi-query
-
-- [Planner/scope calibration](https://github.com/FermedePommerieux/openrag-compose/blob/975f933fa3149dd60a0f481d5a51ae184d6ddf0d/benchmarks/discovery/results/planner-scope-calibration-report.md)
-- [GT1 planner baseline](https://github.com/FermedePommerieux/openrag-compose/blob/975f933fa3149dd60a0f481d5a51ae184d6ddf0d/benchmarks/discovery/results/surface-pastorale-v1-planner-calibration-baseline-report.md)
-- [GT1 q4 expansion calibration](https://github.com/FermedePommerieux/openrag-compose/blob/975f933fa3149dd60a0f481d5a51ae184d6ddf0d/benchmarks/discovery/results/surface-pastorale-v1-planner-calibration-q4-extra-report.md)
-- [Generic multi-query report](https://github.com/FermedePommerieux/openrag-compose/blob/975f933fa3149dd60a0f481d5a51ae184d6ddf0d/benchmarks/discovery/results/surface-pastorale-v1-multi-query-report.md)
-
-Multi-query remains opt-in and disabled in the q1 default.
-
-## Metadata provenance, DLS and backfill
-
-- [Metadata backfill final report](https://github.com/FermedePommerieux/openrag-compose/blob/975f933fa3149dd60a0f481d5a51ae184d6ddf0d/benchmarks/document-metadata/final-report.md)
-- [GT1 post-backfill regression](https://github.com/FermedePommerieux/openrag-compose/blob/975f933fa3149dd60a0f481d5a51ae184d6ddf0d/benchmarks/document-metadata/gt1-post-backfill-report.md)
-- [GT2 post-backfill regression](https://github.com/FermedePommerieux/openrag-compose/blob/975f933fa3149dd60a0f481d5a51ae184d6ddf0d/benchmarks/document-metadata/gt2-post-backfill-report.md)
-- [Post-backfill association, filter and DLS audit](https://github.com/FermedePommerieux/openrag-compose/blob/975f933fa3149dd60a0f481d5a51ae184d6ddf0d/benchmarks/document-metadata/post-backfill-association-audit-report.md)
-- [Metadata filter projection contract and canary evidence index](https://github.com/FermedePommerieux/openrag-compose/blob/975f933fa3149dd60a0f481d5a51ae184d6ddf0d/benchmarks/document-metadata/metadata-filter-projection-v1.md)
-- [Side-index migration evidence plan](https://github.com/FermedePommerieux/openrag-compose/blob/975f933fa3149dd60a0f481d5a51ae184d6ddf0d/benchmarks/document-metadata/metadata-activation-index-migration-plan.md)
-
-These reports include metadata-only write checks, immutable content/vector
-checks, DLS-hidden-candidate tests, coverage regression and known archive gaps.
-
-## Structured metadata Agent benchmark
-
-- [Deterministic metadata planner architecture](https://github.com/FermedePommerieux/openrag-compose/blob/975f933fa3149dd60a0f481d5a51ae184d6ddf0d/benchmarks/metadata-planner/architecture-v1.md)
-- [Generic 45-case benchmark corpus](https://github.com/FermedePommerieux/openrag-compose/blob/975f933fa3149dd60a0f481d5a51ae184d6ddf0d/benchmarks/metadata-planner/corpus-v1.json)
-- [Captured benchmark result](https://github.com/FermedePommerieux/openrag-compose/blob/975f933fa3149dd60a0f481d5a51ae184d6ddf0d/benchmarks/metadata-planner/results-v1.json)
-
-The benchmark measures exact parsing, false positives/negatives, unsupported
-and ambiguous intent, free-text preservation, latency, LLM calls and token
-overhead. The current planner mode is `DETERMINISTIC_ONLY`.
-
-## Reading historical evidence safely
-
-An older report may say a component is “not connected” because that was true
-for its phase. Do not promote that sentence into current product status. Use
-the current [architecture overview](/architecture/overview),
-[structured metadata search](/product/structured-metadata-search), and
-[versioned contract index](/reference/versioned-contracts) for normative
+The fork is validated with automated unit, integration, contract and regression
+tests. These checks cover retrieval ordering, source citations, access-control
+boundaries, metadata filtering, provenance handling and fail-closed coverage
 behavior.
+
+Validation also includes reviewed end-to-end scenarios across different
+document types and query shapes. Test fixtures, corpus topics, source records,
+expected-document lists, captured responses and environment-specific reports
+are internal validation data and are intentionally not published in this
+documentation.
+
+## Anonymized results
+
+The following aggregate results come from the validation snapshot included
+with this fork. Scenario labels are anonymous and no query, document name,
+source record or corpus identifier is published.
+
+| Validation | Result |
+| --- | --- |
+| Deterministic metadata planner | 45 cases; 100% exact parsing, 0% false-positive filter rate, 0% false-negative filter rate |
+| Metadata planner latency | 0.044 ms mean, 0.086 ms p95; 0 LLM calls and 0 additional model tokens |
+| Retrieval scenario A | 45.8% post-scope document recall, 44.7% component recall, 77.3% precision, 4.384 s mean latency |
+| Retrieval scenario B | 60.4% post-scope document recall, 66.7% component recall, 27.2% precision, 4.582 s mean latency |
+| Metadata enrichment | 99.43% successful profiles; failures remained fail-closed |
+| Automated Python suite at the recorded snapshot | 1,685 tests passed |
+
+Retrieval results use a fixed candidate and scope configuration. They show the
+measured trade-off between recall and precision on the reviewed scenarios; they
+are not a general performance guarantee. Approximate vector candidate
+membership can change with index state even when source text and embeddings are
+unchanged.
+
+Public product behavior is defined by the architecture pages and versioned
+contracts, not by a particular test corpus or a historical test result.

@@ -67,9 +67,9 @@ calendar wording defaults to `SOURCE_LOCAL`; UTC applies only when requested.
 For example:
 
 ```text
-"les PDF de mars 2024 contenant Orange"
+"les PDF de mars 2024 contenant budget"
 
-free_text: Orange
+free_text: budget
 metadata:
   format_family = pdf
   production_month = 2024-03
@@ -109,9 +109,8 @@ only; after seeds exist, the unchanged strong PROV-O policy and
 
 ## Generality
 
-“Surface pastorale” and “Orange/fibre” are human-ground-truth benchmark topics.
-They do not appear as product ranking rules, synonyms or domain-specific query
-rewrites. “Invoice/facture” likewise remains free text unless an explicit,
+The planner and ranker contain no domain-specific topic labels, synonyms or
+query rewrites. Ordinary business terms remain free text unless an explicit,
 supported metadata field is provided.
 
 ## Source of truth
