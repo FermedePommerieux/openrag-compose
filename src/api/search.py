@@ -2,13 +2,14 @@ from typing import Any, Literal
 
 from fastapi import Depends
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from dependencies import (
     get_search_service,
     get_session_manager,
     require_permission,
 )
+from models.metadata_filter import MetadataFilter
 from session_manager import User
 from utils.logging_config import get_logger
 from utils.opensearch_utils import DISK_SPACE_ERROR_MESSAGE, OpenSearchDiskSpaceError
@@ -18,7 +19,9 @@ logger = get_logger(__name__)
 
 
 class SearchBody(BaseModel):
-    query: str
+    query: str | None = None
+    free_text: str | None = None
+    metadata_filter: MetadataFilter | None = None
     filters: dict[str, Any] = Field(default_factory=dict)
     limit: int = 10
     scoreThreshold: float = Field(default=0, alias="scoreThreshold")
@@ -40,6 +43,22 @@ class SearchBody(BaseModel):
 
     model_config = {"populate_by_name": True}
 
+    @model_validator(mode="after")
+    def validate_discovery_input(self) -> "SearchBody":
+        if self.query is not None and self.free_text is not None and self.query != self.free_text:
+            raise ValueError("query and free_text cannot disagree")
+        if (
+            not self.resolved_free_text.strip()
+            and self.metadata_filter is None
+            and self.evidenceMode != "exhaustive"
+        ):
+            raise ValueError("free_text or metadata_filter is required")
+        return self
+
+    @property
+    def resolved_free_text(self) -> str:
+        return self.free_text if self.free_text is not None else self.query or ""
+
 
 async def search(
     body: SearchBody,
@@ -60,7 +79,7 @@ async def search(
             "Search API request",
             user_id=user.user_id,
             has_jwt_token=jwt_token is not None,
-            query=body.query,
+            query=body.resolved_free_text,
             filters=body.filters,
             limit=body.limit,
             score_threshold=body.scoreThreshold,
@@ -75,10 +94,13 @@ async def search(
             multi_query_discovery=body.multiQueryDiscovery,
             multi_query_max_queries=body.multiQueryMaxQueries,
             multi_query_concurrency=body.multiQueryConcurrency,
+            metadata_filter_sha256=(
+                body.metadata_filter.calculate_sha256() if body.metadata_filter else None
+            ),
         )
 
         result = await search_service.search(
-            body.query,
+            body.resolved_free_text,
             user_id=user.user_id,
             jwt_token=jwt_token,
             filters=body.filters,
@@ -94,6 +116,7 @@ async def search(
             multi_query_discovery=body.multiQueryDiscovery,
             multi_query_max_queries=body.multiQueryMaxQueries,
             multi_query_concurrency=body.multiQueryConcurrency,
+            metadata_filter=body.metadata_filter,
         )
         if body.evidenceMode == "scope_exhaustive" and body.responseProfile == "langflow":
             result = project_scope_exhaustive_for_langflow(result)

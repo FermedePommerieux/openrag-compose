@@ -226,3 +226,72 @@ async def test_empty_eligible_set_executes_no_retrieval_lane():
 
     assert called is False
     assert result["hits"]["hits"] == []
+
+
+@pytest.mark.asyncio
+async def test_partitioned_lane_merges_only_dls_scoped_counts_and_facets():
+    restriction = _restriction(tuple(f"entity-{index:04d}" for index in range(600)))
+    responses = iter(
+        [
+            {
+                "hits": {
+                    "hits": [
+                        {
+                            "_id": "chunk-a",
+                            "_score": 2.0,
+                            "_source": {"chunk_id": "chunk-a"},
+                        }
+                    ],
+                    "total": {"value": 3, "relation": "eq"},
+                },
+                "aggregations": {
+                    "document_types": {
+                        "buckets": [{"key": "application/pdf", "doc_count": 3}],
+                        "sum_other_doc_count": 0,
+                        "doc_count_error_upper_bound": 0,
+                    }
+                },
+            },
+            {
+                "hits": {
+                    "hits": [
+                        {
+                            "_id": "chunk-b",
+                            "_score": 1.0,
+                            "_source": {"chunk_id": "chunk-b"},
+                        }
+                    ],
+                    "total": {"value": 2, "relation": "eq"},
+                },
+                "aggregations": {
+                    "document_types": {
+                        "buckets": [
+                            {"key": "application/pdf", "doc_count": 1},
+                            {"key": "text/plain", "doc_count": 1},
+                        ],
+                        "sum_other_doc_count": 0,
+                        "doc_count_error_upper_bound": 0,
+                    }
+                },
+            },
+        ]
+    )
+
+    async def execute(_body: dict[str, Any]) -> dict[str, Any]:
+        return next(responses)
+
+    result = await execute_metadata_restricted_lane(
+        {
+            "query": {"match_all": {}},
+            "size": 10,
+            "aggs": {"document_types": {"terms": {"field": "mimetype", "size": 10}}},
+        },
+        restriction,
+        execute=execute,
+    )
+
+    assert result["hits"]["total"] == {"value": 5, "relation": "eq"}
+    assert result["aggregations"]["document_types"]["buckets"] == [
+        {"key": "application/pdf", "doc_count": 4},
+        {"key": "text/plain", "doc_count": 1},
+    ]

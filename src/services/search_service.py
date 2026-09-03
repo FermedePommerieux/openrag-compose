@@ -13,7 +13,13 @@ from agentd.tool_decorator import tool
 from auth_context import get_auth_context
 from config.embedding_constants import get_declared_default_embedding_model
 from config.settings import clients, get_embedding_model, get_index_name, get_openrag_config
+from models.metadata_filter import MetadataFilter
 from models.source_provenance import parse_source_provenance
+from models.structured_document_query import MetadataCandidateRestriction
+from services.metadata_candidate_restriction import (
+    execute_metadata_restricted_lane,
+    resolve_metadata_candidates,
+)
 from services.model_capabilities import (
     build_responses_request,
     model_capability_profile,
@@ -513,6 +519,7 @@ class SearchService:
         page_size: int = 100,
         _discovery_query: DiscoveryQuery | None = None,
         _include_timing: bool = False,
+        _metadata_restriction: MetadataCandidateRestriction | None = None,
     ) -> dict[str, Any]:
         """
         Use this tool to search for documents relevant to the query.
@@ -1126,23 +1133,22 @@ class SearchService:
         search_params = {"terminate_after": 0}
         lane_request_diagnostics: dict[str, dict[str, Any]] = {}
 
-        async def execute_search(body: dict[str, Any], label: str) -> dict[str, Any]:
+        async def execute_one_search(
+            body: dict[str, Any], label: str
+        ) -> tuple[dict[str, Any], dict[str, Any]]:
             fallback_body = without_num_candidates(body)
             initial_fingerprint = _retrieval_diagnostic_sha256(body)
-            lane_started = time.perf_counter()
             try:
                 index_name = get_index_name()
                 logger.info("Sending query to index", retrieval_lane=label, index_name=index_name)
                 response = await opensearch_client.search(
                     index=index_name, body=body, params=search_params
                 )
-                lane_request_diagnostics[label] = {
+                return response, {
                     "initial_request_sha256": initial_fingerprint,
                     "executed_request_sha256": initial_fingerprint,
                     "compatibility_retry_without_num_candidates": False,
                 }
-                lane_timings[label] = time.perf_counter() - lane_started
-                return response
             except RequestError as error:
                 error_message = str(error)
                 if is_disk_space_error(error):
@@ -1162,15 +1168,13 @@ class SearchService:
                         response = await opensearch_client.search(
                             index=get_index_name(), body=fallback_body, params=search_params
                         )
-                        lane_request_diagnostics[label] = {
+                        return response, {
                             "initial_request_sha256": initial_fingerprint,
                             "executed_request_sha256": _retrieval_diagnostic_sha256(
                                 fallback_body
                             ),
                             "compatibility_retry_without_num_candidates": True,
                         }
-                        lane_timings[label] = time.perf_counter() - lane_started
-                        return response
                     except RequestError as retry_error:
                         if is_disk_space_error(retry_error):
                             logger.error(
@@ -1202,6 +1206,47 @@ class SearchService:
                     raise OpenSearchDiskSpaceError(DISK_SPACE_ERROR_MESSAGE) from error
                 logger.error("OpenSearch query failed", error=str(error), retrieval_lane=label)
                 raise
+
+        async def execute_search(body: dict[str, Any], label: str) -> dict[str, Any]:
+            lane_started = time.perf_counter()
+            if _metadata_restriction is None:
+                response, diagnostic = await execute_one_search(body, label)
+                lane_request_diagnostics[label] = diagnostic
+                lane_timings[label] = time.perf_counter() - lane_started
+                return response
+
+            partition_diagnostics: list[dict[str, Any]] = []
+
+            async def execute_partition(restricted_body: dict[str, Any]) -> dict[str, Any]:
+                response, diagnostic = await execute_one_search(restricted_body, label)
+                partition_diagnostics.append(diagnostic)
+                return response
+
+            response = await execute_metadata_restricted_lane(
+                body,
+                _metadata_restriction,
+                execute=execute_partition,
+            )
+            lane_request_diagnostics[label] = {
+                "initial_request_sha256": _retrieval_diagnostic_sha256(body),
+                "metadata_restricted": True,
+                "metadata_filter_sha256": (
+                    _metadata_restriction.diagnostics.filter_sha256
+                ),
+                "eligible_occurrences": (
+                    _metadata_restriction.diagnostics.eligible_count
+                ),
+                "partitions": len(partition_diagnostics),
+                "partition_requests_sha256": _retrieval_diagnostic_sha256(
+                    partition_diagnostics
+                ),
+                "compatibility_retry_without_num_candidates": any(
+                    item["compatibility_retry_without_num_candidates"]
+                    for item in partition_diagnostics
+                ),
+            }
+            lane_timings[label] = time.perf_counter() - lane_started
+            return response
 
         retrieval_results: dict[str, dict[str, Any]] = {}
         if retrieval_bodies:
@@ -1533,6 +1578,11 @@ class SearchService:
                 "fusion_seconds": fusion_seconds,
                 "total_seconds": time.perf_counter() - search_started,
             }
+        if _metadata_restriction is not None:
+            response["metadata_filter"] = {
+                **_metadata_restriction.diagnostics.model_dump(mode="json"),
+                "projection_alias": _metadata_restriction.projection_alias,
+            }
         return _finalize_retrieval_contract(
             response,
             requested=requested_profile,
@@ -1643,6 +1693,7 @@ class SearchService:
         embedding_model: str | None,
         max_queries: int,
         concurrency: int,
+        metadata_restriction: MetadataCandidateRestriction | None = None,
     ) -> dict[str, Any]:
         """Run one bounded discovery plan under the caller's existing DLS context."""
 
@@ -1692,6 +1743,7 @@ class SearchService:
                     embedding_model=embedding_model,
                     _discovery_query=item,
                     _include_timing=True,
+                    _metadata_restriction=metadata_restriction,
                 )
 
         raw_responses = await asyncio.gather(
@@ -2292,6 +2344,7 @@ class SearchService:
         multi_query_discovery: bool = False,
         multi_query_max_queries: int = MAX_DISCOVERY_QUERIES,
         multi_query_concurrency: int = 2,
+        metadata_restriction: MetadataCandidateRestriction | None = None,
     ) -> dict[str, Any]:
         """Discover, close and verify one query-defined documentary scope.
 
@@ -2312,9 +2365,14 @@ class SearchService:
                     embedding_model=embedding_model,
                     max_queries=multi_query_max_queries,
                     concurrency=multi_query_concurrency,
+                    metadata_restriction=metadata_restriction,
                 )
             else:
-                seed_response = await self.search_tool(query, embedding_model=embedding_model)
+                seed_response = await self.search_tool(
+                    query,
+                    embedding_model=embedding_model,
+                    _metadata_restriction=metadata_restriction,
+                )
         except Exception as exc:
             logger.warning("Scope seed discovery failed", error=str(exc))
             return {
@@ -2742,6 +2800,9 @@ class SearchService:
         }
         if isinstance(discovery_metadata, dict):
             response["discovery"] = discovery_metadata
+        if isinstance(seed_response.get("metadata_filter"), dict):
+            response["metadata_filter"] = seed_response["metadata_filter"]
+            coverage["metadata_filter"] = seed_response["metadata_filter"]
         if isinstance(seed_response.get("retrieval_diagnostics"), dict):
             response["retrieval_diagnostics"] = seed_response["retrieval_diagnostics"]
         if isinstance(seed_response.get("warnings"), list):
@@ -2767,6 +2828,7 @@ class SearchService:
         multi_query_discovery: bool = False,
         multi_query_max_queries: int = MAX_DISCOVERY_QUERIES,
         multi_query_concurrency: int = 2,
+        metadata_filter: MetadataFilter | None = None,
     ) -> dict[str, Any]:
         """Public search method for API endpoints
 
@@ -2776,6 +2838,12 @@ class SearchService:
         """
         if evidence_mode not in {"focused", "exhaustive", "scope_exhaustive"}:
             raise ValueError("evidence_mode must be 'focused', 'exhaustive', or 'scope_exhaustive'")
+        if metadata_filter is not None and evidence_mode == "exhaustive":
+            raise ValueError("metadata_filter is not supported for direct exhaustive document reads")
+        if metadata_filter is not None and group_by_document:
+            raise ValueError("metadata_filter is not supported for paginated document browsing")
+        if metadata_filter is not None and multi_query_discovery and not query.strip():
+            raise ValueError("metadata-only search cannot enable multi-query discovery")
 
         # Set auth context if provided (for direct API calls)
         from config.settings import is_no_auth_mode
@@ -2790,6 +2858,18 @@ class SearchService:
             from auth_context import set_search_filters
 
             set_search_filters(filters)
+
+        metadata_restriction: MetadataCandidateRestriction | None = None
+        if metadata_filter is not None:
+            if not user_id:
+                return {"results": [], "error": "Authentication required"}
+            dls_client = self.session_manager.get_user_opensearch_client(user_id, jwt_token)
+            metadata_restriction = await resolve_metadata_candidates(
+                dls_client,
+                metadata_filter,
+            )
+
+        resolved_query = query if query.strip() else "*"
 
         if evidence_mode == "exhaustive":
             if not user_id:
@@ -2811,7 +2891,7 @@ class SearchService:
                 raise ValueError("query is required for scope_exhaustive retrieval")
             settings = ScopeExhaustiveSettings.from_knowledge(get_openrag_config().knowledge)
             result = await self.search_exhaustive_scope(
-                query,
+                resolved_query,
                 user_id=user_id,
                 jwt_token=jwt_token,
                 filters=filters,
@@ -2820,6 +2900,7 @@ class SearchService:
                 multi_query_discovery=multi_query_discovery,
                 multi_query_max_queries=multi_query_max_queries,
                 multi_query_concurrency=multi_query_concurrency,
+                metadata_restriction=metadata_restriction,
             )
             return redact_dls_opaque_relation_metadata(result)
 
@@ -2832,17 +2913,20 @@ class SearchService:
             if group_by_document:
                 raise ValueError("multi-query discovery is not available for document browsing")
             result = await self._search_multi_query(
-                query,
+                resolved_query,
                 embedding_model=embedding_model,
                 max_queries=multi_query_max_queries,
                 concurrency=multi_query_concurrency,
+                metadata_restriction=metadata_restriction,
             )
         else:
-            result = await self.search_tool(
-                query,
-                embedding_model=embedding_model,
-                group_by_document=group_by_document,
-                page=page,
-                page_size=page_size,
-            )
+            search_kwargs: dict[str, Any] = {
+                "embedding_model": embedding_model,
+                "group_by_document": group_by_document,
+                "page": page,
+                "page_size": page_size,
+            }
+            if metadata_restriction is not None:
+                search_kwargs["_metadata_restriction"] = metadata_restriction
+            result = await self.search_tool(resolved_query, **search_kwargs)
         return redact_dls_opaque_relation_metadata(result)

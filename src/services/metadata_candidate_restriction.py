@@ -231,7 +231,58 @@ def restrict_lane_body(body: dict[str, Any], candidate_ids: Iterable[str]) -> di
     return restricted
 
 
-def _merge_lane_responses(responses: list[dict[str, Any]], *, size: int) -> dict[str, Any]:
+def _merge_term_aggregations(
+    responses: list[dict[str, Any]],
+    *,
+    aggregation_sizes: dict[str, int],
+) -> dict[str, Any]:
+    """Sum disjoint occurrence-partition facets without leaking another scope.
+
+    Every input response was produced by the same DLS-scoped client and by a
+    disjoint ``source_entity_id`` partition.  Summing those buckets therefore
+    preserves the caller-visible cardinalities; no global/admin aggregation is
+    consulted.
+    """
+    merged: dict[str, Any] = {}
+    for name, requested_size in aggregation_sizes.items():
+        buckets_by_key: dict[str, dict[str, Any]] = {}
+        error_upper_bound = 0
+        other_count = 0
+        for response in responses:
+            aggregation = (response.get("aggregations") or {}).get(name)
+            if not isinstance(aggregation, dict):
+                continue
+            error_upper_bound += int(aggregation.get("doc_count_error_upper_bound") or 0)
+            other_count += int(aggregation.get("sum_other_doc_count") or 0)
+            for bucket in aggregation.get("buckets") or []:
+                if not isinstance(bucket, dict) or bucket.get("key") is None:
+                    continue
+                key = str(bucket["key"])
+                current = buckets_by_key.setdefault(
+                    key,
+                    {field: value for field, value in bucket.items() if field != "doc_count"},
+                )
+                current["doc_count"] = int(current.get("doc_count") or 0) + int(
+                    bucket.get("doc_count") or 0
+                )
+        ordered = sorted(
+            buckets_by_key.values(),
+            key=lambda bucket: (-int(bucket.get("doc_count") or 0), str(bucket.get("key"))),
+        )
+        merged[name] = {
+            "doc_count_error_upper_bound": error_upper_bound,
+            "sum_other_doc_count": other_count,
+            "buckets": ordered[:requested_size],
+        }
+    return merged
+
+
+def _merge_lane_responses(
+    responses: list[dict[str, Any]],
+    *,
+    size: int,
+    aggregation_sizes: dict[str, int],
+) -> dict[str, Any]:
     hits = [hit for response in responses for hit in response.get("hits", {}).get("hits", [])]
     unique: dict[str, dict[str, Any]] = {}
     for hit in hits:
@@ -250,11 +301,25 @@ def _merge_lane_responses(responses: list[dict[str, Any]], *, size: int) -> dict
             str((hit.get("_source") or {}).get("chunk_id") or hit.get("_id") or ""),
         ),
     )[:size]
+    total = 0
+    total_relation = "eq"
+    for response in responses:
+        response_total = (response.get("hits") or {}).get("total", 0)
+        if isinstance(response_total, dict):
+            total += int(response_total.get("value") or 0)
+            if response_total.get("relation", "eq") != "eq":
+                total_relation = "gte"
+        else:
+            total += int(response_total or 0)
     return {
         "hits": {
             "hits": ordered,
-            "total": {"value": len(unique), "relation": "eq"},
-        }
+            "total": {"value": total, "relation": total_relation},
+        },
+        "aggregations": _merge_term_aggregations(
+            responses,
+            aggregation_sizes=aggregation_sizes,
+        ),
     }
 
 
@@ -268,6 +333,18 @@ async def execute_metadata_restricted_lane(
     size = max(0, int(body.get("size", 10)))
     partitions = candidate_id_partitions(restriction.source_entity_ids)
     if not partitions:
-        return {"hits": {"hits": [], "total": {"value": 0, "relation": "eq"}}}
+        return {
+            "hits": {"hits": [], "total": {"value": 0, "relation": "eq"}},
+            "aggregations": {},
+        }
     responses = [await execute(restrict_lane_body(body, partition)) for partition in partitions]
-    return _merge_lane_responses(responses, size=size)
+    aggregation_sizes = {
+        str(name): max(1, int((definition.get("terms") or {}).get("size") or 10))
+        for name, definition in (body.get("aggs") or {}).items()
+        if isinstance(definition, dict) and isinstance(definition.get("terms"), dict)
+    }
+    return _merge_lane_responses(
+        responses,
+        size=size,
+        aggregation_sizes=aggregation_sizes,
+    )
