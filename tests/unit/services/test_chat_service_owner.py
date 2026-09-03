@@ -51,7 +51,7 @@ async def test_langflow_chat_passes_owner_metadata(monkeypatch):
     set_search_limit(4)
     set_score_threshold(0.25)
     await chat_svc.langflow_chat(
-        prompt="hello",
+        prompt="résumé le contrat",
         jwt_token="user-jwt",
         owner="user-123",
         owner_name="Test User",
@@ -72,9 +72,12 @@ async def test_langflow_chat_passes_owner_metadata(monkeypatch):
     assert headers["X-Langflow-Global-Var-OPENRAG_QUERY_FILTER"] == (
         '{"filters": {"data_sources": ["archive.pdf"]}, "limit": 4, "scoreThreshold": 0.25}'
     )
-    metadata_plan = json.loads(headers["X-Langflow-Global-Var-OPENRAG_METADATA_PLAN"])
+    metadata_plan_header = headers["X-Langflow-Global-Var-OPENRAG_METADATA_PLAN"]
+    assert metadata_plan_header.isascii()
+    metadata_plan = json.loads(metadata_plan_header)
     assert metadata_plan["status"] == "VALID"
     assert metadata_plan["requires_metadata_search"] is False
+    assert metadata_plan["free_text"] == "résumé le contrat"
     assert len(metadata_plan["plan_sha256"]) == 64
 
 

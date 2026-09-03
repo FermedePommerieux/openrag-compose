@@ -181,7 +181,7 @@ class ChatService:
         metadata_plan_payload["plan_sha256"] = metadata_plan.calculate_sha256()
         extra_headers["X-Langflow-Global-Var-OPENRAG_METADATA_PLAN"] = json.dumps(
             metadata_plan_payload,
-            ensure_ascii=False,
+            ensure_ascii=True,
             sort_keys=True,
             separators=(",", ":"),
         )
