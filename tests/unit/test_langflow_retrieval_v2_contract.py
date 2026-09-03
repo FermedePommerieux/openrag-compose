@@ -11,6 +11,7 @@ import json
 import sys
 import types
 from pathlib import Path
+from typing import get_args
 
 from utils.langflow_utils import parse_knowledge_chunks
 
@@ -100,8 +101,7 @@ def test_backend_retrieval_tool_is_thin_and_embedded_verbatim():
     assert 'headers["Authorization"]' in code
     assert "document_search_with_metadata" in code
     assert "MetadataToolQuery" in code
-    assert '"MetadataToolFilter": MetadataToolFilter' in code
-    assert '"MetadataToolField": MetadataToolField' in code
+    assert "from __future__ import annotations" not in code
 
 
 def _metadata_plan_header(query: str) -> str:
@@ -167,6 +167,8 @@ def test_metadata_tool_schema_resolves_in_unregistered_dynamic_module(monkeypatc
     exec(COMPONENT_PATH.read_text(encoding="utf-8"), namespace)
 
     schema = namespace["MetadataToolQuery"].model_json_schema()
+    annotation = namespace["MetadataToolQuery"].model_fields["filters"].annotation
+    assert get_args(annotation)[0] is namespace["MetadataToolFilter"]
     assert schema["properties"]["filters"]["items"]["$ref"].endswith(
         "/MetadataToolFilter"
     )

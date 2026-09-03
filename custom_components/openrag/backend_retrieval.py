@@ -5,8 +5,6 @@ diversity, reranking and provenance.  This component deliberately contains no
 OpenSearch query logic so the chat agent cannot drift from ``SearchService``.
 """
 
-from __future__ import annotations
-
 import hashlib
 import json
 from typing import Any, Literal
@@ -65,7 +63,7 @@ class MetadataToolFilter(BaseModel):
     calendar_basis: Literal["SOURCE_LOCAL", "UTC"] | None = None
 
     @model_validator(mode="after")
-    def validate_shape(self) -> MetadataToolFilter:
+    def validate_shape(self) -> "MetadataToolFilter":
         temporal = self.field.startswith(("production_", "modification_"))
         if temporal != (self.calendar_basis is not None):
             raise ValueError("temporal filters require calendar_basis; other filters forbid it")
@@ -103,27 +101,11 @@ class MetadataToolQuery(BaseModel):
     limit: int = Field(default=10, ge=1, le=MAX_METADATA_TOOL_RESULTS)
 
     @model_validator(mode="after")
-    def reject_blank_query(self) -> MetadataToolQuery:
+    def reject_blank_query(self) -> "MetadataToolQuery":
         if not self.free_text.strip():
             raise ValueError("free_text must not be blank")
         return self
 
-
-# Langflow evaluates custom-component source dynamically, so Pydantic cannot
-# always recover local aliases or sibling model names from ``__module__``.
-# Resolve them explicitly while the local symbols are authoritative.
-MetadataToolFilter.model_rebuild(
-    force=True,
-    _types_namespace={
-        "Literal": Literal,
-        "MetadataToolField": MetadataToolField,
-        "MetadataToolOperator": MetadataToolOperator,
-    },
-)
-MetadataToolQuery.model_rebuild(
-    force=True,
-    _types_namespace={"MetadataToolFilter": MetadataToolFilter},
-)
 
 # Tool artifacts feed OpenRAG's source cards. For scope-exhaustive retrieval the
 # backend transport profile guarantees this list is the bounded model projection,

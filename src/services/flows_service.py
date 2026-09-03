@@ -208,6 +208,11 @@ _PREVIOUS_VERSIONED_METADATA_TOOL_MANAGED_GRAPH_SHA256 = (
 _PREVIOUS_VERSIONED_METADATA_TOOL_REBUILD_MANAGED_GRAPH_SHA256 = (
     "180546a884f07474ba6e268e9e156e541a3c06473032f870da7dd50b52880e31"
 )
+# Exact v15 graph after neutralizing the function annotation but before making
+# the Pydantic field annotations eager for Langflow's unregistered module.
+_PREVIOUS_VERSIONED_METADATA_TOOL_ANNOTATION_MANAGED_GRAPH_SHA256 = (
+    "b29834a3e46a78be16448f58a82f2d6563971a1430ce7acb597d349431df9fac"
+)
 
 
 class FlowsService:
@@ -1642,6 +1647,7 @@ class FlowsService:
                     _PREMATURE_VERSIONED_METADATA_BASELINE_MANAGED_GRAPH_SHA256,
                     _PREVIOUS_VERSIONED_METADATA_TOOL_MANAGED_GRAPH_SHA256,
                     _PREVIOUS_VERSIONED_METADATA_TOOL_REBUILD_MANAGED_GRAPH_SHA256,
+                    _PREVIOUS_VERSIONED_METADATA_TOOL_ANNOTATION_MANAGED_GRAPH_SHA256,
                 }
             )
         if marker not in {6, 7, 8, 9, 10, 11, 12}:
