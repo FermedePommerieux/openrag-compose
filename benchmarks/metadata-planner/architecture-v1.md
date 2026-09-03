@@ -2,15 +2,17 @@
 
 ## Boundary
 
-`document_search_with_metadata` is a Langflow tool backed by
-`POST /search/metadata-agent`. Its public input is
-`openrag.metadata-agent-search v1`: `free_text`, one to eight strict filters,
-and a result limit from 1 to 20. Each filter has a versioned field, one of
-`EQUAL`, `IN`, `EXISTS`, `NOT_EXISTS`, or `NOT_EQUAL`, a scalar/list value when
-required, and an explicit calendar basis for temporal fields. Unknown fields,
-operators, extra properties, raw OpenSearch/Lucene JSON, scripts, and nested
-query DSL are rejected by Pydantic before execution. `IN` is limited to 16
-values and each scalar to 256 characters.
+`document_search_with_metadata` is a zero-argument Agent-facing Langflow tool
+backed by `POST /search/metadata-agent`. The backend supplies and executes the
+exact request-scoped deterministic plan, so the model can choose the tool but
+cannot restate or change its query, filters, or limit. The internal endpoint
+accepts `openrag.metadata-agent-search v1`: `free_text`, one to eight strict
+filters, and a result limit from 1 to 20. Each filter has a versioned field,
+one of `EQUAL`, `IN`, `EXISTS`, `NOT_EXISTS`, or `NOT_EQUAL`, a scalar/list
+value when required, and an explicit calendar basis for temporal fields.
+Unknown fields, operators, extra properties, raw OpenSearch/Lucene JSON,
+scripts, and nested query DSL are rejected by Pydantic before execution. `IN`
+is limited to 16 values and each scalar to 256 characters.
 
 The backend compiles this schema only to existing `openrag.metadata-filter v1`
 clauses. `NOT_EQUAL` becomes the already-proven negated `EQUAL` clause, so
@@ -32,12 +34,14 @@ and exact creator observations. Natural calendar wording defaults to
 `SOURCE_LOCAL`; UTC is used only when explicitly requested. The deterministic
 plan and its SHA-256 are request-scoped Langflow globals.
 
-The Agent may choose the metadata tool, but its proposed arguments must match
-the deterministic plan exactly. A mismatch returns `INVALID` without HTTP
-search. The normal `search_documents` tool refuses a request for which a valid
+The Agent may choose the metadata tool, but it receives no filter arguments to
+invent. The normal `search_documents` tool refuses a request for which a valid
 metadata plan exists, preventing a silent broader fallback. `AMBIGUOUS` and
 `UNSUPPORTED` plans block both retrieval paths and return bounded diagnostics.
-Queries with no metadata intent continue through normal q1 retrieval.
+Queries with no metadata intent continue through normal q1 retrieval. If the
+model nevertheless selects the metadata tool for such a query, the signed
+`VALID` no-metadata plan routes to that same unchanged q1 path; blocked intent
+can never broaden through this fallback.
 
 Explicit filters supplied to the planner are preserved exactly and replace
 only inferred predicates on the same fields. There is no fuzzy person
