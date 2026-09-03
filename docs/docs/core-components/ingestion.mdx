@@ -97,7 +97,10 @@ Instead, this flow is called by the [**OpenRAG OpenSearch Agent** flow](/chat#fl
 The agent can call this component to fetch web content from a given URL, and then ingest that content into your OpenSearch knowledge base.
 
 :::tip
-Like all OpenRAG flows, you can [inspect the flow in Langflow](/agents#inspect-and-modify-flows), and you can customize it.
+You can [inspect this ingestion flow in Langflow](/agents#inspect-and-modify-flows)
+and use a separately managed custom flow when you need a different execution
+graph. This does not make direct edits to the locked managed Agent flow a
+supported customization path.
 
 To ingest URLs recursively, edit the **Depth** parameter in the **OpenSearch URL Ingestion** flow.
 :::

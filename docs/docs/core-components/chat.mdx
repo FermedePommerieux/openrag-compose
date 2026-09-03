@@ -16,7 +16,9 @@ The agent can also fetch information from URLs and new documents that you provid
 To limit the knowledge available to the agent, use [filters](/knowledge-filters).
 
 The agent can call specialized Model Context Protocol (MCP) tools to extend its capabilities.
-To add or change the available tools, you must edit the [**OpenRAG OpenSearch Agent** flow](#flow).
+The managed retrieval tools remain backend-owned; use OpenRAG Settings for the
+supported Agent model and prompt changes. Separate custom flows are possible,
+but do not inherit the managed Retrieval v2 guarantees.
 
 :::tip
 Try chatting, uploading documents, and modifying chat settings in the [quickstart](/quickstart).
@@ -26,8 +28,10 @@ Try chatting, uploading documents, and modifying chat settings in the [quickstar
 
 When you use the OpenRAG <Icon name="MessageSquare" aria-hidden="true"/> **Chat**, the **OpenRAG OpenSearch Agent** flow runs in the background to retrieve relevant information from your knowledge base and generate a response.
 
-If you [inspect the flow in Langflow](/agents#inspect-and-modify-flows), you'll see that it is comprised of eight components that work together to ingest chat messages, retrieve relevant information from your knowledge base, and then generate responses.
-When you inspect this flow, you can edit the components to customize the agent's behavior.
+If you [inspect the managed flow in Langflow](/agents#inspect-and-modify-flows), you'll see the components that work together to ingest chat messages, retrieve relevant information from your knowledge base, and then generate responses.
+The managed flow can be inspected for effective wiring. Supported model and
+prompt changes are made through OpenRAG Settings and verified through
+`GET /api/settings/runtime-behavior`.
 
 ![OpenRAG Open Search Agent Flow](/img/opensearch-agent-flow.png)
 
@@ -35,10 +39,17 @@ When you inspect this flow, you can edit the components to customize the agent's
 When you use the OpenRAG <Icon name="MessageSquare" aria-hidden="true"/> **Chat**, your chat messages are passed to the **Chat Input** component, which then sends them to the **Agent** component for processing.
 
 * [**Agent** component](https://docs.langflow.org/components-agents): This component orchestrates the entire flow by processing chat messages, searching the knowledge base, and organizing the retrieved information into a cohesive response.
-The agent's general behavior is defined by the prompt in the **Agent Instructions** field and the model connected to the **Language Model** port.
-One or more specialized tools can be attached to the **Tools** port to extend the agent's capabilities. In this case, there are two tools: **MCP Tools** and the thin **OpenRAG Retrieval v2** tool. The retrieval path is Chat → Langflow Agent → OpenRAG Retrieval v2 → backend SearchService/RetrievalService → OpenSearch.
+The agent's general behavior is defined by the workspace-configured prompt and
+model that OpenRAG applies to the managed flow.
+One or more specialized tools can be attached to the **Tools** port. The
+managed flow includes **MCP Tools** and the thin Retrieval v2 tool set,
+including the bounded metadata-search path when a valid deterministic plan is
+present. The retrieval path is Chat → Langflow Agent → OpenRAG Retrieval v2 →
+backend SearchService/RetrievalService → OpenSearch.
 
-   The **Agent** component is the star of this flow because it powers decision making, tool calling, and an LLM-driven conversational experience.
+   The **Agent** component selects tools and reasons over their bounded output.
+   It does not decide documentary truth, `coverage.complete`, strong provenance
+   or DLS.
 
    <details>
    <summary>How do agents work?</summary>
@@ -55,12 +66,15 @@ One or more specialized tools can be attached to the **Tools** port to extend th
 
 * [**Language Model** component](https://docs.langflow.org/components-models): Connected to the **Agent** component's **Language Model** port, this component provides the base language model driver for the agent. The agent cannot function without a model because the model is used for general knowledge, reasoning, and generating responses.
 
+   For documentary answers, model knowledge is not source evidence. Claims
+   must remain grounded in the retrieved leaf evidence and its coverage state.
+
    Different models can change the style and content of the agent's responses, and some models might be better suited for certain tasks than others. If the agent doesn't seem to be handling requests well, try changing the model to see how the responses change. For example, fast models might be good for simple queries, but they might not have the depth of reasoning for complex, multi-faceted queries.
 
 * [**MCP Tools** component](https://docs.langflow.org/mcp-client): Connected to the **Agent** component's **Tools** port, this component can be used to [access any MCP server](https://docs.langflow.org/mcp-server) and the MCP tools provided by that server. In this case, your OpenRAG Langflow instance's [**Starter Project**](https://docs.langflow.org/concepts-flows#projects) is the MCP server, and the [**OpenSearch URL Ingestion** flow](/ingestion#url-flow) is the MCP tool.
 This flow fetches content from URLs, and then stores the content in your OpenRAG OpenSearch knowledge base. By serving this flow as an MCP tool, the agent can selectively call this tool if a URL is detected in the chat input.
 
-* **OpenRAG Retrieval v2** component: Connected to the **Agent** component's **Tools** port, this thin tool calls the backend `/search` endpoint with the end-user identity and active search context. The backend, not the flow, owns BM25/vector retrieval, RRF, filters, provenance, and user-scoped OpenSearch DLS. See [Retrieval v2](/retrieval-v2).
+* **OpenRAG Retrieval v2** component: Connected to the **Agent** component's **Tools** port, this thin tool calls the backend `/search` endpoint with the end-user identity and active search context. A valid request-scoped metadata plan can instead use the bounded backend metadata-Agent endpoint. The backend, not the flow, owns BM25/vector retrieval, RRF, filters, provenance, coverage and user-scoped OpenSearch DLS. See [Retrieval v2](/core-components/retrieval-v2) and [Structured metadata search](/product/structured-metadata-search).
 
 * [**Chat Output** component](https://docs.langflow.org/chat-input-and-output#chat-output): Connected to the **Agent** component's **Output** port, this component returns the agent's generated response as a chat message.
 
@@ -71,7 +85,7 @@ When you use the OpenRAG <Icon name="MessageSquare" aria-hidden="true"/> **Chat*
 Nudges appear as prompts in the chat, and they are based on the contents of your OpenRAG OpenSearch knowledge base.
 Click a nudge to accept it and start a chat based on the nudge.
 
-Like OpenRAG's other built-in flows, you can [inspect the flow in Langflow](/agents#inspect-and-modify-flows), and you can customize it if you want to change the nudge behavior.
+Like OpenRAG's other built-in flows, you can [inspect the flow in Langflow](/agents#inspect-and-modify-flows). Treat direct edits to bundled flows as unsupported; create a separate custom flow when you need a custom execution graph.
 However, this flow is specifically designed to work with the OpenRAG chat and knowledge base.
 Major changes to this flow might break the nudge functionality or produce irrelevant nudges.
 
@@ -89,7 +103,7 @@ During the chat, you'll see information about the agent's process. For more deta
 
 If documents in your knowledge base seem to be missing or interpreted incorrectly, see [Troubleshoot document ingestion or similarity search issues](/support/troubleshoot#document-ingestion-or-similarity-search-issues).
 
-If tool calls and knowledge appear normal, but the agent's responses seem off-topic or incorrect, consider changing the agent's language model or prompt, as explained in [Inspect and modify flows](/agents#inspect-and-modify-flows).
+If tool calls and knowledge appear normal, but the agent's responses seem off-topic or incorrect, consider changing the Agent model or prompt in Settings, as explained in [Inspect managed flows and build custom flows](/agents#inspect-and-modify-flows).
 
 ## Change language models, embedding models, and agent instructions
 

@@ -12,8 +12,8 @@ const isProduction = process.env.NODE_ENV === 'production';
 
 /** @type {import('@docusaurus/types').Config} */
 const config = {
-  title: 'OpenRAG',
-  tagline: 'Open Source RAG Platform',
+  title: 'OpenRAG — Pommerieux fork',
+  tagline: 'Verifiable documentary investigation',
   favicon: 'img/favicon.ico',
 
   headTags: [
@@ -131,8 +131,8 @@ const config = {
 
   // GitHub pages deployment config.
   // If you aren't using GitHub pages, you don't need these.
-  organizationName: 'langflow-ai', // Usually your GitHub org/user name.
-  projectName: 'openrag', // Usually your repo name.
+  organizationName: 'FermedePommerieux', // Usually your GitHub org/user name.
+  projectName: 'openrag-compose', // Usually your repo name.
 
   onBrokenLinks: 'throw',
   markdown: {
@@ -160,7 +160,7 @@ const config = {
           // Please change this to your repo.
           // Remove this to remove the "edit this page" links.
           editUrl:
-            'https://github.com/openrag/openrag/tree/main/docs/',
+            'https://github.com/FermedePommerieux/openrag-compose/tree/pommerieux/v0.6.0-retrieval-v2-prov-o/docs/',
           routeBasePath: '/',
           // Versioning configuration - see VERSIONING_SETUP.md
           // To enable versioning, uncomment the following lines:
@@ -228,7 +228,7 @@ const config = {
         items: [
           {
             position: "right",
-            href: "https://github.com/langflow-ai/openrag",
+            href: "https://github.com/FermedePommerieux/openrag-compose",
             className: "header-github-link",
             target: "_blank",
             rel: null,

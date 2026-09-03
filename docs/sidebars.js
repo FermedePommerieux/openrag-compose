@@ -19,7 +19,19 @@ const sidebars = {
     {
       type: "doc",
       id: "get-started/what-is-openrag",
-      label: "About OpenRAG"
+      label: "About this fork"
+    },
+    {
+      type: "category",
+      label: "Fork architecture",
+      items: [
+        "architecture/overview",
+        "architecture/truth-and-provenance",
+        "architecture/prov-o",
+        "architecture/retrieval-and-coverage",
+        "architecture/document-metadata",
+        "architecture/document-associations",
+      ],
     },
     "get-started/quickstart",
     {
@@ -66,6 +78,7 @@ const sidebars = {
         "core-components/knowledge-browse",
         "core-components/knowledge-filters",
         "core-components/retrieval-v2",
+        "product/structured-metadata-search",
         "core-components/knowledge-connectors",
         {
           type: "doc",
@@ -79,7 +92,24 @@ const sidebars = {
       id: "core-components/chat",
       label: "Chat",
     },
-    "reference/configuration",
+    {
+      type: "category",
+      label: "Security and operations",
+      items: [
+        "security/dls",
+        "operations/runtime-ownership",
+        "reference/configuration",
+      ],
+    },
+    {
+      type: "category",
+      label: "Fork reference",
+      items: [
+        "upstream/differences",
+        "reference/versioned-contracts",
+        "audits/index",
+      ],
+    },
     {
       type: "doc",
       id: "reference/api-sdk-overview",
@@ -90,7 +120,7 @@ const sidebars = {
     "support/ibm-elite-support",
     {
       type: "link",
-      label: "Changelog",
+      label: "Upstream changelog",
       href: "https://github.com/langflow-ai/openrag/releases",
     },
   ],

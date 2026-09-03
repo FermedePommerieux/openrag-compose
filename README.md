@@ -1,164 +1,180 @@
 <div align="center">
 
-<img src="./docs/static/img/openrag-logo-dog.svg" alt="" width="120"/>
+<img src="./docs/static/img/openrag-logo-dog.svg" alt="OpenRAG" width="120"/>
 
-# OpenRAG
+# OpenRAG — Pommerieux fork
 
-<h3>
-  <em>Intelligent Agent-powered document search</em>
-</h3>
-
-<!-- Badges -->
-
-[![Langflow](https://img.shields.io/badge/Langflow-1C1C1E?style=for-the-badge&logo=langflow)](https://github.com/langflow-ai/langflow)
-[![OpenSearch](https://img.shields.io/badge/OpenSearch-005EB8?style=for-the-badge&logo=opensearch&logoColor=white)](https://github.com/opensearch-project/OpenSearch)
-[![Docling](https://img.shields.io/badge/Docling-000000?style=for-the-badge)](https://github.com/docling-project/docling)
-
-[![YouTube Channel](https://img.shields.io/youtube/channel/subscribers/UCn2bInQrjdDYKEEmbpwblLQ?label=Subscribe&style=social)](https://www.youtube.com/@OpenRAG/)
-[![GitHub stars](https://img.shields.io/github/stars/langflow-ai/openrag?style=social)](https://github.com/langflow-ai/openrag/stargazers)
-[![GitHub forks](https://img.shields.io/github/forks/langflow-ai/openrag?style=social)](https://github.com/langflow-ai/openrag/network/members)
-
-[![Documentation](https://img.shields.io/badge/Documentation-773eff)](https://docs.openr.ag) [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/langflow-ai/openrag)
+### Verifiable documentary investigation over bounded, attributable evidence
 
 </div>
 
----
+This repository is the **FermedePommerieux fork of
+[upstream OpenRAG](https://github.com/langflow-ai/openrag)**. It retains the
+OpenRAG platform—FastAPI, Langflow, OpenSearch, Docling, the web interface and
+SDKs—while adding a documentary-investigation contract.
 
-OpenRAG is a comprehensive Retrieval-Augmented Generation platform that enables intelligent document search and AI-powered conversations.
+Compared with the upstream baseline used by this fork, it adds backend-owned
+lexical+dense RRF discovery, structured metadata discovery, explicit PROV-O
+documentary closure, fail-closed scoped coverage certification, and bounded
+evidence projection for LLM reasoning. The upstream relationship and both
+comparison references are recorded in [Differences from upstream](docs/docs/upstream/differences.mdx).
 
-Users can upload, process, and query documents through a chat interface backed by large language models and semantic search capabilities. The system utilizes Langflow for document ingestion, retrieval workflows, and intelligent nudges, providing a seamless RAG experience.
+Its truth contract is deliberately narrow: metadata is an observation, not
+automatically a fact; association is not provenance; retrieval may be
+approximate; and `coverage.complete=true` certifies only the accessible graph
+closure reached from the discovered seeds under a versioned traversal policy.
+It never certifies completeness of the physical archive. See
+[Truth and provenance](docs/docs/architecture/truth-and-provenance.mdx).
 
-Check out the [documentation](https://docs.openr.ag/) or get started with the [quickstart](https://docs.openr.ag/quickstart).
+> **Fork identity:** this is not the upstream OpenRAG project. Upstream is
+> credited below and remains the source of the platform on which this work is
+> based.
 
-Built with [FastAPI](https://fastapi.tiangolo.com/) and [Next.js](https://github.com/vercel/next.js). 
-Powered by [OpenSearch](https://github.com/opensearch-project/OpenSearch), [Langflow](https://github.com/langflow-ai/langflow), and [Docling](https://github.com/docling-project/docling).
+## Why this fork exists
 
----
+Ordinary RAG can rank useful passages, but a ranked top-k alone cannot prove
+that every source unit in a documentary scope was inspected. This fork
+separates probabilistic discovery from deterministic investigation:
 
-<div align="center">
-  <img src="./docs/static/img/openrag_readme_downsized.gif" alt="OpenRAG Demo" width="100%"/>
-</div>
+- OpenSearch lexical and approximate-nearest-neighbour lanes discover
+  candidates, fused by deterministic RRF for a fixed pair of input lanes.
+- Explicit, policy-approved PROV-O relations define the certifiable graph
+  traversal; metadata similarity does not.
+- Every discovered document required by the contract is read and verified
+  before scoped coverage can be certified.
+- The LLM reasons over a bounded projection of source evidence. It does not
+  decide truth, provenance, access control or coverage.
 
-## ✨ Highlight Features
+## How this fork differs from upstream
 
-- **Pre-packaged & ready to run** - All core tools are hooked up and ready to go, just install and run
-- **Agentic RAG workflows** - Advanced orchestration with re-ranking and multi-agent coordination
-- **Document ingestion** - Handles messy, real-world data with intelligent parsing
-- **Drag-and-drop workflow builder** - Visual interface powered by Langflow for rapid iteration
-- **Modular enterprise add-ons** - Extend functionality when you need it
-- **Enterprise search at any scale** - Powered by OpenSearch for production-grade performance
+The comparison below is about explicit repository contracts, not a claim that
+upstream OpenRAG is deficient. “Fork point” means the exact Git common ancestor
+with the fetched official upstream repository; “current upstream” means the
+separately inspected upstream revision documented on the comparison page.
 
-## 🔄 How OpenRAG Works
+| Capability | Upstream comparison references | Pommerieux fork |
+| --- | --- | --- |
+| Hybrid discovery | Upstream uses hybrid semantic/keyword retrieval; the compared revisions do not contain this fork's Retrieval v2 contract | Separate lexical and dense lanes, deterministic RRF, stable chunk tie-breaking and lane diagnostics |
+| Documentary investigation | No `openrag.scope-coverage` contract in either compared upstream revision | Strong typed PROV-O closure followed by verified document reads and fail-closed scoped coverage |
+| Structured metadata search | No `openrag.metadata-filter` or `openrag.metadata-agent-search` contract in either compared upstream revision | DLS-first side-index restriction, three-valued logic and a bounded Agent tool |
+| Metadata provenance | No `openrag.document-metadata` contract in either compared upstream revision | Source-qualified observations, conflicts preserved, no preferred truth in v1 |
+| Documentary association | No fork association contract in either compared upstream revision | Internal, bounded, non-certifying `DocumentAssociation`; product activation remains disabled |
+| Runtime consistency | Upstream already has workspace configuration | Fork adds configured/effective `RuntimeBehavior` verification for model, prompt and retrieval ownership |
+| OpenArchiver attachment identity | No fork attachment contract in either compared upstream revision | Internal OpenRAG-side contract for stable attachment identity and verified binary facts; end-to-end connector ingestion is planned |
 
-OpenRAG follows a streamlined workflow to transform your documents into intelligent, searchable knowledge:
+Each row, its classification and source evidence are in
+[Differences from upstream](docs/docs/upstream/differences.mdx).
 
-<div align="center">
-  <img src="./docs/static/img/workflow-diagram.svg" alt="OpenRAG Workflow Diagram" width="800"/>
-</div>
+## Architecture at a glance
 
-## 🚀 Install OpenRAG
-
-To get started with OpenRAG, see the installation guides in the OpenRAG documentation:
-
-* [Quickstart](https://docs.openr.ag/quickstart)
-* [Install the OpenRAG Python package](https://docs.openr.ag/install-options)
-* [Deploy self-managed services with Docker or Podman](https://docs.openr.ag/docker)
-
-## ✨ Quick Start Workflow
-
-<div align="center">
-
-<img src="./docs/static/img/uv_run_openrag.png" alt="Use uv run openrag to start" width="300"/>
-
-**1. Launch OpenRAG**
-
-↓
-
-<img src="./docs/static/img/add_knowledge_openrag.png" alt="Add files or folders as knowledge" width="300"/>
-
-**2. Add Knowledge**
-
-↓
-
-<img src="./docs/static/img/chat_openrag.png" alt="Start Chatting with your knowledge" width="700"/>
-
-**3. Start Chatting**
-
-</div>
-
-## 📦 SDKs
-
-Integrate OpenRAG into your applications with our official SDKs:
-
-### Python SDK
-```bash
-pip install openrag-sdk
+```mermaid
+flowchart TD
+    Q[User query] --> P[Deterministic metadata planning<br/>when applicable]
+    P --> M[DLS-scoped metadata side index]
+    M --> H[Lexical + dense discovery]
+    H --> R[RRF]
+    R --> S[Documentary seeds]
+    S --> G[Strong policy-approved<br/>PROV-O closure]
+    G --> C[Fail-closed scoped<br/>coverage certificate]
+    C --> E[Bounded evidence projection]
+    E --> A[Agent reasoning]
+    S -. optional internal path .-> DA[DocumentAssociation neighborhood]
+    DA -. non-certifying; scope_expanding=false .-> E
 ```
 
-**Quick Example:**
-```python
-import asyncio
-from openrag_sdk import OpenRAGClient
+OpenSearch discovery is approximate where ANN is involved. PROV-O closure is
+deterministic over explicit, accessible relations for a fixed index view and
+policy. `DocumentAssociation` describes bounded documentary proximity but is
+not a provenance edge and does not enlarge certifiable scope. Coverage reports
+what the policy traversal and verified document reads actually completed.
 
+The current baseline defaults are **q1**, lexical candidates **50**, dense
+candidates **50**, RRF `k=60`, scope seed budget **100**, and multi-query
+discovery **disabled**. These are current defaults, not permanent promises.
 
-async def main():
-    async with OpenRAGClient() as client:
-        response = await client.chat.create(message="What is RAG?")
-        print(response.response)
+## Documentary truth and provenance
 
+The fork keeps these states distinct:
+`ASSERTED`, `OBSERVED`, `ASSOCIATED`, `INFERRED`, `UNKNOWN`, `CONFLICTING` and
+`INVALID`.
 
-if __name__ == "__main__":
-    asyncio.run(main())
-```
+In particular:
 
-📖 [Full Python SDK Documentation](https://pypi.org/project/openrag-sdk/)
+- metadata observation is not factual truth;
+- document association is not provenance derivation;
+- same author, date or type does not establish document identity;
+- candidate lineage is not `prov:wasDerivedFrom`;
+- an association neighborhood is not a certifiable closure;
+- complete scoped coverage is not completeness of the physical archive.
 
-### TypeScript/JavaScript SDK
-```bash
-npm install openrag-sdk
-```
+The normative definitions are in
+[Truth and provenance](docs/docs/architecture/truth-and-provenance.mdx), with
+the retrieval and certificate rules in
+[Retrieval and coverage](docs/docs/architecture/retrieval-and-coverage.mdx).
 
-**Quick Example:**
-```typescript
-import { OpenRAGClient } from "openrag-sdk";
+## Key capabilities and status
 
-const client = new OpenRAGClient();
-const response = await client.chat.create({ message: "What is RAG?" });
-console.log(response.response);
-```
+| Capability | Status |
+| --- | --- |
+| Hybrid lexical+dense RRF discovery | Available now |
+| Strong PROV-O scope closure and `openrag.scope-coverage v1` | Available now |
+| Structured metadata API and Agent search | Available now |
+| Deterministic natural-language metadata planning | Available now; intentionally bounded grammar |
+| DLS-aware metadata restriction, retrieval and graph traversal | Available now |
+| Archive-backed metadata profiles and side-index projection | Available now |
+| `DocumentAssociation` semantics | Internal; bounded and non-certifying; product route disabled |
+| Candidate lineage evidence | Internal only; not trusted as provenance and not activated |
+| OpenArchiver attachment connector flow | Planned; OpenRAG contract exists, OpenArchiver is unmodified |
 
-📖 [Full TypeScript/JavaScript SDK Documentation](https://www.npmjs.com/package/openrag-sdk)
+Example: “Find the PDFs produced in March 2024 containing Orange” is
+deterministically decomposed into free text `Orange` plus `format = PDF` and source-local
+`production_month = 2024-03`. Only a valid deterministic plan uses metadata
+search; unsupported or ambiguous constraints fail explicitly instead of
+silently broadening retrieval. “Orange/fibre” and “Surface pastorale” are
+human-ground-truth benchmark topics, never product heuristics.
 
-## 🔌 Model Context Protocol (MCP)
+## Documentation
 
-OpenRAG ships a built-in MCP server over **streamable HTTP**, mounted on your instance at `/mcp`. Connect AI assistants like Cursor, Claude Desktop, and IBM Bob to your OpenRAG knowledge base — no subprocess and no separate install. Authenticate with the same OpenRAG API key you use for the REST API, passed via the `X-API-Key` header.
+- [Architecture overview](docs/docs/architecture/overview.mdx)
+- [Differences from upstream](docs/docs/upstream/differences.mdx)
+- [Truth and provenance contract](docs/docs/architecture/truth-and-provenance.mdx)
+- [PROV-O documentary closure](docs/docs/architecture/prov-o.mdx)
+- [Retrieval and coverage](docs/docs/architecture/retrieval-and-coverage.mdx)
+- [Document metadata](docs/docs/architecture/document-metadata.mdx)
+- [Document associations](docs/docs/architecture/document-associations.mdx)
+- [Structured metadata search](docs/docs/product/structured-metadata-search.mdx)
+- [Security and DLS](docs/docs/security/dls.mdx)
+- [Runtime and GitOps ownership](docs/docs/operations/runtime-ownership.mdx)
+- [Versioned contracts](docs/docs/reference/versioned-contracts.mdx)
+- [Audits and benchmarks](docs/docs/audits/index.mdx)
 
-> **Important:** The standalone `openrag-mcp` PyPI package is deprecated. Connect your MCP client directly to the `/mcp` endpoint instead.
+## Quick start
 
-**Quick Example (Cursor/Claude Desktop config):**
-```json
-{
-  "mcpServers": {
-    "openrag": {
-      "url": "http://localhost:3000/mcp",
-      "headers": {
-        "X-API-Key": "orag_your_api_key_here"
-      }
-    }
-  }
-}
-```
+Installation remains based on upstream OpenRAG packaging and services. Start
+with the repository's [quickstart](docs/docs/get-started/quickstart.mdx), then
+read the fork's [architecture overview](docs/docs/architecture/overview.mdx)
+before treating retrieval output as documentary evidence.
 
-The MCP server provides tools for RAG-enhanced chat, semantic search, document ingestion, knowledge filters, and settings management.
+## Known limitations
 
-📖 [Full MCP Documentation](https://github.com/langflow-ai/openrag/tree/main/sdks/mcp)
+- Dense ANN candidate membership may vary across index/segment state, plugin
+  changes or externally generated query vectors.
+- Scoped coverage is relative to discovered seeds, DLS-visible indexed
+  entities and the declared traversal policy.
+- Embedded, archive, filesystem and ingestion metadata can be missing, false,
+  invalid or conflicting; some timestamps have an unknown timezone.
+- The natural-language metadata grammar is deliberately limited.
+- Association neighborhoods are not enabled as a product retrieval path.
+- Candidate lineage does not create a trusted provenance relation.
+- Historical archive coverage has known unavailable or unparseable items.
 
-## 🛠️ Development
+## Upstream, license and attribution
 
-For developers who want to [contribute to OpenRAG](https://docs.openr.ag/support/contribute) or set up a development environment, see [CONTRIBUTING.md](CONTRIBUTING.md).
+This repository is a derivative fork of
+[langflow-ai/openrag](https://github.com/langflow-ai/openrag). The exact Git
+relationship and comparison scope are documented in
+[Differences from upstream](docs/docs/upstream/differences.mdx). Upstream names,
+logos and project links are retained for attribution and do not imply that this
+fork is the upstream project.
 
-## 🛟 Troubleshooting
-
-For assistance with OpenRAG, see [Troubleshoot OpenRAG](https://docs.openr.ag/support/troubleshoot) and visit the [Discussions page](https://github.com/langflow-ai/openrag/discussions).
-
-To report a bug or submit a feature request, visit the [Issues page](https://github.com/langflow-ai/openrag/issues).
+The repository remains licensed under the [Apache License 2.0](LICENSE).

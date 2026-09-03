@@ -1,0 +1,32 @@
+---
+title: Versioned contracts
+description: Current contract identifiers, ownership and activation status.
+---
+
+# Versioned contracts
+
+This index names implemented identifiers at baseline
+`975f933fa3149dd60a0f481d5a51ae184d6ddf0d`. Status describes product exposure,
+not whether a Python model exists.
+
+| Contract | Version | Purpose | Status / source of truth |
+| --- | ---: | --- | --- |
+| `openrag.scope-coverage` | 1 | Fail-closed accessible documentary-scope coverage | Available; [retrieval service](https://github.com/FermedePommerieux/openrag-compose/blob/975f933fa3149dd60a0f481d5a51ae184d6ddf0d/src/services/retrieval_service.py) |
+| `openrag.document-metadata` | 1 | Source-qualified raw document metadata profile | Available; [metadata model](https://github.com/FermedePommerieux/openrag-compose/blob/975f933fa3149dd60a0f481d5a51ae184d6ddf0d/src/models/document_metadata.py) |
+| `openrag.document-metadata-normalization` | 1 | Metadata normalization identity | Available; [metadata model](https://github.com/FermedePommerieux/openrag-compose/blob/975f933fa3149dd60a0f481d5a51ae184d6ddf0d/src/models/document_metadata.py) |
+| `openrag.metadata-resolution` | 1 | Preserve source-qualified conflicts without a preferred truth | Available; [metadata model](https://github.com/FermedePommerieux/openrag-compose/blob/975f933fa3149dd60a0f481d5a51ae184d6ddf0d/src/models/document_metadata.py) |
+| `openrag.metadata-filter-projection` | 1 | Rebuildable exact-filter view derived from the raw profile | Available internally to search; [projection model](https://github.com/FermedePommerieux/openrag-compose/blob/975f933fa3149dd60a0f481d5a51ae184d6ddf0d/src/models/metadata_filter_projection.py) |
+| `openrag.metadata-filter` | 1 | Typed metadata predicates with `TRUE`/`FALSE`/`UNKNOWN` semantics | Available; [filter model](https://github.com/FermedePommerieux/openrag-compose/blob/975f933fa3149dd60a0f481d5a51ae184d6ddf0d/src/models/metadata_filter.py) |
+| `openrag.structured-document-query` | 1 | Separate free text and structured metadata restriction | Available through search; [query model](https://github.com/FermedePommerieux/openrag-compose/blob/975f933fa3149dd60a0f481d5a51ae184d6ddf0d/src/models/structured_document_query.py) |
+| `openrag.metadata-agent-search` | 1 | Bounded Agent-facing structured search schema | Available; [Agent schema](https://github.com/FermedePommerieux/openrag-compose/blob/975f933fa3149dd60a0f481d5a51ae184d6ddf0d/src/models/metadata_agent_search.py) |
+| `openrag.metadata-natural-language-plan` | 1 | Request-scoped deterministic metadata plan | Available; `DETERMINISTIC_ONLY`; [Agent schema](https://github.com/FermedePommerieux/openrag-compose/blob/975f933fa3149dd60a0f481d5a51ae184d6ddf0d/src/models/metadata_agent_search.py) |
+| `openrag.document-investigation-association` | 1 | Bounded non-certifying documentary association | Internal; product route disabled; [investigation model](https://github.com/FermedePommerieux/openrag-compose/blob/975f933fa3149dd60a0f481d5a51ae184d6ddf0d/src/models/document_investigation.py) |
+| `openrag.openarchiver-attachment-ingestion` | 1 | Stable attachment and parent identity plus verified binary facts | Internal OpenRAG contract; end-to-end connector ingestion planned; [source provenance model](https://github.com/FermedePommerieux/openrag-compose/blob/975f933fa3149dd60a0f481d5a51ae184d6ddf0d/src/models/source_provenance.py) |
+| `openrag.retrieval-lane-diagnostics` | 1 | DLS-neutral hashes and counts for dense/RRF drift attribution | Available diagnostics; [search service](https://github.com/FermedePommerieux/openrag-compose/blob/975f933fa3149dd60a0f481d5a51ae184d6ddf0d/src/services/search_service.py) |
+
+Source provenance itself uses the bounded `source_provenance` schema version
+`1.0` and a fixed mapping from supported relation roles to full PROV-O
+predicates. See [Source provenance](/source-provenance).
+
+Contract versioning does not turn a planned integration into an available
+feature. Consult each status and the [architecture overview](/architecture/overview).

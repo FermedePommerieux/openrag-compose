@@ -1,44 +1,76 @@
 ---
-title: What is OpenRAG?
+title: What is the Pommerieux OpenRAG fork?
 slug: /
 hide_table_of_contents: true
 ---
 
-OpenRAG is an open-source package for building agentic RAG systems that integrates with a wide range of orchestration tools, databases, and LLM providers.
+# OpenRAG — Pommerieux fork
 
-OpenRAG connects and amplifies three popular, proven open-source projects into one powerful platform:
+This repository is the FermedePommerieux fork of
+[upstream OpenRAG](https://github.com/langflow-ai/openrag). It is focused on
+verifiable documentary investigation: discovering candidate documents,
+traversing explicit accessible provenance relations, verifying the required
+source reads and reporting exactly what the resulting coverage certificate
+does—and does not—prove.
 
-* [Langflow](https://docs.langflow.org): Langflow is a versatile tool for building and deploying AI agents and MCP servers. It supports all major LLMs, popular vector databases, and a growing library of AI tools.
+Compared with the upstream baseline used by this fork, it adds backend-owned
+lexical+dense RRF discovery, structured metadata search, source-qualified
+document metadata, strong policy-approved PROV-O closure, fail-closed scoped
+coverage and bounded evidence projection for the LLM. See
+[Differences from upstream](/upstream/differences) for pinned comparison
+revisions and evidence.
 
-   OpenRAG uses several built-in flows, and it provides full access to all Langflow features through the embedded Langflow visual editor.
+The core truth contract is:
 
-   By customizing the built-in flows or creating your own flows, every part of the OpenRAG stack interchangeable. You can modify any aspect of the flows from basic settings, like changing the language model, to replacing entire components. You can also write your own custom Langflow components, integrate MCP servers, call APIs, and leverage any other functionality provided by Langflow.
+- metadata is an observation, not automatically factual truth;
+- documentary association is not provenance derivation;
+- dense candidate membership may be approximate;
+- scoped coverage is complete only for the accessible documentary graph
+  reached from discovered seeds under the declared policy;
+- the LLM reasons over evidence but does not decide truth, coverage, DLS or
+  strong provenance.
 
-* [OpenSearch](https://docs.opensearch.org/latest/): OpenSearch is a community-driven, Apache 2.0-licensed open source search and analytics suite that makes it easy to ingest, search, visualize, and analyze data.
-It provides powerful hybrid search capabilities with enterprise-grade security and multi-tenancy support.
-
-   OpenRAG uses OpenSearch as the underlying database for storing and retrieving your documents and associated vector data (embeddings). You can ingest documents from a variety of sources, including your local filesystem and OAuth-authorized connectors to popular cloud storage services.
-
-* [Docling](https://docling-project.github.io/docling/): Docling simplifies document processing, supports many file formats and advanced PDF parsing, and provides seamless integrations with the generative AI ecosystem.
-
-   OpenRAG uses Docling to parse and chunk documents that are stored in your OpenSearch knowledge base.
+Read [Truth and provenance](/architecture/truth-and-provenance) before using a
+coverage result as an absence claim.
 
 :::tip
-Ready to get started? Try the [quickstart](/quickstart) to install OpenRAG and start exploring in minutes.
+Ready to run the platform? Follow the [quickstart](/quickstart). For the fork's
+contract boundaries, start with [Fork architecture](/architecture/overview).
 :::
 
-## OpenRAG architecture
+## Platform foundation
 
-OpenRAG deploys and orchestrates a lightweight, container-based architecture that combines **Langflow**, **OpenSearch**, and **Docling** into a cohesive RAG platform.
+The fork retains the upstream OpenRAG application foundation:
+
+- [Langflow](https://docs.langflow.org) provides the managed Agent execution
+  graph and visual flow environment. The fork keeps retrieval, coverage and DLS
+  policy in the backend rather than reimplementing them in the flow.
+- [OpenSearch](https://docs.opensearch.org/latest/) stores indexed source
+  chunks, vectors and the isolated metadata-filter projection. Its DLS-scoped
+  client bounds every search and graph query.
+- [Docling](https://docling-project.github.io/docling/) parses and chunks
+  documents for ingestion.
+- The FastAPI backend owns deterministic planning, retrieval, provenance,
+  coverage, runtime configuration and public-payload redaction.
+- The Next.js frontend presents chat, source evidence, settings and operational
+  status.
 
 ![OpenRAG container relationships](@site/static/img/openrag-containers.png)
 
-* **OpenRAG backend**: The central orchestration service that coordinates all other components.
+## Investigation pipeline
 
-* **Langflow**: This container runs a Langflow instance. It provides the embedded Langflow visual editor for editing and creating flow, and it connects to the **OpenSearch** container for document storage and retrieval.
+```mermaid
+flowchart TD
+    Q[User query] --> P[Deterministic metadata planning]
+    P --> D[DLS-scoped discovery]
+    D --> R[Lexical + dense RRF]
+    R --> S[Documentary seeds]
+    S --> G[Strong PROV-O closure]
+    G --> C[Scoped coverage certificate]
+    C --> E[Bounded evidence projection]
+    E --> A[Agent reasoning]
+```
 
-* **Docling Serve**: This is a local document processing service managed by the **OpenRAG backend**.
-
-* **External connectors**: Integrate third-party cloud storage services with OAuth-authorized connectors to the **OpenRAG backend**, allowing you to load documents from external storage to your OpenSearch knowledge base.
-
-* **OpenRAG frontend**: Provides the user interface for interacting with the OpenRAG platform.
+The system never promises to find every physically relevant archive object.
+It makes its narrower, verifiable claim observable and fails closed when that
+claim cannot be certified.

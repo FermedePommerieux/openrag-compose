@@ -1,39 +1,35 @@
 import Icon from "@site/src/components/icon/icon";
 
-1. In OpenRAG, click <Icon name="Settings2" aria-hidden="true"/> **Settings**, and then find the **Agent** section.
+1. In OpenRAG, click <Icon name="Settings2" aria-hidden="true"/> **Settings**,
+   and then find the **Agent** section.
 
-2. To change the active language model or agent instructions, edit those fields directly on the **Settings** page.
-Language model changes are saved automatically.
-To apply new instructions, click **Save Agent Instructions**.
+2. Change the active language model or Agent instructions in OpenRAG Settings.
+   Model changes are persisted in the workspace configuration. To apply new
+   instructions, click **Save Agent Instructions**. OpenRAG synchronizes these
+   configured values to the managed Langflow flow.
 
-3. To add a new language model, edit the model provider settings or configure an additional provider on the **Settings** page, and then select the new model in the **Agent** section.
+3. To add a language model, configure its provider on the **Settings** page,
+   then select the model in the **Agent** section. The planner follows the
+   Agent model when its own selection is empty; API clients can configure an
+   explicit planner provider/model separately.
 
    :::info
-   On the **Settings** page, you can add, edit, and remove model providers.
-
-   OpenRAG functionality requires at least one language model and one embedding model.
-   If there are no models available, most OpenRAG functionality will fail until you reconfigure one model of each type.
-
-   If you remove providers or models that you previously used for chat or ingestion, you might experience errors or unexpected behaviors.
-   For more information, see [Best practices for multiple embedding models](/ingestion-configure#best-practices-for-multiple-embedding-models).
+   OpenRAG requires at least one language model and one embedding model. If a
+   previously selected provider or model is removed, chat or ingestion can
+   fail until the corresponding runtime selection is changed.
    :::
 
-4. To edit all flow settings and components with full customization capabilities, edit the flow in the Langflow visual editor:
+4. Check `GET /api/settings/runtime-behavior` after an operational change.
+   `MATCH` confirms that configured Agent/planner identities and the prompt
+   hash agree with effective execution. Provider credentials are not returned.
 
-   1. Click **Edit in Langflow** to launch the Langflow visual editor in a new browser tab.
+5. For unrestricted Langflow experimentation, create and explicitly configure
+   a separate custom chat flow rather than modifying the managed system flow.
+   A custom flow is preserved, but it does not receive automatic migration,
+   settings reapplication, prompt synchronization or the managed Retrieval v2
+   guarantees. Export it before upgrades.
 
-   2. If prompted to acknowledge that you are entering Langflow, click **Proceed**.
-
-   3. If Langflow requests login information, enter the `LANGFLOW_SUPERUSER` and `LANGFLOW_SUPERUSER_PASSWORD` from your [OpenRAG `.env` file](/reference/configuration).
-
-   4. In the Langflow header, click **Starter Project** to go to the [Langflow **Projects** page](https://docs.langflow.org/concepts-flows#projects), and then [unlock the flow](https://docs.langflow.org/concepts-flows#lock-a-flow).
-
-   5. On the **Projects** page, click the **OpenRAG OpenSearch Agent** flow to open the visual editor with the flow unlocked.
-
-      ![OpenRAG OpenSearch Agent flow](/img/opensearch-agent-flow.png)
-
-   6. Modify the flow as desired, and then press <kbd>Command</kbd>+<kbd>S</kbd> (<kbd>Ctrl</kbd>+<kbd>S</kbd>) to save your changes.
-   Then, you can close the Langflow browser tab, or leave it open if you want to continue experimenting with the flow editor.
-
-4. After you modify any **Agent** flow settings, go to the OpenRAG <Icon name="MessageSquare" aria-hidden="true"/> **Chat**, and then click <Icon name="Plus" aria-hidden="true"/> **Start new conversation** in the **Conversations** list.
-This ensures that the chat doesn't persist any context from the previous conversation with the original flow settings.
+6. After changing supported Agent settings or selecting a custom flow, open
+   <Icon name="MessageSquare" aria-hidden="true"/> **Chat** and click
+   <Icon name="Plus" aria-hidden="true"/> **Start new conversation** so the
+   previous conversation does not retain the earlier behavior.

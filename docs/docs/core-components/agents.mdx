@@ -15,34 +15,46 @@ OpenRAG includes several built-in flows:
 * The [**OpenSearch Ingestion** and **OpenSearch URL Ingestion** flows](/ingestion) process documents and web content for storage in your OpenSearch knowledge base.
 * The [**OpenRAG OpenSearch Nudges** flow](/chat#nudges) provides optional contextual suggestions in the OpenRAG **Chat**.
 
-You can customize these flows and create your own flows using OpenRAG's embedded Langflow visual editor.
+You can inspect the managed flows and create separate custom flows using
+OpenRAG's embedded Langflow visual editor. Supported model and prompt changes
+for the managed Agent flow belong in OpenRAG Settings.
 
-## Inspect and modify flows {#inspect-and-modify-flows}
+## Inspect managed flows and build custom flows {#inspect-and-modify-flows}
 
 All OpenRAG flows are designed to be modular, performant, and provider-agnostic.
 
-To view and modify a flow in OpenRAG, click <Icon name="Settings2" aria-hidden="true"/> **Settings**.
-From here, you can manage cloud storage connectors, model providers, and common parameters for the **Agent** and **Knowledge Ingestion** flows.
+To inspect a flow or create a custom flow in OpenRAG, click <Icon name="Settings2" aria-hidden="true"/> **Settings**.
+From here, you can manage cloud storage connectors, model providers, and the
+supported parameters for the managed **Agent** and **Knowledge Ingestion**
+flows.
 
-To further explore and edit flows, click **Edit in Langflow** to launch the embedded [Langflow visual editor](https://docs.langflow.org/concepts-overview) where you can fully [customize the flow](https://docs.langflow.org/concepts-flows) to suit your use case.
+To explore flows, click **Edit in Langflow** to launch the embedded
+[Langflow visual editor](https://docs.langflow.org/concepts-overview). The
+managed Agent flow is locked because its retrieval and evidence contracts are
+fingerprinted. Use a separately configured custom flow for unrestricted graph
+changes.
 
 :::tip
-After you click **Edit in Langflow**, you can access and edit all of OpenRAG's built-in flows from the Langflow editor's [**Projects** page](https://docs.langflow.org/concepts-flows#projects).
-You can also create your own flows.
+After you click **Edit in Langflow**, you can inspect OpenRAG's built-in flows
+from the Langflow [**Projects** page](https://docs.langflow.org/concepts-flows#projects)
+and create your own flows. Do not unlock and mutate the managed Agent flow as a
+supported customization path; startup and RuntimeBehavior checks reject drift.
 
-To edit any flow, you must first [unlock the flow](https://docs.langflow.org/concepts-flows#lock-a-flow).
-
-If you edit any flows other than the **Agent** or **Knowledge Ingestion** flows, it is recommended that you [export the flows](https://docs.langflow.org/concepts-flows-import) before editing so you can revert them to their original state if needed.
+Export every custom flow before editing so you can restore it if needed.
 :::
 
-For example, the following steps explain how to edit the built-in **Agent** flow, which is the **OpenRAG OpenSearch Agent** flow used for the OpenRAG <Icon name="MessageSquare" aria-hidden="true"/> **Chat**:
+The following steps explain how to configure the supported model and prompt
+settings for the built-in **Agent** flow used by OpenRAG
+<Icon name="MessageSquare" aria-hidden="true"/> **Chat**, or how to create a
+separate custom flow:
 
 <PartialEditAgentFlow />
 
-### Revert a built-in flow to its original configuration {#revert-a-built-in-flow-to-its-original-configuration}
+### Restore a managed flow {#revert-a-built-in-flow-to-its-original-configuration}
 
-After you edit the **Agent** or **Knowledge Ingestion** built-in flows, you can click **Restore flow** on the **Settings** page to revert either flow to its original state when you first installed OpenRAG.
-This is a destructive action that discards all customizations to the flow.
+If a managed flow fails verification, **Restore flow** on the **Settings** page
+returns it to the bundled state. This is a destructive action for any
+unsupported direct modifications to that flow.
 
 This option isn't available for other built-in flows such as the **Nudges** flow.
 To restore these flows to their original state, you must reimport the flow from a backup (if you exported one before editing), or [reset](/manage-services#reset-containers) or [reinstall](/reinstall) OpenRAG.
@@ -57,10 +69,13 @@ In addition to OpenRAG's built-in flows, all Langflow features are available thr
 
 Explore the [Langflow documentation](https://docs.langflow.org/) to learn more about the Langflow platform, features, and visual editor.
 
-## Modify a flow at runtime {#modify-a-flow-at-runtime}
+## Modify a custom flow at runtime {#modify-a-flow-at-runtime}
 
-You can use _tweaks_ to modify flow settings at runtime without permanently changing the flow's configuration.
+For a separately configured custom flow, you can use _tweaks_ to modify flow
+settings at runtime without permanently changing the flow's configuration.
 Tweaks are one-time parameter modifications that are passed to specific Langflow components during flow execution.
+They are not a supported way to override the managed Agent's backend-owned
+retrieval, provenance, coverage or DLS behavior.
 For more information on tweaks, see the Langflow documentation on [Input schema (tweaks)](https://docs.langflow.org/concepts-publish#input-schema).
 
 ## Set the Langflow version

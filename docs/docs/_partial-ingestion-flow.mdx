@@ -4,7 +4,10 @@
 When you upload documents locally or with cloud storage connectors, the **OpenSearch Ingestion** flow runs in the background.
 By default, this flow uses Docling Serve to import and process documents.
 
-Like all [OpenRAG flows](/agents), you can [inspect the flow in Langflow](/agents#inspect-and-modify-flows), and you can customize it if you want to change the knowledge ingestion settings.
+You can [inspect this ingestion flow in Langflow](/agents#inspect-and-modify-flows).
+For graph-level experimentation, use a separately managed custom flow; direct
+changes to the locked managed Agent flow are not a supported configuration
+path.
 
 The **OpenSearch Ingestion** flow is comprised of several components that work together to process and store documents in your knowledge base:
 

@@ -1,0 +1,126 @@
+---
+title: Structured metadata search
+description: Versioned metadata filters, deterministic planning and Agent execution.
+---
+
+# Structured metadata search
+
+Structured metadata search restricts discovery to DLS-visible source
+occurrences whose source-qualified metadata satisfies an explicit predicate.
+It changes candidate eligibility, not ranking, provenance edges or coverage
+rules.
+
+## Contracts
+
+- `openrag.metadata-filter v1` represents typed fields, operators, explicit
+  calendar bases and source policies with three-valued logic.
+- `openrag.metadata-agent-search v1` is the smaller bounded schema accepted by
+  the Agent-facing `document_search_with_metadata` tool.
+- The internal structured request compiles to the existing filter primitives,
+  resolves eligible occurrences through the side index, restricts both
+  lexical and dense lanes to the same set, then continues through ordinary RRF
+  and PROV-O scope investigation.
+
+The Agent tool cannot send OpenSearch/Lucene JSON, scripts or an arbitrary
+nested query DSL. The backend supplies the exact request-scoped deterministic
+plan. The model can select the tool but cannot rewrite its filters or free
+text.
+
+## Supported concepts
+
+The v1 filter model supports production and modification day/month/year,
+source-local or UTC calendar basis, MIME, technical format family, extension,
+explicit source document type, source system/entity type/entity family,
+connector, safe parent collection, exact creator/last-modifier/producer/
+creator-application observations, complete binary SHA-256, and temporal or
+general metadata conflict indicators.
+
+Filename basename exists in the internal projection but is not in the public
+search allowlist. Archive and ingestion calendar roles are not silently
+reinterpreted as production dates.
+
+## Three-valued semantics
+
+| Result | Meaning for one predicate |
+| --- | --- |
+| `TRUE` | At least one usable source-qualified observation satisfies the predicate under its declared policy |
+| `FALSE` | Usable observations exist and establish a non-match |
+| `UNKNOWN` | The required observation is absent, invalid or indeterminate for the requested basis |
+
+Only `TRUE` occurrences are eligible. Negation swaps `TRUE` and `FALSE` while
+preserving `UNKNOWN`. `EXISTS` and `NOT_EXISTS` are explicit operators;
+negated equality never turns missing metadata into a match.
+
+## Natural-language planning
+
+The current mode is:
+
+```text
+DETERMINISTIC_ONLY
+```
+
+No metadata-planner LLM is called. The parser recognizes a deliberately narrow
+French/English grammar for technical formats, production/modification calendar
+periods, OpenArchiver source context and exact creator observations. Natural
+calendar wording defaults to `SOURCE_LOCAL`; UTC applies only when requested.
+
+For example:
+
+```text
+"les PDF de mars 2024 contenant Orange"
+
+free_text: Orange
+metadata:
+  format_family = pdf
+  production_month = 2024-03
+  calendar_basis = SOURCE_LOCAL
+```
+
+This means “at least one valid source-qualified production observation matches
+March 2024 in the source-local calendar.” It does not prove an unconditional
+creation date.
+
+## Explicit failure instead of broad fallback
+
+Planning returns `VALID`, `AMBIGUOUS`, `UNSUPPORTED` or `INVALID`. Examples that
+block rather than silently broaden include:
+
+- an archive or ingestion calendar date, which v1 does not project as a
+  production date;
+- a month without a year;
+- natural-language before/after ranges;
+- an ambiguous or cross-role temporal disjunction;
+- a complex unsupported format/calendar disjunction;
+- an implicit parent attachment identity;
+- an empty, oversized or otherwise invalid request.
+
+A valid metadata plan prevents the normal search tool from ignoring the
+constraints. Ambiguous and unsupported metadata intent blocks both search
+paths with bounded diagnostics. A query with no metadata intent remains a
+normal q1 query.
+
+## DLS and coverage
+
+The side-index lookup uses the caller's DLS-scoped client before counts,
+buckets or candidate IDs are produced. Source retrieval independently reapplies
+the caller's scope as defense in depth. Filters choose discovery candidates
+only; after seeds exist, the unchanged strong PROV-O policy and
+`openrag.scope-coverage v1` rules apply.
+
+## Generality
+
+“Surface pastorale” and “Orange/fibre” are human-ground-truth benchmark topics.
+They do not appear as product ranking rules, synonyms or domain-specific query
+rewrites. “Invoice/facture” likewise remains free text unless an explicit,
+supported metadata field is provided.
+
+## Source of truth
+
+See the
+[`openrag.metadata-filter` model](https://github.com/FermedePommerieux/openrag-compose/blob/975f933fa3149dd60a0f481d5a51ae184d6ddf0d/src/models/metadata_filter.py),
+the
+[`openrag.metadata-agent-search` model](https://github.com/FermedePommerieux/openrag-compose/blob/975f933fa3149dd60a0f481d5a51ae184d6ddf0d/src/models/metadata_agent_search.py),
+the
+[deterministic parser](https://github.com/FermedePommerieux/openrag-compose/blob/975f933fa3149dd60a0f481d5a51ae184d6ddf0d/src/services/metadata_query_planner.py),
+and the
+[DLS-first candidate resolver](https://github.com/FermedePommerieux/openrag-compose/blob/975f933fa3149dd60a0f481d5a51ae184d6ddf0d/src/services/metadata_candidate_restriction.py).

@@ -1,0 +1,67 @@
+---
+title: Audits and benchmarks
+description: Index of current evidence without turning historical reports into normative behavior.
+---
+
+# Audits and benchmarks
+
+These artifacts are evidence for behavior at their recorded revisions and
+environments. They are not normative product documentation. Current contracts
+are defined by the architecture pages and current code; historical reports are
+not silently rewritten when implementation status changes.
+
+## Retrieval correctness and coverage
+
+- [GT1 final baseline](https://github.com/FermedePommerieux/openrag-compose/blob/975f933fa3149dd60a0f481d5a51ae184d6ddf0d/benchmarks/discovery/results/surface-pastorale-v1-final-report.md)
+- [GT1 product-path audit AUD004/AUD005](https://github.com/FermedePommerieux/openrag-compose/blob/975f933fa3149dd60a0f481d5a51ae184d6ddf0d/benchmarks/discovery/results/surface-pastorale-v1-aud004-aud005-product-path-report.md)
+- [GT1 corrected retrieval audit AUD006/AUD007](https://github.com/FermedePommerieux/openrag-compose/blob/975f933fa3149dd60a0f481d5a51ae184d6ddf0d/benchmarks/discovery/results/surface-pastorale-v1-aud006-aud007-corrected-report.md)
+- [GT1 final retrieval regression](https://github.com/FermedePommerieux/openrag-compose/blob/975f933fa3149dd60a0f481d5a51ae184d6ddf0d/benchmarks/discovery/results/surface-pastorale-v1-aud006-aud007-final-regression-report.md)
+- [GT2 frozen human review](https://github.com/FermedePommerieux/openrag-compose/blob/975f933fa3149dd60a0f481d5a51ae184d6ddf0d/benchmarks/discovery/gt2/orange-fibre-cross-domain-v1-freeze-report.md)
+- [Cross-domain documentary-target validation](https://github.com/FermedePommerieux/openrag-compose/blob/975f933fa3149dd60a0f481d5a51ae184d6ddf0d/benchmarks/discovery/results/cross-domain-ground-truth-documentary-target-validation-report.md)
+- [GT1 dense KNN contract](https://github.com/FermedePommerieux/openrag-compose/blob/975f933fa3149dd60a0f481d5a51ae184d6ddf0d/benchmarks/discovery/results/surface-pastorale-v1-knn-contract-q1-report.md)
+- [GT2 dense KNN contract](https://github.com/FermedePommerieux/openrag-compose/blob/975f933fa3149dd60a0f481d5a51ae184d6ddf0d/benchmarks/discovery/results/orange-fibre-cross-domain-v1-knn-contract-q1-report.md)
+
+GT1 (“Surface pastorale”) and GT2 (“Orange/fibre”) are human-ground-truth
+benchmark topics used to measure generic retrieval behavior. They are not
+product domains. No domain-specific ranking rule or query rewrite is authorized
+by these evaluations.
+
+## Planner calibration and multi-query
+
+- [Planner/scope calibration](https://github.com/FermedePommerieux/openrag-compose/blob/975f933fa3149dd60a0f481d5a51ae184d6ddf0d/benchmarks/discovery/results/planner-scope-calibration-report.md)
+- [GT1 planner baseline](https://github.com/FermedePommerieux/openrag-compose/blob/975f933fa3149dd60a0f481d5a51ae184d6ddf0d/benchmarks/discovery/results/surface-pastorale-v1-planner-calibration-baseline-report.md)
+- [GT1 q4 expansion calibration](https://github.com/FermedePommerieux/openrag-compose/blob/975f933fa3149dd60a0f481d5a51ae184d6ddf0d/benchmarks/discovery/results/surface-pastorale-v1-planner-calibration-q4-extra-report.md)
+- [Generic multi-query report](https://github.com/FermedePommerieux/openrag-compose/blob/975f933fa3149dd60a0f481d5a51ae184d6ddf0d/benchmarks/discovery/results/surface-pastorale-v1-multi-query-report.md)
+
+Multi-query remains opt-in and disabled in the q1 default.
+
+## Metadata provenance, DLS and backfill
+
+- [Metadata backfill final report](https://github.com/FermedePommerieux/openrag-compose/blob/975f933fa3149dd60a0f481d5a51ae184d6ddf0d/benchmarks/document-metadata/final-report.md)
+- [GT1 post-backfill regression](https://github.com/FermedePommerieux/openrag-compose/blob/975f933fa3149dd60a0f481d5a51ae184d6ddf0d/benchmarks/document-metadata/gt1-post-backfill-report.md)
+- [GT2 post-backfill regression](https://github.com/FermedePommerieux/openrag-compose/blob/975f933fa3149dd60a0f481d5a51ae184d6ddf0d/benchmarks/document-metadata/gt2-post-backfill-report.md)
+- [Post-backfill association, filter and DLS audit](https://github.com/FermedePommerieux/openrag-compose/blob/975f933fa3149dd60a0f481d5a51ae184d6ddf0d/benchmarks/document-metadata/post-backfill-association-audit-report.md)
+- [Metadata filter projection contract and canary evidence index](https://github.com/FermedePommerieux/openrag-compose/blob/975f933fa3149dd60a0f481d5a51ae184d6ddf0d/benchmarks/document-metadata/metadata-filter-projection-v1.md)
+- [Side-index migration evidence plan](https://github.com/FermedePommerieux/openrag-compose/blob/975f933fa3149dd60a0f481d5a51ae184d6ddf0d/benchmarks/document-metadata/metadata-activation-index-migration-plan.md)
+
+These reports include metadata-only write checks, immutable content/vector
+checks, DLS-hidden-candidate tests, coverage regression and known archive gaps.
+
+## Structured metadata Agent benchmark
+
+- [Deterministic metadata planner architecture](https://github.com/FermedePommerieux/openrag-compose/blob/975f933fa3149dd60a0f481d5a51ae184d6ddf0d/benchmarks/metadata-planner/architecture-v1.md)
+- [Generic 45-case benchmark corpus](https://github.com/FermedePommerieux/openrag-compose/blob/975f933fa3149dd60a0f481d5a51ae184d6ddf0d/benchmarks/metadata-planner/corpus-v1.json)
+- [Captured benchmark result](https://github.com/FermedePommerieux/openrag-compose/blob/975f933fa3149dd60a0f481d5a51ae184d6ddf0d/benchmarks/metadata-planner/results-v1.json)
+
+The benchmark measures exact parsing, false positives/negatives, unsupported
+and ambiguous intent, free-text preservation, latency, LLM calls and token
+overhead. The current planner mode is `DETERMINISTIC_ONLY`.
+
+## Reading historical evidence safely
+
+An older report may say a component is “not connected” because that was true
+for its phase. Do not promote that sentence into current product status. Use
+the current [architecture overview](/architecture/overview),
+[structured metadata search](/product/structured-metadata-search), and
+[versioned contract index](/reference/versioned-contracts) for normative
+behavior.

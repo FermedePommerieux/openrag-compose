@@ -5,8 +5,15 @@ slug: /reference/configuration
 
 import PartialDockerComposeUp from '@site/docs/_partial-docker-compose-up.mdx';
 
-OpenRAG's `.env` file is the primary configuration file for OpenRAG.
-Environment variables in `.env` always take precedence over other sources.
+OpenRAG's `.env` file owns deployment and provider-connectivity settings.
+Functional runtime behavior is different: in the supported production baseline,
+`WorkspaceConfigService` persists Agent, planner, prompt, embedding and
+retrieval settings in the SQLite workspace configuration, then applies them to
+the managed flow and backend services. See [Runtime and GitOps ownership](/operations/runtime-ownership).
+
+Environment variables in `.env` take precedence for the deployment settings
+they own. They do not make GitOps or `.env` the owner of the functional Agent
+model, planner model, system prompt or retrieval behavior.
 
 For deployments managed with an OpenRAG terminal session, this file is located at `~/.openrag/tui`, and it can be created automatically during [installation](/install-options).
 
@@ -20,11 +27,14 @@ OpenRAG's Docker Compose files are populated automatically using values from the
 
 If a variable isn't set, OpenRAG uses default or fallback values where available.
 Not all variables have default values, and errors can occur if required variables aren't set.
-Default values can be found in the reference tables on this page and in [`config_manager.py`](https://github.com/langflow-ai/openrag/blob/main/src/config/config_manager.py), [`settings.py`](https://github.com/langflow-ai/openrag/blob/main/src/config/settings.py), and [`logging_config.py`](https://github.com/langflow-ai/openrag/blob/main/src/utils/logging_config.py).
+Default values can be found in the reference tables on this page and in the
+fork's [`config_manager.py`](https://github.com/FermedePommerieux/openrag-compose/blob/975f933fa3149dd60a0f481d5a51ae184d6ddf0d/src/config/config_manager.py),
+[`settings.py`](https://github.com/FermedePommerieux/openrag-compose/blob/975f933fa3149dd60a0f481d5a51ae184d6ddf0d/src/config/settings.py),
+and [`logging_config.py`](https://github.com/FermedePommerieux/openrag-compose/blob/975f933fa3149dd60a0f481d5a51ae184d6ddf0d/src/utils/logging_config.py).
 
-You can [temporarily set Langflow variables at runtime](/agents#modify-a-flow-at-runtime).
-However, these temporary overrides don't overlap with most OpenRAG environment variables.
-The only exceptions are flow-level Langflow settings, such as the language model used in a flow.
+You can [temporarily set Langflow variables at runtime](/agents#modify-a-flow-at-runtime)
+for custom flows. These one-run tweaks are not the supported authority for the
+managed Agent model, planner model or prompt; those remain workspace settings.
 
 ## Edit the `.env` file and apply configuration changes {#set-environment-variables}
 
@@ -85,6 +95,11 @@ These variables are initially set during the [application onboarding process](/i
 capability profiles, retrieval/scope settings, validation evidence, and a
 deterministic `runtime_behavior_fingerprint`. A managed flow mismatch is a
 startup or settings-update error; OpenRAG does not silently accept drift.
+
+The default `OPENRAG_STORAGE_MODE=db` makes the SQLite workspace configuration
+the sole persistence authority. Legacy `config.yaml` is retained only for
+migration and the explicitly selected `hybrid`/`files` compatibility modes; it
+is not the authority for the DB-backed production baseline.
 
 ## Document processing settings {#document-processing-settings}
 

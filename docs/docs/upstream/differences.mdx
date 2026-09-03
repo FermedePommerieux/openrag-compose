@@ -1,0 +1,77 @@
+---
+title: Differences from upstream
+description: Evidence-based fork point and current-upstream comparison.
+---
+
+# Differences from upstream OpenRAG
+
+This page compares explicit repository behavior and contracts. It does not
+infer shortcomings from the absence of a fork-specific name, and it does not
+conflate the historical fork point with today's upstream project.
+
+## Comparison references
+
+| Reference | Repository | Revision | Meaning |
+| --- | --- | --- | --- |
+| Upstream project | [`langflow-ai/openrag`](https://github.com/langflow-ai/openrag) | — | Official upstream repository configured as the `upstream` remote |
+| Ancestry fork point | upstream OpenRAG | [`1fd0ff6f0ad8134749c1d237cfb883ee807bf65b`](https://github.com/langflow-ai/openrag/commit/1fd0ff6f0ad8134749c1d237cfb883ee807bf65b) | Exact `git merge-base` between the fork baseline and fetched `upstream/main`; dated 2026-07-21 |
+| Current upstream checked | upstream OpenRAG | [`1e228bb0ef7e45959f241a6f3163fb2182303785`](https://github.com/langflow-ai/openrag/commit/1e228bb0ef7e45959f241a6f3163fb2182303785) | Fetched `upstream/main` inspected on 2026-09-03; commit dated 2026-09-02 |
+| Requested target ref | `FermedePommerieux/openrag-compose` | [`64a874c3719f2fa4cb0f4d4a61f0121539d8e8ab`](https://github.com/FermedePommerieux/openrag-compose/commit/64a874c3719f2fa4cb0f4d4a61f0121539d8e8ab) | `origin/pommerieux/v0.6.0-retrieval-v2-prov-o` after fetch |
+| Documented fork baseline | `FermedePommerieux/openrag-compose` | [`975f933fa3149dd60a0f481d5a51ae184d6ddf0d`](https://github.com/FermedePommerieux/openrag-compose/commit/975f933fa3149dd60a0f481d5a51ae184d6ddf0d) | Validated functional baseline; descendant of the requested target ref |
+
+The fork has incorporated selected upstream changes after the ancestry fork
+point. The common ancestor therefore remains the exact **ancestry reference**,
+not a claim that every later upstream change is absent. Current-upstream
+statements below were separately checked at the pinned revision.
+
+## Method
+
+The comparison was produced after `git fetch --all --prune` from the official
+upstream remote. Git ancestry, trees and code at both pinned upstream revisions
+were inspected. Exact fork contract identifiers and entry points were searched
+at the fork point, current upstream and the documented fork baseline. For
+architecture, the corresponding search and workspace-configuration code was
+also read so an upstream feature under another name would not be mislabeled.
+
+The evidence classifications used below are:
+
+- **VERIFIED AGAINST FORK POINT** — observed in the pinned common-ancestor tree;
+- **VERIFIED AGAINST CURRENT UPSTREAM** — observed in the separately pinned
+  fetched upstream tree;
+- **FORK-SPECIFIC CONTRACT** — the behavior is defined by an explicit contract
+  in the documented fork, without claiming that upstream lacks every adjacent
+  capability.
+
+## Verified differences
+
+| Capability | Comparison basis | Upstream/reference behavior | Fork behavior | Evidence |
+| --- | --- | --- | --- | --- |
+| Hybrid retrieval execution | Fork point + current upstream | The fork point performs semantic/keyword hybrid retrieval in the Langflow OpenSearch component. Current upstream performs a combined boosted semantic/keyword OpenSearch query in backend `SearchService`. Neither compared tree contains the fork's backend Retrieval v2/RRF contract. | The backend owns separate lexical and dense lanes, RRF, stable `chunk_id` tie-breaking, retrieval profiles and lane diagnostics. | **VERIFIED AGAINST FORK POINT**, **VERIFIED AGAINST CURRENT UPSTREAM**, **FORK-SPECIFIC CONTRACT**. [Fork-point flow](https://github.com/langflow-ai/openrag/blob/1fd0ff6f0ad8134749c1d237cfb883ee807bf65b/flows/openrag_agent.json), [current upstream search](https://github.com/langflow-ai/openrag/blob/1e228bb0ef7e45959f241a6f3163fb2182303785/src/services/search_service.py), [fork search](https://github.com/FermedePommerieux/openrag-compose/blob/975f933fa3149dd60a0f481d5a51ae184d6ddf0d/src/services/search_service.py) |
+| Strong documentary closure and coverage | Fork point + current upstream | Neither compared upstream tree contains `scope_exhaustive` or the `openrag.scope-coverage` identifier. This statement is limited to those exact paths/contracts. | Policy-approved typed PROV-O traversal, verified complete document reads and fail-closed `openrag.scope-coverage v1`. | **VERIFIED AGAINST FORK POINT**, **VERIFIED AGAINST CURRENT UPSTREAM**, **FORK-SPECIFIC CONTRACT**. [Fork coverage](https://github.com/FermedePommerieux/openrag-compose/blob/975f933fa3149dd60a0f481d5a51ae184d6ddf0d/src/services/retrieval_service.py), [policy](https://github.com/FermedePommerieux/openrag-compose/blob/975f933fa3149dd60a0f481d5a51ae184d6ddf0d/src/services/scope_traversal_policy.py) |
+| Source provenance profile | Fork point + current upstream | The compared upstream trees do not contain this fork's bounded source-provenance/PROV-O model. This does not deny upstream's other operational provenance fields. | Stable source entity identity, typed role/target pairs and fixed PROV-O predicates are validated at ingestion and transported through retrieval. | **VERIFIED AGAINST FORK POINT**, **VERIFIED AGAINST CURRENT UPSTREAM**, **FORK-SPECIFIC CONTRACT**. [Fork provenance model](https://github.com/FermedePommerieux/openrag-compose/blob/975f933fa3149dd60a0f481d5a51ae184d6ddf0d/src/models/source_provenance.py) |
+| Document metadata provenance | Fork point + current upstream | Neither compared upstream tree contains `openrag.document-metadata` or `openrag.metadata-resolution`. The comparison concerns the fork's source-qualified profile, not all uses of generic document metadata upstream. | Raw source-qualified observations, normalization/trust status, preserved conflicts and no preferred truth in v1. | **VERIFIED AGAINST FORK POINT**, **VERIFIED AGAINST CURRENT UPSTREAM**, **FORK-SPECIFIC CONTRACT**. [Fork metadata model](https://github.com/FermedePommerieux/openrag-compose/blob/975f933fa3149dd60a0f481d5a51ae184d6ddf0d/src/models/document_metadata.py) |
+| Structured metadata discovery | Fork point + current upstream | Neither compared upstream tree contains `openrag.metadata-filter`, the DLS-equivalent filter side index, or `openrag.metadata-agent-search`. This does not claim upstream has no ordinary search filters. | Three-valued structured predicates resolve against a derived side index before restricting both RRF lanes; a bounded Agent schema executes the same path. | **VERIFIED AGAINST FORK POINT**, **VERIFIED AGAINST CURRENT UPSTREAM**, **FORK-SPECIFIC CONTRACT**. [Filter model](https://github.com/FermedePommerieux/openrag-compose/blob/975f933fa3149dd60a0f481d5a51ae184d6ddf0d/src/models/metadata_filter.py), [Agent schema](https://github.com/FermedePommerieux/openrag-compose/blob/975f933fa3149dd60a0f481d5a51ae184d6ddf0d/src/models/metadata_agent_search.py) |
+| Natural-language metadata planning | Fork point + current upstream | Neither compared upstream tree contains the fork's `openrag.metadata-natural-language-plan` contract. | A narrow deterministic parser produces `VALID`, `AMBIGUOUS`, `UNSUPPORTED` or `INVALID`; there is no metadata-planner LLM call. | **VERIFIED AGAINST FORK POINT**, **VERIFIED AGAINST CURRENT UPSTREAM**, **FORK-SPECIFIC CONTRACT**. [Fork planner](https://github.com/FermedePommerieux/openrag-compose/blob/975f933fa3149dd60a0f481d5a51ae184d6ddf0d/src/services/metadata_query_planner.py) |
+| Documentary association | Fork point + current upstream | Neither compared upstream tree contains `openrag.document-investigation-association`. | Internal `DocumentAssociation` semantics preserve evidence dimensions, enforce bounds and set `scope_expanding=false`; no product route is enabled. | **VERIFIED AGAINST FORK POINT**, **VERIFIED AGAINST CURRENT UPSTREAM**, **FORK-SPECIFIC CONTRACT**. [Association model](https://github.com/FermedePommerieux/openrag-compose/blob/975f933fa3149dd60a0f481d5a51ae184d6ddf0d/src/models/document_investigation.py) |
+| DLS across investigation | Fork point + current upstream | Upstream already provides OpenSearch security/DLS. The compared trees do not contain the fork's metadata-side-index and documentary-graph paths. | The fork extends DLS invariants to metadata counts/buckets, eligible occurrence resolution, graph traversal, source hydration and recursive payload redaction. | **VERIFIED AGAINST FORK POINT**, **VERIFIED AGAINST CURRENT UPSTREAM**, **FORK-SPECIFIC CONTRACT**. [Fork candidate resolver](https://github.com/FermedePommerieux/openrag-compose/blob/975f933fa3149dd60a0f481d5a51ae184d6ddf0d/src/services/metadata_candidate_restriction.py), [fork public redaction](https://github.com/FermedePommerieux/openrag-compose/blob/975f933fa3149dd60a0f481d5a51ae184d6ddf0d/src/services/search_service.py) |
+| Runtime ownership verification | Fork point + current upstream | `WorkspaceConfigService` exists in both compared upstream revisions. Neither contains the fork's `RuntimeBehaviorProfile` endpoint/check. | The default DB-backed workspace config remains functional authority; the fork verifies configured Agent/planner/prompt behavior against effective flow/backend execution and reports `MATCH`/`MISMATCH`. | **VERIFIED AGAINST FORK POINT**, **VERIFIED AGAINST CURRENT UPSTREAM**, **FORK-SPECIFIC CONTRACT**. [Current upstream workspace service](https://github.com/langflow-ai/openrag/blob/1e228bb0ef7e45959f241a6f3163fb2182303785/src/services/workspace_config_service.py), [fork runtime behavior](https://github.com/FermedePommerieux/openrag-compose/blob/975f933fa3149dd60a0f481d5a51ae184d6ddf0d/src/services/runtime_behavior.py) |
+| OpenArchiver attachment identity | Fork point + current upstream | Neither compared upstream tree contains `openrag.openarchiver-attachment-ingestion`. | The OpenRAG-side internal contract validates stable attachment/parent identities, full binary SHA-256, size and SHA-derived document ID. The connector flow is planned; OpenArchiver is unmodified. | **VERIFIED AGAINST FORK POINT**, **VERIFIED AGAINST CURRENT UPSTREAM**, **FORK-SPECIFIC CONTRACT**. [Fork attachment contract](https://github.com/FermedePommerieux/openrag-compose/blob/975f933fa3149dd60a0f481d5a51ae184d6ddf0d/src/models/source_provenance.py) |
+
+## What is not claimed
+
+This documentation does not claim that upstream OpenRAG has no hybrid search,
+security, workspace configuration, ordinary metadata or provenance-related
+operational fields. It claims that the pinned upstream revisions do not contain
+the named fork contracts and execution paths above, and describes the
+different upstream architecture where comparison is meaningful.
+
+Upstream can evolve after the pinned current-upstream check. Future comparisons
+must fetch again, pin a new revision and keep fork-point differences separate
+from current-upstream differences.
+
+## Attribution and license
+
+The Pommerieux repository is a derivative fork of upstream OpenRAG and is not
+the upstream project. It retains the repository's Apache License 2.0. See the
+root [`LICENSE`](https://github.com/FermedePommerieux/openrag-compose/blob/975f933fa3149dd60a0f481d5a51ae184d6ddf0d/LICENSE)
+and [upstream repository](https://github.com/langflow-ai/openrag).

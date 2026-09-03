@@ -1,0 +1,88 @@
+---
+title: Truth and provenance
+description: Normative truth, observation, association and provenance semantics.
+---
+
+# Truth and provenance contract
+
+This page is normative for user-facing claims in the Pommerieux fork. The
+states below are deliberately not interchangeable.
+
+| State | Meaning | What it does not mean |
+| --- | --- | --- |
+| `ASSERTED` | A source or trusted ingestion boundary explicitly supplied an identity or relation accepted by the contract | The asserted content is universally true |
+| `OBSERVED` | A named extractor or system reported a source-qualified value | The value is preferred over conflicting observations |
+| `ASSOCIATED` | Two occurrences share bounded, recorded association evidence | One derives from, versions or duplicates the other |
+| `INFERRED` | A reproducible hypothesis was derived from evidence | A strong provenance edge exists |
+| `UNKNOWN` | Required usable evidence is absent or indeterminate | The predicate is false |
+| `CONFLICTING` | Preserved observations disagree under the policy | One value has been silently selected |
+| `INVALID` | An observation cannot satisfy its syntax or semantic contract | The underlying real-world fact is known to be absent |
+
+These labels are implemented by the
+[`InvestigationStatus`](https://github.com/FermedePommerieux/openrag-compose/blob/975f933fa3149dd60a0f481d5a51ae184d6ddf0d/src/models/document_investigation.py)
+model and used by metadata and association projections.
+
+## Mandatory interpretations
+
+- **Metadata observation is not factual truth.** PDF Info, XMP, OOXML, EML,
+  EXIF/IPTC/XMP, archive, filesystem and ingestion systems can be wrong,
+  missing, copied or spoofed. The observation retains its source, trust class,
+  normalization status and time of extraction.
+- **Document association is not provenance derivation.** A shared creator,
+  date, source, type, parent, filename or hash is recorded only with its exact
+  association dimension and evidence status.
+- **Same author/date/type is not same document.** Stable occurrence identity
+  and binary identity remain separate from descriptive metadata.
+- **Candidate lineage is not `prov:wasDerivedFrom`.** Candidate-lineage
+  projection is internal evidence only. It emits no strong relation.
+- **An association neighborhood is not certifiable closure.** It is bounded,
+  explicitly `scope_expanding=false`, and is not an input to the v1 coverage
+  decision.
+- **`coverage.complete` is not physical-archive completeness.** It certifies
+  the accessible documentary closure reached from discovered seeds under one
+  versioned policy and index view.
+
+## Strong provenance, weak association and candidate lineage
+
+Strong provenance is a validated explicit relation in the fork's bounded
+PROV-O profile. Even then, the `documentary-prov-o` policy decides whether the
+exact role/source-type/target-type triple may expand scope. Unknown triples
+fail closed.
+
+Weak metadata association is descriptive proximity. It can help an analyst
+navigate, but broad dimensions such as a source system, year or MIME type can
+form mega-hubs. Association dimensions are therefore bounded and do not
+automatically enlarge coverage scope.
+
+Candidate lineage records why two occurrences might merit review. It is not
+activated as trusted lineage, does not create `derived_from`, and does not
+change PROV-O closure.
+
+## Conceptual example
+
+```text
+email message
+    ↑ attachment_of (explicit, typed, policy-approved)
+binary attachment
+    └── other explicit provenance relations
+
+same month / same observed creator
+    └── association evidence only
+        └── no strong provenance edge
+```
+
+For OpenArchiver attachments, the attachment has its own stable binary identity
+such as `urn:openrag:openarchiver:attachment:<attachment_id>`. A parent-mail URL
+is a navigation location; it is not the binary attachment identity.
+
+## Contradiction and absence
+
+The answer layer distinguishes supported evidence, not found under certified
+scoped coverage, not retrieved, incomplete coverage and contradiction. A
+capable model cannot convert missing evidence or an incomplete certificate into
+a documentary absence claim. When sources conflict, the system preserves and
+attributes the conflict instead of choosing a silent truth.
+
+See [Document metadata](/architecture/document-metadata),
+[Document associations](/architecture/document-associations), and
+[Retrieval and coverage](/architecture/retrieval-and-coverage).

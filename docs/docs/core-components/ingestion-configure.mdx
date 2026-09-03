@@ -79,7 +79,7 @@ Similarly, errors can occur with ingestion if the active embedding model (on the
 
 Models become unavailable when you remove an embedding model or provider from the OpenRAG <Icon name="Settings2" aria-hidden="true"/> **Settings** page, your model provider credentials are expired or invalid, or there are network issues preventing access to the model.
 
-If you remove a model or provider that you don't want to use anymore, it is recommended that you [remove documents](/knowledge-browse#delete-documents) that were embedded with the unavailable model.
+If you remove a model or provider that you don't want to use anymore, it is recommended that you [remove documents](/knowledge-browse#delete-knowledge) that were embedded with the unavailable model.
 If you don't remove or [filters](/knowledge-filters) these documents, then **Chat** responses can fail or return incomplete results.
 This is because the agent cannot access the model to generate a query embedding for comparison with the document embeddings.
 

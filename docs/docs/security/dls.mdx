@@ -1,0 +1,76 @@
+---
+title: Security and DLS invariants
+description: Access-control boundaries for metadata, retrieval and graph traversal.
+---
+
+# Security and DLS invariants
+
+A documentary relationship never transfers permission. Every search,
+metadata restriction, source hydration and graph traversal remains bounded by
+the current caller's document-level security (DLS) context.
+
+## Required ordering
+
+```text
+caller identity and filters
+    → DLS-scoped side-index view
+    → metadata predicate / counts / buckets
+    → eligible visible occurrence IDs
+    → DLS-scoped lexical and dense retrieval
+    → DLS-scoped graph traversal
+    → DLS-scoped source retrieval and evidence projection
+```
+
+DLS applies before metadata bucketing and filtering. Hidden documents must not
+create or alter visible counts, buckets, candidate totals, truncation decisions
+or association strength. The side-index resolver returns only `TRUE` rows from
+the caller-visible projection view.
+
+Source retrieval independently reapplies user-scoped access and active filters.
+This is defense in depth: possession of an eligible occurrence ID is not an
+authorization token.
+
+## Graph traversal
+
+Forward and reverse provenance lookups use the same DLS-scoped OpenSearch
+client. Reverse traversal is constructed only for policy-approved typed
+relations. A hidden target is absent from public graph nodes and edges, does
+not consume traversal limits and cannot be used to cross an access boundary.
+
+An explicit relation on a visible source may still name a target the caller
+cannot read. Public payload redaction therefore removes unresolved relation
+targets. Graph edges are exposed only after both endpoints resolve through the
+same caller-scoped client.
+
+The correct interpretation of an absent neighbour is “not visible or not
+indexed,” never permission to infer or retrieve it through the visible source.
+
+## Recursive redaction
+
+Internal metadata is recursively removed from public API and model payloads,
+including:
+
+- raw `document_metadata_profile` and its control fields;
+- internal attachment contracts and archive locators;
+- flattened unresolved relation target and role arrays;
+- context-only relation targets that were not graph-resolved;
+- internal metadata backfill status and digests.
+
+The model receives safe evidence projection, not raw internal archive metadata
+or ACL state.
+
+## Association neighbourhoods
+
+The internal association builder accepts an explicit accessible-document set
+before it buckets candidates. Hidden inputs therefore cannot influence visible
+association output. The neighborhood remains non-certifying and disabled as a
+product route regardless of that invariant.
+
+## Source of truth
+
+See the
+[DLS-first metadata candidate resolver](https://github.com/FermedePommerieux/openrag-compose/blob/975f933fa3149dd60a0f481d5a51ae184d6ddf0d/src/services/metadata_candidate_restriction.py),
+the
+[recursive public-payload redaction](https://github.com/FermedePommerieux/openrag-compose/blob/975f933fa3149dd60a0f481d5a51ae184d6ddf0d/src/services/search_service.py),
+and the
+[scope traversal implementation](https://github.com/FermedePommerieux/openrag-compose/blob/975f933fa3149dd60a0f481d5a51ae184d6ddf0d/src/services/retrieval_service.py).
