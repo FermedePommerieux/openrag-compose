@@ -1,0 +1,309 @@
+{
+  "baseline_after": {
+    "chunks": 380817,
+    "corpus_occurrence_digest": "038987ca2eb70b2e56d674bc45e9b60fe00652e72296249dba0252d6964fafd7",
+    "documents": 47400,
+    "embeddings": 380817,
+    "health": "green",
+    "mapping_sha256": "e0f97d77f69791db033aa43e4f6ad3960fa5702c8fa2443b0f8cca09135f74e3",
+    "metadata_control_digest": "143d87ca145c514f411b7385b4fe831cbc52a051f084056d5fbda16d4d10bb9f",
+    "metadata_profiles": 47133,
+    "occurrences": 47454,
+    "representative_content_control_digest": "aef47dc75f905cadfc9053acd0b0d14d59f04e9e483883ba6d1ec942c6adbf52"
+  },
+  "baseline_before": {
+    "chunks": 380817,
+    "corpus_occurrence_digest": "038987ca2eb70b2e56d674bc45e9b60fe00652e72296249dba0252d6964fafd7",
+    "documents": 47400,
+    "embeddings": 380817,
+    "health": "green",
+    "mapping_sha256": "e0f97d77f69791db033aa43e4f6ad3960fa5702c8fa2443b0f8cca09135f74e3",
+    "metadata_control_digest": "143d87ca145c514f411b7385b4fe831cbc52a051f084056d5fbda16d4d10bb9f",
+    "metadata_profiles": 47133,
+    "occurrences": 47454,
+    "representative_content_control_digest": "aef47dc75f905cadfc9053acd0b0d14d59f04e9e483883ba6d1ec942c6adbf52"
+  },
+  "canary_index": "documents-metadata-filter-projection-canary-v1-8476a9c",
+  "capture": {
+    "captured_locally_at": "2026-09-03T04:25:59.456034+00:00",
+    "deployment": "openrag-backend",
+    "head": "8476a9c28220526b41ab22812a676daca79fcbeb",
+    "namespace": "openrag",
+    "repository": "FermedePommerieux/openrag-compose",
+    "ssh_host": "admin@10.73.50.12",
+    "starting_sha": "8476a9c28220526b41ab22812a676daca79fcbeb",
+    "target_branch": "pommerieux/v0.6.0-retrieval-v2-prov-o",
+    "work_branch": "agent/metadata-filter-index",
+    "worktree": "/Users/eloiprimaux/Developer/openrag-compose-post-backfill-association-audit"
+  },
+  "captured_at": "2026-09-03T04:25:58.312311+00:00",
+  "cohort": {
+    "documents": 100,
+    "formats": {
+      "DOCX": 5,
+      "EML": 24,
+      "HTML": 5,
+      "IMAGE": 5,
+      "PDF": 46,
+      "TXT": 5,
+      "XLSX": 10
+    },
+    "metadata_conflict": {
+      "false": 89,
+      "true": 11
+    },
+    "priority": [
+      "example:pdf_2024_03",
+      "example:xlsx_modified_2023",
+      "example:pdf_2024_03_openarchiver",
+      "example:production_absent",
+      "example:temporal_conflict",
+      "example:creator",
+      "format:PDF",
+      "format:DOCX",
+      "format:XLSX",
+      "format:EML",
+      "format:IMAGE",
+      "format:HTML",
+      "format:TXT",
+      "timezone:UNKNOWN",
+      "timezone:KNOWN_OR_ABSENT",
+      "conflict:true",
+      "conflict:false",
+      "richness:RICH",
+      "richness:POOR",
+      "source:UNKNOWN",
+      "source:local",
+      "source:openarchiver",
+      "global"
+    ],
+    "selection_policy": "sha256 round-robin over deterministic strata",
+    "selection_policy_version": 1,
+    "sources": {
+      "UNKNOWN": 3,
+      "local": 16,
+      "openarchiver": 81
+    },
+    "timezone": {
+      "KNOWN_OR_ABSENT": 94,
+      "UNKNOWN": 6
+    },
+    "visible_to_controlled_dls_user": 100
+  },
+  "dls_controls": {
+    "aggregation_owner_buckets": 1,
+    "controlled_user_exposed": false,
+    "controlled_user_sha256": "2f183a4e64493af3f377f745eda502363cd3e7ef6e4d266d444758de0a85fcc8",
+    "controlled_user_source": "cohort_most_common_owner",
+    "count_both": 1,
+    "count_hidden_only": 0,
+    "count_visible_only": 1,
+    "hidden_docs_affect_aggregation": false,
+    "hidden_docs_affect_count": false,
+    "pass": true,
+    "rows": 2,
+    "search_visible": 1,
+    "written": 2
+  },
+  "filter_results": {
+    "creator_exact_observation": {
+      "FALSE": 99,
+      "TRUE": 1,
+      "UNKNOWN": 0,
+      "conflict_count": 30,
+      "filter_sha256": "52aa075d086ec0e6d335918b2f36f16ca933edc4aeed0c9f7c686ac038918e0e",
+      "latency": {
+        "count": 1,
+        "min_ms": 3.650864935480058,
+        "p50_ms": 3.919790033251047,
+        "p95_ms": 4.08558698836714,
+        "runs": 9
+      },
+      "value_exposed": false,
+      "value_sha256": "2f183a4e64493af3f377f745eda502363cd3e7ef6e4d266d444758de0a85fcc8"
+    },
+    "pdf_2024_03_openarchiver": {
+      "FALSE": 85,
+      "TRUE": 9,
+      "UNKNOWN": 6,
+      "conflict_count": 30,
+      "filter_sha256": "ee53e71249de380bc187f30a95d19d42d08ede215b0bcf312453a91d86e9dbd1",
+      "latency": {
+        "count": 9,
+        "min_ms": 3.032680950127542,
+        "p50_ms": 3.227975917980075,
+        "p95_ms": 3.5561430267989635,
+        "runs": 9
+      }
+    },
+    "pdf_produced_2024_03": {
+      "FALSE": 75,
+      "TRUE": 10,
+      "UNKNOWN": 15,
+      "conflict_count": 30,
+      "filter_sha256": "d6625794e323f607d4f0b4ab77efe9e7df7f544f4ea49df975fbe94ed4ee6c8c",
+      "latency": {
+        "count": 10,
+        "min_ms": 3.020180040039122,
+        "p50_ms": 3.1195880146697164,
+        "p95_ms": 3.9058459224179387,
+        "runs": 9
+      }
+    },
+    "production_timestamp_exists": {
+      "FALSE": 21,
+      "TRUE": 73,
+      "UNKNOWN": 6,
+      "conflict_count": 30,
+      "filter_sha256": "d41ae0d7c5c3dd4f1e69475e0fa476da72357568b4fc0d44a015e7d945d868be",
+      "latency": {
+        "count": 73,
+        "min_ms": 3.039328963495791,
+        "p50_ms": 3.1195500632748008,
+        "p95_ms": 3.3998090075328946,
+        "runs": 9
+      }
+    },
+    "source_openarchiver": {
+      "FALSE": 19,
+      "TRUE": 81,
+      "UNKNOWN": 0,
+      "conflict_count": 30,
+      "filter_sha256": "d6ec5dc8f4f6692e7eaa489f4cba5c509de904cbd133fda5e20f7d7a8d0efa48",
+      "latency": {
+        "count": 81,
+        "min_ms": 3.079514019191265,
+        "p50_ms": 3.350401995703578,
+        "p95_ms": 4.266715957783163,
+        "runs": 9
+      }
+    },
+    "temporal_conflict": {
+      "FALSE": 89,
+      "TRUE": 11,
+      "UNKNOWN": 0,
+      "conflict_count": 30,
+      "filter_sha256": "cf9b4618660d7f1d77ffc26dac3a8c4cad0a4c6c364853f0379e99a64311f6ed",
+      "latency": {
+        "count": 11,
+        "min_ms": 3.0498659471049905,
+        "p50_ms": 3.4118829062208533,
+        "p95_ms": 4.562770947813988,
+        "runs": 9
+      }
+    },
+    "xlsx_modified_2023": {
+      "FALSE": 95,
+      "TRUE": 5,
+      "UNKNOWN": 0,
+      "conflict_count": 30,
+      "filter_sha256": "32d7e7bcd6e9d20c31e3bae2d15079b654ac19b2443bf617b66e93a23efbe55e",
+      "latency": {
+        "count": 5,
+        "min_ms": 3.3832539338618517,
+        "p50_ms": 3.594661015085876,
+        "p95_ms": 4.169123014435172,
+        "runs": 9
+      }
+    }
+  },
+  "first_projection": {
+    "attempted": 100,
+    "changed": 100,
+    "unchanged": 0
+  },
+  "generation": {
+    "failed": 0,
+    "profiled_scanned": 47133,
+    "scan_and_generation_seconds": 219.88263172190636
+  },
+  "integrity_pass": true,
+  "invariants": {
+    "association_policy_changed": false,
+    "bm25_changed": false,
+    "chunks_changed": false,
+    "content_changed": false,
+    "coverage_semantics_changed": false,
+    "dense_changed": false,
+    "embeddings_changed": false,
+    "llm_calls": 0,
+    "prov_o_edges_added": 0,
+    "raw_metadata_profiles_changed": false,
+    "rrf_changed": false,
+    "scope_expansion_added": 0,
+    "seed_semantics_changed": false
+  },
+  "performance": {
+    "before_application_side_full_scan_seconds": 216.77,
+    "projection_scan_and_generation_seconds": 219.88263172190636,
+    "queries": {
+      "creator_exact_observation": {
+        "count": 1,
+        "min_ms": 3.650864935480058,
+        "p50_ms": 3.919790033251047,
+        "p95_ms": 4.08558698836714,
+        "runs": 9
+      },
+      "pdf_2024_03_openarchiver": {
+        "count": 9,
+        "min_ms": 3.032680950127542,
+        "p50_ms": 3.227975917980075,
+        "p95_ms": 3.5561430267989635,
+        "runs": 9
+      },
+      "pdf_produced_2024_03": {
+        "count": 10,
+        "min_ms": 3.020180040039122,
+        "p50_ms": 3.1195880146697164,
+        "p95_ms": 3.9058459224179387,
+        "runs": 9
+      },
+      "production_timestamp_exists": {
+        "count": 73,
+        "min_ms": 3.039328963495791,
+        "p50_ms": 3.1195500632748008,
+        "p95_ms": 3.3998090075328946,
+        "runs": 9
+      },
+      "source_openarchiver": {
+        "count": 81,
+        "min_ms": 3.079514019191265,
+        "p50_ms": 3.350401995703578,
+        "p95_ms": 4.266715957783163,
+        "runs": 9
+      },
+      "temporal_conflict": {
+        "count": 11,
+        "min_ms": 3.0498659471049905,
+        "p50_ms": 3.4118829062208533,
+        "p95_ms": 4.562770947813988,
+        "runs": 9
+      },
+      "xlsx_modified_2023": {
+        "count": 5,
+        "min_ms": 3.3832539338618517,
+        "p50_ms": 3.594661015085876,
+        "p95_ms": 4.169123014435172,
+        "runs": 9
+      }
+    }
+  },
+  "rollback": {
+    "canary_index_removed": true,
+    "source_index_untouched": true
+  },
+  "schema": "openrag.metadata-filter-projection-canary-result",
+  "second_projection": {
+    "attempted": 100,
+    "changed": 0,
+    "unchanged": 100
+  },
+  "source_index": "documents",
+  "source_index_write_operations": 0,
+  "source_mapping_changes": 0,
+  "verification": {
+    "expected": 100,
+    "verified": 100
+  },
+  "version": 1
+}

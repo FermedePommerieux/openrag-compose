@@ -20,11 +20,13 @@ from models.document_investigation import (
 from models.metadata_filter import (
     MetadataDateSourcePolicy,
     MetadataFilter,
+    MetadataFilterBooleanOperator,
     MetadataFilterClause,
     MetadataFilterClauseEvaluation,
     MetadataFilterConjunction,
     MetadataFilterDocumentContext,
     MetadataFilterEvaluation,
+    MetadataFilterExpression,
     MetadataFilterField,
     MetadataFilterObservationEvidence,
     MetadataFilterOperator,
@@ -170,12 +172,35 @@ def _context_values(
     ]
 
 
-def _truth_not(result: MetadataTruthValue) -> MetadataTruthValue:
+def truth_not(result: MetadataTruthValue) -> MetadataTruthValue:
+    """Strong-Kleene NOT; UNKNOWN never becomes TRUE."""
     return {
         MetadataTruthValue.TRUE: MetadataTruthValue.FALSE,
         MetadataTruthValue.FALSE: MetadataTruthValue.TRUE,
         MetadataTruthValue.UNKNOWN: MetadataTruthValue.UNKNOWN,
     }[result]
+
+
+def truth_and(values: tuple[MetadataTruthValue, ...]) -> MetadataTruthValue:
+    """Strong-Kleene AND over a non-empty tuple."""
+    if not values:
+        raise ValueError("truth_and requires at least one value")
+    if MetadataTruthValue.FALSE in values:
+        return MetadataTruthValue.FALSE
+    if all(value == MetadataTruthValue.TRUE for value in values):
+        return MetadataTruthValue.TRUE
+    return MetadataTruthValue.UNKNOWN
+
+
+def truth_or(values: tuple[MetadataTruthValue, ...]) -> MetadataTruthValue:
+    """Strong-Kleene OR over a non-empty tuple."""
+    if not values:
+        raise ValueError("truth_or requires at least one value")
+    if MetadataTruthValue.TRUE in values:
+        return MetadataTruthValue.TRUE
+    if all(value == MetadataTruthValue.FALSE for value in values):
+        return MetadataTruthValue.FALSE
+    return MetadataTruthValue.UNKNOWN
 
 
 def _matches(operator: MetadataFilterOperator, value: str, targets: tuple[str, ...]) -> bool:
@@ -235,7 +260,7 @@ def evaluate_metadata_filter_clause(
     ):
         result = MetadataTruthValue.UNKNOWN
         if clause.negated:
-            result = _truth_not(result)
+            result = truth_not(result)
         return MetadataFilterClauseEvaluation(
             clause_sha256=clause.calculate_sha256(),
             result=result,
@@ -262,7 +287,7 @@ def evaluate_metadata_filter_clause(
         else:
             result = MetadataTruthValue.FALSE
         if clause.operator == MetadataFilterOperator.NOT_EXISTS:
-            result = _truth_not(result)
+            result = truth_not(result)
         if valid and result == MetadataTruthValue.TRUE:
             matched = valid
     else:
@@ -284,7 +309,7 @@ def evaluate_metadata_filter_clause(
         else []
     )
     if clause.negated:
-        result = _truth_not(result)
+        result = truth_not(result)
     return MetadataFilterClauseEvaluation(
         clause_sha256=clause.calculate_sha256(),
         result=result,
@@ -300,16 +325,45 @@ def _combine(
     conjunction: MetadataFilterConjunction,
 ) -> MetadataTruthValue:
     if conjunction == MetadataFilterConjunction.ALL:
-        if MetadataTruthValue.FALSE in values:
-            return MetadataTruthValue.FALSE
-        if all(value == MetadataTruthValue.TRUE for value in values):
-            return MetadataTruthValue.TRUE
-        return MetadataTruthValue.UNKNOWN
-    if MetadataTruthValue.TRUE in values:
-        return MetadataTruthValue.TRUE
-    if all(value == MetadataTruthValue.FALSE for value in values):
-        return MetadataTruthValue.FALSE
-    return MetadataTruthValue.UNKNOWN
+        return truth_and(values)
+    return truth_or(values)
+
+
+def _evaluate_expression(
+    expression: MetadataFilterExpression,
+    *,
+    inspection: DocumentMetadataInspection | None,
+    profile_availability: MetadataProfileAvailability,
+    context: MetadataFilterDocumentContext | None,
+) -> tuple[MetadataTruthValue, tuple[MetadataFilterClauseEvaluation, ...]]:
+    if expression.clause is not None:
+        evaluation = evaluate_metadata_filter_clause(
+            expression.clause,
+            inspection=inspection,
+            profile_availability=profile_availability,
+            context=context,
+        )
+        return evaluation.result, (evaluation,)
+    child_results = tuple(
+        _evaluate_expression(
+            child,
+            inspection=inspection,
+            profile_availability=profile_availability,
+            context=context,
+        )
+        for child in expression.children
+    )
+    values = tuple(item[0] for item in child_results)
+    evaluations = tuple(
+        evaluation for item in child_results for evaluation in item[1]
+    )
+    if expression.operator == MetadataFilterBooleanOperator.NOT:
+        return truth_not(values[0]), evaluations
+    if expression.operator == MetadataFilterBooleanOperator.AND:
+        return truth_and(values), evaluations
+    if expression.operator == MetadataFilterBooleanOperator.OR:
+        return truth_or(values), evaluations
+    raise ValueError("invalid metadata filter expression")
 
 
 def evaluate_metadata_filter(
@@ -325,15 +379,27 @@ def evaluate_metadata_filter(
         raise ValueError("inspection identity does not match document_id")
     if context is not None and context.document_id != document_id:
         raise ValueError("context identity does not match document_id")
-    clause_evaluations = tuple(
-        evaluate_metadata_filter_clause(
-            clause,
+    if metadata_filter.expression is not None:
+        result, clause_evaluations = _evaluate_expression(
+            metadata_filter.expression,
             inspection=inspection,
             profile_availability=profile_availability,
             context=context,
         )
-        for clause in metadata_filter.clauses
-    )
+    else:
+        clause_evaluations = tuple(
+            evaluate_metadata_filter_clause(
+                clause,
+                inspection=inspection,
+                profile_availability=profile_availability,
+                context=context,
+            )
+            for clause in metadata_filter.clauses
+        )
+        result = _combine(
+            tuple(item.result for item in clause_evaluations),
+            metadata_filter.conjunction,
+        )
     matched = _unique_evidence(
         [
             evidence
@@ -351,10 +417,7 @@ def evaluate_metadata_filter(
     return MetadataFilterEvaluation(
         document_id=document_id,
         filter_sha256=metadata_filter.calculate_sha256(),
-        result=_combine(
-            tuple(item.result for item in clause_evaluations),
-            metadata_filter.conjunction,
-        ),
+        result=result,
         clause_evaluations=clause_evaluations,
         matched_observations=matched,
         conflicting_observations=conflicts,

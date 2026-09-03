@@ -47,6 +47,12 @@ class MetadataFilterConjunction(StrEnum):
     ANY = "ANY"
 
 
+class MetadataFilterBooleanOperator(StrEnum):
+    AND = "AND"
+    OR = "OR"
+    NOT = "NOT"
+
+
 class MetadataDateSourcePolicy(StrEnum):
     ANY_VALID_PRODUCTION_OBSERVATION = "ANY_VALID_PRODUCTION_OBSERVATION"
     ANY_VALID_MODIFICATION_OBSERVATION = "ANY_VALID_MODIFICATION_OBSERVATION"
@@ -71,6 +77,7 @@ class MetadataFilterField(StrEnum):
     EXTENSION = "extension"
     SOURCE_DOCUMENT_TYPE = "source_document_type"
     SOURCE_SYSTEM = "source_system"
+    SOURCE_ENTITY_TYPE = "source_entity_type"
     SOURCE_ENTITY_FAMILY = "source_entity_family"
     PARENT_COLLECTION = "parent_collection"
     CONNECTOR = "connector"
@@ -78,6 +85,10 @@ class MetadataFilterField(StrEnum):
     LAST_MODIFIER_OBSERVATION = "last_modifier_observation"
     PRODUCER_OBSERVATION = "producer_observation"
     CREATOR_APPLICATION_OBSERVATION = "creator_application_observation"
+    FILENAME_BASENAME = "filename_basename"
+    BINARY_SHA256 = "binary_sha256"
+    HAS_TEMPORAL_CONFLICT = "has_temporal_conflict"
+    HAS_METADATA_CONFLICT = "has_metadata_conflict"
 
 
 TEMPORAL_FILTER_FIELDS = frozenset(
@@ -234,15 +245,90 @@ class MetadataFilterClause(BaseModel):
         return hashlib.sha256(self.canonical_json().encode()).hexdigest()
 
 
+class MetadataFilterExpression(BaseModel):
+    """Recursive AND/OR/NOT expression; leaves contain one v1 clause.
+
+    The original flat ``clauses + conjunction`` shape remains valid.  This is
+    an additive v1 representation for structured callers that need explicit
+    nesting, especially NOT over a compound expression.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    operator: MetadataFilterBooleanOperator | None = None
+    clause: MetadataFilterClause | None = None
+    children: tuple[MetadataFilterExpression, ...] = ()
+
+    @model_validator(mode="after")
+    def validate_expression(self) -> MetadataFilterExpression:
+        if self.clause is not None:
+            if self.operator is not None or self.children:
+                raise ValueError("a clause expression cannot also have an operator or children")
+            return self
+        if self.operator is None:
+            raise ValueError("an expression requires either a clause or an operator")
+        expected = (1, 1) if self.operator == MetadataFilterBooleanOperator.NOT else (2, 32)
+        if not expected[0] <= len(self.children) <= expected[1]:
+            raise ValueError(
+                f"{self.operator.value} requires between {expected[0]} and "
+                f"{expected[1]} children"
+            )
+        return self
+
+    def canonical_payload(self) -> dict[str, Any]:
+        if self.clause is not None:
+            return {"clause": self.clause.canonical_payload()}
+        children = [child.canonical_payload() for child in self.children]
+        if self.operator in {
+            MetadataFilterBooleanOperator.AND,
+            MetadataFilterBooleanOperator.OR,
+        }:
+            children.sort(
+                key=lambda value: json.dumps(
+                    value,
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                )
+            )
+        return {"children": children, "operator": self.operator.value}
+
+    def canonical_json(self) -> str:
+        return json.dumps(
+            self.canonical_payload(),
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+
+    def calculate_sha256(self) -> str:
+        return hashlib.sha256(self.canonical_json().encode()).hexdigest()
+
+
 class MetadataFilter(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    clauses: tuple[MetadataFilterClause, ...] = Field(min_length=1, max_length=32)
+    clauses: tuple[MetadataFilterClause, ...] = Field(default=(), max_length=32)
     conjunction: MetadataFilterConjunction = MetadataFilterConjunction.ALL
+    expression: MetadataFilterExpression | None = None
     policy_id: Literal["openrag.metadata-filter"] = "openrag.metadata-filter"
     policy_version: Literal[1] = 1
 
+    @model_validator(mode="after")
+    def validate_filter_shape(self) -> MetadataFilter:
+        if bool(self.clauses) == bool(self.expression):
+            raise ValueError("provide exactly one of clauses or expression")
+        if self.expression is not None and self.conjunction != MetadataFilterConjunction.ALL:
+            raise ValueError("conjunction only applies to the legacy flat clauses shape")
+        return self
+
     def canonical_payload(self) -> dict[str, Any]:
+        if self.expression is not None:
+            return {
+                "expression": self.expression.canonical_payload(),
+                "policy_id": self.policy_id,
+                "policy_version": self.policy_version,
+            }
         return {
             "clauses": [
                 clause.canonical_payload()
@@ -303,4 +389,24 @@ class MetadataFilterEvaluation(BaseModel):
     @property
     def matches(self) -> bool:
         """Fail closed: only an explicit TRUE is eligible."""
+        return self.result == MetadataTruthValue.TRUE
+
+
+class MetadataProjectionFilterEvaluation(BaseModel):
+    """Evaluation evidence returned from an indexed v1 projection."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    document_id: str
+    filter_sha256: str
+    result: MetadataTruthValue
+    matched_fields: tuple[str, ...] = ()
+    matched_observations: tuple[MetadataFilterObservationEvidence, ...] = ()
+    conflict_flags: tuple[str, ...] = ()
+    projection_version: Literal[1] = 1
+    policy_id: Literal["openrag.metadata-filter"] = "openrag.metadata-filter"
+    policy_version: Literal[1] = 1
+
+    @property
+    def matches(self) -> bool:
         return self.result == MetadataTruthValue.TRUE
