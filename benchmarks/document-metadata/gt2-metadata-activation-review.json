@@ -1,0 +1,4197 @@
+{
+  "schema_version": 1,
+  "benchmark_id": "orange-fibre-cross-domain-v1",
+  "benchmark_version": 1,
+  "critical_contract_tag": "POST-BACKFILL METADATA ACTIVATION REVIEW - NO PRODUCT ACTIVATION",
+  "runtime_source_sha": "64a874c3",
+  "product_endpoint": "https://openrag.ferme-de-pommerieux.fr/api/search",
+  "execution_path": {
+    "planner_shared_with_product": true,
+    "retrieval_shared_with_product": true,
+    "closure_shared_with_product": true,
+    "certifier_shared_with_product": true
+  },
+  "context": {
+    "benchmark_user_context": "public anonymous ingress",
+    "workspace": "production public ingress",
+    "knowledge_filters": {},
+    "dls_identity": "anonymous",
+    "authorization_source": "product no-auth identity"
+  },
+  "runtime_behavior_profile": {
+    "profile_version": 1,
+    "status": "MATCH",
+    "system_prompt": {
+      "configured_source": "workspace_config.agent.system_prompt",
+      "configured_content_sha256": "50ec4b3729cecb18e466030a0e39c24f4900bea74aa90ea0fbf1fa5f7fc079d2",
+      "effective_source": "langflow.managed_flow:1098eea1-6649-4e1d-aed1-b77249fb8dd0:Agent.system_prompt",
+      "effective_content_sha256": "50ec4b3729cecb18e466030a0e39c24f4900bea74aa90ea0fbf1fa5f7fc079d2",
+      "match": true
+    },
+    "agent": {
+      "configured_source": "workspace_config.agent",
+      "configured_provider": "openai",
+      "configured_model": "gpt-5.4-mini",
+      "effective_source": "langflow.managed_flow:1098eea1-6649-4e1d-aed1-b77249fb8dd0:Agent.model",
+      "effective_provider": "openai",
+      "effective_model": "gpt-5.4-mini",
+      "capability_profile": {
+        "registry": "responses-model-capabilities-v1",
+        "unsupported_responses_parameters": []
+      },
+      "match": true
+    },
+    "planner": {
+      "configured_source": "workspace_config.agent.agent_fallback",
+      "configured_provider": "openai",
+      "configured_model": "gpt-5.4-mini",
+      "effective_source": "backend.search_service.runtime_resolution",
+      "effective_provider": "openai",
+      "effective_model": "gpt-5.4-mini",
+      "capability_profile": {
+        "registry": "responses-model-capabilities-v1",
+        "unsupported_responses_parameters": []
+      },
+      "match": true
+    },
+    "embedding": {
+      "source": "workspace_config.knowledge",
+      "provider": "openai",
+      "model": "text-embedding-3-large"
+    },
+    "retrieval": {
+      "source": "workspace_config.knowledge",
+      "mode": "hybrid",
+      "strategy": "rrf",
+      "lexical_candidates": 50,
+      "dense_candidates": 50,
+      "rrf_k": 60,
+      "seed_budget": 100
+    },
+    "multi_query": {
+      "source": "product_search_request_contract",
+      "enabled_default": false,
+      "max_queries": 4,
+      "concurrency": 2
+    },
+    "scope": {
+      "source": "workspace_config.knowledge+scope_traversal_policy",
+      "policy_id": "documentary-prov-o",
+      "policy_version": 1,
+      "seed_count": 100,
+      "max_depth": 8,
+      "max_entities": 500,
+      "max_documents": 250,
+      "batch_size": 50
+    },
+    "agent_guard": {
+      "source": "langflow.managed_flow:1098eea1-6649-4e1d-aed1-b77249fb8dd0:Agent.code",
+      "retrieval_guard_version": 1,
+      "langgraph_max_iterations": 15,
+      "component_code_sha256": "07caec119c7ded21666f6c552807e99703284ef2bf729383413df4d976a9eafc",
+      "flow_version": 14,
+      "flow_locked": true
+    },
+    "runtime_behavior_fingerprint": "9c9b73d31374cd301b247010e469cfd8e589fd74985acc1a35d5558e54883ba9",
+    "validation_evidence": [
+      {
+        "check_id": "runtime_prompt_match",
+        "status": "PASS",
+        "observed": "50ec4b3729cecb18e466030a0e39c24f4900bea74aa90ea0fbf1fa5f7fc079d2",
+        "expected": "50ec4b3729cecb18e466030a0e39c24f4900bea74aa90ea0fbf1fa5f7fc079d2",
+        "evidence_sha256": "89a591795d59a93c34cefc9956358481969161b4237f09b1234b15e2971ad2a0"
+      },
+      {
+        "check_id": "runtime_agent_model_match",
+        "status": "PASS",
+        "observed": {
+          "provider": "openai",
+          "model": "gpt-5.4-mini"
+        },
+        "expected": {
+          "provider": "openai",
+          "model": "gpt-5.4-mini"
+        },
+        "evidence_sha256": "032bd6f4ca73cec00cd5f69df25206669e09b9495c30c30b56dd22f3486f3303"
+      },
+      {
+        "check_id": "runtime_planner_model_match",
+        "status": "PASS",
+        "observed": {
+          "provider": "openai",
+          "model": "gpt-5.4-mini"
+        },
+        "expected": {
+          "provider": "openai",
+          "model": "gpt-5.4-mini"
+        },
+        "evidence_sha256": "032bd6f4ca73cec00cd5f69df25206669e09b9495c30c30b56dd22f3486f3303"
+      }
+    ]
+  },
+  "runtime_behavior_fingerprint": "9c9b73d31374cd301b247010e469cfd8e589fd74985acc1a35d5558e54883ba9",
+  "planner": {
+    "configured_source": "workspace_config.agent.agent_fallback",
+    "configured_provider": "openai",
+    "configured_model": "gpt-5.4-mini",
+    "effective_source": "backend.search_service.runtime_resolution",
+    "effective_provider": "openai",
+    "effective_model": "gpt-5.4-mini",
+    "capability_profile": {
+      "registry": "responses-model-capabilities-v1",
+      "unsupported_responses_parameters": []
+    },
+    "match": true
+  },
+  "configuration": {
+    "repetitions": 3,
+    "repetition_plan": {
+      "1": 3
+    },
+    "query_counts": [
+      1
+    ],
+    "global_seed_budget": 100,
+    "product_default_seed_budget": 100,
+    "seed_budget_source": "product_default",
+    "multi_query_concurrency": 2
+  },
+  "corpus": {
+    "before": {
+      "captured_at": "2026-09-03T06:26:23.063744+00:00",
+      "visible_occurrences": 47454,
+      "enumerated_occurrences": 47454,
+      "distinct_document_ids": 47400,
+      "distinct_source_entity_ids": 47451,
+      "sources": [
+        "local",
+        "openarchiver"
+      ],
+      "occurrence_identity_sha256": "038987ca2eb70b2e56d674bc45e9b60fe00652e72296249dba0252d6964fafd7",
+      "complete": true
+    },
+    "after": {
+      "captured_at": "2026-09-03T06:26:54.152666+00:00",
+      "visible_occurrences": 47454,
+      "enumerated_occurrences": 47454,
+      "distinct_document_ids": 47400,
+      "distinct_source_entity_ids": 47451,
+      "sources": [
+        "local",
+        "openarchiver"
+      ],
+      "occurrence_identity_sha256": "038987ca2eb70b2e56d674bc45e9b60fe00652e72296249dba0252d6964fafd7",
+      "complete": true
+    },
+    "changed": false
+  },
+  "comparable": true,
+  "runtime_behavior_stable": true,
+  "all_configurations_fully_valid": true,
+  "runs": [
+    {
+      "run_id": "q1-r1",
+      "view": "BROAD",
+      "query_count": 1,
+      "repetition": 1,
+      "valid": true,
+      "contract_failure_codes": [],
+      "generated_queries": [
+        {
+          "query_id": "q0",
+          "query_text": "Tous les échanges avec Orange au sujet de la fibre.",
+          "query_type": "original",
+          "parent_query": "Tous les échanges avec Orange au sujet de la fibre.",
+          "generation_method": "user"
+        }
+      ],
+      "requested_retrieval_profile": {
+        "version": 1,
+        "strategy": "rrf",
+        "mode": "hybrid",
+        "lanes": {
+          "lexical": "required",
+          "dense": "required",
+          "fusion": "required",
+          "multi_query": "disabled"
+        },
+        "multi_query": {
+          "requested": false,
+          "max_queries": 1
+        }
+      },
+      "effective_retrieval_profile": {
+        "version": 1,
+        "strategy": "rrf",
+        "mode": "hybrid",
+        "lanes": {
+          "lexical": {
+            "requested": true,
+            "status": "succeeded",
+            "candidates": 50
+          },
+          "dense": {
+            "requested": true,
+            "status": "succeeded",
+            "candidates": 50,
+            "embedding_models": [
+              "text-embedding-3-large"
+            ],
+            "embedding_dimensions": {
+              "text-embedding-3-large": 3072
+            },
+            "failed_embedding_models": []
+          },
+          "fusion": {
+            "requested": true,
+            "status": "succeeded",
+            "candidates": 96
+          },
+          "multi_query": {
+            "requested": false,
+            "status": "not_requested",
+            "candidates": 0
+          }
+        }
+      },
+      "retrieval_execution_complete": true,
+      "coverage": {
+        "mode": "scope_exhaustive",
+        "query": "Tous les échanges avec Orange au sujet de la fibre.",
+        "scope_policy_id": "documentary-prov-o",
+        "scope_policy_version": 1,
+        "seed_discovery_complete": true,
+        "seed_documents": 73,
+        "seed_entities": 126,
+        "valid_provenance_seed_documents": 73,
+        "invalid_provenance_seed_documents": 0,
+        "seed_provenance_complete": true,
+        "requested_retrieval_profile": {
+          "version": 1,
+          "strategy": "rrf",
+          "mode": "hybrid",
+          "lanes": {
+            "lexical": "required",
+            "dense": "required",
+            "fusion": "required",
+            "multi_query": "disabled"
+          },
+          "multi_query": {
+            "requested": false,
+            "max_queries": 1
+          }
+        },
+        "effective_retrieval_profile": {
+          "version": 1,
+          "strategy": "rrf",
+          "mode": "hybrid",
+          "lanes": {
+            "lexical": {
+              "requested": true,
+              "status": "succeeded",
+              "candidates": 50
+            },
+            "dense": {
+              "requested": true,
+              "status": "succeeded",
+              "candidates": 50,
+              "embedding_models": [
+                "text-embedding-3-large"
+              ],
+              "embedding_dimensions": {
+                "text-embedding-3-large": 3072
+              },
+              "failed_embedding_models": []
+            },
+            "fusion": {
+              "requested": true,
+              "status": "succeeded",
+              "candidates": 96
+            },
+            "multi_query": {
+              "requested": false,
+              "status": "not_requested",
+              "candidates": 0
+            }
+          }
+        },
+        "retrieval_execution_complete": true,
+        "retrieval_failure_codes": [],
+        "graph_entities_visited": 183,
+        "graph_frontier_empty": true,
+        "graph_limit_reached": false,
+        "graph_stop_reason": "frontier_empty",
+        "graph_failed": false,
+        "graph_error": null,
+        "graph_stability_verified": true,
+        "graph_stability_observations": 8,
+        "relations_unclassified": {
+          "total": 0,
+          "by_classification": []
+        },
+        "identity_shared_aliases_resolved": 0,
+        "scope_diagnostics": {
+          "documents_per_depth": [
+            {
+              "depth": 0,
+              "count": 73
+            },
+            {
+              "depth": 1,
+              "count": 87
+            },
+            {
+              "depth": 2,
+              "count": 20
+            },
+            {
+              "depth": 3,
+              "count": 3
+            }
+          ],
+          "entities_per_depth": [
+            {
+              "depth": 0,
+              "count": 73
+            },
+            {
+              "depth": 1,
+              "count": 87
+            },
+            {
+              "depth": 2,
+              "count": 20
+            },
+            {
+              "depth": 3,
+              "count": 3
+            }
+          ],
+          "relations_per_depth": [
+            {
+              "depth": 0,
+              "role": "references",
+              "source_type": "email_message",
+              "target_type": "email_message",
+              "count": 13
+            },
+            {
+              "depth": 0,
+              "role": "reply_to",
+              "source_type": "email_message",
+              "target_type": "email_message",
+              "count": 6
+            },
+            {
+              "depth": 1,
+              "role": "attachment_of",
+              "source_type": "email_attachment",
+              "target_type": "email_message",
+              "count": 35
+            },
+            {
+              "depth": 1,
+              "role": "references",
+              "source_type": "email_message",
+              "target_type": "email_message",
+              "count": 201
+            },
+            {
+              "depth": 1,
+              "role": "reply_to",
+              "source_type": "email_message",
+              "target_type": "email_message",
+              "count": 60
+            },
+            {
+              "depth": 2,
+              "role": "attachment_of",
+              "source_type": "email_attachment",
+              "target_type": "email_message",
+              "count": 10
+            },
+            {
+              "depth": 2,
+              "role": "references",
+              "source_type": "email_message",
+              "target_type": "email_message",
+              "count": 19
+            },
+            {
+              "depth": 2,
+              "role": "reply_to",
+              "source_type": "email_message",
+              "target_type": "email_message",
+              "count": 11
+            },
+            {
+              "depth": 3,
+              "role": "attachment_of",
+              "source_type": "email_attachment",
+              "target_type": "email_message",
+              "count": 2
+            },
+            {
+              "depth": 3,
+              "role": "references",
+              "source_type": "email_message",
+              "target_type": "email_message",
+              "count": 1
+            },
+            {
+              "depth": 3,
+              "role": "reply_to",
+              "source_type": "email_message",
+              "target_type": "email_message",
+              "count": 1
+            }
+          ],
+          "largest_expansion_contributors": [
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:7a529d3d-3b14-4c9e-8f1e-bf541ba45719",
+              "entity_type": "email_message",
+              "outbound_edges": 4,
+              "inbound_edges": 21,
+              "total_edges": 25
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:f9a0e0ba-3259-443c-9968-6f755d30df1a",
+              "entity_type": "email_message",
+              "outbound_edges": 2,
+              "inbound_edges": 18,
+              "total_edges": 20
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:250aaf8c-e8ab-4e24-b9cd-406caabed8f4",
+              "entity_type": "email_message",
+              "outbound_edges": 3,
+              "inbound_edges": 14,
+              "total_edges": 17
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:3e9aafdd-217a-48cc-8239-7033dc3a0302",
+              "entity_type": "email_message",
+              "outbound_edges": 14,
+              "inbound_edges": 2,
+              "total_edges": 16
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:ce14307c-f090-45aa-a5d4-d8569b741c51",
+              "entity_type": "email_message",
+              "outbound_edges": 10,
+              "inbound_edges": 6,
+              "total_edges": 16
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:0a4dcfb1-b9a9-4181-bcac-f3d676cf4ffb",
+              "entity_type": "email_message",
+              "outbound_edges": 7,
+              "inbound_edges": 8,
+              "total_edges": 15
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:375fd8cc-2691-4adb-b2d8-f2ee106ef690",
+              "entity_type": "email_message",
+              "outbound_edges": 11,
+              "inbound_edges": 4,
+              "total_edges": 15
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:3d14ea3a-d971-4c55-bef5-eca24d5ac256",
+              "entity_type": "email_message",
+              "outbound_edges": 4,
+              "inbound_edges": 11,
+              "total_edges": 15
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:412c61fd-6537-4b54-ab62-11a95a6881ce",
+              "entity_type": "email_message",
+              "outbound_edges": 5,
+              "inbound_edges": 10,
+              "total_edges": 15
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:4c3e7c0f-ee9f-44a0-9e5a-6118d4d49507",
+              "entity_type": "email_message",
+              "outbound_edges": 12,
+              "inbound_edges": 3,
+              "total_edges": 15
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:54f194d3-9416-4419-9337-7b44035a1a7b",
+              "entity_type": "email_message",
+              "outbound_edges": 2,
+              "inbound_edges": 13,
+              "total_edges": 15
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:5966c0ee-a014-4a4a-9dd4-40f88ffd98c4",
+              "entity_type": "email_message",
+              "outbound_edges": 13,
+              "inbound_edges": 2,
+              "total_edges": 15
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:7046faa7-24fe-45b5-9824-4004341fc325",
+              "entity_type": "email_message",
+              "outbound_edges": 9,
+              "inbound_edges": 6,
+              "total_edges": 15
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:b8229212-0d8e-4a19-a8bb-38629eec7bda",
+              "entity_type": "email_message",
+              "outbound_edges": 8,
+              "inbound_edges": 7,
+              "total_edges": 15
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:c7c0036c-5d8a-4bd7-a3c7-f6acc9970cdf",
+              "entity_type": "email_message",
+              "outbound_edges": 6,
+              "inbound_edges": 9,
+              "total_edges": 15
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:cc14e0d6-61a0-4c79-8027-52b29c9c286d",
+              "entity_type": "email_message",
+              "outbound_edges": 3,
+              "inbound_edges": 12,
+              "total_edges": 15
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:5b1e1071-f8e4-412b-8208-a6b8e0098ccb",
+              "entity_type": "email_message",
+              "outbound_edges": 4,
+              "inbound_edges": 10,
+              "total_edges": 14
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:70516e48-d686-47cc-b9f8-918db1a56cdd",
+              "entity_type": "email_message",
+              "outbound_edges": 5,
+              "inbound_edges": 9,
+              "total_edges": 14
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:e8a5250a-9234-4e38-bf78-120b26149fa3",
+              "entity_type": "email_message",
+              "outbound_edges": 0,
+              "inbound_edges": 13,
+              "total_edges": 13
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:f5f6b611-1ad4-4324-8c47-2f7db1ad978c",
+              "entity_type": "email_message",
+              "outbound_edges": 6,
+              "inbound_edges": 5,
+              "total_edges": 11
+            }
+          ]
+        },
+        "documents_discovered": 183,
+        "documents_complete": 183,
+        "documents_incomplete": 0,
+        "covered_chunks": 3269,
+        "total_chunks": 3269,
+        "document_read_coverage_ratio": 1.0,
+        "coverage_ratio": 1.0,
+        "complete": true,
+        "status_code": "complete",
+        "status_message": "The accessible provenance-connected scope discovered from the ranked seeds was closed and every discovered document snapshot was read and verified.",
+        "failure_codes": [],
+        "stop_reason": "complete",
+        "model_evidence_chunks": 100,
+        "artifact_chunks": 3269,
+        "performance": {
+          "discovery_seconds": 0.0,
+          "prov_o_seconds": 3.6075499539729208,
+          "total_seconds": 3.6075499539729208
+        },
+        "certification": {
+          "contract_id": "openrag.scope-coverage",
+          "contract_version": 1,
+          "facts": {
+            "seed_discovery_complete": true,
+            "seed_documents": 73,
+            "valid_provenance_seed_documents": 73,
+            "invalid_provenance_seed_documents": 0,
+            "graph_frontier_empty": true,
+            "graph_limit_reached": false,
+            "graph_stop_reason": "frontier_empty",
+            "graph_failed": false,
+            "retrieval_execution_complete": true,
+            "documents_discovered": 183,
+            "documents_complete": 183,
+            "covered_chunks": 3269,
+            "total_chunks": 3269,
+            "document_failure_codes": [],
+            "seed_failure_code": null,
+            "unclassified_relations": 0,
+            "retrieval_failure_codes": []
+          },
+          "facts_sha256": "25875a8c9909300762d0189a0c4b398153231bf957a6ac54e0986b472ca93a18"
+        }
+      },
+      "performance": {
+        "discovery_seconds": 0.0,
+        "scope_closure_seconds": 3.6075499539729208,
+        "total_latency_seconds": 3.6075499539729208,
+        "http_wall_seconds": 4.131732917005138
+      },
+      "metrics": {
+        "requested_k": 100,
+        "available_seed_chunks": 100,
+        "effective_seed_chunks": 100,
+        "seed_documents": 81,
+        "seed_document_recall": {
+          "numerator": 24,
+          "denominator": 105,
+          "value": 0.22857142857142856
+        },
+        "seed_component_recall": {
+          "numerator": 24,
+          "denominator": 84,
+          "value": 0.2857142857142857
+        },
+        "post_prov_o_document_recall": {
+          "numerator": 31,
+          "denominator": 105,
+          "value": 0.29523809523809524
+        },
+        "post_prov_o_component_recall": {
+          "numerator": 24,
+          "denominator": 84,
+          "value": 0.2857142857142857
+        },
+        "precision": {
+          "numerator": 24,
+          "denominator": 81,
+          "value": 0.2962962962962963
+        },
+        "seed_relevant_occurrence_ids": [
+          "urn:openrag:openarchiver:attachment:01dc5f1d-4699-4467-a5db-8c6683917c43",
+          "urn:openrag:openarchiver:attachment:124e92b9-cfd2-4045-9a35-f2ec1be1f786",
+          "urn:openrag:openarchiver:attachment:2cf49b73-f16a-42f8-a017-e4472adb6856",
+          "urn:openrag:openarchiver:attachment:2f83d6c5-7659-40ca-96c8-e40ed756c3ee",
+          "urn:openrag:openarchiver:attachment:4a3bd200-156a-4830-8ee5-11731d42ca19",
+          "urn:openrag:openarchiver:attachment:5200e9a0-4b9a-4df8-b260-4ff912eb1e9d",
+          "urn:openrag:openarchiver:attachment:609d5843-428f-4ea9-ac84-848f0082381f",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:13ac4f3c-c9cd-40de-8b45-4c2660bfc3b6",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:34eb6b3e-f6da-4511-bfdc-16dc4581bd36",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:3cd6d919-867b-475e-b155-92e0ec386879",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:4b60a56d-8496-4d59-b9b0-894eff1b62e0",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:57c2ea79-6ee6-4c67-adf7-82d9ce54075a",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:58bb328f-91e6-43dc-a575-494604bbb1b4",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:63cbf914-ea19-4328-a970-ea96b3e7c38d",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:79e0dbeb-7460-47d7-bca3-a120dd003866",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:988de287-9dae-4e2e-93b7-ea572417d62f",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:ac0819c3-ce59-4a1b-9f13-4de72623935f",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:b24a17b5-0943-41ef-a13b-e6e78d0865f3",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:d81a8abb-0c06-4b79-bbda-97d9aa2465d4",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:da066a69-f964-4fb0-8467-724eb773aa90",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:e59b1cd6-1a38-44b2-961b-c5bfd22343ff",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:f077cc99-c432-4cc2-ab35-6c5f1fca0a08",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:f9b1c988-7fb2-4c44-be2b-7a1f9ac741dc",
+          "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:d0826233-e246-43f0-8a23-71995a28ef37"
+        ],
+        "seeded_component_ids": [
+          "component-1df7334963116c38",
+          "component-2ee43b915ec7376f",
+          "component-2ef5b17c61ded60f",
+          "component-307ae5eb5c76dcd1",
+          "component-33fd4c0d00e72722",
+          "component-35d44546be74ed83",
+          "component-453dbdf7df724ac7",
+          "component-45e87f09a7b2677b",
+          "component-4842a5253018cef8",
+          "component-538ff02ec1e8894d",
+          "component-5f2623d86ab0a6f0",
+          "component-66f7c56f1d3908ca",
+          "component-77eb513bad0fd5e5",
+          "component-797a348fa4269127",
+          "component-98e66afd225c8265",
+          "component-990d809eab8449f9",
+          "component-b05dede3cc69c830",
+          "component-b55f09fbe2f566ad",
+          "component-b867fb7ec6e27e40",
+          "component-d1ad367deb8c509b",
+          "component-d2b6ad97d19d7ea4",
+          "component-ec4083201b0d0e44",
+          "component-f875a34b7c9d0a32",
+          "component-fe87c27fe64ba8d7"
+        ],
+        "closure_relevant_occurrence_ids": [
+          "urn:openrag:openarchiver:attachment:01dc5f1d-4699-4467-a5db-8c6683917c43",
+          "urn:openrag:openarchiver:attachment:124e92b9-cfd2-4045-9a35-f2ec1be1f786",
+          "urn:openrag:openarchiver:attachment:2cf49b73-f16a-42f8-a017-e4472adb6856",
+          "urn:openrag:openarchiver:attachment:2f83d6c5-7659-40ca-96c8-e40ed756c3ee",
+          "urn:openrag:openarchiver:attachment:4a3bd200-156a-4830-8ee5-11731d42ca19",
+          "urn:openrag:openarchiver:attachment:5200e9a0-4b9a-4df8-b260-4ff912eb1e9d",
+          "urn:openrag:openarchiver:attachment:609d5843-428f-4ea9-ac84-848f0082381f",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:13ac4f3c-c9cd-40de-8b45-4c2660bfc3b6",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:34eb6b3e-f6da-4511-bfdc-16dc4581bd36",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:3cd6d919-867b-475e-b155-92e0ec386879",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:4b60a56d-8496-4d59-b9b0-894eff1b62e0",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:57c2ea79-6ee6-4c67-adf7-82d9ce54075a",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:58bb328f-91e6-43dc-a575-494604bbb1b4",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:63cbf914-ea19-4328-a970-ea96b3e7c38d",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:79e0dbeb-7460-47d7-bca3-a120dd003866",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:988de287-9dae-4e2e-93b7-ea572417d62f",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:ac0819c3-ce59-4a1b-9f13-4de72623935f",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:b24a17b5-0943-41ef-a13b-e6e78d0865f3",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:d81a8abb-0c06-4b79-bbda-97d9aa2465d4",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:da066a69-f964-4fb0-8467-724eb773aa90",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:e59b1cd6-1a38-44b2-961b-c5bfd22343ff",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:f077cc99-c432-4cc2-ab35-6c5f1fca0a08",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:f9b1c988-7fb2-4c44-be2b-7a1f9ac741dc",
+          "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:30b019f1-ceb6-418b-8917-ae170e53e814",
+          "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:3506bbb8-e525-460f-8617-55cee19d408b",
+          "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:415b23d3-f126-4490-9880-a2ed06732262",
+          "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:4e19718e-68ef-463f-8e16-5092587bfc5d",
+          "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:6af5fd05-6e46-426a-bb56-3174d113e27a",
+          "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:89573f54-42ca-47a9-ab80-5203e19811af",
+          "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:d0826233-e246-43f0-8a23-71995a28ef37",
+          "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:d94f7c98-3a0a-4d87-8f4e-9adf34e94eae"
+        ],
+        "closure_component_ids": [
+          "component-1df7334963116c38",
+          "component-2ee43b915ec7376f",
+          "component-2ef5b17c61ded60f",
+          "component-307ae5eb5c76dcd1",
+          "component-33fd4c0d00e72722",
+          "component-35d44546be74ed83",
+          "component-453dbdf7df724ac7",
+          "component-45e87f09a7b2677b",
+          "component-4842a5253018cef8",
+          "component-538ff02ec1e8894d",
+          "component-5f2623d86ab0a6f0",
+          "component-66f7c56f1d3908ca",
+          "component-77eb513bad0fd5e5",
+          "component-797a348fa4269127",
+          "component-98e66afd225c8265",
+          "component-990d809eab8449f9",
+          "component-b05dede3cc69c830",
+          "component-b55f09fbe2f566ad",
+          "component-b867fb7ec6e27e40",
+          "component-d1ad367deb8c509b",
+          "component-d2b6ad97d19d7ea4",
+          "component-ec4083201b0d0e44",
+          "component-f875a34b7c9d0a32",
+          "component-fe87c27fe64ba8d7"
+        ],
+        "unclassified_seed_documents": 37,
+        "documents_discovered_after_prov_o": 183,
+        "document_recovery_gain": 7,
+        "document_recovery_multiplier": 1.2916666666666667,
+        "component_recovery_gain": 0,
+        "component_recovery_multiplier": 1.0,
+        "expansion_per_seed_document": 2.259259259259259,
+        "expansion_per_relevant_document_recovered": 5.903225806451613,
+        "coverage": {
+          "complete": true,
+          "status_code": "complete",
+          "failure_codes": [],
+          "documents_discovered": 183,
+          "documents_complete": 183,
+          "covered_chunks": 3269,
+          "total_chunks": 3269,
+          "scope_policy_id": "documentary-prov-o",
+          "scope_policy_version": 1
+        },
+        "total_latency_seconds": 3.6075499539729208
+      }
+    },
+    {
+      "run_id": "q1-r1",
+      "view": "STRICT",
+      "query_count": 1,
+      "repetition": 1,
+      "valid": true,
+      "contract_failure_codes": [],
+      "generated_queries": [
+        {
+          "query_id": "q0",
+          "query_text": "Tous les échanges avec Orange au sujet de la fibre.",
+          "query_type": "original",
+          "parent_query": "Tous les échanges avec Orange au sujet de la fibre.",
+          "generation_method": "user"
+        }
+      ],
+      "requested_retrieval_profile": {
+        "version": 1,
+        "strategy": "rrf",
+        "mode": "hybrid",
+        "lanes": {
+          "lexical": "required",
+          "dense": "required",
+          "fusion": "required",
+          "multi_query": "disabled"
+        },
+        "multi_query": {
+          "requested": false,
+          "max_queries": 1
+        }
+      },
+      "effective_retrieval_profile": {
+        "version": 1,
+        "strategy": "rrf",
+        "mode": "hybrid",
+        "lanes": {
+          "lexical": {
+            "requested": true,
+            "status": "succeeded",
+            "candidates": 50
+          },
+          "dense": {
+            "requested": true,
+            "status": "succeeded",
+            "candidates": 50,
+            "embedding_models": [
+              "text-embedding-3-large"
+            ],
+            "embedding_dimensions": {
+              "text-embedding-3-large": 3072
+            },
+            "failed_embedding_models": []
+          },
+          "fusion": {
+            "requested": true,
+            "status": "succeeded",
+            "candidates": 96
+          },
+          "multi_query": {
+            "requested": false,
+            "status": "not_requested",
+            "candidates": 0
+          }
+        }
+      },
+      "retrieval_execution_complete": true,
+      "coverage": {
+        "mode": "scope_exhaustive",
+        "query": "Tous les échanges avec Orange au sujet de la fibre.",
+        "scope_policy_id": "documentary-prov-o",
+        "scope_policy_version": 1,
+        "seed_discovery_complete": true,
+        "seed_documents": 73,
+        "seed_entities": 126,
+        "valid_provenance_seed_documents": 73,
+        "invalid_provenance_seed_documents": 0,
+        "seed_provenance_complete": true,
+        "requested_retrieval_profile": {
+          "version": 1,
+          "strategy": "rrf",
+          "mode": "hybrid",
+          "lanes": {
+            "lexical": "required",
+            "dense": "required",
+            "fusion": "required",
+            "multi_query": "disabled"
+          },
+          "multi_query": {
+            "requested": false,
+            "max_queries": 1
+          }
+        },
+        "effective_retrieval_profile": {
+          "version": 1,
+          "strategy": "rrf",
+          "mode": "hybrid",
+          "lanes": {
+            "lexical": {
+              "requested": true,
+              "status": "succeeded",
+              "candidates": 50
+            },
+            "dense": {
+              "requested": true,
+              "status": "succeeded",
+              "candidates": 50,
+              "embedding_models": [
+                "text-embedding-3-large"
+              ],
+              "embedding_dimensions": {
+                "text-embedding-3-large": 3072
+              },
+              "failed_embedding_models": []
+            },
+            "fusion": {
+              "requested": true,
+              "status": "succeeded",
+              "candidates": 96
+            },
+            "multi_query": {
+              "requested": false,
+              "status": "not_requested",
+              "candidates": 0
+            }
+          }
+        },
+        "retrieval_execution_complete": true,
+        "retrieval_failure_codes": [],
+        "graph_entities_visited": 183,
+        "graph_frontier_empty": true,
+        "graph_limit_reached": false,
+        "graph_stop_reason": "frontier_empty",
+        "graph_failed": false,
+        "graph_error": null,
+        "graph_stability_verified": true,
+        "graph_stability_observations": 8,
+        "relations_unclassified": {
+          "total": 0,
+          "by_classification": []
+        },
+        "identity_shared_aliases_resolved": 0,
+        "scope_diagnostics": {
+          "documents_per_depth": [
+            {
+              "depth": 0,
+              "count": 73
+            },
+            {
+              "depth": 1,
+              "count": 87
+            },
+            {
+              "depth": 2,
+              "count": 20
+            },
+            {
+              "depth": 3,
+              "count": 3
+            }
+          ],
+          "entities_per_depth": [
+            {
+              "depth": 0,
+              "count": 73
+            },
+            {
+              "depth": 1,
+              "count": 87
+            },
+            {
+              "depth": 2,
+              "count": 20
+            },
+            {
+              "depth": 3,
+              "count": 3
+            }
+          ],
+          "relations_per_depth": [
+            {
+              "depth": 0,
+              "role": "references",
+              "source_type": "email_message",
+              "target_type": "email_message",
+              "count": 13
+            },
+            {
+              "depth": 0,
+              "role": "reply_to",
+              "source_type": "email_message",
+              "target_type": "email_message",
+              "count": 6
+            },
+            {
+              "depth": 1,
+              "role": "attachment_of",
+              "source_type": "email_attachment",
+              "target_type": "email_message",
+              "count": 35
+            },
+            {
+              "depth": 1,
+              "role": "references",
+              "source_type": "email_message",
+              "target_type": "email_message",
+              "count": 201
+            },
+            {
+              "depth": 1,
+              "role": "reply_to",
+              "source_type": "email_message",
+              "target_type": "email_message",
+              "count": 60
+            },
+            {
+              "depth": 2,
+              "role": "attachment_of",
+              "source_type": "email_attachment",
+              "target_type": "email_message",
+              "count": 10
+            },
+            {
+              "depth": 2,
+              "role": "references",
+              "source_type": "email_message",
+              "target_type": "email_message",
+              "count": 19
+            },
+            {
+              "depth": 2,
+              "role": "reply_to",
+              "source_type": "email_message",
+              "target_type": "email_message",
+              "count": 11
+            },
+            {
+              "depth": 3,
+              "role": "attachment_of",
+              "source_type": "email_attachment",
+              "target_type": "email_message",
+              "count": 2
+            },
+            {
+              "depth": 3,
+              "role": "references",
+              "source_type": "email_message",
+              "target_type": "email_message",
+              "count": 1
+            },
+            {
+              "depth": 3,
+              "role": "reply_to",
+              "source_type": "email_message",
+              "target_type": "email_message",
+              "count": 1
+            }
+          ],
+          "largest_expansion_contributors": [
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:7a529d3d-3b14-4c9e-8f1e-bf541ba45719",
+              "entity_type": "email_message",
+              "outbound_edges": 4,
+              "inbound_edges": 21,
+              "total_edges": 25
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:f9a0e0ba-3259-443c-9968-6f755d30df1a",
+              "entity_type": "email_message",
+              "outbound_edges": 2,
+              "inbound_edges": 18,
+              "total_edges": 20
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:250aaf8c-e8ab-4e24-b9cd-406caabed8f4",
+              "entity_type": "email_message",
+              "outbound_edges": 3,
+              "inbound_edges": 14,
+              "total_edges": 17
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:3e9aafdd-217a-48cc-8239-7033dc3a0302",
+              "entity_type": "email_message",
+              "outbound_edges": 14,
+              "inbound_edges": 2,
+              "total_edges": 16
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:ce14307c-f090-45aa-a5d4-d8569b741c51",
+              "entity_type": "email_message",
+              "outbound_edges": 10,
+              "inbound_edges": 6,
+              "total_edges": 16
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:0a4dcfb1-b9a9-4181-bcac-f3d676cf4ffb",
+              "entity_type": "email_message",
+              "outbound_edges": 7,
+              "inbound_edges": 8,
+              "total_edges": 15
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:375fd8cc-2691-4adb-b2d8-f2ee106ef690",
+              "entity_type": "email_message",
+              "outbound_edges": 11,
+              "inbound_edges": 4,
+              "total_edges": 15
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:3d14ea3a-d971-4c55-bef5-eca24d5ac256",
+              "entity_type": "email_message",
+              "outbound_edges": 4,
+              "inbound_edges": 11,
+              "total_edges": 15
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:412c61fd-6537-4b54-ab62-11a95a6881ce",
+              "entity_type": "email_message",
+              "outbound_edges": 5,
+              "inbound_edges": 10,
+              "total_edges": 15
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:4c3e7c0f-ee9f-44a0-9e5a-6118d4d49507",
+              "entity_type": "email_message",
+              "outbound_edges": 12,
+              "inbound_edges": 3,
+              "total_edges": 15
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:54f194d3-9416-4419-9337-7b44035a1a7b",
+              "entity_type": "email_message",
+              "outbound_edges": 2,
+              "inbound_edges": 13,
+              "total_edges": 15
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:5966c0ee-a014-4a4a-9dd4-40f88ffd98c4",
+              "entity_type": "email_message",
+              "outbound_edges": 13,
+              "inbound_edges": 2,
+              "total_edges": 15
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:7046faa7-24fe-45b5-9824-4004341fc325",
+              "entity_type": "email_message",
+              "outbound_edges": 9,
+              "inbound_edges": 6,
+              "total_edges": 15
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:b8229212-0d8e-4a19-a8bb-38629eec7bda",
+              "entity_type": "email_message",
+              "outbound_edges": 8,
+              "inbound_edges": 7,
+              "total_edges": 15
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:c7c0036c-5d8a-4bd7-a3c7-f6acc9970cdf",
+              "entity_type": "email_message",
+              "outbound_edges": 6,
+              "inbound_edges": 9,
+              "total_edges": 15
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:cc14e0d6-61a0-4c79-8027-52b29c9c286d",
+              "entity_type": "email_message",
+              "outbound_edges": 3,
+              "inbound_edges": 12,
+              "total_edges": 15
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:5b1e1071-f8e4-412b-8208-a6b8e0098ccb",
+              "entity_type": "email_message",
+              "outbound_edges": 4,
+              "inbound_edges": 10,
+              "total_edges": 14
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:70516e48-d686-47cc-b9f8-918db1a56cdd",
+              "entity_type": "email_message",
+              "outbound_edges": 5,
+              "inbound_edges": 9,
+              "total_edges": 14
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:e8a5250a-9234-4e38-bf78-120b26149fa3",
+              "entity_type": "email_message",
+              "outbound_edges": 0,
+              "inbound_edges": 13,
+              "total_edges": 13
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:f5f6b611-1ad4-4324-8c47-2f7db1ad978c",
+              "entity_type": "email_message",
+              "outbound_edges": 6,
+              "inbound_edges": 5,
+              "total_edges": 11
+            }
+          ]
+        },
+        "documents_discovered": 183,
+        "documents_complete": 183,
+        "documents_incomplete": 0,
+        "covered_chunks": 3269,
+        "total_chunks": 3269,
+        "document_read_coverage_ratio": 1.0,
+        "coverage_ratio": 1.0,
+        "complete": true,
+        "status_code": "complete",
+        "status_message": "The accessible provenance-connected scope discovered from the ranked seeds was closed and every discovered document snapshot was read and verified.",
+        "failure_codes": [],
+        "stop_reason": "complete",
+        "model_evidence_chunks": 100,
+        "artifact_chunks": 3269,
+        "performance": {
+          "discovery_seconds": 0.0,
+          "prov_o_seconds": 3.6075499539729208,
+          "total_seconds": 3.6075499539729208
+        },
+        "certification": {
+          "contract_id": "openrag.scope-coverage",
+          "contract_version": 1,
+          "facts": {
+            "seed_discovery_complete": true,
+            "seed_documents": 73,
+            "valid_provenance_seed_documents": 73,
+            "invalid_provenance_seed_documents": 0,
+            "graph_frontier_empty": true,
+            "graph_limit_reached": false,
+            "graph_stop_reason": "frontier_empty",
+            "graph_failed": false,
+            "retrieval_execution_complete": true,
+            "documents_discovered": 183,
+            "documents_complete": 183,
+            "covered_chunks": 3269,
+            "total_chunks": 3269,
+            "document_failure_codes": [],
+            "seed_failure_code": null,
+            "unclassified_relations": 0,
+            "retrieval_failure_codes": []
+          },
+          "facts_sha256": "25875a8c9909300762d0189a0c4b398153231bf957a6ac54e0986b472ca93a18"
+        }
+      },
+      "performance": {
+        "discovery_seconds": 0.0,
+        "scope_closure_seconds": 3.6075499539729208,
+        "total_latency_seconds": 3.6075499539729208,
+        "http_wall_seconds": 4.131732917005138
+      },
+      "metrics": {
+        "requested_k": 100,
+        "available_seed_chunks": 100,
+        "effective_seed_chunks": 100,
+        "seed_documents": 81,
+        "seed_document_recall": {
+          "numerator": 22,
+          "denominator": 48,
+          "value": 0.4583333333333333
+        },
+        "seed_component_recall": {
+          "numerator": 22,
+          "denominator": 33,
+          "value": 0.6666666666666666
+        },
+        "post_prov_o_document_recall": {
+          "numerator": 29,
+          "denominator": 48,
+          "value": 0.6041666666666666
+        },
+        "post_prov_o_component_recall": {
+          "numerator": 22,
+          "denominator": 33,
+          "value": 0.6666666666666666
+        },
+        "precision": {
+          "numerator": 22,
+          "denominator": 81,
+          "value": 0.2716049382716049
+        },
+        "seed_relevant_occurrence_ids": [
+          "urn:openrag:openarchiver:attachment:01dc5f1d-4699-4467-a5db-8c6683917c43",
+          "urn:openrag:openarchiver:attachment:124e92b9-cfd2-4045-9a35-f2ec1be1f786",
+          "urn:openrag:openarchiver:attachment:2cf49b73-f16a-42f8-a017-e4472adb6856",
+          "urn:openrag:openarchiver:attachment:2f83d6c5-7659-40ca-96c8-e40ed756c3ee",
+          "urn:openrag:openarchiver:attachment:4a3bd200-156a-4830-8ee5-11731d42ca19",
+          "urn:openrag:openarchiver:attachment:5200e9a0-4b9a-4df8-b260-4ff912eb1e9d",
+          "urn:openrag:openarchiver:attachment:609d5843-428f-4ea9-ac84-848f0082381f",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:13ac4f3c-c9cd-40de-8b45-4c2660bfc3b6",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:34eb6b3e-f6da-4511-bfdc-16dc4581bd36",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:3cd6d919-867b-475e-b155-92e0ec386879",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:4b60a56d-8496-4d59-b9b0-894eff1b62e0",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:57c2ea79-6ee6-4c67-adf7-82d9ce54075a",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:63cbf914-ea19-4328-a970-ea96b3e7c38d",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:79e0dbeb-7460-47d7-bca3-a120dd003866",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:988de287-9dae-4e2e-93b7-ea572417d62f",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:ac0819c3-ce59-4a1b-9f13-4de72623935f",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:b24a17b5-0943-41ef-a13b-e6e78d0865f3",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:d81a8abb-0c06-4b79-bbda-97d9aa2465d4",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:da066a69-f964-4fb0-8467-724eb773aa90",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:e59b1cd6-1a38-44b2-961b-c5bfd22343ff",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:f077cc99-c432-4cc2-ab35-6c5f1fca0a08",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:f9b1c988-7fb2-4c44-be2b-7a1f9ac741dc"
+        ],
+        "seeded_component_ids": [
+          "component-1df7334963116c38",
+          "component-2ef5b17c61ded60f",
+          "component-307ae5eb5c76dcd1",
+          "component-33fd4c0d00e72722",
+          "component-35d44546be74ed83",
+          "component-453dbdf7df724ac7",
+          "component-45e87f09a7b2677b",
+          "component-4842a5253018cef8",
+          "component-538ff02ec1e8894d",
+          "component-5f2623d86ab0a6f0",
+          "component-66f7c56f1d3908ca",
+          "component-77eb513bad0fd5e5",
+          "component-797a348fa4269127",
+          "component-98e66afd225c8265",
+          "component-990d809eab8449f9",
+          "component-b55f09fbe2f566ad",
+          "component-b867fb7ec6e27e40",
+          "component-d1ad367deb8c509b",
+          "component-d2b6ad97d19d7ea4",
+          "component-ec4083201b0d0e44",
+          "component-f875a34b7c9d0a32",
+          "component-fe87c27fe64ba8d7"
+        ],
+        "closure_relevant_occurrence_ids": [
+          "urn:openrag:openarchiver:attachment:01dc5f1d-4699-4467-a5db-8c6683917c43",
+          "urn:openrag:openarchiver:attachment:124e92b9-cfd2-4045-9a35-f2ec1be1f786",
+          "urn:openrag:openarchiver:attachment:2cf49b73-f16a-42f8-a017-e4472adb6856",
+          "urn:openrag:openarchiver:attachment:2f83d6c5-7659-40ca-96c8-e40ed756c3ee",
+          "urn:openrag:openarchiver:attachment:4a3bd200-156a-4830-8ee5-11731d42ca19",
+          "urn:openrag:openarchiver:attachment:5200e9a0-4b9a-4df8-b260-4ff912eb1e9d",
+          "urn:openrag:openarchiver:attachment:609d5843-428f-4ea9-ac84-848f0082381f",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:13ac4f3c-c9cd-40de-8b45-4c2660bfc3b6",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:34eb6b3e-f6da-4511-bfdc-16dc4581bd36",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:3cd6d919-867b-475e-b155-92e0ec386879",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:4b60a56d-8496-4d59-b9b0-894eff1b62e0",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:57c2ea79-6ee6-4c67-adf7-82d9ce54075a",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:63cbf914-ea19-4328-a970-ea96b3e7c38d",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:79e0dbeb-7460-47d7-bca3-a120dd003866",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:988de287-9dae-4e2e-93b7-ea572417d62f",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:ac0819c3-ce59-4a1b-9f13-4de72623935f",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:b24a17b5-0943-41ef-a13b-e6e78d0865f3",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:d81a8abb-0c06-4b79-bbda-97d9aa2465d4",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:da066a69-f964-4fb0-8467-724eb773aa90",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:e59b1cd6-1a38-44b2-961b-c5bfd22343ff",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:f077cc99-c432-4cc2-ab35-6c5f1fca0a08",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:f9b1c988-7fb2-4c44-be2b-7a1f9ac741dc",
+          "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:30b019f1-ceb6-418b-8917-ae170e53e814",
+          "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:3506bbb8-e525-460f-8617-55cee19d408b",
+          "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:415b23d3-f126-4490-9880-a2ed06732262",
+          "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:4e19718e-68ef-463f-8e16-5092587bfc5d",
+          "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:6af5fd05-6e46-426a-bb56-3174d113e27a",
+          "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:89573f54-42ca-47a9-ab80-5203e19811af",
+          "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:d94f7c98-3a0a-4d87-8f4e-9adf34e94eae"
+        ],
+        "closure_component_ids": [
+          "component-1df7334963116c38",
+          "component-2ef5b17c61ded60f",
+          "component-307ae5eb5c76dcd1",
+          "component-33fd4c0d00e72722",
+          "component-35d44546be74ed83",
+          "component-453dbdf7df724ac7",
+          "component-45e87f09a7b2677b",
+          "component-4842a5253018cef8",
+          "component-538ff02ec1e8894d",
+          "component-5f2623d86ab0a6f0",
+          "component-66f7c56f1d3908ca",
+          "component-77eb513bad0fd5e5",
+          "component-797a348fa4269127",
+          "component-98e66afd225c8265",
+          "component-990d809eab8449f9",
+          "component-b55f09fbe2f566ad",
+          "component-b867fb7ec6e27e40",
+          "component-d1ad367deb8c509b",
+          "component-d2b6ad97d19d7ea4",
+          "component-ec4083201b0d0e44",
+          "component-f875a34b7c9d0a32",
+          "component-fe87c27fe64ba8d7"
+        ],
+        "unclassified_seed_documents": 37,
+        "documents_discovered_after_prov_o": 183,
+        "document_recovery_gain": 7,
+        "document_recovery_multiplier": 1.3181818181818181,
+        "component_recovery_gain": 0,
+        "component_recovery_multiplier": 1.0,
+        "expansion_per_seed_document": 2.259259259259259,
+        "expansion_per_relevant_document_recovered": 6.310344827586207,
+        "coverage": {
+          "complete": true,
+          "status_code": "complete",
+          "failure_codes": [],
+          "documents_discovered": 183,
+          "documents_complete": 183,
+          "covered_chunks": 3269,
+          "total_chunks": 3269,
+          "scope_policy_id": "documentary-prov-o",
+          "scope_policy_version": 1
+        },
+        "total_latency_seconds": 3.6075499539729208
+      }
+    },
+    {
+      "run_id": "q1-r2",
+      "view": "BROAD",
+      "query_count": 1,
+      "repetition": 2,
+      "valid": true,
+      "contract_failure_codes": [],
+      "generated_queries": [
+        {
+          "query_id": "q0",
+          "query_text": "Tous les échanges avec Orange au sujet de la fibre.",
+          "query_type": "original",
+          "parent_query": "Tous les échanges avec Orange au sujet de la fibre.",
+          "generation_method": "user"
+        }
+      ],
+      "requested_retrieval_profile": {
+        "version": 1,
+        "strategy": "rrf",
+        "mode": "hybrid",
+        "lanes": {
+          "lexical": "required",
+          "dense": "required",
+          "fusion": "required",
+          "multi_query": "disabled"
+        },
+        "multi_query": {
+          "requested": false,
+          "max_queries": 1
+        }
+      },
+      "effective_retrieval_profile": {
+        "version": 1,
+        "strategy": "rrf",
+        "mode": "hybrid",
+        "lanes": {
+          "lexical": {
+            "requested": true,
+            "status": "succeeded",
+            "candidates": 50
+          },
+          "dense": {
+            "requested": true,
+            "status": "succeeded",
+            "candidates": 50,
+            "embedding_models": [
+              "text-embedding-3-large"
+            ],
+            "embedding_dimensions": {
+              "text-embedding-3-large": 3072
+            },
+            "failed_embedding_models": []
+          },
+          "fusion": {
+            "requested": true,
+            "status": "succeeded",
+            "candidates": 96
+          },
+          "multi_query": {
+            "requested": false,
+            "status": "not_requested",
+            "candidates": 0
+          }
+        }
+      },
+      "retrieval_execution_complete": true,
+      "coverage": {
+        "mode": "scope_exhaustive",
+        "query": "Tous les échanges avec Orange au sujet de la fibre.",
+        "scope_policy_id": "documentary-prov-o",
+        "scope_policy_version": 1,
+        "seed_discovery_complete": true,
+        "seed_documents": 73,
+        "seed_entities": 126,
+        "valid_provenance_seed_documents": 73,
+        "invalid_provenance_seed_documents": 0,
+        "seed_provenance_complete": true,
+        "requested_retrieval_profile": {
+          "version": 1,
+          "strategy": "rrf",
+          "mode": "hybrid",
+          "lanes": {
+            "lexical": "required",
+            "dense": "required",
+            "fusion": "required",
+            "multi_query": "disabled"
+          },
+          "multi_query": {
+            "requested": false,
+            "max_queries": 1
+          }
+        },
+        "effective_retrieval_profile": {
+          "version": 1,
+          "strategy": "rrf",
+          "mode": "hybrid",
+          "lanes": {
+            "lexical": {
+              "requested": true,
+              "status": "succeeded",
+              "candidates": 50
+            },
+            "dense": {
+              "requested": true,
+              "status": "succeeded",
+              "candidates": 50,
+              "embedding_models": [
+                "text-embedding-3-large"
+              ],
+              "embedding_dimensions": {
+                "text-embedding-3-large": 3072
+              },
+              "failed_embedding_models": []
+            },
+            "fusion": {
+              "requested": true,
+              "status": "succeeded",
+              "candidates": 96
+            },
+            "multi_query": {
+              "requested": false,
+              "status": "not_requested",
+              "candidates": 0
+            }
+          }
+        },
+        "retrieval_execution_complete": true,
+        "retrieval_failure_codes": [],
+        "graph_entities_visited": 183,
+        "graph_frontier_empty": true,
+        "graph_limit_reached": false,
+        "graph_stop_reason": "frontier_empty",
+        "graph_failed": false,
+        "graph_error": null,
+        "graph_stability_verified": true,
+        "graph_stability_observations": 8,
+        "relations_unclassified": {
+          "total": 0,
+          "by_classification": []
+        },
+        "identity_shared_aliases_resolved": 0,
+        "scope_diagnostics": {
+          "documents_per_depth": [
+            {
+              "depth": 0,
+              "count": 73
+            },
+            {
+              "depth": 1,
+              "count": 87
+            },
+            {
+              "depth": 2,
+              "count": 20
+            },
+            {
+              "depth": 3,
+              "count": 3
+            }
+          ],
+          "entities_per_depth": [
+            {
+              "depth": 0,
+              "count": 73
+            },
+            {
+              "depth": 1,
+              "count": 87
+            },
+            {
+              "depth": 2,
+              "count": 20
+            },
+            {
+              "depth": 3,
+              "count": 3
+            }
+          ],
+          "relations_per_depth": [
+            {
+              "depth": 0,
+              "role": "references",
+              "source_type": "email_message",
+              "target_type": "email_message",
+              "count": 13
+            },
+            {
+              "depth": 0,
+              "role": "reply_to",
+              "source_type": "email_message",
+              "target_type": "email_message",
+              "count": 6
+            },
+            {
+              "depth": 1,
+              "role": "attachment_of",
+              "source_type": "email_attachment",
+              "target_type": "email_message",
+              "count": 35
+            },
+            {
+              "depth": 1,
+              "role": "references",
+              "source_type": "email_message",
+              "target_type": "email_message",
+              "count": 201
+            },
+            {
+              "depth": 1,
+              "role": "reply_to",
+              "source_type": "email_message",
+              "target_type": "email_message",
+              "count": 60
+            },
+            {
+              "depth": 2,
+              "role": "attachment_of",
+              "source_type": "email_attachment",
+              "target_type": "email_message",
+              "count": 10
+            },
+            {
+              "depth": 2,
+              "role": "references",
+              "source_type": "email_message",
+              "target_type": "email_message",
+              "count": 19
+            },
+            {
+              "depth": 2,
+              "role": "reply_to",
+              "source_type": "email_message",
+              "target_type": "email_message",
+              "count": 11
+            },
+            {
+              "depth": 3,
+              "role": "attachment_of",
+              "source_type": "email_attachment",
+              "target_type": "email_message",
+              "count": 2
+            },
+            {
+              "depth": 3,
+              "role": "references",
+              "source_type": "email_message",
+              "target_type": "email_message",
+              "count": 1
+            },
+            {
+              "depth": 3,
+              "role": "reply_to",
+              "source_type": "email_message",
+              "target_type": "email_message",
+              "count": 1
+            }
+          ],
+          "largest_expansion_contributors": [
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:7a529d3d-3b14-4c9e-8f1e-bf541ba45719",
+              "entity_type": "email_message",
+              "outbound_edges": 4,
+              "inbound_edges": 21,
+              "total_edges": 25
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:f9a0e0ba-3259-443c-9968-6f755d30df1a",
+              "entity_type": "email_message",
+              "outbound_edges": 2,
+              "inbound_edges": 18,
+              "total_edges": 20
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:250aaf8c-e8ab-4e24-b9cd-406caabed8f4",
+              "entity_type": "email_message",
+              "outbound_edges": 3,
+              "inbound_edges": 14,
+              "total_edges": 17
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:3e9aafdd-217a-48cc-8239-7033dc3a0302",
+              "entity_type": "email_message",
+              "outbound_edges": 14,
+              "inbound_edges": 2,
+              "total_edges": 16
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:ce14307c-f090-45aa-a5d4-d8569b741c51",
+              "entity_type": "email_message",
+              "outbound_edges": 10,
+              "inbound_edges": 6,
+              "total_edges": 16
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:0a4dcfb1-b9a9-4181-bcac-f3d676cf4ffb",
+              "entity_type": "email_message",
+              "outbound_edges": 7,
+              "inbound_edges": 8,
+              "total_edges": 15
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:375fd8cc-2691-4adb-b2d8-f2ee106ef690",
+              "entity_type": "email_message",
+              "outbound_edges": 11,
+              "inbound_edges": 4,
+              "total_edges": 15
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:3d14ea3a-d971-4c55-bef5-eca24d5ac256",
+              "entity_type": "email_message",
+              "outbound_edges": 4,
+              "inbound_edges": 11,
+              "total_edges": 15
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:412c61fd-6537-4b54-ab62-11a95a6881ce",
+              "entity_type": "email_message",
+              "outbound_edges": 5,
+              "inbound_edges": 10,
+              "total_edges": 15
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:4c3e7c0f-ee9f-44a0-9e5a-6118d4d49507",
+              "entity_type": "email_message",
+              "outbound_edges": 12,
+              "inbound_edges": 3,
+              "total_edges": 15
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:54f194d3-9416-4419-9337-7b44035a1a7b",
+              "entity_type": "email_message",
+              "outbound_edges": 2,
+              "inbound_edges": 13,
+              "total_edges": 15
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:5966c0ee-a014-4a4a-9dd4-40f88ffd98c4",
+              "entity_type": "email_message",
+              "outbound_edges": 13,
+              "inbound_edges": 2,
+              "total_edges": 15
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:7046faa7-24fe-45b5-9824-4004341fc325",
+              "entity_type": "email_message",
+              "outbound_edges": 9,
+              "inbound_edges": 6,
+              "total_edges": 15
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:b8229212-0d8e-4a19-a8bb-38629eec7bda",
+              "entity_type": "email_message",
+              "outbound_edges": 8,
+              "inbound_edges": 7,
+              "total_edges": 15
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:c7c0036c-5d8a-4bd7-a3c7-f6acc9970cdf",
+              "entity_type": "email_message",
+              "outbound_edges": 6,
+              "inbound_edges": 9,
+              "total_edges": 15
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:cc14e0d6-61a0-4c79-8027-52b29c9c286d",
+              "entity_type": "email_message",
+              "outbound_edges": 3,
+              "inbound_edges": 12,
+              "total_edges": 15
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:5b1e1071-f8e4-412b-8208-a6b8e0098ccb",
+              "entity_type": "email_message",
+              "outbound_edges": 4,
+              "inbound_edges": 10,
+              "total_edges": 14
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:70516e48-d686-47cc-b9f8-918db1a56cdd",
+              "entity_type": "email_message",
+              "outbound_edges": 5,
+              "inbound_edges": 9,
+              "total_edges": 14
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:e8a5250a-9234-4e38-bf78-120b26149fa3",
+              "entity_type": "email_message",
+              "outbound_edges": 0,
+              "inbound_edges": 13,
+              "total_edges": 13
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:f5f6b611-1ad4-4324-8c47-2f7db1ad978c",
+              "entity_type": "email_message",
+              "outbound_edges": 6,
+              "inbound_edges": 5,
+              "total_edges": 11
+            }
+          ]
+        },
+        "documents_discovered": 183,
+        "documents_complete": 183,
+        "documents_incomplete": 0,
+        "covered_chunks": 3269,
+        "total_chunks": 3269,
+        "document_read_coverage_ratio": 1.0,
+        "coverage_ratio": 1.0,
+        "complete": true,
+        "status_code": "complete",
+        "status_message": "The accessible provenance-connected scope discovered from the ranked seeds was closed and every discovered document snapshot was read and verified.",
+        "failure_codes": [],
+        "stop_reason": "complete",
+        "model_evidence_chunks": 100,
+        "artifact_chunks": 3269,
+        "performance": {
+          "discovery_seconds": 0.0,
+          "prov_o_seconds": 3.174458784982562,
+          "total_seconds": 3.174458784982562
+        },
+        "certification": {
+          "contract_id": "openrag.scope-coverage",
+          "contract_version": 1,
+          "facts": {
+            "seed_discovery_complete": true,
+            "seed_documents": 73,
+            "valid_provenance_seed_documents": 73,
+            "invalid_provenance_seed_documents": 0,
+            "graph_frontier_empty": true,
+            "graph_limit_reached": false,
+            "graph_stop_reason": "frontier_empty",
+            "graph_failed": false,
+            "retrieval_execution_complete": true,
+            "documents_discovered": 183,
+            "documents_complete": 183,
+            "covered_chunks": 3269,
+            "total_chunks": 3269,
+            "document_failure_codes": [],
+            "seed_failure_code": null,
+            "unclassified_relations": 0,
+            "retrieval_failure_codes": []
+          },
+          "facts_sha256": "25875a8c9909300762d0189a0c4b398153231bf957a6ac54e0986b472ca93a18"
+        }
+      },
+      "performance": {
+        "discovery_seconds": 0.0,
+        "scope_closure_seconds": 3.174458784982562,
+        "total_latency_seconds": 3.174458784982562,
+        "http_wall_seconds": 3.7023486660036724
+      },
+      "metrics": {
+        "requested_k": 100,
+        "available_seed_chunks": 100,
+        "effective_seed_chunks": 100,
+        "seed_documents": 81,
+        "seed_document_recall": {
+          "numerator": 24,
+          "denominator": 105,
+          "value": 0.22857142857142856
+        },
+        "seed_component_recall": {
+          "numerator": 24,
+          "denominator": 84,
+          "value": 0.2857142857142857
+        },
+        "post_prov_o_document_recall": {
+          "numerator": 31,
+          "denominator": 105,
+          "value": 0.29523809523809524
+        },
+        "post_prov_o_component_recall": {
+          "numerator": 24,
+          "denominator": 84,
+          "value": 0.2857142857142857
+        },
+        "precision": {
+          "numerator": 24,
+          "denominator": 81,
+          "value": 0.2962962962962963
+        },
+        "seed_relevant_occurrence_ids": [
+          "urn:openrag:openarchiver:attachment:01dc5f1d-4699-4467-a5db-8c6683917c43",
+          "urn:openrag:openarchiver:attachment:124e92b9-cfd2-4045-9a35-f2ec1be1f786",
+          "urn:openrag:openarchiver:attachment:2cf49b73-f16a-42f8-a017-e4472adb6856",
+          "urn:openrag:openarchiver:attachment:2f83d6c5-7659-40ca-96c8-e40ed756c3ee",
+          "urn:openrag:openarchiver:attachment:4a3bd200-156a-4830-8ee5-11731d42ca19",
+          "urn:openrag:openarchiver:attachment:5200e9a0-4b9a-4df8-b260-4ff912eb1e9d",
+          "urn:openrag:openarchiver:attachment:609d5843-428f-4ea9-ac84-848f0082381f",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:13ac4f3c-c9cd-40de-8b45-4c2660bfc3b6",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:34eb6b3e-f6da-4511-bfdc-16dc4581bd36",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:3cd6d919-867b-475e-b155-92e0ec386879",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:4b60a56d-8496-4d59-b9b0-894eff1b62e0",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:57c2ea79-6ee6-4c67-adf7-82d9ce54075a",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:58bb328f-91e6-43dc-a575-494604bbb1b4",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:63cbf914-ea19-4328-a970-ea96b3e7c38d",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:79e0dbeb-7460-47d7-bca3-a120dd003866",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:988de287-9dae-4e2e-93b7-ea572417d62f",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:ac0819c3-ce59-4a1b-9f13-4de72623935f",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:b24a17b5-0943-41ef-a13b-e6e78d0865f3",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:d81a8abb-0c06-4b79-bbda-97d9aa2465d4",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:da066a69-f964-4fb0-8467-724eb773aa90",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:e59b1cd6-1a38-44b2-961b-c5bfd22343ff",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:f077cc99-c432-4cc2-ab35-6c5f1fca0a08",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:f9b1c988-7fb2-4c44-be2b-7a1f9ac741dc",
+          "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:d0826233-e246-43f0-8a23-71995a28ef37"
+        ],
+        "seeded_component_ids": [
+          "component-1df7334963116c38",
+          "component-2ee43b915ec7376f",
+          "component-2ef5b17c61ded60f",
+          "component-307ae5eb5c76dcd1",
+          "component-33fd4c0d00e72722",
+          "component-35d44546be74ed83",
+          "component-453dbdf7df724ac7",
+          "component-45e87f09a7b2677b",
+          "component-4842a5253018cef8",
+          "component-538ff02ec1e8894d",
+          "component-5f2623d86ab0a6f0",
+          "component-66f7c56f1d3908ca",
+          "component-77eb513bad0fd5e5",
+          "component-797a348fa4269127",
+          "component-98e66afd225c8265",
+          "component-990d809eab8449f9",
+          "component-b05dede3cc69c830",
+          "component-b55f09fbe2f566ad",
+          "component-b867fb7ec6e27e40",
+          "component-d1ad367deb8c509b",
+          "component-d2b6ad97d19d7ea4",
+          "component-ec4083201b0d0e44",
+          "component-f875a34b7c9d0a32",
+          "component-fe87c27fe64ba8d7"
+        ],
+        "closure_relevant_occurrence_ids": [
+          "urn:openrag:openarchiver:attachment:01dc5f1d-4699-4467-a5db-8c6683917c43",
+          "urn:openrag:openarchiver:attachment:124e92b9-cfd2-4045-9a35-f2ec1be1f786",
+          "urn:openrag:openarchiver:attachment:2cf49b73-f16a-42f8-a017-e4472adb6856",
+          "urn:openrag:openarchiver:attachment:2f83d6c5-7659-40ca-96c8-e40ed756c3ee",
+          "urn:openrag:openarchiver:attachment:4a3bd200-156a-4830-8ee5-11731d42ca19",
+          "urn:openrag:openarchiver:attachment:5200e9a0-4b9a-4df8-b260-4ff912eb1e9d",
+          "urn:openrag:openarchiver:attachment:609d5843-428f-4ea9-ac84-848f0082381f",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:13ac4f3c-c9cd-40de-8b45-4c2660bfc3b6",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:34eb6b3e-f6da-4511-bfdc-16dc4581bd36",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:3cd6d919-867b-475e-b155-92e0ec386879",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:4b60a56d-8496-4d59-b9b0-894eff1b62e0",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:57c2ea79-6ee6-4c67-adf7-82d9ce54075a",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:58bb328f-91e6-43dc-a575-494604bbb1b4",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:63cbf914-ea19-4328-a970-ea96b3e7c38d",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:79e0dbeb-7460-47d7-bca3-a120dd003866",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:988de287-9dae-4e2e-93b7-ea572417d62f",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:ac0819c3-ce59-4a1b-9f13-4de72623935f",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:b24a17b5-0943-41ef-a13b-e6e78d0865f3",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:d81a8abb-0c06-4b79-bbda-97d9aa2465d4",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:da066a69-f964-4fb0-8467-724eb773aa90",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:e59b1cd6-1a38-44b2-961b-c5bfd22343ff",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:f077cc99-c432-4cc2-ab35-6c5f1fca0a08",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:f9b1c988-7fb2-4c44-be2b-7a1f9ac741dc",
+          "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:30b019f1-ceb6-418b-8917-ae170e53e814",
+          "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:3506bbb8-e525-460f-8617-55cee19d408b",
+          "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:415b23d3-f126-4490-9880-a2ed06732262",
+          "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:4e19718e-68ef-463f-8e16-5092587bfc5d",
+          "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:6af5fd05-6e46-426a-bb56-3174d113e27a",
+          "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:89573f54-42ca-47a9-ab80-5203e19811af",
+          "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:d0826233-e246-43f0-8a23-71995a28ef37",
+          "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:d94f7c98-3a0a-4d87-8f4e-9adf34e94eae"
+        ],
+        "closure_component_ids": [
+          "component-1df7334963116c38",
+          "component-2ee43b915ec7376f",
+          "component-2ef5b17c61ded60f",
+          "component-307ae5eb5c76dcd1",
+          "component-33fd4c0d00e72722",
+          "component-35d44546be74ed83",
+          "component-453dbdf7df724ac7",
+          "component-45e87f09a7b2677b",
+          "component-4842a5253018cef8",
+          "component-538ff02ec1e8894d",
+          "component-5f2623d86ab0a6f0",
+          "component-66f7c56f1d3908ca",
+          "component-77eb513bad0fd5e5",
+          "component-797a348fa4269127",
+          "component-98e66afd225c8265",
+          "component-990d809eab8449f9",
+          "component-b05dede3cc69c830",
+          "component-b55f09fbe2f566ad",
+          "component-b867fb7ec6e27e40",
+          "component-d1ad367deb8c509b",
+          "component-d2b6ad97d19d7ea4",
+          "component-ec4083201b0d0e44",
+          "component-f875a34b7c9d0a32",
+          "component-fe87c27fe64ba8d7"
+        ],
+        "unclassified_seed_documents": 37,
+        "documents_discovered_after_prov_o": 183,
+        "document_recovery_gain": 7,
+        "document_recovery_multiplier": 1.2916666666666667,
+        "component_recovery_gain": 0,
+        "component_recovery_multiplier": 1.0,
+        "expansion_per_seed_document": 2.259259259259259,
+        "expansion_per_relevant_document_recovered": 5.903225806451613,
+        "coverage": {
+          "complete": true,
+          "status_code": "complete",
+          "failure_codes": [],
+          "documents_discovered": 183,
+          "documents_complete": 183,
+          "covered_chunks": 3269,
+          "total_chunks": 3269,
+          "scope_policy_id": "documentary-prov-o",
+          "scope_policy_version": 1
+        },
+        "total_latency_seconds": 3.174458784982562
+      }
+    },
+    {
+      "run_id": "q1-r2",
+      "view": "STRICT",
+      "query_count": 1,
+      "repetition": 2,
+      "valid": true,
+      "contract_failure_codes": [],
+      "generated_queries": [
+        {
+          "query_id": "q0",
+          "query_text": "Tous les échanges avec Orange au sujet de la fibre.",
+          "query_type": "original",
+          "parent_query": "Tous les échanges avec Orange au sujet de la fibre.",
+          "generation_method": "user"
+        }
+      ],
+      "requested_retrieval_profile": {
+        "version": 1,
+        "strategy": "rrf",
+        "mode": "hybrid",
+        "lanes": {
+          "lexical": "required",
+          "dense": "required",
+          "fusion": "required",
+          "multi_query": "disabled"
+        },
+        "multi_query": {
+          "requested": false,
+          "max_queries": 1
+        }
+      },
+      "effective_retrieval_profile": {
+        "version": 1,
+        "strategy": "rrf",
+        "mode": "hybrid",
+        "lanes": {
+          "lexical": {
+            "requested": true,
+            "status": "succeeded",
+            "candidates": 50
+          },
+          "dense": {
+            "requested": true,
+            "status": "succeeded",
+            "candidates": 50,
+            "embedding_models": [
+              "text-embedding-3-large"
+            ],
+            "embedding_dimensions": {
+              "text-embedding-3-large": 3072
+            },
+            "failed_embedding_models": []
+          },
+          "fusion": {
+            "requested": true,
+            "status": "succeeded",
+            "candidates": 96
+          },
+          "multi_query": {
+            "requested": false,
+            "status": "not_requested",
+            "candidates": 0
+          }
+        }
+      },
+      "retrieval_execution_complete": true,
+      "coverage": {
+        "mode": "scope_exhaustive",
+        "query": "Tous les échanges avec Orange au sujet de la fibre.",
+        "scope_policy_id": "documentary-prov-o",
+        "scope_policy_version": 1,
+        "seed_discovery_complete": true,
+        "seed_documents": 73,
+        "seed_entities": 126,
+        "valid_provenance_seed_documents": 73,
+        "invalid_provenance_seed_documents": 0,
+        "seed_provenance_complete": true,
+        "requested_retrieval_profile": {
+          "version": 1,
+          "strategy": "rrf",
+          "mode": "hybrid",
+          "lanes": {
+            "lexical": "required",
+            "dense": "required",
+            "fusion": "required",
+            "multi_query": "disabled"
+          },
+          "multi_query": {
+            "requested": false,
+            "max_queries": 1
+          }
+        },
+        "effective_retrieval_profile": {
+          "version": 1,
+          "strategy": "rrf",
+          "mode": "hybrid",
+          "lanes": {
+            "lexical": {
+              "requested": true,
+              "status": "succeeded",
+              "candidates": 50
+            },
+            "dense": {
+              "requested": true,
+              "status": "succeeded",
+              "candidates": 50,
+              "embedding_models": [
+                "text-embedding-3-large"
+              ],
+              "embedding_dimensions": {
+                "text-embedding-3-large": 3072
+              },
+              "failed_embedding_models": []
+            },
+            "fusion": {
+              "requested": true,
+              "status": "succeeded",
+              "candidates": 96
+            },
+            "multi_query": {
+              "requested": false,
+              "status": "not_requested",
+              "candidates": 0
+            }
+          }
+        },
+        "retrieval_execution_complete": true,
+        "retrieval_failure_codes": [],
+        "graph_entities_visited": 183,
+        "graph_frontier_empty": true,
+        "graph_limit_reached": false,
+        "graph_stop_reason": "frontier_empty",
+        "graph_failed": false,
+        "graph_error": null,
+        "graph_stability_verified": true,
+        "graph_stability_observations": 8,
+        "relations_unclassified": {
+          "total": 0,
+          "by_classification": []
+        },
+        "identity_shared_aliases_resolved": 0,
+        "scope_diagnostics": {
+          "documents_per_depth": [
+            {
+              "depth": 0,
+              "count": 73
+            },
+            {
+              "depth": 1,
+              "count": 87
+            },
+            {
+              "depth": 2,
+              "count": 20
+            },
+            {
+              "depth": 3,
+              "count": 3
+            }
+          ],
+          "entities_per_depth": [
+            {
+              "depth": 0,
+              "count": 73
+            },
+            {
+              "depth": 1,
+              "count": 87
+            },
+            {
+              "depth": 2,
+              "count": 20
+            },
+            {
+              "depth": 3,
+              "count": 3
+            }
+          ],
+          "relations_per_depth": [
+            {
+              "depth": 0,
+              "role": "references",
+              "source_type": "email_message",
+              "target_type": "email_message",
+              "count": 13
+            },
+            {
+              "depth": 0,
+              "role": "reply_to",
+              "source_type": "email_message",
+              "target_type": "email_message",
+              "count": 6
+            },
+            {
+              "depth": 1,
+              "role": "attachment_of",
+              "source_type": "email_attachment",
+              "target_type": "email_message",
+              "count": 35
+            },
+            {
+              "depth": 1,
+              "role": "references",
+              "source_type": "email_message",
+              "target_type": "email_message",
+              "count": 201
+            },
+            {
+              "depth": 1,
+              "role": "reply_to",
+              "source_type": "email_message",
+              "target_type": "email_message",
+              "count": 60
+            },
+            {
+              "depth": 2,
+              "role": "attachment_of",
+              "source_type": "email_attachment",
+              "target_type": "email_message",
+              "count": 10
+            },
+            {
+              "depth": 2,
+              "role": "references",
+              "source_type": "email_message",
+              "target_type": "email_message",
+              "count": 19
+            },
+            {
+              "depth": 2,
+              "role": "reply_to",
+              "source_type": "email_message",
+              "target_type": "email_message",
+              "count": 11
+            },
+            {
+              "depth": 3,
+              "role": "attachment_of",
+              "source_type": "email_attachment",
+              "target_type": "email_message",
+              "count": 2
+            },
+            {
+              "depth": 3,
+              "role": "references",
+              "source_type": "email_message",
+              "target_type": "email_message",
+              "count": 1
+            },
+            {
+              "depth": 3,
+              "role": "reply_to",
+              "source_type": "email_message",
+              "target_type": "email_message",
+              "count": 1
+            }
+          ],
+          "largest_expansion_contributors": [
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:7a529d3d-3b14-4c9e-8f1e-bf541ba45719",
+              "entity_type": "email_message",
+              "outbound_edges": 4,
+              "inbound_edges": 21,
+              "total_edges": 25
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:f9a0e0ba-3259-443c-9968-6f755d30df1a",
+              "entity_type": "email_message",
+              "outbound_edges": 2,
+              "inbound_edges": 18,
+              "total_edges": 20
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:250aaf8c-e8ab-4e24-b9cd-406caabed8f4",
+              "entity_type": "email_message",
+              "outbound_edges": 3,
+              "inbound_edges": 14,
+              "total_edges": 17
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:3e9aafdd-217a-48cc-8239-7033dc3a0302",
+              "entity_type": "email_message",
+              "outbound_edges": 14,
+              "inbound_edges": 2,
+              "total_edges": 16
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:ce14307c-f090-45aa-a5d4-d8569b741c51",
+              "entity_type": "email_message",
+              "outbound_edges": 10,
+              "inbound_edges": 6,
+              "total_edges": 16
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:0a4dcfb1-b9a9-4181-bcac-f3d676cf4ffb",
+              "entity_type": "email_message",
+              "outbound_edges": 7,
+              "inbound_edges": 8,
+              "total_edges": 15
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:375fd8cc-2691-4adb-b2d8-f2ee106ef690",
+              "entity_type": "email_message",
+              "outbound_edges": 11,
+              "inbound_edges": 4,
+              "total_edges": 15
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:3d14ea3a-d971-4c55-bef5-eca24d5ac256",
+              "entity_type": "email_message",
+              "outbound_edges": 4,
+              "inbound_edges": 11,
+              "total_edges": 15
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:412c61fd-6537-4b54-ab62-11a95a6881ce",
+              "entity_type": "email_message",
+              "outbound_edges": 5,
+              "inbound_edges": 10,
+              "total_edges": 15
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:4c3e7c0f-ee9f-44a0-9e5a-6118d4d49507",
+              "entity_type": "email_message",
+              "outbound_edges": 12,
+              "inbound_edges": 3,
+              "total_edges": 15
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:54f194d3-9416-4419-9337-7b44035a1a7b",
+              "entity_type": "email_message",
+              "outbound_edges": 2,
+              "inbound_edges": 13,
+              "total_edges": 15
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:5966c0ee-a014-4a4a-9dd4-40f88ffd98c4",
+              "entity_type": "email_message",
+              "outbound_edges": 13,
+              "inbound_edges": 2,
+              "total_edges": 15
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:7046faa7-24fe-45b5-9824-4004341fc325",
+              "entity_type": "email_message",
+              "outbound_edges": 9,
+              "inbound_edges": 6,
+              "total_edges": 15
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:b8229212-0d8e-4a19-a8bb-38629eec7bda",
+              "entity_type": "email_message",
+              "outbound_edges": 8,
+              "inbound_edges": 7,
+              "total_edges": 15
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:c7c0036c-5d8a-4bd7-a3c7-f6acc9970cdf",
+              "entity_type": "email_message",
+              "outbound_edges": 6,
+              "inbound_edges": 9,
+              "total_edges": 15
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:cc14e0d6-61a0-4c79-8027-52b29c9c286d",
+              "entity_type": "email_message",
+              "outbound_edges": 3,
+              "inbound_edges": 12,
+              "total_edges": 15
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:5b1e1071-f8e4-412b-8208-a6b8e0098ccb",
+              "entity_type": "email_message",
+              "outbound_edges": 4,
+              "inbound_edges": 10,
+              "total_edges": 14
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:70516e48-d686-47cc-b9f8-918db1a56cdd",
+              "entity_type": "email_message",
+              "outbound_edges": 5,
+              "inbound_edges": 9,
+              "total_edges": 14
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:e8a5250a-9234-4e38-bf78-120b26149fa3",
+              "entity_type": "email_message",
+              "outbound_edges": 0,
+              "inbound_edges": 13,
+              "total_edges": 13
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:f5f6b611-1ad4-4324-8c47-2f7db1ad978c",
+              "entity_type": "email_message",
+              "outbound_edges": 6,
+              "inbound_edges": 5,
+              "total_edges": 11
+            }
+          ]
+        },
+        "documents_discovered": 183,
+        "documents_complete": 183,
+        "documents_incomplete": 0,
+        "covered_chunks": 3269,
+        "total_chunks": 3269,
+        "document_read_coverage_ratio": 1.0,
+        "coverage_ratio": 1.0,
+        "complete": true,
+        "status_code": "complete",
+        "status_message": "The accessible provenance-connected scope discovered from the ranked seeds was closed and every discovered document snapshot was read and verified.",
+        "failure_codes": [],
+        "stop_reason": "complete",
+        "model_evidence_chunks": 100,
+        "artifact_chunks": 3269,
+        "performance": {
+          "discovery_seconds": 0.0,
+          "prov_o_seconds": 3.174458784982562,
+          "total_seconds": 3.174458784982562
+        },
+        "certification": {
+          "contract_id": "openrag.scope-coverage",
+          "contract_version": 1,
+          "facts": {
+            "seed_discovery_complete": true,
+            "seed_documents": 73,
+            "valid_provenance_seed_documents": 73,
+            "invalid_provenance_seed_documents": 0,
+            "graph_frontier_empty": true,
+            "graph_limit_reached": false,
+            "graph_stop_reason": "frontier_empty",
+            "graph_failed": false,
+            "retrieval_execution_complete": true,
+            "documents_discovered": 183,
+            "documents_complete": 183,
+            "covered_chunks": 3269,
+            "total_chunks": 3269,
+            "document_failure_codes": [],
+            "seed_failure_code": null,
+            "unclassified_relations": 0,
+            "retrieval_failure_codes": []
+          },
+          "facts_sha256": "25875a8c9909300762d0189a0c4b398153231bf957a6ac54e0986b472ca93a18"
+        }
+      },
+      "performance": {
+        "discovery_seconds": 0.0,
+        "scope_closure_seconds": 3.174458784982562,
+        "total_latency_seconds": 3.174458784982562,
+        "http_wall_seconds": 3.7023486660036724
+      },
+      "metrics": {
+        "requested_k": 100,
+        "available_seed_chunks": 100,
+        "effective_seed_chunks": 100,
+        "seed_documents": 81,
+        "seed_document_recall": {
+          "numerator": 22,
+          "denominator": 48,
+          "value": 0.4583333333333333
+        },
+        "seed_component_recall": {
+          "numerator": 22,
+          "denominator": 33,
+          "value": 0.6666666666666666
+        },
+        "post_prov_o_document_recall": {
+          "numerator": 29,
+          "denominator": 48,
+          "value": 0.6041666666666666
+        },
+        "post_prov_o_component_recall": {
+          "numerator": 22,
+          "denominator": 33,
+          "value": 0.6666666666666666
+        },
+        "precision": {
+          "numerator": 22,
+          "denominator": 81,
+          "value": 0.2716049382716049
+        },
+        "seed_relevant_occurrence_ids": [
+          "urn:openrag:openarchiver:attachment:01dc5f1d-4699-4467-a5db-8c6683917c43",
+          "urn:openrag:openarchiver:attachment:124e92b9-cfd2-4045-9a35-f2ec1be1f786",
+          "urn:openrag:openarchiver:attachment:2cf49b73-f16a-42f8-a017-e4472adb6856",
+          "urn:openrag:openarchiver:attachment:2f83d6c5-7659-40ca-96c8-e40ed756c3ee",
+          "urn:openrag:openarchiver:attachment:4a3bd200-156a-4830-8ee5-11731d42ca19",
+          "urn:openrag:openarchiver:attachment:5200e9a0-4b9a-4df8-b260-4ff912eb1e9d",
+          "urn:openrag:openarchiver:attachment:609d5843-428f-4ea9-ac84-848f0082381f",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:13ac4f3c-c9cd-40de-8b45-4c2660bfc3b6",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:34eb6b3e-f6da-4511-bfdc-16dc4581bd36",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:3cd6d919-867b-475e-b155-92e0ec386879",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:4b60a56d-8496-4d59-b9b0-894eff1b62e0",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:57c2ea79-6ee6-4c67-adf7-82d9ce54075a",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:63cbf914-ea19-4328-a970-ea96b3e7c38d",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:79e0dbeb-7460-47d7-bca3-a120dd003866",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:988de287-9dae-4e2e-93b7-ea572417d62f",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:ac0819c3-ce59-4a1b-9f13-4de72623935f",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:b24a17b5-0943-41ef-a13b-e6e78d0865f3",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:d81a8abb-0c06-4b79-bbda-97d9aa2465d4",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:da066a69-f964-4fb0-8467-724eb773aa90",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:e59b1cd6-1a38-44b2-961b-c5bfd22343ff",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:f077cc99-c432-4cc2-ab35-6c5f1fca0a08",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:f9b1c988-7fb2-4c44-be2b-7a1f9ac741dc"
+        ],
+        "seeded_component_ids": [
+          "component-1df7334963116c38",
+          "component-2ef5b17c61ded60f",
+          "component-307ae5eb5c76dcd1",
+          "component-33fd4c0d00e72722",
+          "component-35d44546be74ed83",
+          "component-453dbdf7df724ac7",
+          "component-45e87f09a7b2677b",
+          "component-4842a5253018cef8",
+          "component-538ff02ec1e8894d",
+          "component-5f2623d86ab0a6f0",
+          "component-66f7c56f1d3908ca",
+          "component-77eb513bad0fd5e5",
+          "component-797a348fa4269127",
+          "component-98e66afd225c8265",
+          "component-990d809eab8449f9",
+          "component-b55f09fbe2f566ad",
+          "component-b867fb7ec6e27e40",
+          "component-d1ad367deb8c509b",
+          "component-d2b6ad97d19d7ea4",
+          "component-ec4083201b0d0e44",
+          "component-f875a34b7c9d0a32",
+          "component-fe87c27fe64ba8d7"
+        ],
+        "closure_relevant_occurrence_ids": [
+          "urn:openrag:openarchiver:attachment:01dc5f1d-4699-4467-a5db-8c6683917c43",
+          "urn:openrag:openarchiver:attachment:124e92b9-cfd2-4045-9a35-f2ec1be1f786",
+          "urn:openrag:openarchiver:attachment:2cf49b73-f16a-42f8-a017-e4472adb6856",
+          "urn:openrag:openarchiver:attachment:2f83d6c5-7659-40ca-96c8-e40ed756c3ee",
+          "urn:openrag:openarchiver:attachment:4a3bd200-156a-4830-8ee5-11731d42ca19",
+          "urn:openrag:openarchiver:attachment:5200e9a0-4b9a-4df8-b260-4ff912eb1e9d",
+          "urn:openrag:openarchiver:attachment:609d5843-428f-4ea9-ac84-848f0082381f",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:13ac4f3c-c9cd-40de-8b45-4c2660bfc3b6",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:34eb6b3e-f6da-4511-bfdc-16dc4581bd36",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:3cd6d919-867b-475e-b155-92e0ec386879",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:4b60a56d-8496-4d59-b9b0-894eff1b62e0",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:57c2ea79-6ee6-4c67-adf7-82d9ce54075a",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:63cbf914-ea19-4328-a970-ea96b3e7c38d",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:79e0dbeb-7460-47d7-bca3-a120dd003866",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:988de287-9dae-4e2e-93b7-ea572417d62f",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:ac0819c3-ce59-4a1b-9f13-4de72623935f",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:b24a17b5-0943-41ef-a13b-e6e78d0865f3",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:d81a8abb-0c06-4b79-bbda-97d9aa2465d4",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:da066a69-f964-4fb0-8467-724eb773aa90",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:e59b1cd6-1a38-44b2-961b-c5bfd22343ff",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:f077cc99-c432-4cc2-ab35-6c5f1fca0a08",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:f9b1c988-7fb2-4c44-be2b-7a1f9ac741dc",
+          "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:30b019f1-ceb6-418b-8917-ae170e53e814",
+          "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:3506bbb8-e525-460f-8617-55cee19d408b",
+          "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:415b23d3-f126-4490-9880-a2ed06732262",
+          "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:4e19718e-68ef-463f-8e16-5092587bfc5d",
+          "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:6af5fd05-6e46-426a-bb56-3174d113e27a",
+          "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:89573f54-42ca-47a9-ab80-5203e19811af",
+          "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:d94f7c98-3a0a-4d87-8f4e-9adf34e94eae"
+        ],
+        "closure_component_ids": [
+          "component-1df7334963116c38",
+          "component-2ef5b17c61ded60f",
+          "component-307ae5eb5c76dcd1",
+          "component-33fd4c0d00e72722",
+          "component-35d44546be74ed83",
+          "component-453dbdf7df724ac7",
+          "component-45e87f09a7b2677b",
+          "component-4842a5253018cef8",
+          "component-538ff02ec1e8894d",
+          "component-5f2623d86ab0a6f0",
+          "component-66f7c56f1d3908ca",
+          "component-77eb513bad0fd5e5",
+          "component-797a348fa4269127",
+          "component-98e66afd225c8265",
+          "component-990d809eab8449f9",
+          "component-b55f09fbe2f566ad",
+          "component-b867fb7ec6e27e40",
+          "component-d1ad367deb8c509b",
+          "component-d2b6ad97d19d7ea4",
+          "component-ec4083201b0d0e44",
+          "component-f875a34b7c9d0a32",
+          "component-fe87c27fe64ba8d7"
+        ],
+        "unclassified_seed_documents": 37,
+        "documents_discovered_after_prov_o": 183,
+        "document_recovery_gain": 7,
+        "document_recovery_multiplier": 1.3181818181818181,
+        "component_recovery_gain": 0,
+        "component_recovery_multiplier": 1.0,
+        "expansion_per_seed_document": 2.259259259259259,
+        "expansion_per_relevant_document_recovered": 6.310344827586207,
+        "coverage": {
+          "complete": true,
+          "status_code": "complete",
+          "failure_codes": [],
+          "documents_discovered": 183,
+          "documents_complete": 183,
+          "covered_chunks": 3269,
+          "total_chunks": 3269,
+          "scope_policy_id": "documentary-prov-o",
+          "scope_policy_version": 1
+        },
+        "total_latency_seconds": 3.174458784982562
+      }
+    },
+    {
+      "run_id": "q1-r3",
+      "view": "BROAD",
+      "query_count": 1,
+      "repetition": 3,
+      "valid": true,
+      "contract_failure_codes": [],
+      "generated_queries": [
+        {
+          "query_id": "q0",
+          "query_text": "Tous les échanges avec Orange au sujet de la fibre.",
+          "query_type": "original",
+          "parent_query": "Tous les échanges avec Orange au sujet de la fibre.",
+          "generation_method": "user"
+        }
+      ],
+      "requested_retrieval_profile": {
+        "version": 1,
+        "strategy": "rrf",
+        "mode": "hybrid",
+        "lanes": {
+          "lexical": "required",
+          "dense": "required",
+          "fusion": "required",
+          "multi_query": "disabled"
+        },
+        "multi_query": {
+          "requested": false,
+          "max_queries": 1
+        }
+      },
+      "effective_retrieval_profile": {
+        "version": 1,
+        "strategy": "rrf",
+        "mode": "hybrid",
+        "lanes": {
+          "lexical": {
+            "requested": true,
+            "status": "succeeded",
+            "candidates": 50
+          },
+          "dense": {
+            "requested": true,
+            "status": "succeeded",
+            "candidates": 50,
+            "embedding_models": [
+              "text-embedding-3-large"
+            ],
+            "embedding_dimensions": {
+              "text-embedding-3-large": 3072
+            },
+            "failed_embedding_models": []
+          },
+          "fusion": {
+            "requested": true,
+            "status": "succeeded",
+            "candidates": 96
+          },
+          "multi_query": {
+            "requested": false,
+            "status": "not_requested",
+            "candidates": 0
+          }
+        }
+      },
+      "retrieval_execution_complete": true,
+      "coverage": {
+        "mode": "scope_exhaustive",
+        "query": "Tous les échanges avec Orange au sujet de la fibre.",
+        "scope_policy_id": "documentary-prov-o",
+        "scope_policy_version": 1,
+        "seed_discovery_complete": true,
+        "seed_documents": 73,
+        "seed_entities": 126,
+        "valid_provenance_seed_documents": 73,
+        "invalid_provenance_seed_documents": 0,
+        "seed_provenance_complete": true,
+        "requested_retrieval_profile": {
+          "version": 1,
+          "strategy": "rrf",
+          "mode": "hybrid",
+          "lanes": {
+            "lexical": "required",
+            "dense": "required",
+            "fusion": "required",
+            "multi_query": "disabled"
+          },
+          "multi_query": {
+            "requested": false,
+            "max_queries": 1
+          }
+        },
+        "effective_retrieval_profile": {
+          "version": 1,
+          "strategy": "rrf",
+          "mode": "hybrid",
+          "lanes": {
+            "lexical": {
+              "requested": true,
+              "status": "succeeded",
+              "candidates": 50
+            },
+            "dense": {
+              "requested": true,
+              "status": "succeeded",
+              "candidates": 50,
+              "embedding_models": [
+                "text-embedding-3-large"
+              ],
+              "embedding_dimensions": {
+                "text-embedding-3-large": 3072
+              },
+              "failed_embedding_models": []
+            },
+            "fusion": {
+              "requested": true,
+              "status": "succeeded",
+              "candidates": 96
+            },
+            "multi_query": {
+              "requested": false,
+              "status": "not_requested",
+              "candidates": 0
+            }
+          }
+        },
+        "retrieval_execution_complete": true,
+        "retrieval_failure_codes": [],
+        "graph_entities_visited": 183,
+        "graph_frontier_empty": true,
+        "graph_limit_reached": false,
+        "graph_stop_reason": "frontier_empty",
+        "graph_failed": false,
+        "graph_error": null,
+        "graph_stability_verified": true,
+        "graph_stability_observations": 8,
+        "relations_unclassified": {
+          "total": 0,
+          "by_classification": []
+        },
+        "identity_shared_aliases_resolved": 0,
+        "scope_diagnostics": {
+          "documents_per_depth": [
+            {
+              "depth": 0,
+              "count": 73
+            },
+            {
+              "depth": 1,
+              "count": 87
+            },
+            {
+              "depth": 2,
+              "count": 20
+            },
+            {
+              "depth": 3,
+              "count": 3
+            }
+          ],
+          "entities_per_depth": [
+            {
+              "depth": 0,
+              "count": 73
+            },
+            {
+              "depth": 1,
+              "count": 87
+            },
+            {
+              "depth": 2,
+              "count": 20
+            },
+            {
+              "depth": 3,
+              "count": 3
+            }
+          ],
+          "relations_per_depth": [
+            {
+              "depth": 0,
+              "role": "references",
+              "source_type": "email_message",
+              "target_type": "email_message",
+              "count": 13
+            },
+            {
+              "depth": 0,
+              "role": "reply_to",
+              "source_type": "email_message",
+              "target_type": "email_message",
+              "count": 6
+            },
+            {
+              "depth": 1,
+              "role": "attachment_of",
+              "source_type": "email_attachment",
+              "target_type": "email_message",
+              "count": 35
+            },
+            {
+              "depth": 1,
+              "role": "references",
+              "source_type": "email_message",
+              "target_type": "email_message",
+              "count": 201
+            },
+            {
+              "depth": 1,
+              "role": "reply_to",
+              "source_type": "email_message",
+              "target_type": "email_message",
+              "count": 60
+            },
+            {
+              "depth": 2,
+              "role": "attachment_of",
+              "source_type": "email_attachment",
+              "target_type": "email_message",
+              "count": 10
+            },
+            {
+              "depth": 2,
+              "role": "references",
+              "source_type": "email_message",
+              "target_type": "email_message",
+              "count": 19
+            },
+            {
+              "depth": 2,
+              "role": "reply_to",
+              "source_type": "email_message",
+              "target_type": "email_message",
+              "count": 11
+            },
+            {
+              "depth": 3,
+              "role": "attachment_of",
+              "source_type": "email_attachment",
+              "target_type": "email_message",
+              "count": 2
+            },
+            {
+              "depth": 3,
+              "role": "references",
+              "source_type": "email_message",
+              "target_type": "email_message",
+              "count": 1
+            },
+            {
+              "depth": 3,
+              "role": "reply_to",
+              "source_type": "email_message",
+              "target_type": "email_message",
+              "count": 1
+            }
+          ],
+          "largest_expansion_contributors": [
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:7a529d3d-3b14-4c9e-8f1e-bf541ba45719",
+              "entity_type": "email_message",
+              "outbound_edges": 4,
+              "inbound_edges": 21,
+              "total_edges": 25
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:f9a0e0ba-3259-443c-9968-6f755d30df1a",
+              "entity_type": "email_message",
+              "outbound_edges": 2,
+              "inbound_edges": 18,
+              "total_edges": 20
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:250aaf8c-e8ab-4e24-b9cd-406caabed8f4",
+              "entity_type": "email_message",
+              "outbound_edges": 3,
+              "inbound_edges": 14,
+              "total_edges": 17
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:3e9aafdd-217a-48cc-8239-7033dc3a0302",
+              "entity_type": "email_message",
+              "outbound_edges": 14,
+              "inbound_edges": 2,
+              "total_edges": 16
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:ce14307c-f090-45aa-a5d4-d8569b741c51",
+              "entity_type": "email_message",
+              "outbound_edges": 10,
+              "inbound_edges": 6,
+              "total_edges": 16
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:0a4dcfb1-b9a9-4181-bcac-f3d676cf4ffb",
+              "entity_type": "email_message",
+              "outbound_edges": 7,
+              "inbound_edges": 8,
+              "total_edges": 15
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:375fd8cc-2691-4adb-b2d8-f2ee106ef690",
+              "entity_type": "email_message",
+              "outbound_edges": 11,
+              "inbound_edges": 4,
+              "total_edges": 15
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:3d14ea3a-d971-4c55-bef5-eca24d5ac256",
+              "entity_type": "email_message",
+              "outbound_edges": 4,
+              "inbound_edges": 11,
+              "total_edges": 15
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:412c61fd-6537-4b54-ab62-11a95a6881ce",
+              "entity_type": "email_message",
+              "outbound_edges": 5,
+              "inbound_edges": 10,
+              "total_edges": 15
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:4c3e7c0f-ee9f-44a0-9e5a-6118d4d49507",
+              "entity_type": "email_message",
+              "outbound_edges": 12,
+              "inbound_edges": 3,
+              "total_edges": 15
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:54f194d3-9416-4419-9337-7b44035a1a7b",
+              "entity_type": "email_message",
+              "outbound_edges": 2,
+              "inbound_edges": 13,
+              "total_edges": 15
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:5966c0ee-a014-4a4a-9dd4-40f88ffd98c4",
+              "entity_type": "email_message",
+              "outbound_edges": 13,
+              "inbound_edges": 2,
+              "total_edges": 15
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:7046faa7-24fe-45b5-9824-4004341fc325",
+              "entity_type": "email_message",
+              "outbound_edges": 9,
+              "inbound_edges": 6,
+              "total_edges": 15
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:b8229212-0d8e-4a19-a8bb-38629eec7bda",
+              "entity_type": "email_message",
+              "outbound_edges": 8,
+              "inbound_edges": 7,
+              "total_edges": 15
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:c7c0036c-5d8a-4bd7-a3c7-f6acc9970cdf",
+              "entity_type": "email_message",
+              "outbound_edges": 6,
+              "inbound_edges": 9,
+              "total_edges": 15
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:cc14e0d6-61a0-4c79-8027-52b29c9c286d",
+              "entity_type": "email_message",
+              "outbound_edges": 3,
+              "inbound_edges": 12,
+              "total_edges": 15
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:5b1e1071-f8e4-412b-8208-a6b8e0098ccb",
+              "entity_type": "email_message",
+              "outbound_edges": 4,
+              "inbound_edges": 10,
+              "total_edges": 14
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:70516e48-d686-47cc-b9f8-918db1a56cdd",
+              "entity_type": "email_message",
+              "outbound_edges": 5,
+              "inbound_edges": 9,
+              "total_edges": 14
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:e8a5250a-9234-4e38-bf78-120b26149fa3",
+              "entity_type": "email_message",
+              "outbound_edges": 0,
+              "inbound_edges": 13,
+              "total_edges": 13
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:f5f6b611-1ad4-4324-8c47-2f7db1ad978c",
+              "entity_type": "email_message",
+              "outbound_edges": 6,
+              "inbound_edges": 5,
+              "total_edges": 11
+            }
+          ]
+        },
+        "documents_discovered": 183,
+        "documents_complete": 183,
+        "documents_incomplete": 0,
+        "covered_chunks": 3269,
+        "total_chunks": 3269,
+        "document_read_coverage_ratio": 1.0,
+        "coverage_ratio": 1.0,
+        "complete": true,
+        "status_code": "complete",
+        "status_message": "The accessible provenance-connected scope discovered from the ranked seeds was closed and every discovered document snapshot was read and verified.",
+        "failure_codes": [],
+        "stop_reason": "complete",
+        "model_evidence_chunks": 100,
+        "artifact_chunks": 3269,
+        "performance": {
+          "discovery_seconds": 0.0,
+          "prov_o_seconds": 3.2553234479855746,
+          "total_seconds": 3.2553234479855746
+        },
+        "certification": {
+          "contract_id": "openrag.scope-coverage",
+          "contract_version": 1,
+          "facts": {
+            "seed_discovery_complete": true,
+            "seed_documents": 73,
+            "valid_provenance_seed_documents": 73,
+            "invalid_provenance_seed_documents": 0,
+            "graph_frontier_empty": true,
+            "graph_limit_reached": false,
+            "graph_stop_reason": "frontier_empty",
+            "graph_failed": false,
+            "retrieval_execution_complete": true,
+            "documents_discovered": 183,
+            "documents_complete": 183,
+            "covered_chunks": 3269,
+            "total_chunks": 3269,
+            "document_failure_codes": [],
+            "seed_failure_code": null,
+            "unclassified_relations": 0,
+            "retrieval_failure_codes": []
+          },
+          "facts_sha256": "25875a8c9909300762d0189a0c4b398153231bf957a6ac54e0986b472ca93a18"
+        }
+      },
+      "performance": {
+        "discovery_seconds": 0.0,
+        "scope_closure_seconds": 3.2553234479855746,
+        "total_latency_seconds": 3.2553234479855746,
+        "http_wall_seconds": 3.7715882919947035
+      },
+      "metrics": {
+        "requested_k": 100,
+        "available_seed_chunks": 100,
+        "effective_seed_chunks": 100,
+        "seed_documents": 81,
+        "seed_document_recall": {
+          "numerator": 24,
+          "denominator": 105,
+          "value": 0.22857142857142856
+        },
+        "seed_component_recall": {
+          "numerator": 24,
+          "denominator": 84,
+          "value": 0.2857142857142857
+        },
+        "post_prov_o_document_recall": {
+          "numerator": 31,
+          "denominator": 105,
+          "value": 0.29523809523809524
+        },
+        "post_prov_o_component_recall": {
+          "numerator": 24,
+          "denominator": 84,
+          "value": 0.2857142857142857
+        },
+        "precision": {
+          "numerator": 24,
+          "denominator": 81,
+          "value": 0.2962962962962963
+        },
+        "seed_relevant_occurrence_ids": [
+          "urn:openrag:openarchiver:attachment:01dc5f1d-4699-4467-a5db-8c6683917c43",
+          "urn:openrag:openarchiver:attachment:124e92b9-cfd2-4045-9a35-f2ec1be1f786",
+          "urn:openrag:openarchiver:attachment:2cf49b73-f16a-42f8-a017-e4472adb6856",
+          "urn:openrag:openarchiver:attachment:2f83d6c5-7659-40ca-96c8-e40ed756c3ee",
+          "urn:openrag:openarchiver:attachment:4a3bd200-156a-4830-8ee5-11731d42ca19",
+          "urn:openrag:openarchiver:attachment:5200e9a0-4b9a-4df8-b260-4ff912eb1e9d",
+          "urn:openrag:openarchiver:attachment:609d5843-428f-4ea9-ac84-848f0082381f",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:13ac4f3c-c9cd-40de-8b45-4c2660bfc3b6",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:34eb6b3e-f6da-4511-bfdc-16dc4581bd36",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:3cd6d919-867b-475e-b155-92e0ec386879",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:4b60a56d-8496-4d59-b9b0-894eff1b62e0",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:57c2ea79-6ee6-4c67-adf7-82d9ce54075a",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:58bb328f-91e6-43dc-a575-494604bbb1b4",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:63cbf914-ea19-4328-a970-ea96b3e7c38d",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:79e0dbeb-7460-47d7-bca3-a120dd003866",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:988de287-9dae-4e2e-93b7-ea572417d62f",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:ac0819c3-ce59-4a1b-9f13-4de72623935f",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:b24a17b5-0943-41ef-a13b-e6e78d0865f3",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:d81a8abb-0c06-4b79-bbda-97d9aa2465d4",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:da066a69-f964-4fb0-8467-724eb773aa90",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:e59b1cd6-1a38-44b2-961b-c5bfd22343ff",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:f077cc99-c432-4cc2-ab35-6c5f1fca0a08",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:f9b1c988-7fb2-4c44-be2b-7a1f9ac741dc",
+          "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:d0826233-e246-43f0-8a23-71995a28ef37"
+        ],
+        "seeded_component_ids": [
+          "component-1df7334963116c38",
+          "component-2ee43b915ec7376f",
+          "component-2ef5b17c61ded60f",
+          "component-307ae5eb5c76dcd1",
+          "component-33fd4c0d00e72722",
+          "component-35d44546be74ed83",
+          "component-453dbdf7df724ac7",
+          "component-45e87f09a7b2677b",
+          "component-4842a5253018cef8",
+          "component-538ff02ec1e8894d",
+          "component-5f2623d86ab0a6f0",
+          "component-66f7c56f1d3908ca",
+          "component-77eb513bad0fd5e5",
+          "component-797a348fa4269127",
+          "component-98e66afd225c8265",
+          "component-990d809eab8449f9",
+          "component-b05dede3cc69c830",
+          "component-b55f09fbe2f566ad",
+          "component-b867fb7ec6e27e40",
+          "component-d1ad367deb8c509b",
+          "component-d2b6ad97d19d7ea4",
+          "component-ec4083201b0d0e44",
+          "component-f875a34b7c9d0a32",
+          "component-fe87c27fe64ba8d7"
+        ],
+        "closure_relevant_occurrence_ids": [
+          "urn:openrag:openarchiver:attachment:01dc5f1d-4699-4467-a5db-8c6683917c43",
+          "urn:openrag:openarchiver:attachment:124e92b9-cfd2-4045-9a35-f2ec1be1f786",
+          "urn:openrag:openarchiver:attachment:2cf49b73-f16a-42f8-a017-e4472adb6856",
+          "urn:openrag:openarchiver:attachment:2f83d6c5-7659-40ca-96c8-e40ed756c3ee",
+          "urn:openrag:openarchiver:attachment:4a3bd200-156a-4830-8ee5-11731d42ca19",
+          "urn:openrag:openarchiver:attachment:5200e9a0-4b9a-4df8-b260-4ff912eb1e9d",
+          "urn:openrag:openarchiver:attachment:609d5843-428f-4ea9-ac84-848f0082381f",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:13ac4f3c-c9cd-40de-8b45-4c2660bfc3b6",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:34eb6b3e-f6da-4511-bfdc-16dc4581bd36",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:3cd6d919-867b-475e-b155-92e0ec386879",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:4b60a56d-8496-4d59-b9b0-894eff1b62e0",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:57c2ea79-6ee6-4c67-adf7-82d9ce54075a",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:58bb328f-91e6-43dc-a575-494604bbb1b4",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:63cbf914-ea19-4328-a970-ea96b3e7c38d",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:79e0dbeb-7460-47d7-bca3-a120dd003866",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:988de287-9dae-4e2e-93b7-ea572417d62f",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:ac0819c3-ce59-4a1b-9f13-4de72623935f",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:b24a17b5-0943-41ef-a13b-e6e78d0865f3",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:d81a8abb-0c06-4b79-bbda-97d9aa2465d4",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:da066a69-f964-4fb0-8467-724eb773aa90",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:e59b1cd6-1a38-44b2-961b-c5bfd22343ff",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:f077cc99-c432-4cc2-ab35-6c5f1fca0a08",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:f9b1c988-7fb2-4c44-be2b-7a1f9ac741dc",
+          "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:30b019f1-ceb6-418b-8917-ae170e53e814",
+          "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:3506bbb8-e525-460f-8617-55cee19d408b",
+          "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:415b23d3-f126-4490-9880-a2ed06732262",
+          "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:4e19718e-68ef-463f-8e16-5092587bfc5d",
+          "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:6af5fd05-6e46-426a-bb56-3174d113e27a",
+          "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:89573f54-42ca-47a9-ab80-5203e19811af",
+          "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:d0826233-e246-43f0-8a23-71995a28ef37",
+          "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:d94f7c98-3a0a-4d87-8f4e-9adf34e94eae"
+        ],
+        "closure_component_ids": [
+          "component-1df7334963116c38",
+          "component-2ee43b915ec7376f",
+          "component-2ef5b17c61ded60f",
+          "component-307ae5eb5c76dcd1",
+          "component-33fd4c0d00e72722",
+          "component-35d44546be74ed83",
+          "component-453dbdf7df724ac7",
+          "component-45e87f09a7b2677b",
+          "component-4842a5253018cef8",
+          "component-538ff02ec1e8894d",
+          "component-5f2623d86ab0a6f0",
+          "component-66f7c56f1d3908ca",
+          "component-77eb513bad0fd5e5",
+          "component-797a348fa4269127",
+          "component-98e66afd225c8265",
+          "component-990d809eab8449f9",
+          "component-b05dede3cc69c830",
+          "component-b55f09fbe2f566ad",
+          "component-b867fb7ec6e27e40",
+          "component-d1ad367deb8c509b",
+          "component-d2b6ad97d19d7ea4",
+          "component-ec4083201b0d0e44",
+          "component-f875a34b7c9d0a32",
+          "component-fe87c27fe64ba8d7"
+        ],
+        "unclassified_seed_documents": 37,
+        "documents_discovered_after_prov_o": 183,
+        "document_recovery_gain": 7,
+        "document_recovery_multiplier": 1.2916666666666667,
+        "component_recovery_gain": 0,
+        "component_recovery_multiplier": 1.0,
+        "expansion_per_seed_document": 2.259259259259259,
+        "expansion_per_relevant_document_recovered": 5.903225806451613,
+        "coverage": {
+          "complete": true,
+          "status_code": "complete",
+          "failure_codes": [],
+          "documents_discovered": 183,
+          "documents_complete": 183,
+          "covered_chunks": 3269,
+          "total_chunks": 3269,
+          "scope_policy_id": "documentary-prov-o",
+          "scope_policy_version": 1
+        },
+        "total_latency_seconds": 3.2553234479855746
+      }
+    },
+    {
+      "run_id": "q1-r3",
+      "view": "STRICT",
+      "query_count": 1,
+      "repetition": 3,
+      "valid": true,
+      "contract_failure_codes": [],
+      "generated_queries": [
+        {
+          "query_id": "q0",
+          "query_text": "Tous les échanges avec Orange au sujet de la fibre.",
+          "query_type": "original",
+          "parent_query": "Tous les échanges avec Orange au sujet de la fibre.",
+          "generation_method": "user"
+        }
+      ],
+      "requested_retrieval_profile": {
+        "version": 1,
+        "strategy": "rrf",
+        "mode": "hybrid",
+        "lanes": {
+          "lexical": "required",
+          "dense": "required",
+          "fusion": "required",
+          "multi_query": "disabled"
+        },
+        "multi_query": {
+          "requested": false,
+          "max_queries": 1
+        }
+      },
+      "effective_retrieval_profile": {
+        "version": 1,
+        "strategy": "rrf",
+        "mode": "hybrid",
+        "lanes": {
+          "lexical": {
+            "requested": true,
+            "status": "succeeded",
+            "candidates": 50
+          },
+          "dense": {
+            "requested": true,
+            "status": "succeeded",
+            "candidates": 50,
+            "embedding_models": [
+              "text-embedding-3-large"
+            ],
+            "embedding_dimensions": {
+              "text-embedding-3-large": 3072
+            },
+            "failed_embedding_models": []
+          },
+          "fusion": {
+            "requested": true,
+            "status": "succeeded",
+            "candidates": 96
+          },
+          "multi_query": {
+            "requested": false,
+            "status": "not_requested",
+            "candidates": 0
+          }
+        }
+      },
+      "retrieval_execution_complete": true,
+      "coverage": {
+        "mode": "scope_exhaustive",
+        "query": "Tous les échanges avec Orange au sujet de la fibre.",
+        "scope_policy_id": "documentary-prov-o",
+        "scope_policy_version": 1,
+        "seed_discovery_complete": true,
+        "seed_documents": 73,
+        "seed_entities": 126,
+        "valid_provenance_seed_documents": 73,
+        "invalid_provenance_seed_documents": 0,
+        "seed_provenance_complete": true,
+        "requested_retrieval_profile": {
+          "version": 1,
+          "strategy": "rrf",
+          "mode": "hybrid",
+          "lanes": {
+            "lexical": "required",
+            "dense": "required",
+            "fusion": "required",
+            "multi_query": "disabled"
+          },
+          "multi_query": {
+            "requested": false,
+            "max_queries": 1
+          }
+        },
+        "effective_retrieval_profile": {
+          "version": 1,
+          "strategy": "rrf",
+          "mode": "hybrid",
+          "lanes": {
+            "lexical": {
+              "requested": true,
+              "status": "succeeded",
+              "candidates": 50
+            },
+            "dense": {
+              "requested": true,
+              "status": "succeeded",
+              "candidates": 50,
+              "embedding_models": [
+                "text-embedding-3-large"
+              ],
+              "embedding_dimensions": {
+                "text-embedding-3-large": 3072
+              },
+              "failed_embedding_models": []
+            },
+            "fusion": {
+              "requested": true,
+              "status": "succeeded",
+              "candidates": 96
+            },
+            "multi_query": {
+              "requested": false,
+              "status": "not_requested",
+              "candidates": 0
+            }
+          }
+        },
+        "retrieval_execution_complete": true,
+        "retrieval_failure_codes": [],
+        "graph_entities_visited": 183,
+        "graph_frontier_empty": true,
+        "graph_limit_reached": false,
+        "graph_stop_reason": "frontier_empty",
+        "graph_failed": false,
+        "graph_error": null,
+        "graph_stability_verified": true,
+        "graph_stability_observations": 8,
+        "relations_unclassified": {
+          "total": 0,
+          "by_classification": []
+        },
+        "identity_shared_aliases_resolved": 0,
+        "scope_diagnostics": {
+          "documents_per_depth": [
+            {
+              "depth": 0,
+              "count": 73
+            },
+            {
+              "depth": 1,
+              "count": 87
+            },
+            {
+              "depth": 2,
+              "count": 20
+            },
+            {
+              "depth": 3,
+              "count": 3
+            }
+          ],
+          "entities_per_depth": [
+            {
+              "depth": 0,
+              "count": 73
+            },
+            {
+              "depth": 1,
+              "count": 87
+            },
+            {
+              "depth": 2,
+              "count": 20
+            },
+            {
+              "depth": 3,
+              "count": 3
+            }
+          ],
+          "relations_per_depth": [
+            {
+              "depth": 0,
+              "role": "references",
+              "source_type": "email_message",
+              "target_type": "email_message",
+              "count": 13
+            },
+            {
+              "depth": 0,
+              "role": "reply_to",
+              "source_type": "email_message",
+              "target_type": "email_message",
+              "count": 6
+            },
+            {
+              "depth": 1,
+              "role": "attachment_of",
+              "source_type": "email_attachment",
+              "target_type": "email_message",
+              "count": 35
+            },
+            {
+              "depth": 1,
+              "role": "references",
+              "source_type": "email_message",
+              "target_type": "email_message",
+              "count": 201
+            },
+            {
+              "depth": 1,
+              "role": "reply_to",
+              "source_type": "email_message",
+              "target_type": "email_message",
+              "count": 60
+            },
+            {
+              "depth": 2,
+              "role": "attachment_of",
+              "source_type": "email_attachment",
+              "target_type": "email_message",
+              "count": 10
+            },
+            {
+              "depth": 2,
+              "role": "references",
+              "source_type": "email_message",
+              "target_type": "email_message",
+              "count": 19
+            },
+            {
+              "depth": 2,
+              "role": "reply_to",
+              "source_type": "email_message",
+              "target_type": "email_message",
+              "count": 11
+            },
+            {
+              "depth": 3,
+              "role": "attachment_of",
+              "source_type": "email_attachment",
+              "target_type": "email_message",
+              "count": 2
+            },
+            {
+              "depth": 3,
+              "role": "references",
+              "source_type": "email_message",
+              "target_type": "email_message",
+              "count": 1
+            },
+            {
+              "depth": 3,
+              "role": "reply_to",
+              "source_type": "email_message",
+              "target_type": "email_message",
+              "count": 1
+            }
+          ],
+          "largest_expansion_contributors": [
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:7a529d3d-3b14-4c9e-8f1e-bf541ba45719",
+              "entity_type": "email_message",
+              "outbound_edges": 4,
+              "inbound_edges": 21,
+              "total_edges": 25
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:f9a0e0ba-3259-443c-9968-6f755d30df1a",
+              "entity_type": "email_message",
+              "outbound_edges": 2,
+              "inbound_edges": 18,
+              "total_edges": 20
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:250aaf8c-e8ab-4e24-b9cd-406caabed8f4",
+              "entity_type": "email_message",
+              "outbound_edges": 3,
+              "inbound_edges": 14,
+              "total_edges": 17
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:3e9aafdd-217a-48cc-8239-7033dc3a0302",
+              "entity_type": "email_message",
+              "outbound_edges": 14,
+              "inbound_edges": 2,
+              "total_edges": 16
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:ce14307c-f090-45aa-a5d4-d8569b741c51",
+              "entity_type": "email_message",
+              "outbound_edges": 10,
+              "inbound_edges": 6,
+              "total_edges": 16
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:0a4dcfb1-b9a9-4181-bcac-f3d676cf4ffb",
+              "entity_type": "email_message",
+              "outbound_edges": 7,
+              "inbound_edges": 8,
+              "total_edges": 15
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:375fd8cc-2691-4adb-b2d8-f2ee106ef690",
+              "entity_type": "email_message",
+              "outbound_edges": 11,
+              "inbound_edges": 4,
+              "total_edges": 15
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:3d14ea3a-d971-4c55-bef5-eca24d5ac256",
+              "entity_type": "email_message",
+              "outbound_edges": 4,
+              "inbound_edges": 11,
+              "total_edges": 15
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:412c61fd-6537-4b54-ab62-11a95a6881ce",
+              "entity_type": "email_message",
+              "outbound_edges": 5,
+              "inbound_edges": 10,
+              "total_edges": 15
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:4c3e7c0f-ee9f-44a0-9e5a-6118d4d49507",
+              "entity_type": "email_message",
+              "outbound_edges": 12,
+              "inbound_edges": 3,
+              "total_edges": 15
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:54f194d3-9416-4419-9337-7b44035a1a7b",
+              "entity_type": "email_message",
+              "outbound_edges": 2,
+              "inbound_edges": 13,
+              "total_edges": 15
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:5966c0ee-a014-4a4a-9dd4-40f88ffd98c4",
+              "entity_type": "email_message",
+              "outbound_edges": 13,
+              "inbound_edges": 2,
+              "total_edges": 15
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:7046faa7-24fe-45b5-9824-4004341fc325",
+              "entity_type": "email_message",
+              "outbound_edges": 9,
+              "inbound_edges": 6,
+              "total_edges": 15
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:b8229212-0d8e-4a19-a8bb-38629eec7bda",
+              "entity_type": "email_message",
+              "outbound_edges": 8,
+              "inbound_edges": 7,
+              "total_edges": 15
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:c7c0036c-5d8a-4bd7-a3c7-f6acc9970cdf",
+              "entity_type": "email_message",
+              "outbound_edges": 6,
+              "inbound_edges": 9,
+              "total_edges": 15
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:cc14e0d6-61a0-4c79-8027-52b29c9c286d",
+              "entity_type": "email_message",
+              "outbound_edges": 3,
+              "inbound_edges": 12,
+              "total_edges": 15
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:5b1e1071-f8e4-412b-8208-a6b8e0098ccb",
+              "entity_type": "email_message",
+              "outbound_edges": 4,
+              "inbound_edges": 10,
+              "total_edges": 14
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:70516e48-d686-47cc-b9f8-918db1a56cdd",
+              "entity_type": "email_message",
+              "outbound_edges": 5,
+              "inbound_edges": 9,
+              "total_edges": 14
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:e8a5250a-9234-4e38-bf78-120b26149fa3",
+              "entity_type": "email_message",
+              "outbound_edges": 0,
+              "inbound_edges": 13,
+              "total_edges": 13
+            },
+            {
+              "entity_id": "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:f5f6b611-1ad4-4324-8c47-2f7db1ad978c",
+              "entity_type": "email_message",
+              "outbound_edges": 6,
+              "inbound_edges": 5,
+              "total_edges": 11
+            }
+          ]
+        },
+        "documents_discovered": 183,
+        "documents_complete": 183,
+        "documents_incomplete": 0,
+        "covered_chunks": 3269,
+        "total_chunks": 3269,
+        "document_read_coverage_ratio": 1.0,
+        "coverage_ratio": 1.0,
+        "complete": true,
+        "status_code": "complete",
+        "status_message": "The accessible provenance-connected scope discovered from the ranked seeds was closed and every discovered document snapshot was read and verified.",
+        "failure_codes": [],
+        "stop_reason": "complete",
+        "model_evidence_chunks": 100,
+        "artifact_chunks": 3269,
+        "performance": {
+          "discovery_seconds": 0.0,
+          "prov_o_seconds": 3.2553234479855746,
+          "total_seconds": 3.2553234479855746
+        },
+        "certification": {
+          "contract_id": "openrag.scope-coverage",
+          "contract_version": 1,
+          "facts": {
+            "seed_discovery_complete": true,
+            "seed_documents": 73,
+            "valid_provenance_seed_documents": 73,
+            "invalid_provenance_seed_documents": 0,
+            "graph_frontier_empty": true,
+            "graph_limit_reached": false,
+            "graph_stop_reason": "frontier_empty",
+            "graph_failed": false,
+            "retrieval_execution_complete": true,
+            "documents_discovered": 183,
+            "documents_complete": 183,
+            "covered_chunks": 3269,
+            "total_chunks": 3269,
+            "document_failure_codes": [],
+            "seed_failure_code": null,
+            "unclassified_relations": 0,
+            "retrieval_failure_codes": []
+          },
+          "facts_sha256": "25875a8c9909300762d0189a0c4b398153231bf957a6ac54e0986b472ca93a18"
+        }
+      },
+      "performance": {
+        "discovery_seconds": 0.0,
+        "scope_closure_seconds": 3.2553234479855746,
+        "total_latency_seconds": 3.2553234479855746,
+        "http_wall_seconds": 3.7715882919947035
+      },
+      "metrics": {
+        "requested_k": 100,
+        "available_seed_chunks": 100,
+        "effective_seed_chunks": 100,
+        "seed_documents": 81,
+        "seed_document_recall": {
+          "numerator": 22,
+          "denominator": 48,
+          "value": 0.4583333333333333
+        },
+        "seed_component_recall": {
+          "numerator": 22,
+          "denominator": 33,
+          "value": 0.6666666666666666
+        },
+        "post_prov_o_document_recall": {
+          "numerator": 29,
+          "denominator": 48,
+          "value": 0.6041666666666666
+        },
+        "post_prov_o_component_recall": {
+          "numerator": 22,
+          "denominator": 33,
+          "value": 0.6666666666666666
+        },
+        "precision": {
+          "numerator": 22,
+          "denominator": 81,
+          "value": 0.2716049382716049
+        },
+        "seed_relevant_occurrence_ids": [
+          "urn:openrag:openarchiver:attachment:01dc5f1d-4699-4467-a5db-8c6683917c43",
+          "urn:openrag:openarchiver:attachment:124e92b9-cfd2-4045-9a35-f2ec1be1f786",
+          "urn:openrag:openarchiver:attachment:2cf49b73-f16a-42f8-a017-e4472adb6856",
+          "urn:openrag:openarchiver:attachment:2f83d6c5-7659-40ca-96c8-e40ed756c3ee",
+          "urn:openrag:openarchiver:attachment:4a3bd200-156a-4830-8ee5-11731d42ca19",
+          "urn:openrag:openarchiver:attachment:5200e9a0-4b9a-4df8-b260-4ff912eb1e9d",
+          "urn:openrag:openarchiver:attachment:609d5843-428f-4ea9-ac84-848f0082381f",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:13ac4f3c-c9cd-40de-8b45-4c2660bfc3b6",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:34eb6b3e-f6da-4511-bfdc-16dc4581bd36",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:3cd6d919-867b-475e-b155-92e0ec386879",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:4b60a56d-8496-4d59-b9b0-894eff1b62e0",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:57c2ea79-6ee6-4c67-adf7-82d9ce54075a",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:63cbf914-ea19-4328-a970-ea96b3e7c38d",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:79e0dbeb-7460-47d7-bca3-a120dd003866",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:988de287-9dae-4e2e-93b7-ea572417d62f",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:ac0819c3-ce59-4a1b-9f13-4de72623935f",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:b24a17b5-0943-41ef-a13b-e6e78d0865f3",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:d81a8abb-0c06-4b79-bbda-97d9aa2465d4",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:da066a69-f964-4fb0-8467-724eb773aa90",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:e59b1cd6-1a38-44b2-961b-c5bfd22343ff",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:f077cc99-c432-4cc2-ab35-6c5f1fca0a08",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:f9b1c988-7fb2-4c44-be2b-7a1f9ac741dc"
+        ],
+        "seeded_component_ids": [
+          "component-1df7334963116c38",
+          "component-2ef5b17c61ded60f",
+          "component-307ae5eb5c76dcd1",
+          "component-33fd4c0d00e72722",
+          "component-35d44546be74ed83",
+          "component-453dbdf7df724ac7",
+          "component-45e87f09a7b2677b",
+          "component-4842a5253018cef8",
+          "component-538ff02ec1e8894d",
+          "component-5f2623d86ab0a6f0",
+          "component-66f7c56f1d3908ca",
+          "component-77eb513bad0fd5e5",
+          "component-797a348fa4269127",
+          "component-98e66afd225c8265",
+          "component-990d809eab8449f9",
+          "component-b55f09fbe2f566ad",
+          "component-b867fb7ec6e27e40",
+          "component-d1ad367deb8c509b",
+          "component-d2b6ad97d19d7ea4",
+          "component-ec4083201b0d0e44",
+          "component-f875a34b7c9d0a32",
+          "component-fe87c27fe64ba8d7"
+        ],
+        "closure_relevant_occurrence_ids": [
+          "urn:openrag:openarchiver:attachment:01dc5f1d-4699-4467-a5db-8c6683917c43",
+          "urn:openrag:openarchiver:attachment:124e92b9-cfd2-4045-9a35-f2ec1be1f786",
+          "urn:openrag:openarchiver:attachment:2cf49b73-f16a-42f8-a017-e4472adb6856",
+          "urn:openrag:openarchiver:attachment:2f83d6c5-7659-40ca-96c8-e40ed756c3ee",
+          "urn:openrag:openarchiver:attachment:4a3bd200-156a-4830-8ee5-11731d42ca19",
+          "urn:openrag:openarchiver:attachment:5200e9a0-4b9a-4df8-b260-4ff912eb1e9d",
+          "urn:openrag:openarchiver:attachment:609d5843-428f-4ea9-ac84-848f0082381f",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:13ac4f3c-c9cd-40de-8b45-4c2660bfc3b6",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:34eb6b3e-f6da-4511-bfdc-16dc4581bd36",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:3cd6d919-867b-475e-b155-92e0ec386879",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:4b60a56d-8496-4d59-b9b0-894eff1b62e0",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:57c2ea79-6ee6-4c67-adf7-82d9ce54075a",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:63cbf914-ea19-4328-a970-ea96b3e7c38d",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:79e0dbeb-7460-47d7-bca3-a120dd003866",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:988de287-9dae-4e2e-93b7-ea572417d62f",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:ac0819c3-ce59-4a1b-9f13-4de72623935f",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:b24a17b5-0943-41ef-a13b-e6e78d0865f3",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:d81a8abb-0c06-4b79-bbda-97d9aa2465d4",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:da066a69-f964-4fb0-8467-724eb773aa90",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:e59b1cd6-1a38-44b2-961b-c5bfd22343ff",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:f077cc99-c432-4cc2-ab35-6c5f1fca0a08",
+          "urn:openrag:openarchiver:email:6ca4c5b5-3440-4c50-8666-cecfa25916d5:f9b1c988-7fb2-4c44-be2b-7a1f9ac741dc",
+          "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:30b019f1-ceb6-418b-8917-ae170e53e814",
+          "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:3506bbb8-e525-460f-8617-55cee19d408b",
+          "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:415b23d3-f126-4490-9880-a2ed06732262",
+          "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:4e19718e-68ef-463f-8e16-5092587bfc5d",
+          "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:6af5fd05-6e46-426a-bb56-3174d113e27a",
+          "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:89573f54-42ca-47a9-ab80-5203e19811af",
+          "urn:openrag:openarchiver:email:9e325a3e-b01f-40bf-8890-b400d4e3d7f4:d94f7c98-3a0a-4d87-8f4e-9adf34e94eae"
+        ],
+        "closure_component_ids": [
+          "component-1df7334963116c38",
+          "component-2ef5b17c61ded60f",
+          "component-307ae5eb5c76dcd1",
+          "component-33fd4c0d00e72722",
+          "component-35d44546be74ed83",
+          "component-453dbdf7df724ac7",
+          "component-45e87f09a7b2677b",
+          "component-4842a5253018cef8",
+          "component-538ff02ec1e8894d",
+          "component-5f2623d86ab0a6f0",
+          "component-66f7c56f1d3908ca",
+          "component-77eb513bad0fd5e5",
+          "component-797a348fa4269127",
+          "component-98e66afd225c8265",
+          "component-990d809eab8449f9",
+          "component-b55f09fbe2f566ad",
+          "component-b867fb7ec6e27e40",
+          "component-d1ad367deb8c509b",
+          "component-d2b6ad97d19d7ea4",
+          "component-ec4083201b0d0e44",
+          "component-f875a34b7c9d0a32",
+          "component-fe87c27fe64ba8d7"
+        ],
+        "unclassified_seed_documents": 37,
+        "documents_discovered_after_prov_o": 183,
+        "document_recovery_gain": 7,
+        "document_recovery_multiplier": 1.3181818181818181,
+        "component_recovery_gain": 0,
+        "component_recovery_multiplier": 1.0,
+        "expansion_per_seed_document": 2.259259259259259,
+        "expansion_per_relevant_document_recovered": 6.310344827586207,
+        "coverage": {
+          "complete": true,
+          "status_code": "complete",
+          "failure_codes": [],
+          "documents_discovered": 183,
+          "documents_complete": 183,
+          "covered_chunks": 3269,
+          "total_chunks": 3269,
+          "scope_policy_id": "documentary-prov-o",
+          "scope_policy_version": 1
+        },
+        "total_latency_seconds": 3.2553234479855746
+      }
+    }
+  ],
+  "summaries": {
+    "BROAD": {
+      "1": {
+        "runs": 3,
+        "valid_runs": 3,
+        "invalid_run_ids": [],
+        "generated_query_variants": 1,
+        "seed_jaccard": {
+          "min": 1.0,
+          "mean": 1.0,
+          "max": 1.0
+        },
+        "scope_jaccard": {
+          "min": 1.0,
+          "mean": 1.0,
+          "max": 1.0
+        },
+        "all_run_seed_jaccard": {
+          "min": 1.0,
+          "mean": 1.0,
+          "max": 1.0
+        },
+        "all_run_scope_jaccard": {
+          "min": 1.0,
+          "mean": 1.0,
+          "max": 1.0
+        },
+        "coverage_success_rate": 1.0,
+        "retrieval_execution_success_rate": 1.0,
+        "metrics": {
+          "seed_document_recall": {
+            "min": 0.22857142857142856,
+            "mean": 0.22857142857142856,
+            "max": 0.22857142857142856,
+            "numerator": {
+              "min": 24.0,
+              "mean": 24.0,
+              "max": 24.0
+            },
+            "denominator": 105
+          },
+          "seed_component_recall": {
+            "min": 0.2857142857142857,
+            "mean": 0.2857142857142857,
+            "max": 0.2857142857142857,
+            "numerator": {
+              "min": 24.0,
+              "mean": 24.0,
+              "max": 24.0
+            },
+            "denominator": 84
+          },
+          "post_prov_o_document_recall": {
+            "min": 0.29523809523809524,
+            "mean": 0.29523809523809524,
+            "max": 0.29523809523809524,
+            "numerator": {
+              "min": 31.0,
+              "mean": 31.0,
+              "max": 31.0
+            },
+            "denominator": 105
+          },
+          "post_prov_o_component_recall": {
+            "min": 0.2857142857142857,
+            "mean": 0.2857142857142857,
+            "max": 0.2857142857142857,
+            "numerator": {
+              "min": 24.0,
+              "mean": 24.0,
+              "max": 24.0
+            },
+            "denominator": 84
+          },
+          "precision": {
+            "min": 0.2962962962962963,
+            "mean": 0.2962962962962963,
+            "max": 0.2962962962962963,
+            "numerator": {
+              "min": 24.0,
+              "mean": 24.0,
+              "max": 24.0
+            },
+            "denominator": 81
+          },
+          "expansion_per_seed_document": {
+            "min": 2.259259259259259,
+            "mean": 2.259259259259259,
+            "max": 2.259259259259259
+          },
+          "total_latency_seconds": {
+            "min": 3.174458784982562,
+            "mean": 3.345777395647019,
+            "max": 3.6075499539729208
+          }
+        }
+      }
+    },
+    "STRICT": {
+      "1": {
+        "runs": 3,
+        "valid_runs": 3,
+        "invalid_run_ids": [],
+        "generated_query_variants": 1,
+        "seed_jaccard": {
+          "min": 1.0,
+          "mean": 1.0,
+          "max": 1.0
+        },
+        "scope_jaccard": {
+          "min": 1.0,
+          "mean": 1.0,
+          "max": 1.0
+        },
+        "all_run_seed_jaccard": {
+          "min": 1.0,
+          "mean": 1.0,
+          "max": 1.0
+        },
+        "all_run_scope_jaccard": {
+          "min": 1.0,
+          "mean": 1.0,
+          "max": 1.0
+        },
+        "coverage_success_rate": 1.0,
+        "retrieval_execution_success_rate": 1.0,
+        "metrics": {
+          "seed_document_recall": {
+            "min": 0.4583333333333333,
+            "mean": 0.4583333333333333,
+            "max": 0.4583333333333333,
+            "numerator": {
+              "min": 22.0,
+              "mean": 22.0,
+              "max": 22.0
+            },
+            "denominator": 48
+          },
+          "seed_component_recall": {
+            "min": 0.6666666666666666,
+            "mean": 0.6666666666666666,
+            "max": 0.6666666666666666,
+            "numerator": {
+              "min": 22.0,
+              "mean": 22.0,
+              "max": 22.0
+            },
+            "denominator": 33
+          },
+          "post_prov_o_document_recall": {
+            "min": 0.6041666666666666,
+            "mean": 0.6041666666666666,
+            "max": 0.6041666666666666,
+            "numerator": {
+              "min": 29.0,
+              "mean": 29.0,
+              "max": 29.0
+            },
+            "denominator": 48
+          },
+          "post_prov_o_component_recall": {
+            "min": 0.6666666666666666,
+            "mean": 0.6666666666666666,
+            "max": 0.6666666666666666,
+            "numerator": {
+              "min": 22.0,
+              "mean": 22.0,
+              "max": 22.0
+            },
+            "denominator": 33
+          },
+          "precision": {
+            "min": 0.2716049382716049,
+            "mean": 0.2716049382716049,
+            "max": 0.2716049382716049,
+            "numerator": {
+              "min": 22.0,
+              "mean": 22.0,
+              "max": 22.0
+            },
+            "denominator": 81
+          },
+          "expansion_per_seed_document": {
+            "min": 2.259259259259259,
+            "mean": 2.259259259259259,
+            "max": 2.259259259259259
+          },
+          "total_latency_seconds": {
+            "min": 3.174458784982562,
+            "mean": 3.345777395647019,
+            "max": 3.6075499539729208
+          }
+        }
+      }
+    }
+  },
+  "best_query_count": 1,
+  "all_contracts_valid": true,
+  "validation_evidence": [
+    {
+      "check_id": "product_path_only",
+      "status": "PASS",
+      "observed": true,
+      "expected": true,
+      "evidence_sha256": "52d0ef621d1c41428b829c4c4d69aa39cc6114d7d3df274de7f5ed58bc54e763"
+    },
+    {
+      "check_id": "corpus_identity_stable",
+      "status": "PASS",
+      "observed": false,
+      "expected": false,
+      "evidence_sha256": "167ead9f6309cbd959a3add724b0ae142d576fc69e06efc0b73e702ad7a85f77"
+    },
+    {
+      "check_id": "runtime_behavior_fingerprint_stable",
+      "status": "PASS",
+      "observed": true,
+      "expected": true,
+      "evidence_sha256": "cb66ad06e591344d884b6e3409c67b92a88764a015b4748c0b9b7399207248ea"
+    }
+  ],
+  "historical_comparison": [
+    {
+      "query_count": 1,
+      "metric": "seed_component_recall",
+      "historical": 0.6666666666666666,
+      "product_path_mean": 0.6666666666666666,
+      "delta": 0.0
+    },
+    {
+      "query_count": 1,
+      "metric": "post_prov_o_component_recall",
+      "historical": 0.6666666666666666,
+      "product_path_mean": 0.6666666666666666,
+      "delta": 0.0
+    },
+    {
+      "query_count": 1,
+      "metric": "post_prov_o_document_recall",
+      "historical": 0.6041666666666666,
+      "product_path_mean": 0.6041666666666666,
+      "delta": 0.0
+    },
+    {
+      "query_count": 1,
+      "metric": "precision",
+      "historical": 0.2716049382716049,
+      "product_path_mean": 0.2716049382716049,
+      "delta": 0.0
+    },
+    {
+      "query_count": 1,
+      "metric": "expansion_per_seed_document",
+      "historical": 2.259259259259259,
+      "product_path_mean": 2.259259259259259,
+      "delta": 0.0
+    },
+    {
+      "query_count": 1,
+      "metric": "total_latency_seconds",
+      "historical": 4.122847668011673,
+      "product_path_mean": 3.345777395647019,
+      "delta": -0.7770702723646536
+    },
+    {
+      "query_count": 1,
+      "metric": "seed_component_recall",
+      "historical": 0.6666666666666666,
+      "product_path_mean": 0.6666666666666666,
+      "delta": 0.0
+    },
+    {
+      "query_count": 1,
+      "metric": "post_prov_o_component_recall",
+      "historical": 0.6666666666666666,
+      "product_path_mean": 0.6666666666666666,
+      "delta": 0.0
+    },
+    {
+      "query_count": 1,
+      "metric": "post_prov_o_document_recall",
+      "historical": 0.6041666666666666,
+      "product_path_mean": 0.6041666666666666,
+      "delta": 0.0
+    },
+    {
+      "query_count": 1,
+      "metric": "precision",
+      "historical": 0.2716049382716049,
+      "product_path_mean": 0.2716049382716049,
+      "delta": 0.0
+    },
+    {
+      "query_count": 1,
+      "metric": "expansion_per_seed_document",
+      "historical": 2.259259259259259,
+      "product_path_mean": 2.259259259259259,
+      "delta": 0.0
+    },
+    {
+      "query_count": 1,
+      "metric": "total_latency_seconds",
+      "historical": 4.518826222978532,
+      "product_path_mean": 3.345777395647019,
+      "delta": -1.1730488273315132
+    },
+    {
+      "query_count": 1,
+      "metric": "seed_component_recall",
+      "historical": 0.6666666666666666,
+      "product_path_mean": 0.6666666666666666,
+      "delta": 0.0
+    },
+    {
+      "query_count": 1,
+      "metric": "post_prov_o_component_recall",
+      "historical": 0.6666666666666666,
+      "product_path_mean": 0.6666666666666666,
+      "delta": 0.0
+    },
+    {
+      "query_count": 1,
+      "metric": "post_prov_o_document_recall",
+      "historical": 0.6041666666666666,
+      "product_path_mean": 0.6041666666666666,
+      "delta": 0.0
+    },
+    {
+      "query_count": 1,
+      "metric": "precision",
+      "historical": 0.2716049382716049,
+      "product_path_mean": 0.2716049382716049,
+      "delta": 0.0
+    },
+    {
+      "query_count": 1,
+      "metric": "expansion_per_seed_document",
+      "historical": 2.259259259259259,
+      "product_path_mean": 2.259259259259259,
+      "delta": 0.0
+    },
+    {
+      "query_count": 1,
+      "metric": "total_latency_seconds",
+      "historical": 5.105203022016212,
+      "product_path_mean": 3.345777395647019,
+      "delta": -1.7594256263691932
+    }
+  ],
+  "q4_gain_vs_q1": null
+}
