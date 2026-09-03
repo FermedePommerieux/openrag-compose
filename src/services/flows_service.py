@@ -213,6 +213,11 @@ _PREVIOUS_VERSIONED_METADATA_TOOL_REBUILD_MANAGED_GRAPH_SHA256 = (
 _PREVIOUS_VERSIONED_METADATA_TOOL_ANNOTATION_MANAGED_GRAPH_SHA256 = (
     "b29834a3e46a78be16448f58a82f2d6563971a1430ce7acb597d349431df9fac"
 )
+# Exact v15 eager-schema graph before the Agent-facing tool became a
+# zero-argument trigger for the signed deterministic plan.
+_PREVIOUS_VERSIONED_METADATA_TOOL_EAGER_MANAGED_GRAPH_SHA256 = (
+    "ebdcedb178d9cbe4eb7fb569df4d8bf9500794ce99e564a6e5a89cf8aeca1b6c"
+)
 
 
 class FlowsService:
@@ -1648,6 +1653,7 @@ class FlowsService:
                     _PREVIOUS_VERSIONED_METADATA_TOOL_MANAGED_GRAPH_SHA256,
                     _PREVIOUS_VERSIONED_METADATA_TOOL_REBUILD_MANAGED_GRAPH_SHA256,
                     _PREVIOUS_VERSIONED_METADATA_TOOL_ANNOTATION_MANAGED_GRAPH_SHA256,
+                    _PREVIOUS_VERSIONED_METADATA_TOOL_EAGER_MANAGED_GRAPH_SHA256,
                 }
             )
         if marker not in {6, 7, 8, 9, 10, 11, 12}:

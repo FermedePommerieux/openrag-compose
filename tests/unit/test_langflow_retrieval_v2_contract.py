@@ -11,7 +11,6 @@ import json
 import sys
 import types
 from pathlib import Path
-from typing import get_args
 
 from utils.langflow_utils import parse_knowledge_chunks
 
@@ -100,7 +99,7 @@ def test_backend_retrieval_tool_is_thin_and_embedded_verbatim():
     assert "reciprocal_rank_fusion" not in code
     assert 'headers["Authorization"]' in code
     assert "document_search_with_metadata" in code
-    assert "MetadataToolQuery" in code
+    assert "MetadataToolInvocation" in code
     assert "from __future__ import annotations" not in code
 
 
@@ -159,19 +158,16 @@ def _load_component_with_langflow_stubs(monkeypatch):
     return module
 
 
-def test_metadata_tool_schema_resolves_in_unregistered_dynamic_module(monkeypatch):
-    """Mirror Langflow's dynamic source evaluation without an importable module."""
+def test_metadata_tool_schema_is_zero_argument_in_unregistered_dynamic_module(monkeypatch):
+    """Mirror Langflow evaluation and prove the Agent cannot rewrite the plan."""
     _load_component_with_langflow_stubs(monkeypatch)
     namespace = {"__name__": "langflow_dynamic_openrag_component"}
 
     exec(COMPONENT_PATH.read_text(encoding="utf-8"), namespace)
 
-    schema = namespace["MetadataToolQuery"].model_json_schema()
-    annotation = namespace["MetadataToolQuery"].model_fields["filters"].annotation
-    assert get_args(annotation)[0] is namespace["MetadataToolFilter"]
-    assert schema["properties"]["filters"]["items"]["$ref"].endswith(
-        "/MetadataToolFilter"
-    )
+    schema = namespace["MetadataToolInvocation"].model_json_schema()
+    assert schema["properties"] == {}
+    assert schema["additionalProperties"] is False
 
 
 def test_backend_tool_forwards_request_and_preserves_provenance(monkeypatch):
@@ -374,7 +370,7 @@ def test_backend_tool_forwards_exhaustive_cursor_and_coverage(monkeypatch):
     tool = module.OpenRAGBackendRetrievalComponent.__new__(module.OpenRAGBackendRetrievalComponent)
     tool.openrag_retrieval_url = "http://openrag-backend:8000/search"
     tool.jwt_token = "user-jwt"
-    tool.filter_expression = ""
+    tool.filter_expression = json.dumps({"limit": 6})
     tool.number_of_results = 10
 
     built_tool = tool.build_tool()
@@ -601,25 +597,13 @@ def test_metadata_tool_forwards_only_the_exact_deterministic_plan(monkeypatch):
     tool.number_of_results = 10
 
     built = tool.build_metadata_tool()
-    assert "MetadataToolFilter" not in str(inspect.signature(built["func"]))
-    content, artifact = built["func"](
-        "factures Orange",
-        filters=[
-            {"field": "format_family", "operator": "EQUAL", "value": "pdf"},
-            {
-                "field": "production_month",
-                "operator": "EQUAL",
-                "value": "2024-03",
-                "calendar_basis": "SOURCE_LOCAL",
-            },
-        ],
-        limit=6,
-    )
+    assert list(inspect.signature(built["func"]).parameters) == []
+    content, artifact = built["func"]()
 
     assert captured["url"] == "http://openrag-backend:8000/search/metadata-agent"
     assert captured["headers"] == {"Authorization": "Bearer user-jwt"}
     assert captured["payload"]["free_text"] == "factures Orange"
-    assert captured["payload"]["limit"] == 6
+    assert captured["payload"]["limit"] == 10
     compact = json.loads(content)
     assert compact["metadata_agent"]["eligible_visible_occurrence_count"] == 1
     assert "visible_projection_count" not in compact["metadata_agent"]
@@ -627,7 +611,7 @@ def test_metadata_tool_forwards_only_the_exact_deterministic_plan(monkeypatch):
     assert "<<<UNTRUSTED_DOC_CHUNK>>>" in artifact[0]["text"]
 
 
-def test_metadata_tool_rejects_agent_filter_drift_without_http(monkeypatch):
+def test_metadata_tool_exposes_no_agent_filter_arguments(monkeypatch):
     module = _load_component_with_langflow_stubs(monkeypatch)
     tool = module.OpenRAGBackendRetrievalComponent.__new__(module.OpenRAGBackendRetrievalComponent)
     tool.openrag_retrieval_url = "http://openrag-backend:8000/search"
@@ -637,13 +621,8 @@ def test_metadata_tool_rejects_agent_filter_drift_without_http(monkeypatch):
     tool.number_of_results = 10
 
     built = tool.build_metadata_tool()
-    content, artifact = built["func"](
-        "documents",
-        filters=[{"field": "format_family", "operator": "EQUAL", "value": "docx"}],
-    )
-
-    assert artifact == []
-    assert json.loads(content)["metadata_agent"]["error"] == "AGENT_PLAN_MISMATCH"
+    assert list(inspect.signature(built["func"]).parameters) == []
+    assert built["args_schema"].model_json_schema()["properties"] == {}
 
 
 def test_ambiguous_plan_runs_neither_normal_nor_metadata_search(monkeypatch):
@@ -656,10 +635,7 @@ def test_ambiguous_plan_runs_neither_normal_nor_metadata_search(monkeypatch):
     tool.number_of_results = 10
 
     normal_content, _ = tool.build_tool()["func"]("documents de mars")
-    metadata_content, _ = tool.build_metadata_tool()["func"](
-        "documents",
-        filters=[{"field": "format_family", "operator": "EQUAL", "value": "pdf"}],
-    )
+    metadata_content, _ = tool.build_metadata_tool()["func"]()
 
     assert json.loads(normal_content)["metadata_agent"]["status"] == "AMBIGUOUS"
     assert json.loads(metadata_content)["metadata_agent"]["status"] == "AMBIGUOUS"

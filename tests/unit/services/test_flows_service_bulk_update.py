@@ -504,6 +504,22 @@ def _previous_annotation_retrieval_v15_flow() -> dict:
     return flow
 
 
+def _previous_eager_retrieval_v15_flow() -> dict:
+    """Load v15 before the signed plan became the zero-argument tool input."""
+    raw = subprocess.check_output(
+        [
+            "git",
+            "show",
+            "cea033d058adecb693418865483694425aa05854:flows/openrag_agent.json",
+        ],
+        cwd=ROOT,
+        text=True,
+    )
+    flow = json.loads(raw)
+    flow["data"]["openrag_retrieval_version"] = 15
+    return flow
+
+
 def _previous_bundled_retrieval_flow() -> dict:
     """Load the pre-documentalist bundled graph for historical migrations."""
     flow = _versioned_retrieval_v5_flow()
@@ -1246,7 +1262,9 @@ async def test_migrate_exact_version_15_dynamic_function_annotation_repair():
         for node in transport.flow["data"]["nodes"]
         if node.get("data", {}).get("node", {}).get("display_name") == "OpenRAG Retrieval v2"
     )
-    assert "filters: list[dict]" in retrieval["data"]["node"]["template"]["code"]["value"]
+    assert "def document_search_with_metadata()" in (
+        retrieval["data"]["node"]["template"]["code"]["value"]
+    )
 
 
 @pytest.mark.asyncio
@@ -1271,6 +1289,30 @@ async def test_migrate_exact_version_15_eager_pydantic_annotation_repair():
     )
     code = retrieval["data"]["node"]["template"]["code"]["value"]
     assert "from __future__ import annotations" not in code
+
+
+@pytest.mark.asyncio
+async def test_migrate_exact_version_15_zero_argument_plan_tool():
+    service = FlowsService()
+    transport = _RetrievalMigrationTransport()
+    transport.flow = _previous_eager_retrieval_v15_flow()
+
+    with (
+        patch("services.flows_service.clients.langflow_request", side_effect=transport.__call__),
+        patch.object(
+            service, "_backup_flow", new_callable=AsyncMock, return_value="/tmp/flow.json"
+        ),
+    ):
+        result = await service.migrate_persisted_retrieval_flow()
+
+    assert result["status"] == "migrated"
+    retrieval = next(
+        node
+        for node in transport.flow["data"]["nodes"]
+        if node.get("data", {}).get("node", {}).get("display_name") == "OpenRAG Retrieval v2"
+    )
+    code = retrieval["data"]["node"]["template"]["code"]["value"]
+    assert "def document_search_with_metadata()" in code
 
 
 @pytest.mark.asyncio

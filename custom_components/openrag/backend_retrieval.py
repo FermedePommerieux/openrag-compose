@@ -7,14 +7,14 @@ OpenSearch query logic so the chat agent cannot drift from ``SearchService``.
 
 import hashlib
 import json
-from typing import Any, Literal
+from typing import Any
 
 import httpx
 from langchain_core.tools import StructuredTool
 from lfx.base.langchain_utilities.model import LCToolComponent
 from lfx.io import IntInput, MultilineInput, Output, SecretStrInput, StrInput
 from lfx.schema.data import Data
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict
 
 UNTRUSTED_CHUNK_FENCE_START = "<<<UNTRUSTED_DOC_CHUNK>>>"
 UNTRUSTED_CHUNK_FENCE_END = "<<<END_UNTRUSTED_DOC_CHUNK>>>"
@@ -22,89 +22,12 @@ RETRIEVAL_GUARD_METADATA_KEY = "openrag_retrieval_guard"
 METADATA_TOOL_SCHEMA_ID = "openrag.metadata-agent-search"
 METADATA_TOOL_SCHEMA_VERSION = 1
 METADATA_TOOL_NAME = "document_search_with_metadata"
-MAX_METADATA_TOOL_FILTERS = 8
-MAX_METADATA_TOOL_IN_VALUES = 16
-MAX_METADATA_TOOL_FREE_TEXT = 512
 MAX_METADATA_TOOL_RESULTS = 20
 
-MetadataToolField = Literal[
-    "production_day",
-    "production_month",
-    "production_year",
-    "modification_day",
-    "modification_month",
-    "modification_year",
-    "mime",
-    "format_family",
-    "extension",
-    "source_document_type",
-    "source_system",
-    "source_entity_type",
-    "source_entity_family",
-    "parent_collection",
-    "connector",
-    "creator_observation",
-    "last_modifier_observation",
-    "producer_observation",
-    "creator_application_observation",
-    "binary_sha256",
-    "has_temporal_conflict",
-    "has_metadata_conflict",
-]
-MetadataToolOperator = Literal["EQUAL", "IN", "EXISTS", "NOT_EXISTS", "NOT_EQUAL"]
+class MetadataToolInvocation(BaseModel):
+    """Zero-argument trigger; the signed backend plan owns every query value."""
 
-
-class MetadataToolFilter(BaseModel):
     model_config = ConfigDict(extra="forbid")
-
-    field: MetadataToolField
-    operator: MetadataToolOperator
-    value: str | list[str] | None = None
-    calendar_basis: Literal["SOURCE_LOCAL", "UTC"] | None = None
-
-    @model_validator(mode="after")
-    def validate_shape(self) -> "MetadataToolFilter":
-        temporal = self.field.startswith(("production_", "modification_"))
-        if temporal != (self.calendar_basis is not None):
-            raise ValueError("temporal filters require calendar_basis; other filters forbid it")
-        if self.operator in {"EXISTS", "NOT_EXISTS"}:
-            if self.value is not None:
-                raise ValueError(f"{self.operator} does not accept a value")
-        elif self.operator == "IN":
-            if not isinstance(self.value, list) or not self.value:
-                raise ValueError("IN requires a non-empty string array")
-            if len(self.value) > MAX_METADATA_TOOL_IN_VALUES:
-                raise ValueError(f"IN supports at most {MAX_METADATA_TOOL_IN_VALUES} values")
-            if any(not isinstance(item, str) or not item.strip() for item in self.value):
-                raise ValueError("IN values must be non-blank strings")
-        elif not isinstance(self.value, str) or not self.value.strip():
-            raise ValueError(f"{self.operator} requires one non-blank string value")
-        values = self.value if isinstance(self.value, list) else [self.value]
-        if any(isinstance(item, str) and len(item) > 256 for item in values):
-            raise ValueError("metadata values must not exceed 256 characters")
-        return self
-
-    def canonical_payload(self) -> dict[str, Any]:
-        payload = self.model_dump(mode="json", exclude_none=True)
-        if self.operator == "IN":
-            payload["value"] = sorted(set(payload["value"]))
-        return payload
-
-
-class MetadataToolQuery(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    free_text: str = Field(min_length=1, max_length=MAX_METADATA_TOOL_FREE_TEXT)
-    filters: list[MetadataToolFilter] = Field(
-        min_length=1, max_length=MAX_METADATA_TOOL_FILTERS
-    )
-    limit: int = Field(default=10, ge=1, le=MAX_METADATA_TOOL_RESULTS)
-
-    @model_validator(mode="after")
-    def reject_blank_query(self) -> "MetadataToolQuery":
-        if not self.free_text.strip():
-            raise ValueError("free_text must not be blank")
-        return self
 
 
 # Tool artifacts feed OpenRAG's source cards. For scope-exhaustive retrieval the
@@ -680,12 +603,8 @@ class OpenRAGBackendRetrievalComponent(LCToolComponent):
         plan = self._metadata_plan()
         filters, context_limit, score_threshold = self._request_context()
 
-        def document_search_with_metadata(
-            free_text: str,
-            filters: list[dict],
-            limit: int = 10,
-        ) -> tuple[str, list[dict[str, Any]]]:
-            """Search with an exact, bounded metadata plan validated by OpenRAG."""
+        def document_search_with_metadata() -> tuple[str, list[dict[str, Any]]]:
+            """Execute the exact signed metadata plan supplied by OpenRAG."""
             blocked = self._planner_result(plan, normal_tool=False)
             if blocked is not None:
                 return json.dumps(blocked, ensure_ascii=False), []
@@ -701,26 +620,13 @@ class OpenRAGBackendRetrievalComponent(LCToolComponent):
                 }
                 return json.dumps(payload, ensure_ascii=False), []
 
-            query = MetadataToolQuery(free_text=free_text, filters=filters, limit=limit)
-            supplied_filters = sorted(
-                (item.canonical_payload() for item in query.filters),
+            planned_free_text = str(plan.get("free_text") or "").strip()
+            planned_filters = sorted(
+                (dict(item) for item in plan.get("filters") or [] if isinstance(item, dict)),
                 key=lambda value: json.dumps(value, sort_keys=True, separators=(",", ":")),
             )
-            expected_filters = sorted(
-                plan.get("filters") or [],
-                key=lambda value: json.dumps(value, sort_keys=True, separators=(",", ":")),
-            )
-            if query.free_text.strip() != str(plan.get("free_text") or "").strip() or supplied_filters != expected_filters:
-                payload = {
-                    "metadata_agent": {
-                        "status": "INVALID",
-                        "error": "AGENT_PLAN_MISMATCH",
-                        "ambiguous_constraints": [],
-                        "unsupported_constraints": [],
-                    },
-                    "results": [],
-                }
-                return json.dumps(payload, ensure_ascii=False), []
+            if not planned_free_text or not planned_filters:
+                raise ValueError("OpenRAG metadata plan is missing its bounded query")
 
             url = _as_text(getattr(self, "openrag_retrieval_url", ""))
             if not url or url == "OPENRAG_RETRIEVAL_URL":
@@ -731,9 +637,9 @@ class OpenRAGBackendRetrievalComponent(LCToolComponent):
             if jwt:
                 headers["Authorization"] = jwt if jwt.lower().startswith("bearer ") else f"Bearer {jwt}"
             request_body: dict[str, Any] = {
-                "free_text": query.free_text.strip(),
-                "filters": supplied_filters,
-                "limit": query.limit,
+                "free_text": planned_free_text,
+                "filters": planned_filters,
+                "limit": min(MAX_METADATA_TOOL_RESULTS, max(1, context_limit)),
                 "schema_id": METADATA_TOOL_SCHEMA_ID,
                 "schema_version": METADATA_TOOL_SCHEMA_VERSION,
             }
@@ -757,17 +663,15 @@ class OpenRAGBackendRetrievalComponent(LCToolComponent):
             func=document_search_with_metadata,
             name=METADATA_TOOL_NAME,
             description=(
-                "Search documents using explicit OpenRAG metadata constraints. Use it only when "
+                "Execute the exact signed OpenRAG metadata plan for this request. This tool takes "
+                "no arguments: never infer, restate, or alter its free text or filters. Use it when "
                 "the request contains a technical format, production/modification calendar, "
-                "source-system, creator, or other declared metadata constraint. Copy the semantic "
-                "free text and strict field/operator/value filters exactly; temporal filters must "
-                "state SOURCE_LOCAL (the default natural-language calendar) or UTC. Never invent "
-                "a year, identity, source relation, document genre, raw OpenSearch/Lucene query, "
-                "range, or unsupported operator. An AMBIGUOUS or UNSUPPORTED result means no search "
-                "ran and must be explained or clarified. Metadata matches mean at least one valid "
-                "metadata observation matched; they are not unconditional facts about a document."
+                "source-system, creator, or another declared metadata constraint. An AMBIGUOUS or "
+                "UNSUPPORTED result means no search ran and must be explained or clarified. "
+                "Metadata matches mean at least one valid metadata observation matched; they are "
+                "not unconditional facts about a document."
             ),
-            args_schema=MetadataToolQuery,
+            args_schema=MetadataToolInvocation,
             response_format="content_and_artifact",
             metadata=_retrieval_guard_metadata(filters, min(context_limit, 20), score_threshold),
         )
