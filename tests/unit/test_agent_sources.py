@@ -147,7 +147,10 @@ def test_streamed_metadata_tool_artifact_becomes_clickable_frontend_source():
     chunk = {
         "type": "response.output_item.done",
         "item": {
-            "type": "tool_call",
+            # Langflow's live Responses stream emits this tool as a
+            # ``function_call`` even though history normalizes it to
+            # ``tool_call``. Both transport variants must expose sources.
+            "type": "function_call",
             "tool_name": "document_search_with_metadata",
             "results": json.dumps(
                 {
