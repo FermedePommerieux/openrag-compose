@@ -1,3 +1,4 @@
+import json
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -71,6 +72,10 @@ async def test_langflow_chat_passes_owner_metadata(monkeypatch):
     assert headers["X-Langflow-Global-Var-OPENRAG_QUERY_FILTER"] == (
         '{"filters": {"data_sources": ["archive.pdf"]}, "limit": 4, "scoreThreshold": 0.25}'
     )
+    metadata_plan = json.loads(headers["X-Langflow-Global-Var-OPENRAG_METADATA_PLAN"])
+    assert metadata_plan["status"] == "VALID"
+    assert metadata_plan["requires_metadata_search"] is False
+    assert len(metadata_plan["plan_sha256"]) == 64
 
 
 @pytest.mark.asyncio

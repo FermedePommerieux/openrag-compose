@@ -42,6 +42,10 @@ def test_default_agent_uses_only_backend_retrieval_tool():
         "OpenSearchVectorStoreComponentMultimodalMultiEmbedding" not in edge.get("source", "")
         for edge in tool_edges
     )
+    retrieval_edges = [edge for edge in tool_edges if edge.get("source") == retrieval["id"]]
+    assert {
+        edge["data"]["sourceHandle"]["name"] for edge in retrieval_edges
+    } == {"component_as_tool", "metadata_search_tool"}
 
 
 def test_default_agent_uses_versioned_documentalist_prompt():
@@ -94,6 +98,17 @@ def test_backend_retrieval_tool_is_thin_and_embedded_verbatim():
     assert "from opensearch" not in code.lower()
     assert "reciprocal_rank_fusion" not in code
     assert 'headers["Authorization"]' in code
+    assert "document_search_with_metadata" in code
+    assert "MetadataToolQuery" in code
+
+
+def _metadata_plan_header(query: str) -> str:
+    from services.metadata_query_planner import plan_metadata_query
+
+    plan = plan_metadata_query(query)
+    payload = plan.canonical_payload()
+    payload["plan_sha256"] = plan.calculate_sha256()
+    return json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
 
 
 def _load_component_with_langflow_stubs(monkeypatch):
@@ -492,3 +507,141 @@ def test_explicit_scope_investigation_routes_to_scope_exhaustive(monkeypatch):
         "stop_reason": "max_depth",
     }
     assert compact["documents"] == [{"document_id": "document-42"}]
+
+
+def test_normal_tool_refuses_to_broaden_a_metadata_request(monkeypatch):
+    module = _load_component_with_langflow_stubs(monkeypatch)
+    tool = module.OpenRAGBackendRetrievalComponent.__new__(module.OpenRAGBackendRetrievalComponent)
+    tool.openrag_retrieval_url = "http://openrag-backend:8000/search"
+    tool.jwt_token = "user-jwt"
+    tool.filter_expression = ""
+    tool.metadata_plan = _metadata_plan_header("les PDF de mars 2024")
+    tool.number_of_results = 10
+
+    built = tool.build_tool()
+    content, artifact = built["func"]("les PDF de mars 2024")
+
+    assert artifact == []
+    assert json.loads(content)["metadata_agent"] == {
+        "status": "VALID",
+        "error": "METADATA_TOOL_REQUIRED",
+        "ambiguous_constraints": [],
+        "unsupported_constraints": [],
+    }
+
+
+def test_metadata_tool_forwards_only_the_exact_deterministic_plan(monkeypatch):
+    module = _load_component_with_langflow_stubs(monkeypatch)
+    captured: dict = {}
+
+    class _Response:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "results": [
+                    {
+                        "chunk_id": "visible-chunk",
+                        "document_id": "visible-document",
+                        "filename": "invoice.pdf",
+                        "text": "visible evidence",
+                    }
+                ],
+                "metadata_agent": {
+                    "status": "VALID",
+                    "interpreted_filters": captured["payload"]["filters"],
+                    "effective_filters": captured["payload"]["filters"],
+                    "unsupported_constraints": [],
+                    "ambiguous_constraints": [],
+                    "eligible_visible_occurrence_count": 1,
+                    "filter_latency_seconds": 0.003,
+                    "calendar_default": "SOURCE_LOCAL",
+                    "truth_semantics": "matching_valid_observation",
+                },
+            }
+
+    class _Client:
+        def __init__(self, **_kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def post(self, url, *, headers, json):
+            captured.update(url=url, headers=headers, payload=json)
+            return _Response()
+
+    monkeypatch.setattr(module.httpx, "Client", _Client)
+    tool = module.OpenRAGBackendRetrievalComponent.__new__(module.OpenRAGBackendRetrievalComponent)
+    tool.openrag_retrieval_url = "http://openrag-backend:8000/search"
+    tool.jwt_token = "user-jwt"
+    tool.filter_expression = ""
+    tool.metadata_plan = _metadata_plan_header("factures Orange PDF de mars 2024")
+    tool.number_of_results = 10
+
+    built = tool.build_metadata_tool()
+    content, artifact = built["func"](
+        "factures Orange",
+        filters=[
+            {"field": "format_family", "operator": "EQUAL", "value": "pdf"},
+            {
+                "field": "production_month",
+                "operator": "EQUAL",
+                "value": "2024-03",
+                "calendar_basis": "SOURCE_LOCAL",
+            },
+        ],
+        limit=6,
+    )
+
+    assert captured["url"] == "http://openrag-backend:8000/search/metadata-agent"
+    assert captured["headers"] == {"Authorization": "Bearer user-jwt"}
+    assert captured["payload"]["free_text"] == "factures Orange"
+    assert captured["payload"]["limit"] == 6
+    compact = json.loads(content)
+    assert compact["metadata_agent"]["eligible_visible_occurrence_count"] == 1
+    assert "visible_projection_count" not in compact["metadata_agent"]
+    assert artifact[0]["chunk_id"] == "visible-chunk"
+    assert "<<<UNTRUSTED_DOC_CHUNK>>>" in artifact[0]["text"]
+
+
+def test_metadata_tool_rejects_agent_filter_drift_without_http(monkeypatch):
+    module = _load_component_with_langflow_stubs(monkeypatch)
+    tool = module.OpenRAGBackendRetrievalComponent.__new__(module.OpenRAGBackendRetrievalComponent)
+    tool.openrag_retrieval_url = "http://openrag-backend:8000/search"
+    tool.jwt_token = "user-jwt"
+    tool.filter_expression = ""
+    tool.metadata_plan = _metadata_plan_header("les PDF de mars 2024")
+    tool.number_of_results = 10
+
+    built = tool.build_metadata_tool()
+    content, artifact = built["func"](
+        "documents",
+        filters=[{"field": "format_family", "operator": "EQUAL", "value": "docx"}],
+    )
+
+    assert artifact == []
+    assert json.loads(content)["metadata_agent"]["error"] == "AGENT_PLAN_MISMATCH"
+
+
+def test_ambiguous_plan_runs_neither_normal_nor_metadata_search(monkeypatch):
+    module = _load_component_with_langflow_stubs(monkeypatch)
+    tool = module.OpenRAGBackendRetrievalComponent.__new__(module.OpenRAGBackendRetrievalComponent)
+    tool.openrag_retrieval_url = "http://openrag-backend:8000/search"
+    tool.jwt_token = "user-jwt"
+    tool.filter_expression = ""
+    tool.metadata_plan = _metadata_plan_header("les documents de mars")
+    tool.number_of_results = 10
+
+    normal_content, _ = tool.build_tool()["func"]("documents de mars")
+    metadata_content, _ = tool.build_metadata_tool()["func"](
+        "documents",
+        filters=[{"field": "format_family", "operator": "EQUAL", "value": "pdf"}],
+    )
+
+    assert json.loads(normal_content)["metadata_agent"]["status"] == "AMBIGUOUS"
+    assert json.loads(metadata_content)["metadata_agent"]["status"] == "AMBIGUOUS"

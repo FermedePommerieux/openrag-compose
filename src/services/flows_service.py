@@ -36,7 +36,7 @@ _LEGACY_RETRIEVAL_COMPONENT = (
     "ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra"
 )
 _BACKEND_RETRIEVAL_COMPONENT = "ext:openrag:OpenRAGBackendRetrievalComponent@extra"
-_RETRIEVAL_FLOW_MIGRATION_VERSION = 14
+_RETRIEVAL_FLOW_MIGRATION_VERSION = 15
 _LEGACY_SYSTEM_FLOW_ID = "1098eea1-6649-4e1d-aed1-b77249fb8dd0"
 # These fields are rewritten by OpenRAG's settings synchronization and by
 # Langflow's provider refresh endpoint. Their values and option lists are
@@ -177,6 +177,15 @@ _PREVIOUS_VERSIONED_FAIL_CLOSED_GRAPH_SHA256 = (
 )
 _PREVIOUS_VERSIONED_FAIL_CLOSED_MANAGED_GRAPH_SHA256 = (
     "1aa6efbb51bcd2387d27021b1dbe6ce6047df7754533ed3434ac8ec10b3c0ff7"
+)
+# Exact and settings-normalized fingerprints of the deployed Retrieval v2
+# version 14 graph. They authorize only the bounded metadata-tool addition;
+# prompt/model/provider values remain WorkspaceConfigService-owned.
+_PREVIOUS_VERSIONED_METADATA_BASELINE_GRAPH_SHA256 = (
+    "9c807bd4d862933eb24b8dedd4fdeb9c63aeb02646f14aebd8453afbcd0c5ae6"
+)
+_PREVIOUS_VERSIONED_METADATA_BASELINE_MANAGED_GRAPH_SHA256 = (
+    "58554de842a543b1fbf47345e61081b0686292536e7664851cfe28756f58976d"
 )
 
 
@@ -1588,6 +1597,8 @@ class FlowsService:
             if marker == 12
             else {_PREVIOUS_VERSIONED_FAIL_CLOSED_GRAPH_SHA256}
             if marker == 13
+            else {_PREVIOUS_VERSIONED_METADATA_BASELINE_GRAPH_SHA256}
+            if marker == 14
             else set()
         )
         exact_match = self._graph_fingerprint(flow_data) in expected
@@ -1596,6 +1607,12 @@ class FlowsService:
                 exact_match
                 or self._managed_behavior_normalized_graph_fingerprint(flow_data)
                 == _PREVIOUS_VERSIONED_FAIL_CLOSED_MANAGED_GRAPH_SHA256
+            )
+        if marker == 14:
+            return (
+                exact_match
+                or self._managed_behavior_normalized_graph_fingerprint(flow_data)
+                == _PREVIOUS_VERSIONED_METADATA_BASELINE_MANAGED_GRAPH_SHA256
             )
         if marker not in {6, 7, 8, 9, 10, 11, 12}:
             return exact_match

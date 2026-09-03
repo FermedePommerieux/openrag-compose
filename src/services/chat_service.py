@@ -174,8 +174,23 @@ class ChatService:
             limit=filter_expression["limit"],
         )
         extra_headers["X-Langflow-Global-Var-OPENRAG_QUERY_FILTER"] = json.dumps(filter_expression)
+        from services.metadata_query_planner import plan_metadata_query
+
+        metadata_plan = plan_metadata_query(prompt)
+        metadata_plan_payload = metadata_plan.canonical_payload()
+        metadata_plan_payload["plan_sha256"] = metadata_plan.calculate_sha256()
+        extra_headers["X-Langflow-Global-Var-OPENRAG_METADATA_PLAN"] = json.dumps(
+            metadata_plan_payload,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
         logger.info(
-            "[CHAT] Langflow chat request", stream=stream, filters_applied=bool(filter_expression)
+            "[CHAT] Langflow chat request",
+            stream=stream,
+            filters_applied=bool(filter_expression),
+            metadata_plan_status=metadata_plan.status.value,
+            metadata_filter_count=len(metadata_plan.filters),
         )
         # Ensure the Langflow client exists; try lazy init if needed
         langflow_client = await clients.ensure_langflow_client()

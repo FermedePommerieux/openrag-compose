@@ -9,6 +9,7 @@ from dependencies import (
     get_session_manager,
     require_permission,
 )
+from models.metadata_agent_search import MetadataAgentQuery, compile_agent_query
 from models.metadata_filter import MetadataFilter
 from session_manager import User
 from utils.logging_config import get_logger
@@ -127,3 +128,63 @@ async def search(
             return JSONResponse({"error": error_msg}, status_code=403)
         else:
             return JSONResponse({"error": error_msg}, status_code=500)
+
+
+async def metadata_agent_search(
+    body: MetadataAgentQuery,
+    search_service=Depends(get_search_service),
+    user: User = Depends(require_permission("search:use")),
+):
+    """Execute the strict Agent schema through the existing DLS search path."""
+    try:
+        metadata_filter = compile_agent_query(body)
+        result = await search_service.search(
+            body.free_text.strip(),
+            user_id=user.user_id,
+            jwt_token=user.jwt_token,
+            filters={},
+            limit=body.limit,
+            score_threshold=0,
+            evidence_mode="scope_exhaustive",
+            metadata_filter=metadata_filter,
+        )
+        raw_diagnostics = result.get("metadata_filter")
+        result = project_scope_exhaustive_for_langflow(result)
+        result["results"] = list(result.get("results") or [])[: body.limit]
+        result["documents"] = list(result.get("documents") or [])[: body.limit]
+        if isinstance(raw_diagnostics, dict):
+            result["metadata_filter"] = raw_diagnostics
+        diagnostics = raw_diagnostics if isinstance(raw_diagnostics, dict) else {}
+        result["metadata_agent"] = {
+            "status": "VALID",
+            "schema_id": body.schema_id,
+            "schema_version": body.schema_version,
+            "interpreted_filters": [item.canonical_payload() for item in body.filters],
+            "effective_filters": [item.canonical_payload() for item in body.filters],
+            "unsupported_constraints": [],
+            "ambiguous_constraints": [],
+            "eligible_visible_occurrence_count": diagnostics.get("eligible_count", 0),
+            "filter_latency_seconds": diagnostics.get("resolution_seconds", 0.0),
+            "calendar_default": "SOURCE_LOCAL",
+            "truth_semantics": "matching_valid_observation",
+        }
+        return JSONResponse(result, status_code=200)
+    except ValueError as exc:
+        return JSONResponse(
+            {
+                "metadata_agent": {
+                    "status": "INVALID",
+                    "unsupported_constraints": [],
+                    "ambiguous_constraints": [],
+                    "error": str(exc),
+                }
+            },
+            status_code=400,
+        )
+    except OpenSearchDiskSpaceError:
+        return JSONResponse({"error": DISK_SPACE_ERROR_MESSAGE}, status_code=507)
+    except Exception as exc:
+        error_msg = str(exc)
+        if "AuthenticationException" in error_msg or "access denied" in error_msg.lower():
+            return JSONResponse({"error": error_msg}, status_code=403)
+        return JSONResponse({"error": error_msg}, status_code=500)

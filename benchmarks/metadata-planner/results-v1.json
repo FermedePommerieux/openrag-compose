@@ -1,0 +1,21 @@
+{
+  "schema": "openrag.metadata-planner-benchmark-result",
+  "version": 1,
+  "planner_mode": "DETERMINISTIC_ONLY",
+  "cases": 45,
+  "exact_parse_accuracy": 1.0,
+  "false_positive_filter_rate": 0.0,
+  "false_negative_filter_rate": 0.0,
+  "unsupported_accuracy": 1.0,
+  "ambiguity_accuracy": 1.0,
+  "free_text_preservation": 1.0,
+  "planner_latency_ms": {
+    "mean": 0.043913799001731806,
+    "p50": 0.02245799987576902,
+    "p95": 0.08633299148641527,
+    "max": 0.8314580045407638
+  },
+  "llm_calls": 0,
+  "additional_model_tokens": 0,
+  "failures": []
+}

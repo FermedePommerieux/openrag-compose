@@ -8,6 +8,7 @@ client for side-index resolution and retrieval defense in depth.
 from __future__ import annotations
 
 import copy
+import time
 from collections.abc import Awaitable, Callable, Iterable
 from typing import Any
 
@@ -136,6 +137,7 @@ async def resolve_metadata_candidates(
     page_size: int = METADATA_CANDIDATE_PAGE_SIZE,
 ) -> MetadataCandidateRestriction:
     """Resolve only TRUE rows through a DLS-scoped side-index client."""
+    started = time.perf_counter()
     predicate_count = validate_metadata_filter_complexity(metadata_filter)
     bounded_page = min(METADATA_CANDIDATE_PAGE_SIZE, max(1, int(page_size)))
     query = compile_metadata_filter_to_opensearch(
@@ -187,6 +189,7 @@ async def resolve_metadata_candidates(
             visible_projection_count=visible_projection_count,
             eligible_count=len(ordered),
             pages=pages,
+            resolution_seconds=time.perf_counter() - started,
         ),
     )
 

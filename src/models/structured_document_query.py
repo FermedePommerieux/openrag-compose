@@ -61,6 +61,7 @@ class MetadataCandidateDiagnostics(BaseModel):
     eligible_count: int = Field(ge=0)
     pages: int = Field(ge=0)
     truncated: bool = False
+    resolution_seconds: float = Field(default=0.0, ge=0)
 
 
 class MetadataCandidateRestriction(BaseModel):

@@ -74,6 +74,8 @@ from lfx.utils.constants import MESSAGE_SENDER_AI
 
 
 _RETRIEVAL_TOOL_NAME = "search_documents"
+_RETRIEVAL_METADATA_TOOL_NAME = "document_search_with_metadata"
+_RETRIEVAL_TOOL_NAMES = frozenset({_RETRIEVAL_TOOL_NAME, _RETRIEVAL_METADATA_TOOL_NAME})
 _RETRIEVAL_GUARD_METADATA_KEY = "openrag_retrieval_guard"
 _RETRIEVAL_GUARD_RESULT_KEY = "openrag_retrieval_guard"
 _RETRIEVAL_GUARD_VERSION = 1
@@ -240,7 +242,7 @@ def _retrieval_guard_context(tool: Any) -> dict[str, Any]:
 
 def _find_retrieval_guard_context(tools: list[Any]) -> dict[str, Any]:
     for tool in tools:
-        if _tool_name(tool) == _RETRIEVAL_TOOL_NAME:
+        if _tool_name(tool) in _RETRIEVAL_TOOL_NAMES:
             return _retrieval_guard_context(tool)
     return _retrieval_guard_context({})
 
@@ -378,14 +380,16 @@ def _retrieval_call_keys(
     call: dict[str, Any], context: dict[str, Any]
 ) -> tuple[str, str, str, str, str]:
     args = _call_args(call)
-    normalized_intent = _normalize_retrieval_intent(args.get("search_query"))
+    tool_name = str(call.get("name") or _RETRIEVAL_TOOL_NAME)
+    query = args.get("search_query", args.get("free_text"))
+    normalized_intent = _normalize_retrieval_intent(query)
     mode = _retrieval_mode(args)
     policy = {
         "scope_policy_id": context["scope_policy_id"],
         "scope_policy_version": context["scope_policy_version"],
     }
     effective_scope = {
-        "tool": _RETRIEVAL_TOOL_NAME,
+        "tool": tool_name,
         "mode": mode,
         "filter_fingerprint": context["filter_fingerprint"],
         "document_id": str(args.get("read_document_id") or ""),
@@ -393,11 +397,11 @@ def _retrieval_call_keys(
     }
     exact_call = {
         **effective_scope,
-        "query": " ".join(str(args.get("search_query") or "").lower().split()),
+        "query": " ".join(str(query or "").lower().split()),
         "cursor": str(args.get("cursor") or ""),
     }
     terminal_scope = {
-        "tool": _RETRIEVAL_TOOL_NAME,
+        "tool": tool_name,
         "normalized_intent": normalized_intent,
         "filter_fingerprint": context["filter_fingerprint"],
         **policy,
@@ -421,7 +425,7 @@ def _build_retrieval_guard_snapshot(
         retrieval_calls = [
             call
             for call in _message_tool_calls(message)
-            if str(call.get("name") or "") == _RETRIEVAL_TOOL_NAME
+            if str(call.get("name") or "") in _RETRIEVAL_TOOL_NAMES
         ]
         if retrieval_calls:
             wave += 1
@@ -449,7 +453,7 @@ def _build_retrieval_guard_snapshot(
         )
         retrieval_fingerprint = _canonical_hash(
             {
-                "tool": _RETRIEVAL_TOOL_NAME,
+                "tool": str(call.get("name") or _RETRIEVAL_TOOL_NAME),
                 "mode": mode,
                 "normalized_intent": normalized_intent,
                 "filter_fingerprint": context["filter_fingerprint"],
@@ -557,7 +561,7 @@ def _blocked_retrieval_message(
     return ToolMessage(
         content=json.dumps(content, ensure_ascii=False),
         tool_call_id=str(call.get("id") or ""),
-        name=_RETRIEVAL_TOOL_NAME,
+        name=str(call.get("name") or _RETRIEVAL_TOOL_NAME),
         status="success",
     )
 
@@ -598,7 +602,7 @@ class OpenRAGRetrievalGuardMiddleware(AgentMiddleware):
         )
         if not snapshot.stalled:
             return request
-        filtered_tools = [tool for tool in tools if _tool_name(tool) != _RETRIEVAL_TOOL_NAME]
+        filtered_tools = [tool for tool in tools if _tool_name(tool) not in _RETRIEVAL_TOOL_NAMES]
         logger.info(
             "retrieval.guard "
             f"retrieval_phase=stalled normalized_intent={snapshot.latest_normalized_intent} "
@@ -650,7 +654,7 @@ class OpenRAGRetrievalGuardMiddleware(AgentMiddleware):
         )
 
     def wrap_tool_call(self, request: Any, handler: Any) -> Any:
-        if str(request.tool_call.get("name") or "") != _RETRIEVAL_TOOL_NAME:
+        if str(request.tool_call.get("name") or "") not in _RETRIEVAL_TOOL_NAMES:
             return handler(request)
         _snapshot, context, reason = self._guard_tool_call(request)
         if reason:
@@ -661,7 +665,7 @@ class OpenRAGRetrievalGuardMiddleware(AgentMiddleware):
         return result
 
     async def awrap_tool_call(self, request: Any, handler: Any) -> Any:
-        if str(request.tool_call.get("name") or "") != _RETRIEVAL_TOOL_NAME:
+        if str(request.tool_call.get("name") or "") not in _RETRIEVAL_TOOL_NAMES:
             return await handler(request)
         _snapshot, context, reason = self._guard_tool_call(request)
         if reason:
