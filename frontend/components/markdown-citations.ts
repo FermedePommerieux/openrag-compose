@@ -1,5 +1,7 @@
 import type { ToolCallResult } from "@/app/chat/_types/types";
 
+const MAX_FALLBACK_SOURCE_CARDS = 10;
+
 export interface CitedSource {
   item: ToolCallResult;
   index: number;
@@ -130,6 +132,22 @@ export const preprocessCitations = (
   processedText = processedText.replace(/`([^`\r\n]+)`/g, (match, rawId) => {
     return addExactCitation(rawId) ?? match;
   });
+
+  // A model can use the retrieved evidence correctly while omitting the
+  // required inline Source marker. Do not make the user expand the technical
+  // function-call trace to reach provenance in that case: expose a bounded,
+  // URL-deduplicated set of the structured retrieval sources below the answer.
+  // Explicit citations remain authoritative whenever the model emitted them.
+  if (citedSourcesList.length === 0) {
+    const seenUrls = new Set<string>();
+    for (const source of sources) {
+      const sourceUrl = source.source_url?.trim();
+      if (!sourceUrl || seenUrls.has(sourceUrl)) continue;
+      seenUrls.add(sourceUrl);
+      citedSourcesList.push({ item: source, index: nextIndex++ });
+      if (citedSourcesList.length >= MAX_FALLBACK_SOURCE_CARDS) break;
+    }
+  }
 
   return { text: processedText, citedSources: citedSourcesList };
 };

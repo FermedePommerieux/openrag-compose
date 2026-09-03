@@ -53,4 +53,30 @@ describe("preprocessCitations", () => {
     );
     assert.deepEqual(result.citedSources, [{ item: source, index: 1 }]);
   });
+
+  it("shows clickable retrieved sources when the model omits citation markers", () => {
+    const duplicateChunk = {
+      ...source,
+      chunk_id: "TEST_CHUNK_ID_2",
+      page: 2,
+    };
+    const secondSource = {
+      ...source,
+      filename: "second.pdf",
+      chunk_id: "SECOND_CHUNK_ID",
+      source_url: "/api/source-files/SECOND_DOCUMENT_ID.token",
+    };
+
+    const result = preprocessCitations("Answer without inline citations.", [
+      source,
+      duplicateChunk,
+      secondSource,
+    ]);
+
+    assert.equal(result.text, "Answer without inline citations.");
+    assert.deepEqual(result.citedSources, [
+      { item: source, index: 1 },
+      { item: secondSource, index: 2 },
+    ]);
+  });
 });
