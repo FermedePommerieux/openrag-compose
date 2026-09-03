@@ -8,6 +8,9 @@ on:
       - 'docs/**'
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   deploy:
     name: Deploy to GitHub Pages
@@ -24,6 +27,8 @@ jobs:
         run: cd docs && npm install
       - name: Build website
         run: cd docs && npm run build
+        env:
+          BASE_URL: /openrag-compose/
         # env:
         #   SEGMENT_PUBLIC_WRITE_KEY: ${{ vars.DOCS_PROD_SEGMENT_PUBLIC_WRITE_KEY }}
 
