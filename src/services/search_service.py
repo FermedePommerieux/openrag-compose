@@ -2842,8 +2842,8 @@ class SearchService:
             raise ValueError("metadata_filter is not supported for direct exhaustive document reads")
         if metadata_filter is not None and group_by_document:
             raise ValueError("metadata_filter is not supported for paginated document browsing")
-        if metadata_filter is not None and multi_query_discovery and not query.strip():
-            raise ValueError("metadata-only search cannot enable multi-query discovery")
+        if metadata_filter is not None and not query.strip():
+            raise ValueError("free_text is required when metadata_filter is provided")
 
         # Set auth context if provided (for direct API calls)
         from config.settings import is_no_auth_mode

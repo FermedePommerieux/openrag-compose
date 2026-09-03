@@ -58,6 +58,9 @@ def test_v1_schema_keeps_explicit_free_text_and_metadata_filter_separate():
     with pytest.raises(ValueError, match="cannot disagree"):
         SearchV1Body(query="one", free_text="two", metadata_filter=_filter())
 
+    with pytest.raises(ValueError, match="free_text is required"):
+        SearchV1Body(metadata_filter=_filter())
+
 
 @pytest.mark.asyncio
 async def test_search_resolves_metadata_with_dls_client_and_passes_exact_restriction(monkeypatch):
@@ -72,7 +75,7 @@ async def test_search_resolves_metadata_with_dls_client_and_passes_exact_restric
     monkeypatch.setattr("services.search_service.resolve_metadata_candidates", resolver)
 
     result = await service.search(
-        "",
+        "factures Orange",
         user_id="user-1",
         jwt_token="jwt-1",
         metadata_filter=metadata_filter,
@@ -81,7 +84,7 @@ async def test_search_resolves_metadata_with_dls_client_and_passes_exact_restric
     assert result == {"results": []}
     resolver.assert_awaited_once_with(dls_client, metadata_filter)
     service.search_tool.assert_awaited_once_with(
-        "*",
+        "factures Orange",
         embedding_model=None,
         group_by_document=False,
         page=1,
@@ -101,5 +104,18 @@ async def test_direct_exhaustive_read_rejects_metadata_filter():
             jwt_token="jwt-1",
             evidence_mode="exhaustive",
             document_id="document-1",
+            metadata_filter=_filter(),
+        )
+
+
+@pytest.mark.asyncio
+async def test_metadata_filter_without_free_text_fails_explicitly():
+    service = SearchService.__new__(SearchService)
+
+    with pytest.raises(ValueError, match="free_text is required"):
+        await service.search(
+            "",
+            user_id="user-1",
+            jwt_token="jwt-1",
             metadata_filter=_filter(),
         )

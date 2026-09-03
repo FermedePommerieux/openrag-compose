@@ -47,12 +47,8 @@ class SearchBody(BaseModel):
     def validate_discovery_input(self) -> "SearchBody":
         if self.query is not None and self.free_text is not None and self.query != self.free_text:
             raise ValueError("query and free_text cannot disagree")
-        if (
-            not self.resolved_free_text.strip()
-            and self.metadata_filter is None
-            and self.evidenceMode != "exhaustive"
-        ):
-            raise ValueError("free_text or metadata_filter is required")
+        if not self.resolved_free_text.strip() and self.evidenceMode != "exhaustive":
+            raise ValueError("free_text is required for retrieval")
         return self
 
     @property

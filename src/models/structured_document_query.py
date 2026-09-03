@@ -23,8 +23,8 @@ class StructuredDocumentQuery(BaseModel):
 
     @model_validator(mode="after")
     def require_discovery_input(self) -> StructuredDocumentQuery:
-        if not self.free_text.strip() and self.metadata_filter is None:
-            raise ValueError("free_text or metadata_filter is required")
+        if not self.free_text.strip():
+            raise ValueError("free_text is required for retrieval")
         return self
 
     def canonical_payload(self) -> dict[str, object]:
