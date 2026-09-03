@@ -229,6 +229,12 @@ _PREVIOUS_VERSIONED_SIGNED_METADATA_TOOL_MANAGED_GRAPH_SHA256 = (
 _PREVIOUS_VERSIONED_OPT_IN_EXHAUSTIVE_MANAGED_GRAPH_SHA256 = (
     "6e5e7157abd0cd709eb0b9c905f58890c6655307a9decb548690372a89c6192f"
 )
+# The first v16 rollout can have persisted only the new marker while the
+# cluster still mounted the exact v15 source graph. Recognize that one
+# settings-normalized state so startup can replace it with the real v16 graph.
+_PREMATURE_VERSIONED_OPT_IN_EXHAUSTIVE_MANAGED_GRAPH_SHA256 = (
+    "a63ca2452f4e56d5aebd8d2bfbe4bd9929fb8e4e51c9834d47847923594406d6"
+)
 
 
 class FlowsService:
@@ -1668,6 +1674,11 @@ class FlowsService:
                     _PREVIOUS_VERSIONED_SIGNED_METADATA_TOOL_MANAGED_GRAPH_SHA256,
                     _PREVIOUS_VERSIONED_OPT_IN_EXHAUSTIVE_MANAGED_GRAPH_SHA256,
                 }
+            )
+        if marker == 16:
+            return (
+                self._managed_behavior_normalized_graph_fingerprint(flow_data)
+                == _PREMATURE_VERSIONED_OPT_IN_EXHAUSTIVE_MANAGED_GRAPH_SHA256
             )
         if marker not in {6, 7, 8, 9, 10, 11, 12}:
             return exact_match

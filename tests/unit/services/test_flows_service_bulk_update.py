@@ -552,6 +552,13 @@ def _previous_opt_in_exhaustive_retrieval_v15_flow() -> dict:
     return flow
 
 
+def _premature_opt_in_exhaustive_retrieval_v16_flow() -> dict:
+    """Load the exact v15 graph carrying only a premature v16 marker."""
+    flow = _previous_opt_in_exhaustive_retrieval_v15_flow()
+    flow["data"]["openrag_retrieval_version"] = 16
+    return flow
+
+
 def _previous_bundled_retrieval_flow() -> dict:
     """Load the pre-documentalist bundled graph for historical migrations."""
     flow = _versioned_retrieval_v5_flow()
@@ -1396,6 +1403,39 @@ async def test_migrate_exact_version_15_to_mandatory_exhaustive_version_16():
     code = retrieval["data"]["node"]["template"]["code"]["value"]
     assert 'evidence_mode="exhaustive" if resolved_document_id else "scope_exhaustive"' in code
     assert "scope_exhaustive: bool" not in code
+
+
+@pytest.mark.asyncio
+async def test_recover_premature_version_16_marker_on_exact_version_15_graph():
+    service = FlowsService()
+    transport = _RetrievalMigrationTransport()
+    transport.flow = _premature_opt_in_exhaustive_retrieval_v16_flow()
+
+    with (
+        patch("services.flows_service.clients.langflow_request", side_effect=transport.__call__),
+        patch.object(
+            service, "_backup_flow", new_callable=AsyncMock, return_value="/tmp/flow.json"
+        ),
+    ):
+        result = await service.migrate_persisted_retrieval_flow()
+
+    assert result["status"] == "migrated"
+    assert transport.flow["locked"] is True
+    assert service._is_known_migrated_retrieval_flow(transport.flow) is True
+
+
+def test_premature_version_16_recovery_rejects_operator_changes():
+    service = FlowsService()
+    flow = _premature_opt_in_exhaustive_retrieval_v16_flow()
+
+    assert service._is_known_previous_retrieval_v2_flow(flow) is True
+    retrieval = next(
+        node
+        for node in flow["data"]["nodes"]
+        if node.get("data", {}).get("node", {}).get("display_name") == "OpenRAG Retrieval v2"
+    )
+    retrieval["data"]["node"]["template"]["code"]["value"] += "\n# operator customization"
+    assert service._is_known_previous_retrieval_v2_flow(flow) is False
 
 
 @pytest.mark.asyncio
