@@ -11,7 +11,7 @@
 <script>!function(){function e(){if(void 0!==window.truste&&window.truste.cma){var e=window.truste.cma.callApi("getConsent",window.location.href)||{},n=1===e[2],t=1===e[3];gtag("consent","update",{ad_storage:n?"granted":"denied",ad_user_data:n?"granted":"denied",ad_personalization:n?"granted":"denied",analytics_storage:t?"granted":"denied"})}}window.addEventListener&&(window.addEventListener("cm_data_subject_consent_changed",e),window.addEventListener("cm_consent_preferences_set",e)),"complete"===document.readyState?e():window.addEventListener("load",e)}()</script>
 <script>window._ibmAnalytics={settings:{name:"DataStax",tealiumProfileName:"ibm-subsidiary"},trustarc:{privacyPolicyLink:"https://ibm.com/privacy"}},window.digitalData={page:{pageInfo:{ibm:{siteId:"IBM_DataStax"}},category:{primaryCategory:"PC230"}}}</script>
 <script src="//1.www.s81c.com/common/stats/ibm-common.js" async="true"></script><link rel="stylesheet" href="/openrag-compose/assets/css/styles.4eb4a30d.css">
-<script src="/openrag-compose/assets/js/runtime~main.def60c06.js" defer="defer"></script>
+<script src="/openrag-compose/assets/js/runtime~main.430b0375.js" defer="defer"></script>
 <script src="/openrag-compose/assets/js/main.f34da8be.js" defer="defer"></script>
 </head>
 <body>
@@ -95,6 +95,10 @@ These files aren&#x27;t stored in the knowledge base permanently.</p>
 cards directly below it. Select either one to open the source preview; when the
 source has a resolvable original, the preview includes a direct document link.
 Source cards remain visible even if the model omits inline citation markers.</p>
+<p>Each completed assistant response also has a <strong>Copy response</strong> action beside
+the feedback controls. It copies the response as readable Markdown, keeps the
+visible citation numbers, and omits internal chunk identifiers and UI-only
+citation anchors. A check mark confirms a successful copy.</p>
 <p>If documents in your knowledge base seem to be missing or interpreted incorrectly, see <a class="" href="/openrag-compose/support/troubleshoot#document-ingestion-or-similarity-search-issues">Troubleshoot document ingestion or similarity search issues</a>.</p>
 <p>If tool calls and knowledge appear normal, but the agent&#x27;s responses seem off-topic or incorrect, consider changing the Agent model or prompt in Settings, as explained in <a class="" href="/openrag-compose/agents#inspect-and-modify-flows">Inspect managed flows and build custom flows</a>.</p>
 <h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="change-language-models-embedding-models-and-agent-instructions">Change language models, embedding models, and agent instructions<a href="#change-language-models-embedding-models-and-agent-instructions" class="hash-link" aria-label="Direct link to Change language models, embedding models, and agent instructions" title="Direct link to Change language models, embedding models, and agent instructions" translate="no">​</a></h2>
