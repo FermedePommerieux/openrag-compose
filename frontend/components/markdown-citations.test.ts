@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 const citationsModule = "./markdown-citations.ts";
-const { preprocessCitations } = await import(citationsModule);
+const { prepareChatMessageForClipboard, preprocessCitations } = await import(
+  citationsModule
+);
 
 describe("preprocessCitations", () => {
   const source = {
@@ -78,5 +80,16 @@ describe("preprocessCitations", () => {
       { item: source, index: 1 },
       { item: secondSource, index: 2 },
     ]);
+  });
+
+  it("copies visible citation numbers without internal chunk identifiers", () => {
+    const copied = prepareChatMessageForClipboard(
+      "POMMERIEUX TEST (Source: TEST_CHUNK_ID)",
+      [source],
+    );
+
+    assert.equal(copied, "POMMERIEUX TEST [1]");
+    assert.equal(copied.includes("TEST_CHUNK_ID"), false);
+    assert.equal(copied.includes("#citation-"), false);
   });
 });

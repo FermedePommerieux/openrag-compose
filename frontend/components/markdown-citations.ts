@@ -151,3 +151,15 @@ export const preprocessCitations = (
 
   return { text: processedText, citedSources: citedSourcesList };
 };
+
+/**
+ * Preserve the visible citation numbers when copying an assistant response,
+ * without leaking internal chunk identifiers or Markdown-only anchor targets.
+ */
+export const prepareChatMessageForClipboard = (
+  text: string,
+  sources: ToolCallResult[] | undefined,
+): string =>
+  preprocessCitations(text, sources)
+    .text.replace(/\[\\\[(\d+)\\\]\]\(#citation-\d+\)/g, "[$1]")
+    .trim();

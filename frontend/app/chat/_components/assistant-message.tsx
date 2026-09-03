@@ -3,7 +3,10 @@ import { motion } from "motion/react";
 import dynamic from "next/dynamic";
 import { useRef, useState } from "react";
 import DogIcon from "@/components/icons/dog-icon";
-import { preprocessCitations } from "@/components/markdown-citations";
+import {
+  prepareChatMessageForClipboard,
+  preprocessCitations,
+} from "@/components/markdown-citations";
 import { ChunkPopup } from "./chunk-popup";
 import { CitationCards } from "./citation-cards";
 
@@ -79,6 +82,7 @@ interface AssistantMessageProps {
   isInitialGreeting?: boolean;
   usage?: TokenUsageType;
   timestamp?: Date;
+  showCopy?: boolean;
   showFeedback?: boolean;
   interactiveCitations?: boolean;
   showFunctionCalls?: boolean;
@@ -101,6 +105,7 @@ export function AssistantMessage({
   isInitialGreeting = false,
   usage,
   timestamp,
+  showCopy = true,
   showFeedback = true,
   interactiveCitations = true,
   showFunctionCalls = true,
@@ -170,6 +175,10 @@ export function AssistantMessage({
 
   // Parse citations and preprocess content
   const { text: processedContent, citedSources } = preprocessCitations(
+    renderContent,
+    retrievalSources,
+  );
+  const clipboardContent = prepareChatMessageForClipboard(
     renderContent,
     retrievalSources,
   );
@@ -327,14 +336,22 @@ export function AssistantMessage({
               )}
 
               {!isStreaming &&
-                (usage || (!isInitialGreeting && showFeedback)) && (
+                (usage ||
+                  (!isInitialGreeting && (showCopy || showFeedback))) && (
                   <>
                     <Separator className="my-4 w-full bg-border" />
                     <div className="flex justify-end gap-4">
                       {usage && !isStreaming && <TokenUsage usage={usage} />}
-                      {!isInitialGreeting && showFeedback && !isStreaming && (
-                        <MessageActions trackFeedback={trackFeedback} />
-                      )}
+                      {!isInitialGreeting &&
+                        (showCopy || showFeedback) &&
+                        !isStreaming && (
+                          <MessageActions
+                            content={clipboardContent}
+                            showCopy={showCopy}
+                            showFeedback={showFeedback}
+                            trackFeedback={trackFeedback}
+                          />
+                        )}
                     </div>
                   </>
                 )}

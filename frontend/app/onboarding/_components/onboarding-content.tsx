@@ -337,6 +337,7 @@ export function OnboardingContent({
                 onToggle={() => {}}
                 isStreaming={!!streamingMessage}
                 isCompleted={currentStep > 3}
+                showCopy={false}
                 showFeedback={false}
                 interactiveCitations={false}
                 showFunctionCalls={false}
