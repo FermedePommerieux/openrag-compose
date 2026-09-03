@@ -11,6 +11,12 @@ logger = get_logger(__name__)
 
 _UNTRUSTED_FENCE_START = "<<<UNTRUSTED_DOC_CHUNK>>>"
 _UNTRUSTED_FENCE_END = "<<<END_UNTRUSTED_DOC_CHUNK>>>"
+_RETRIEVAL_TOOL_NAMES = frozenset(
+    {
+        "search_documents",
+        "document_search_with_metadata",
+    }
+)
 _SOURCE_CITATION_PATTERN = re.compile(
     r"\(Source:\s*(?:`([A-Za-z0-9][A-Za-z0-9_.:-]{0,511})`|"
     r"([A-Za-z0-9][A-Za-z0-9_.:-]{0,511}))\s*\)"
@@ -206,7 +212,7 @@ def normalize_retrieval_tool_event(chunk_data: Any) -> None:
     if not isinstance(item, dict) or item.get("type") != "tool_call":
         return
     tool_name = item.get("tool_name") or item.get("name")
-    if tool_name not in (None, "search_documents"):
+    if tool_name is not None and tool_name not in _RETRIEVAL_TOOL_NAMES:
         return
     results = item.get("results")
     for _ in range(4):

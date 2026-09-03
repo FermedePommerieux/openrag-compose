@@ -135,6 +135,40 @@ def test_streamed_tool_artifact_becomes_frontend_results_and_keeps_provenance():
     ]
 
 
+def test_streamed_metadata_tool_artifact_becomes_clickable_frontend_source():
+    source = {
+        "filename": "invoice-march-2024.pdf",
+        "text": "<<<UNTRUSTED_DOC_CHUNK>>>\nMarch evidence\n<<<END_UNTRUSTED_DOC_CHUNK>>>",
+        "page": 1,
+        "document_id": "MARCH_2024_DOCUMENT_ID",
+        "chunk_id": "MARCH_2024_CHUNK_ID",
+        "source_url": "/api/source-files/MARCH_2024_DOCUMENT_ID.token",
+    }
+    chunk = {
+        "type": "response.output_item.done",
+        "item": {
+            "type": "tool_call",
+            "tool_name": "document_search_with_metadata",
+            "results": json.dumps(
+                {
+                    "content": '[{"chunk_id":"MARCH_2024_CHUNK_ID"}]',
+                    "artifact": [source],
+                }
+            ),
+        },
+    }
+
+    normalize_retrieval_tool_event(chunk)
+    strip_untrusted_fence_recursive(chunk)
+
+    assert chunk["item"]["results"] == [
+        {
+            **source,
+            "text": "March evidence",
+        }
+    ]
+
+
 @pytest.mark.parametrize("encoding_layers", [1, 2, 3, 4])
 def test_streamed_json_tool_message_becomes_unfenced_frontend_results(encoding_layers):
     source = {
