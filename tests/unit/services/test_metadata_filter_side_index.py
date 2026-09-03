@@ -63,6 +63,10 @@ async def test_generation_mapping_and_first_generation_alias_rollback_are_atomic
     await side_index.create()
 
     assert await side_index.verify_mapping() is True
+    # OpenSearch omits the redundant object type when properties already make
+    # it unambiguous; that normalization must not weaken strict verification.
+    client.indices.indices[generation]["mappings"]["properties"]["filter"].pop("type")
+    assert await side_index.verify_mapping() is True
     assert client.indices.indices[generation]["settings"]["index"] == {
         "number_of_shards": 1,
         "number_of_replicas": 0,

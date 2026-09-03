@@ -17,6 +17,18 @@ METADATA_FILTER_PROJECTION_ALIAS = "documents-metadata-filter-current"
 _PRODUCTION_INDEX = re.compile(r"^documents-metadata-filter-v1-\d{8}t\d{6}z$")
 
 
+def _normalized_mapping(value: Any) -> Any:
+    """Normalize OpenSearch's omission of the default ``object`` type."""
+    if isinstance(value, list):
+        return [_normalized_mapping(item) for item in value]
+    if not isinstance(value, dict):
+        return value
+    normalized = {key: _normalized_mapping(item) for key, item in value.items()}
+    if normalized.get("type") == "object" and "properties" in normalized:
+        normalized.pop("type")
+    return normalized
+
+
 class MetadataFilterSideIndex:
     """Write one new immutable generation and switch only its stable alias."""
 
@@ -102,7 +114,9 @@ class MetadataFilterSideIndex:
     async def verify_mapping(self) -> bool:
         response = await self.client.indices.get_mapping(index=self.index_name)
         actual = (response.get(self.index_name) or {}).get("mappings")
-        return actual == metadata_filter_projection_mapping()
+        return _normalized_mapping(actual) == _normalized_mapping(
+            metadata_filter_projection_mapping()
+        )
 
     async def current_alias_targets(
         self,
