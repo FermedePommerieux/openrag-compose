@@ -520,6 +520,22 @@ def _previous_eager_retrieval_v15_flow() -> dict:
     return flow
 
 
+def _previous_signed_plan_retrieval_v15_flow() -> dict:
+    """Load v15 before no-metadata selection routed to normal q1."""
+    raw = subprocess.check_output(
+        [
+            "git",
+            "show",
+            "4df87eefac7ae082a074699f0b6411a38d12c528:flows/openrag_agent.json",
+        ],
+        cwd=ROOT,
+        text=True,
+    )
+    flow = json.loads(raw)
+    flow["data"]["openrag_retrieval_version"] = 15
+    return flow
+
+
 def _previous_bundled_retrieval_flow() -> dict:
     """Load the pre-documentalist bundled graph for historical migrations."""
     flow = _versioned_retrieval_v5_flow()
@@ -1313,6 +1329,30 @@ async def test_migrate_exact_version_15_zero_argument_plan_tool():
     )
     code = retrieval["data"]["node"]["template"]["code"]["value"]
     assert "def document_search_with_metadata()" in code
+
+
+@pytest.mark.asyncio
+async def test_migrate_exact_version_15_no_metadata_q1_fallback():
+    service = FlowsService()
+    transport = _RetrievalMigrationTransport()
+    transport.flow = _previous_signed_plan_retrieval_v15_flow()
+
+    with (
+        patch("services.flows_service.clients.langflow_request", side_effect=transport.__call__),
+        patch.object(
+            service, "_backup_flow", new_callable=AsyncMock, return_value="/tmp/flow.json"
+        ),
+    ):
+        result = await service.migrate_persisted_retrieval_flow()
+
+    assert result["status"] == "migrated"
+    retrieval = next(
+        node
+        for node in transport.flow["data"]["nodes"]
+        if node.get("data", {}).get("node", {}).get("display_name") == "OpenRAG Retrieval v2"
+    )
+    code = retrieval["data"]["node"]["template"]["code"]["value"]
+    assert "routes to normal q1" in code
 
 
 @pytest.mark.asyncio

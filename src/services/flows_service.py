@@ -218,6 +218,11 @@ _PREVIOUS_VERSIONED_METADATA_TOOL_ANNOTATION_MANAGED_GRAPH_SHA256 = (
 _PREVIOUS_VERSIONED_METADATA_TOOL_EAGER_MANAGED_GRAPH_SHA256 = (
     "ebdcedb178d9cbe4eb7fb569df4d8bf9500794ce99e564a6e5a89cf8aeca1b6c"
 )
+# Exact v15 zero-argument signed-plan graph before the no-metadata selection
+# fallback was routed to unchanged normal q1 retrieval.
+_PREVIOUS_VERSIONED_SIGNED_METADATA_TOOL_MANAGED_GRAPH_SHA256 = (
+    "d6937984f2baec1891b3cb3a3e0c2f13cce9b88c6e1e124e2c8e86d6ce70ad8a"
+)
 
 
 class FlowsService:
@@ -1654,6 +1659,7 @@ class FlowsService:
                     _PREVIOUS_VERSIONED_METADATA_TOOL_REBUILD_MANAGED_GRAPH_SHA256,
                     _PREVIOUS_VERSIONED_METADATA_TOOL_ANNOTATION_MANAGED_GRAPH_SHA256,
                     _PREVIOUS_VERSIONED_METADATA_TOOL_EAGER_MANAGED_GRAPH_SHA256,
+                    _PREVIOUS_VERSIONED_SIGNED_METADATA_TOOL_MANAGED_GRAPH_SHA256,
                 }
             )
         if marker not in {6, 7, 8, 9, 10, 11, 12}:

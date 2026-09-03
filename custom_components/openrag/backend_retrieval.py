@@ -608,7 +608,7 @@ class OpenRAGBackendRetrievalComponent(LCToolComponent):
             blocked = self._planner_result(plan, normal_tool=False)
             if blocked is not None:
                 return json.dumps(blocked, ensure_ascii=False), []
-            if plan is None or not plan.get("requires_metadata_search"):
+            if plan is None:
                 payload = {
                     "metadata_agent": {
                         "status": "INVALID",
@@ -619,6 +619,14 @@ class OpenRAGBackendRetrievalComponent(LCToolComponent):
                     "results": [],
                 }
                 return json.dumps(payload, ensure_ascii=False), []
+            if not plan.get("requires_metadata_search"):
+                # The model may select this tool for a plain document-search
+                # imperative.  A signed VALID plan with no metadata intent is
+                # safe to route to the unchanged q1 path; blocked metadata
+                # intents returned above can never broaden this way.
+                payload = self._retrieve_payload(str(plan.get("free_text") or ""))
+                artifact = payload["results"]
+                return json.dumps(_model_payload(payload), ensure_ascii=False), artifact
 
             planned_free_text = str(plan.get("free_text") or "").strip()
             planned_filters = sorted(
@@ -667,7 +675,8 @@ class OpenRAGBackendRetrievalComponent(LCToolComponent):
                 "no arguments: never infer, restate, or alter its free text or filters. Use it when "
                 "the request contains a technical format, production/modification calendar, "
                 "source-system, creator, or another declared metadata constraint. An AMBIGUOUS or "
-                "UNSUPPORTED result means no search ran and must be explained or clarified. "
+                "UNSUPPORTED result means no search ran and must be explained or clarified. If "
+                "the signed plan has no metadata intent, this tool safely routes to normal q1. "
                 "Metadata matches mean at least one valid metadata observation matched; they are "
                 "not unconditional facts about a document."
             ),

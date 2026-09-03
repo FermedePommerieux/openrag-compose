@@ -11,6 +11,7 @@ import json
 import sys
 import types
 from pathlib import Path
+from unittest.mock import MagicMock
 
 from utils.langflow_utils import parse_knowledge_chunks
 
@@ -623,6 +624,33 @@ def test_metadata_tool_exposes_no_agent_filter_arguments(monkeypatch):
     built = tool.build_metadata_tool()
     assert list(inspect.signature(built["func"]).parameters) == []
     assert built["args_schema"].model_json_schema()["properties"] == {}
+
+
+def test_metadata_tool_selection_without_metadata_routes_to_normal_q1(monkeypatch):
+    module = _load_component_with_langflow_stubs(monkeypatch)
+    tool = module.OpenRAGBackendRetrievalComponent.__new__(module.OpenRAGBackendRetrievalComponent)
+    tool.openrag_retrieval_url = "http://openrag-backend:8000/search"
+    tool.jwt_token = "user-jwt"
+    tool.filter_expression = ""
+    tool.metadata_plan = _metadata_plan_header("Recherche le contrat Orange")
+    tool.number_of_results = 10
+    tool._retrieve_payload = MagicMock(
+        return_value={
+            "results": [
+                {
+                    "chunk_id": "normal-q1-chunk",
+                    "document_id": "normal-q1-document",
+                    "text": "normal q1 evidence",
+                }
+            ]
+        }
+    )
+
+    content, artifact = tool.build_metadata_tool()["func"]()
+
+    tool._retrieve_payload.assert_called_once_with("Recherche le contrat Orange")
+    assert json.loads(content)["results"][0]["chunk_id"] == "normal-q1-chunk"
+    assert artifact[0]["chunk_id"] == "normal-q1-chunk"
 
 
 def test_ambiguous_plan_runs_neither_normal_nor_metadata_search(monkeypatch):
