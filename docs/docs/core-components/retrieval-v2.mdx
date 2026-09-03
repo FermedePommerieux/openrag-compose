@@ -102,12 +102,23 @@ have null or absent provenance fields, but remain readable.
 
 ## Chat retrieval contract
 
-The agent has three explicit evidence paths. Ordinary grounded questions use
-ranked discovery. A request for all exchanges, all related documents, or a
-complete chronology can set `scope_exhaustive=true`: Retrieval v2 obtains broad
-RRF seeds, closes their accessible PROV-O graph forward and backward, then
-reads every discovered document through the verified pagination primitive.
-This needs no confirmation.
+The managed Chat agent has only two evidence paths, and both are exhaustive for
+their declared scope:
+
+* Every general archive or document search uses `scope_exhaustive`. Retrieval
+  v2 obtains broad RRF seeds, closes their accessible PROV-O graph forward and
+  backward, then reads every discovered document through the verified
+  pagination primitive. This is the normal path for all grounded questions,
+  not an option reserved for requests containing words such as “all” or
+  “complete”. It needs no confirmation.
+* When the human explicitly selects one already identified document, the agent
+  can perform a complete source-order read of that document.
+
+The managed tool does not expose a focused or ranked-only choice to the model.
+The deterministic metadata planner follows the same rule: a valid plan without
+a metadata constraint is routed to `scope_exhaustive`, never to a bounded
+ranked-only answer path. Direct API compatibility modes do not change this
+managed Chat contract.
 
 Graph closure uses the deterministic `documentary-prov-o` scope policy version
 `1`. PROV-O provenance and documentary scope are deliberately different:
@@ -136,7 +147,10 @@ compact model-facing projection carries chunk text and citation/order fields
 from ranked seeds, at most one leaf from newly linked documents, and one
 manifest row per document. This avoids pushing every chunk from hundreds of
 documents into the model while the complete leaf artifact remains available to
-the UI. Generated summaries never replace citable leaf evidence.
+the UI. A bounded number of displayed evidence chunks is therefore not a
+bounded search: the coverage certificate is computed from the complete
+discovered documentary scope. Generated summaries never replace citable leaf
+evidence.
 
 Scope coverage is true only when seed discovery succeeds, the graph frontier
 empties without a guard being reached under the declared policy, no visible

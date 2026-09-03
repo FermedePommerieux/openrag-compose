@@ -76,6 +76,13 @@ This flow fetches content from URLs, and then stores the content in your OpenRAG
 
 * **OpenRAG Retrieval v2** component: Connected to the **Agent** component's **Tools** port, this thin tool calls the backend `/search` endpoint with the end-user identity and active search context. A valid request-scoped metadata plan can instead use the bounded backend metadata-Agent endpoint. The backend, not the flow, owns BM25/vector retrieval, RRF, filters, provenance, coverage and user-scoped OpenSearch DLS. See [Retrieval v2](/core-components/retrieval-v2) and [Structured metadata search](/product/structured-metadata-search).
 
+  Every general document search made by the managed Chat agent is
+  scope-exhaustive. The model has no focused or ranked-only search option. The
+  backend uses ranked retrieval only to discover seeds, closes the accessible
+  documentary graph, verifies the complete reads, and returns a fail-closed
+  coverage certificate. A complete read of one document is used only after the
+  human explicitly selects that document.
+
 * [**Chat Output** component](https://docs.langflow.org/chat-input-and-output#chat-output): Connected to the **Agent** component's **Output** port, this component returns the agent's generated response as a chat message.
 
 ## Nudges {#nudges}
@@ -100,6 +107,11 @@ For example, if your knowledge base contains documents about cybersecurity, poss
 ## Inspect tool calls and knowledge
 
 During the chat, you'll see information about the agent's process. For more detail, you can inspect individual tool calls. This is helpful for troubleshooting because it shows how the agent used particular tools. For example, click <Icon name="Gear" aria-hidden="true"/> **Function Call: search_documents (tool_call)** to view the call from the thin **OpenRAG Retrieval v2** tool to the backend-owned retrieval service. The Langflow flow does not run OpenSearch retrieval itself.
+
+Documentary answers show numbered citation markers in the response and source
+cards directly below it. Select either one to open the source preview; when the
+source has a resolvable original, the preview includes a direct document link.
+Source cards remain visible even if the model omits inline citation markers.
 
 If documents in your knowledge base seem to be missing or interpreted incorrectly, see [Troubleshoot document ingestion or similarity search issues](/support/troubleshoot#document-ingestion-or-similarity-search-issues).
 

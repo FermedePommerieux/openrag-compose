@@ -5,9 +5,12 @@ description: Ranked discovery, strong documentary closure and fail-closed covera
 
 # Retrieval, PROV-O and coverage
 
-The fork exposes focused ranked discovery, verified reading of one selected
-document, and exhaustive investigation of a query-defined documentary scope as
-separate server-side paths. The word “exhaustive” is always relative to the
+The managed Chat agent exposes two evidence paths: verified reading of one
+explicitly selected document and exhaustive investigation of a query-defined
+documentary scope. Every general Chat search takes the second path. Ranked
+retrieval remains an internal seed-discovery mechanism and a direct API
+compatibility capability; it is not available to the managed agent as a
+non-exhaustive answer path. The word “exhaustive” is always relative to the
 selected document or the accessible policy closure; it never means the entire
 physical archive.
 
@@ -53,6 +56,11 @@ their canonical provenance is valid. The scope service traverses explicit
 forward relations and policy-approved typed reverse relations with the same
 user-scoped OpenSearch client.
 
+The model cannot downgrade a managed Chat search to focused retrieval. The
+thin tool always sends `scope_exhaustive` for a general query, including the
+no-metadata fallback of the deterministic metadata tool. Only an explicit
+human-selected document changes the mode, to a complete mono-document read.
+
 Policy v1 currently treats exact email thread, reply/reference and attachment
 relationships as scope-defining for approved type combinations. Archive
 containment and ingestion directory membership can remain contextual or
@@ -94,6 +102,11 @@ The complete verified leaf artifact remains available for provenance and UI
 source cards. The LLM-facing projection carries ranked leaf seeds, at most one
 source-order leaf from newly linked documents, a document manifest and the
 coverage certificate. Generated summaries never replace source evidence.
+
+The projection can be smaller than the verified scope. Its size is a context
+and presentation bound, not a search-completeness bound. The coverage
+certificate accounts for scope traversal and complete document reads before a
+complete result may be claimed.
 
 The LLM does not decide `coverage.complete`, create strong provenance, define
 metadata truth or control DLS. Its job is reasoning over the bounded evidence
