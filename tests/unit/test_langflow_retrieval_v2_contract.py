@@ -63,8 +63,8 @@ def test_default_agent_uses_versioned_documentalist_prompt():
     assert agent["data"]["node"]["template"]["system_prompt"]["value"] == prompt
     assert DEFAULT_SYSTEM_PROMPT == prompt
     assert "coverage.complete=true" in prompt
-    assert "three evidence paths" in prompt
-    assert "scope_exhaustive=true" in prompt
+    assert "two exhaustive evidence paths" in prompt
+    assert "Never request or fall back to focused" in prompt
     assert "never print the raw id as the scope" in prompt
     assert "needs no confirmation" in prompt
 
@@ -240,7 +240,7 @@ def test_backend_tool_forwards_request_and_preserves_provenance(monkeypatch):
             "filters": {"owners": ["user-1"]},
             "limit": 4,
             "scoreThreshold": 0.25,
-            "evidenceMode": "focused",
+            "evidenceMode": "scope_exhaustive",
             "documentId": None,
             "cursor": "",
             "batchSize": 20,
@@ -277,7 +277,6 @@ def test_backend_tool_forwards_request_and_preserves_provenance(monkeypatch):
         "search_query",
         "read_document_id",
         "cursor",
-        "scope_exhaustive",
         "multi_query_discovery",
     ]
     content, artifact = built_tool["func"]("where is the archive?")
@@ -393,8 +392,8 @@ def test_backend_tool_forwards_exhaustive_cursor_and_coverage(monkeypatch):
     assert artifact[0]["chunk_id"] == "chunk-42"
 
 
-def test_archive_exhaustive_wording_cannot_select_document_read(monkeypatch):
-    """Topic wording never guesses one internal document id."""
+def test_general_archive_search_is_scope_exhaustive_without_selecting_a_document(monkeypatch):
+    """Every topic search closes scope without guessing one internal document id."""
     module = _load_component_with_langflow_stubs(monkeypatch)
     captured: dict = {}
 
@@ -429,13 +428,13 @@ def test_archive_exhaustive_wording_cannot_select_document_read(monkeypatch):
     built_tool = tool.build_tool()
     built_tool["func"]("recherche exhaustive complète sur toute l'archive TVA 2017")
 
-    assert captured["payload"]["evidenceMode"] == "focused"
+    assert captured["payload"]["evidenceMode"] == "scope_exhaustive"
     assert captured["payload"]["documentId"] is None
     assert captured["payload"]["batchSize"] == 20
     assert captured["payload"]["responseProfile"] == "langflow"
 
 
-def test_explicit_scope_investigation_routes_to_scope_exhaustive(monkeypatch):
+def test_general_investigation_routes_to_scope_exhaustive(monkeypatch):
     module = _load_component_with_langflow_stubs(monkeypatch)
     captured: dict = {}
 
@@ -498,10 +497,7 @@ def test_explicit_scope_investigation_routes_to_scope_exhaustive(monkeypatch):
     tool.number_of_results = 10
 
     built_tool = tool.build_tool()
-    content, _artifact = built_tool["func"](
-        "all correspondence about Project Z",
-        scope_exhaustive=True,
-    )
+    content, _artifact = built_tool["func"]("all correspondence about Project Z")
 
     assert captured["payload"]["evidenceMode"] == "scope_exhaustive"
     assert captured["payload"]["documentId"] is None
@@ -626,13 +622,17 @@ def test_metadata_tool_exposes_no_agent_filter_arguments(monkeypatch):
     assert built["args_schema"].model_json_schema()["properties"] == {}
 
 
-def test_metadata_tool_selection_without_metadata_routes_to_normal_q1(monkeypatch):
+def test_metadata_tool_selection_without_metadata_routes_to_scope_exhaustive(monkeypatch):
     module = _load_component_with_langflow_stubs(monkeypatch)
     tool = module.OpenRAGBackendRetrievalComponent.__new__(module.OpenRAGBackendRetrievalComponent)
     tool.openrag_retrieval_url = "http://openrag-backend:8000/search"
     tool.jwt_token = "user-jwt"
     tool.filter_expression = ""
-    tool.metadata_plan = _metadata_plan_header("Recherche le contrat Orange")
+    query = (
+        "Donne-moi exhaustivement tous les échanges avec l’administration "
+        "sur le projet Surface pastorale."
+    )
+    tool.metadata_plan = _metadata_plan_header(query)
     tool.number_of_results = 10
     tool._retrieve_payload = MagicMock(
         return_value={
@@ -648,7 +648,10 @@ def test_metadata_tool_selection_without_metadata_routes_to_normal_q1(monkeypatc
 
     content, artifact = tool.build_metadata_tool()["func"]()
 
-    tool._retrieve_payload.assert_called_once_with("Recherche le contrat Orange")
+    tool._retrieve_payload.assert_called_once_with(
+        query,
+        evidence_mode="scope_exhaustive",
+    )
     assert json.loads(content)["results"][0]["chunk_id"] == "normal-q1-chunk"
     assert artifact[0]["chunk_id"] == "normal-q1-chunk"
 

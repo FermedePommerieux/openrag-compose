@@ -36,7 +36,7 @@ _LEGACY_RETRIEVAL_COMPONENT = (
     "ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra"
 )
 _BACKEND_RETRIEVAL_COMPONENT = "ext:openrag:OpenRAGBackendRetrievalComponent@extra"
-_RETRIEVAL_FLOW_MIGRATION_VERSION = 15
+_RETRIEVAL_FLOW_MIGRATION_VERSION = 16
 _LEGACY_SYSTEM_FLOW_ID = "1098eea1-6649-4e1d-aed1-b77249fb8dd0"
 # These fields are rewritten by OpenRAG's settings synchronization and by
 # Langflow's provider refresh endpoint. Their values and option lists are
@@ -222,6 +222,12 @@ _PREVIOUS_VERSIONED_METADATA_TOOL_EAGER_MANAGED_GRAPH_SHA256 = (
 # fallback was routed to unchanged normal q1 retrieval.
 _PREVIOUS_VERSIONED_SIGNED_METADATA_TOOL_MANAGED_GRAPH_SHA256 = (
     "d6937984f2baec1891b3cb3a3e0c2f13cce9b88c6e1e124e2c8e86d6ce70ad8a"
+)
+# Exact settings-normalized v15 graph before scope-exhaustive retrieval became
+# the only general Agent search path. Authorize only that repository-owned
+# default for the v15 -> v16 replacement; custom Langflow graphs remain intact.
+_PREVIOUS_VERSIONED_OPT_IN_EXHAUSTIVE_MANAGED_GRAPH_SHA256 = (
+    "6e5e7157abd0cd709eb0b9c905f58890c6655307a9decb548690372a89c6192f"
 )
 
 
@@ -1660,6 +1666,7 @@ class FlowsService:
                     _PREVIOUS_VERSIONED_METADATA_TOOL_ANNOTATION_MANAGED_GRAPH_SHA256,
                     _PREVIOUS_VERSIONED_METADATA_TOOL_EAGER_MANAGED_GRAPH_SHA256,
                     _PREVIOUS_VERSIONED_SIGNED_METADATA_TOOL_MANAGED_GRAPH_SHA256,
+                    _PREVIOUS_VERSIONED_OPT_IN_EXHAUSTIVE_MANAGED_GRAPH_SHA256,
                 }
             )
         if marker not in {6, 7, 8, 9, 10, 11, 12}:

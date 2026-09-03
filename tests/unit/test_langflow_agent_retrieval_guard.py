@@ -232,7 +232,16 @@ def test_result_fingerprint_ignores_ranking_and_serialization_order():
     assert len(first.retrieval_fingerprint) == 64
 
 
-def test_scope_complete_marks_terminal_but_allows_distinct_focused_search():
+def test_every_general_tool_call_is_classified_as_scope_exhaustive():
+    mode = GUARD["_retrieval_mode"]
+
+    assert mode({}) == "scope_exhaustive"
+    assert mode({"scope_exhaustive": False}) == "scope_exhaustive"
+    assert mode({"scope_exhaustive": True}) == "scope_exhaustive"
+    assert mode({"read_document_id": "document-42"}) == "exhaustive"
+
+
+def test_scope_complete_marks_terminal_but_allows_distinct_exhaustive_recovery():
     messages = [
         _user(),
         _ai("scope", "toutes les factures liées à l'abattage", scope_exhaustive=True),
@@ -244,13 +253,13 @@ def test_scope_complete_marks_terminal_but_allows_distinct_focused_search():
     ]
     snapshot = _snapshot(messages)
     repeated = _ai("repeat", "abattage : les factures liées", scope_exhaustive=True).tool_calls[0]
-    focused = _ai("focused", "facture 26050004 total TTC").tool_calls[0]
+    recovery = _ai("recovery", "facture 26050004 total TTC").tool_calls[0]
 
     assert snapshot.exhaustive_scope_satisfied is True
     assert GUARD["_retrieval_guard_reason"](snapshot, repeated, CONTEXT) == (
         "scope_already_complete"
     )
-    assert GUARD["_retrieval_guard_reason"](snapshot, focused, CONTEXT) is None
+    assert GUARD["_retrieval_guard_reason"](snapshot, recovery, CONTEXT) is None
 
 
 def test_scope_complete_without_canonical_certificate_is_not_terminal():
@@ -469,7 +478,7 @@ def test_invoice_regression_stalls_after_repeated_evidence_then_preserves_calcul
     assert len(_snapshot(calculator_messages).records) == 4
 
 
-def test_multiple_legitimate_focused_searches_remain_available():
+def test_multiple_legitimate_exhaustive_recovery_queries_remain_available():
     messages = [_user()]
     for call_id, document_id in (("a", "invoice-a"), ("b", "invoice-b"), ("c", "invoice-c")):
         messages.extend(

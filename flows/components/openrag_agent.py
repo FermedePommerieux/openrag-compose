@@ -210,9 +210,7 @@ def _current_run_messages(messages: list[Any]) -> list[Any]:
 def _retrieval_mode(args: dict[str, Any]) -> str:
     if str(args.get("read_document_id") or "").strip():
         return "exhaustive"
-    if args.get("scope_exhaustive") is True:
-        return "scope_exhaustive"
-    return "focused"
+    return "scope_exhaustive"
 
 
 def _tool_name(tool: Any) -> str:

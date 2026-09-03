@@ -442,7 +442,7 @@ class OpenRAGBackendRetrievalComponent(LCToolComponent):
         self,
         search_query: str,
         *,
-        evidence_mode: str = "focused",
+        evidence_mode: str = "scope_exhaustive",
         document_id: str = "",
         cursor: str = "",
         batch_size: int = 20,
@@ -452,11 +452,11 @@ class OpenRAGBackendRetrievalComponent(LCToolComponent):
     ) -> dict[str, Any]:
         """Call the backend and retain results plus its coverage certificate."""
         query = _as_text(search_query)
-        mode = _as_text(evidence_mode) or "focused"
-        if mode not in {"focused", "exhaustive", "scope_exhaustive"}:
-            raise ValueError("evidence_mode must be focused, exhaustive, or scope_exhaustive")
+        mode = _as_text(evidence_mode) or "scope_exhaustive"
+        if mode not in {"exhaustive", "scope_exhaustive"}:
+            raise ValueError("agent retrieval must be exhaustive or scope_exhaustive")
         resolved_document_id = _as_text(document_id)
-        if mode == "focused" and not query:
+        if mode == "scope_exhaustive" and not query:
             return {"results": []}
         if mode == "exhaustive" and not resolved_document_id:
             raise ValueError("document_id is required in exhaustive mode")
@@ -533,7 +533,7 @@ class OpenRAGBackendRetrievalComponent(LCToolComponent):
         }
 
     def search_documents(self, search_query: str) -> list[Data]:
-        """Backward-compatible focused search used by component previews."""
+        """Scope-exhaustive search used by component previews."""
         payload = self._retrieve_payload(search_query)
         return [Data(**item) for item in payload["results"]]
 
@@ -545,25 +545,16 @@ class OpenRAGBackendRetrievalComponent(LCToolComponent):
             search_query: str,
             read_document_id: str = "",
             cursor: str = "",
-            scope_exhaustive: bool = False,
             multi_query_discovery: bool = False,
         ) -> tuple[str, list[dict[str, Any]]]:
-            """Search normally, investigate a dossier, or read one selected document."""
+            """Investigate the complete accessible scope or read one selected document."""
             planner_result = self._planner_result(plan, normal_tool=True)
             if planner_result is not None:
                 return json.dumps(planner_result, ensure_ascii=False), []
             resolved_document_id = _as_text(read_document_id)
-            if resolved_document_id and scope_exhaustive:
-                raise ValueError("read_document_id and scope_exhaustive are mutually exclusive")
             payload = self._retrieve_payload(
                 search_query,
-                evidence_mode=(
-                    "exhaustive"
-                    if resolved_document_id
-                    else "scope_exhaustive"
-                    if scope_exhaustive
-                    else "focused"
-                ),
+                evidence_mode="exhaustive" if resolved_document_id else "scope_exhaustive",
                 document_id=resolved_document_id,
                 cursor=cursor,
                 batch_size=50 if resolved_document_id else 20,
@@ -584,11 +575,10 @@ class OpenRAGBackendRetrievalComponent(LCToolComponent):
                 "Search the indexed OpenRAG knowledge base. "
                 "Build queries from stable identifiers and established context only; never "
                 "add a candidate answer for the attribute being looked up. Use returned "
-                "chunk_id values for inline citations. Set scope_exhaustive=true for explicit "
-                "requests for all exchanges, all related documents, or a complete chronology; "
-                "it performs ranked seed discovery, accessible PROV-O graph closure and verified "
-                "full reads, and its coverage decides whether completeness may be claimed. "
-                "Otherwise it performs normal ranked archive search. Set read_document_id only when "
+                "chunk_id values for inline citations. Every general query performs ranked seed "
+                "discovery, accessible PROV-O graph closure and verified full reads; its coverage "
+                "decides whether completeness may be claimed. Focused ranked-only retrieval is not "
+                "available. Set read_document_id only when "
                 "the human explicitly selected one known document for complete reading; "
                 "continue with coverage.next_cursor until complete=true. Never expose an "
                 "internal document id as a human-facing scope label: use documents.filename. "
@@ -621,10 +611,13 @@ class OpenRAGBackendRetrievalComponent(LCToolComponent):
                 return json.dumps(payload, ensure_ascii=False), []
             if not plan.get("requires_metadata_search"):
                 # The model may select this tool for a plain document-search
-                # imperative.  A signed VALID plan with no metadata intent is
-                # safe to route to the unchanged q1 path; blocked metadata
-                # intents returned above can never broaden this way.
-                payload = self._retrieve_payload(str(plan.get("free_text") or ""))
+                # imperative. A signed VALID plan with no metadata intent is
+                # safe to route to mandatory scope-exhaustive retrieval;
+                # blocked metadata intents returned above can never broaden.
+                payload = self._retrieve_payload(
+                    str(plan.get("free_text") or ""),
+                    evidence_mode="scope_exhaustive",
+                )
                 artifact = payload["results"]
                 return json.dumps(_model_payload(payload), ensure_ascii=False), artifact
 
@@ -676,7 +669,8 @@ class OpenRAGBackendRetrievalComponent(LCToolComponent):
                 "the request contains a technical format, production/modification calendar, "
                 "source-system, creator, or another declared metadata constraint. An AMBIGUOUS or "
                 "UNSUPPORTED result means no search ran and must be explained or clarified. If "
-                "the signed plan has no metadata intent, this tool safely routes to normal q1. "
+                "the signed plan has no metadata intent, this tool safely routes to exhaustive "
+                "scope retrieval. "
                 "Metadata matches mean at least one valid metadata observation matched; they are "
                 "not unconditional facts about a document."
             ),
