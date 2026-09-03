@@ -456,6 +456,22 @@ def _versioned_retrieval_v14_flow() -> dict:
     return flow
 
 
+def _previous_versioned_retrieval_v15_flow() -> dict:
+    """Load v15 before the dynamic Pydantic namespace repair."""
+    raw = subprocess.check_output(
+        [
+            "git",
+            "show",
+            "547b791bc459290986ca33b827f0c449940c398c:flows/openrag_agent.json",
+        ],
+        cwd=ROOT,
+        text=True,
+    )
+    flow = json.loads(raw)
+    flow["data"]["openrag_retrieval_version"] = 15
+    return flow
+
+
 def _previous_bundled_retrieval_flow() -> dict:
     """Load the pre-documentalist bundled graph for historical migrations."""
     flow = _versioned_retrieval_v5_flow()
@@ -1150,6 +1166,32 @@ async def test_recover_premature_version_15_marker_on_exact_version_14_graph():
         "component_as_tool",
         "metadata_search_tool",
     }
+
+
+@pytest.mark.asyncio
+async def test_migrate_exact_version_15_dynamic_schema_repair():
+    service = FlowsService()
+    transport = _RetrievalMigrationTransport()
+    transport.flow = _previous_versioned_retrieval_v15_flow()
+
+    with (
+        patch("services.flows_service.clients.langflow_request", side_effect=transport.__call__),
+        patch.object(
+            service, "_backup_flow", new_callable=AsyncMock, return_value="/tmp/flow.json"
+        ),
+    ):
+        result = await service.migrate_persisted_retrieval_flow()
+
+    assert result["status"] == "migrated"
+    assert transport.flow["locked"] is True
+    retrieval = next(
+        node
+        for node in transport.flow["data"]["nodes"]
+        if node.get("data", {}).get("node", {}).get("display_name") == "OpenRAG Retrieval v2"
+    )
+    assert '"MetadataToolField": MetadataToolField' in (
+        retrieval["data"]["node"]["template"]["code"]["value"]
+    )
 
 
 @pytest.mark.asyncio

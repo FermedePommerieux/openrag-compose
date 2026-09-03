@@ -197,6 +197,12 @@ _PREVIOUS_VERSIONED_METADATA_BASELINE_MANAGED_GRAPH_SHA256 = (
 _PREMATURE_VERSIONED_METADATA_BASELINE_MANAGED_GRAPH_SHA256 = (
     "94df34155532566437733c443f627b145074504fd0bf06c357c4e149c3274032"
 )
+# Exact settings-normalized v15 graph before the dynamically evaluated
+# metadata-tool Pydantic models rebuilt their local aliases explicitly.
+# Authorize only that repository-owned component repair at startup.
+_PREVIOUS_VERSIONED_METADATA_TOOL_MANAGED_GRAPH_SHA256 = (
+    "fd0c1fed5a7b8cf07c473aa0337d12dc6c3abe7c02c40d8ad876cad8d4f5de96"
+)
 
 
 class FlowsService:
@@ -1627,7 +1633,10 @@ class FlowsService:
         if marker == 15:
             return (
                 self._managed_behavior_normalized_graph_fingerprint(flow_data)
-                == _PREMATURE_VERSIONED_METADATA_BASELINE_MANAGED_GRAPH_SHA256
+                in {
+                    _PREMATURE_VERSIONED_METADATA_BASELINE_MANAGED_GRAPH_SHA256,
+                    _PREVIOUS_VERSIONED_METADATA_TOOL_MANAGED_GRAPH_SHA256,
+                }
             )
         if marker not in {6, 7, 8, 9, 10, 11, 12}:
             return exact_match

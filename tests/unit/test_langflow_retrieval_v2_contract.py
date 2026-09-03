@@ -100,6 +100,8 @@ def test_backend_retrieval_tool_is_thin_and_embedded_verbatim():
     assert 'headers["Authorization"]' in code
     assert "document_search_with_metadata" in code
     assert "MetadataToolQuery" in code
+    assert '"MetadataToolFilter": MetadataToolFilter' in code
+    assert '"MetadataToolField": MetadataToolField' in code
 
 
 def _metadata_plan_header(query: str) -> str:
@@ -155,6 +157,19 @@ def _load_component_with_langflow_stubs(monkeypatch):
     monkeypatch.setitem(sys.modules, module_name, module)
     spec.loader.exec_module(module)
     return module
+
+
+def test_metadata_tool_schema_resolves_in_unregistered_dynamic_module(monkeypatch):
+    """Mirror Langflow's dynamic source evaluation without an importable module."""
+    _load_component_with_langflow_stubs(monkeypatch)
+    namespace = {"__name__": "langflow_dynamic_openrag_component"}
+
+    exec(COMPONENT_PATH.read_text(encoding="utf-8"), namespace)
+
+    schema = namespace["MetadataToolQuery"].model_json_schema()
+    assert schema["properties"]["filters"]["items"]["$ref"].endswith(
+        "/MetadataToolFilter"
+    )
 
 
 def test_backend_tool_forwards_request_and_preserves_provenance(monkeypatch):

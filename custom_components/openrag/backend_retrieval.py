@@ -108,6 +108,23 @@ class MetadataToolQuery(BaseModel):
             raise ValueError("free_text must not be blank")
         return self
 
+
+# Langflow evaluates custom-component source dynamically, so Pydantic cannot
+# always recover local aliases or sibling model names from ``__module__``.
+# Resolve them explicitly while the local symbols are authoritative.
+MetadataToolFilter.model_rebuild(
+    force=True,
+    _types_namespace={
+        "Literal": Literal,
+        "MetadataToolField": MetadataToolField,
+        "MetadataToolOperator": MetadataToolOperator,
+    },
+)
+MetadataToolQuery.model_rebuild(
+    force=True,
+    _types_namespace={"MetadataToolFilter": MetadataToolFilter},
+)
+
 # Tool artifacts feed OpenRAG's source cards. For scope-exhaustive retrieval the
 # backend transport profile guarantees this list is the bounded model projection,
 # never the complete verified scope. Tool content repeats only evidence needed
