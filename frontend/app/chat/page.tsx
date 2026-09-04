@@ -11,6 +11,7 @@ import { useTask } from "@/contexts/task-context";
 import { useOnboardingState } from "@/hooks/use-onboarding-state";
 import { useChatStreaming } from "@/hooks/useChatStreaming";
 import { trackLLMCall } from "@/lib/analytics";
+import { shouldLoadConversationMessages } from "@/lib/chat-message-reconciliation";
 import { normalizeToolResult } from "@/lib/chat-stream-parsers";
 import { FILE_CONFIRMATION, FILES_REGEX } from "@/lib/constants";
 import { buildSearchPayloadFilters } from "@/lib/filter-normalization";
@@ -111,7 +112,14 @@ function ChatPage() {
     isLoading: isChatStreaming,
   } = useChatStreaming({
     endpoint: apiEndpoint,
+    refreshConversationsOnComplete: false,
     onComplete: (message, responseId) => {
+      const completedConversationId = currentConversationId ?? responseId;
+      if (completedConversationId) {
+        // The streamed response is already the freshest version of this
+        // conversation. Do not treat a lagging history refresh as a new load.
+        lastLoadedConversationRef.current = completedConversationId;
+      }
       trackLLMCall({
         mode: "chat",
         model: settings?.agent?.llm_model,
@@ -298,15 +306,18 @@ function ChatPage() {
     // 3. User is not in the middle of an interaction
     const isNewConversation =
       lastLoadedConversationRef.current !== conversationData?.response_id;
-    const hasMessageCountChanged =
-      conversationData?.messages?.length !== messages.length;
+    const shouldLoadMessages = conversationData?.messages
+      ? shouldLoadConversationMessages({
+          isNewConversation,
+          isStreaming: isChatStreaming,
+          isUserInteracting,
+          isForkingInProgress,
+          localMessageCount: messages.length,
+          historyMessageCount: conversationData.messages.length,
+        })
+      : false;
 
-    if (
-      conversationData?.messages &&
-      (isNewConversation || (!isChatStreaming && hasMessageCountChanged)) &&
-      !isUserInteracting &&
-      !isForkingInProgress
-    ) {
+    if (conversationData?.messages && shouldLoadMessages) {
       // Convert backend message format to frontend Message interface
       const convertedMessages: Message[] = conversationData.messages.map(
         (msg: {
@@ -627,6 +638,8 @@ function ChatPage() {
           };
           setMessages((prev) => [...prev, assistantMessage]);
           if (result.response_id) {
+            lastLoadedConversationRef.current =
+              currentConversationId ?? result.response_id;
             cancelNudges();
           }
 

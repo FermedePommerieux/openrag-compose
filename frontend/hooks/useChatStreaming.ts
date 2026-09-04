@@ -19,6 +19,7 @@ interface UseChatStreamingOptions {
   endpoint?: string;
   onComplete?: (message: Message, responseId: string | null) => void;
   onError?: (error: Error) => void;
+  refreshConversationsOnComplete?: boolean;
 }
 
 interface SendMessageOptions {
@@ -34,6 +35,7 @@ export function useChatStreaming({
   endpoint = "/api/langflow",
   onComplete,
   onError,
+  refreshConversationsOnComplete = true,
 }: UseChatStreamingOptions = {}) {
   const [streamingMessage, setStreamingMessage] = useState<Message | null>(
     null,
@@ -254,7 +256,9 @@ export function useChatStreaming({
         // Clear streaming message and call onComplete with final message
         setStreamingMessage(null);
         onComplete?.(finalMessage, newResponseId);
-        refreshConversations(true);
+        if (refreshConversationsOnComplete) {
+          refreshConversations(true);
+        }
         return finalMessage;
       }
 
