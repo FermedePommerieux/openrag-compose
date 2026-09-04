@@ -457,6 +457,9 @@ DOCLING_SERVE_VERIFY_SSL = os.getenv("DOCLING_SERVE_VERIFY_SSL", "true").lower()
     "1",
     "yes",
 )
+DOCLING_SUBMISSION_CONCURRENCY = get_env_int("DOCLING_SUBMISSION_CONCURRENCY", 2)
+if DOCLING_SUBMISSION_CONCURRENCY < 1:
+    raise ValueError("DOCLING_SUBMISSION_CONCURRENCY must be at least 1")
 
 
 # Skip the OpenSearch security context setup (roles, role mappings,

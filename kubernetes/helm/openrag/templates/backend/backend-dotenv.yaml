@@ -187,6 +187,7 @@ stringData:
     MAX_WORKERS_FALLBACK={{ .Values.backend.maxWorkersFallback | quote }}
     MAX_WORKERS_MIN={{ .Values.backend.maxWorkersMin | quote }}
     MAX_WORKERS_MAX={{ .Values.backend.maxWorkersMax | quote }}
+    DOCLING_SUBMISSION_CONCURRENCY={{ .Values.backend.doclingSubmissionConcurrency | quote }}
     DOCLING_METRICS_URL={{ .Values.backend.doclingMetricsUrl | quote }}
     DOCLING_WORKER_REFRESH_SECONDS={{ .Values.backend.doclingWorkerRefreshSeconds | quote }}
     DOCLING_WORKER_FAILURE_THRESHOLD={{ .Values.backend.doclingWorkerFailureThreshold | quote }}

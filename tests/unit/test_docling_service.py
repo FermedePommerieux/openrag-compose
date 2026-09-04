@@ -3,6 +3,7 @@ Unit tests for services/docling_service.py
 Validates async conversion logic, polling behavior, and error handling.
 """
 
+import asyncio
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -206,6 +207,55 @@ async def test_upload_success(docling_service, mock_httpx_client):
     assert "ocr_preset" not in data
     assert "ocr_engine" not in data
     assert "ocr_custom_config" not in data
+
+
+@pytest.mark.asyncio
+async def test_upload_limits_only_concurrent_docling_submissions(mock_httpx_client):
+    """Multipart admission is bounded without reducing downstream worker capacity."""
+    active = 0
+    maximum_active = 0
+    two_submissions_active = asyncio.Event()
+    release_submissions = asyncio.Event()
+
+    async def delayed_post(*args, **kwargs):
+        nonlocal active, maximum_active
+        active += 1
+        maximum_active = max(maximum_active, active)
+        if active == 2:
+            two_submissions_active.set()
+        await release_submissions.wait()
+        active -= 1
+        return _make_response(200, {"task_id": f"task-{active}"})
+
+    mock_httpx_client.post.side_effect = delayed_post
+    service = DoclingService(
+        docling_url="http://docling:8000",
+        httpx_client=mock_httpx_client,
+        submission_concurrency=2,
+    )
+
+    with patch.object(service, "_build_docling_options", return_value={}):
+        uploads = [
+            asyncio.create_task(
+                service.upload_to_docling_direct_async(f"file-{index}.pdf", b"data")
+            )
+            for index in range(3)
+        ]
+        await asyncio.wait_for(two_submissions_active.wait(), timeout=1)
+
+        assert mock_httpx_client.post.await_count == 2
+        assert maximum_active == 2
+
+        release_submissions.set()
+        await asyncio.gather(*uploads)
+
+    assert mock_httpx_client.post.await_count == 3
+    assert maximum_active == 2
+
+
+def test_upload_rejects_invalid_submission_concurrency(mock_httpx_client):
+    with pytest.raises(ValueError, match="at least 1"):
+        DoclingService(httpx_client=mock_httpx_client, submission_concurrency=0)
 
 
 @pytest.mark.asyncio

@@ -14,6 +14,7 @@ from config.settings import (
     DOCLING_ERROR_DETAIL_MAX_LENGTH,
     DOCLING_SERVE_URL,
     DOCLING_SERVE_VERIFY_SSL,
+    DOCLING_SUBMISSION_CONCURRENCY,
     INGESTION_TIMEOUT,
     INGESTION_TIMEOUT_MAX,
     INGESTION_TIMEOUT_PER_MIB,
@@ -214,7 +215,10 @@ class DoclingService:
     _default_client: httpx.AsyncClient | None = None
 
     def __init__(
-        self, docling_url: str | None = None, httpx_client: httpx.AsyncClient | None = None
+        self,
+        docling_url: str | None = None,
+        httpx_client: httpx.AsyncClient | None = None,
+        submission_concurrency: int | None = None,
     ):
         """
         Initialize the DoclingService.
@@ -222,6 +226,7 @@ class DoclingService:
         Args:
             docling_url: Base URL of the Docling Serve instance. If None, auto-detects.
             httpx_client: Pre-configured httpx async client.
+            submission_concurrency: Maximum simultaneous multipart submissions.
         """
         if docling_url:
             self.docling_url = docling_url.rstrip("/")
@@ -229,6 +234,17 @@ class DoclingService:
             self.docling_url = DOCLING_SERVE_URL
 
         self.httpx_client = httpx_client
+        effective_submission_concurrency = (
+            DOCLING_SUBMISSION_CONCURRENCY
+            if submission_concurrency is None
+            else int(submission_concurrency)
+        )
+        if effective_submission_concurrency < 1:
+            raise ValueError("submission_concurrency must be at least 1")
+        # Docling Serve materializes multipart uploads before it enqueues RQ
+        # jobs. Bound only that short, memory-heavy phase; completed submissions
+        # continue processing in parallel according to the live worker count.
+        self._submission_limiter = asyncio.Semaphore(effective_submission_concurrency)
 
     def _get_client(self) -> httpx.AsyncClient:
         if self.httpx_client:
@@ -322,21 +338,22 @@ class DoclingService:
         should_close = client != self.httpx_client
 
         try:
-            if should_close:
-                async with client:
+            async with self._submission_limiter:
+                if should_close:
+                    async with client:
+                        response = await client.post(
+                            f"{self.docling_url}/v1/convert/file/async",
+                            files=files,
+                            data=data,
+                            headers=headers,
+                        )
+                else:
                     response = await client.post(
                         f"{self.docling_url}/v1/convert/file/async",
                         files=files,
                         data=data,
                         headers=headers,
                     )
-            else:
-                response = await client.post(
-                    f"{self.docling_url}/v1/convert/file/async",
-                    files=files,
-                    data=data,
-                    headers=headers,
-                )
 
             response.raise_for_status()
             task = response.json()
