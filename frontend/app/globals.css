@@ -720,7 +720,6 @@
       "rlig" 1,
       "calt" 1;
     font-family: Inter, system-ui, sans-serif;
-    min-width: 320px;
     min-height: 100dvh;
     overscroll-behavior: none;
   }

@@ -21,55 +21,55 @@ export function FunctionCall({
 
   return (
     <div
-      className={`fc-card bg-blue-500/10 border-blue-500/20 p-3 ${className}`}
+      className={`fc-card min-w-0 max-w-full overflow-hidden bg-blue-500/10 border-blue-500/20 p-3 ${className}`}
     >
       <div
-        className="flex items-center gap-2 cursor-pointer hover:bg-blue-500/5 -m-3 p-3 rounded-lg transition-colors"
+        className="flex min-w-0 items-center gap-2 cursor-pointer hover:bg-blue-500/5 -m-3 p-3 rounded-lg transition-colors"
         onClick={onToggle}
       >
-        <Settings className="h-4 w-4 text-blue-400" />
-        <span className="text-sm font-medium text-blue-400 flex-1">
+        <Settings className="h-4 w-4 shrink-0 text-blue-400" />
+        <span className="min-w-0 flex-1 truncate text-sm font-medium text-blue-400">
           Function Call: {displayName}
         </span>
         {fc.id && (
-          <span className="text-xs text-blue-400 font-mono">
+          <span className="hidden shrink-0 text-xs text-blue-400 font-mono sm:inline">
             {fc.id.substring(0, 8)}...
           </span>
         )}
         <Badge
           variant="outline"
-          className={
+          className={`shrink-0 ${
             fc.status === "completed"
               ? "fc-status-completed border-green-500/40 bg-green-500/20 text-green-400"
               : fc.status === "error"
                 ? "border-red-500/40 bg-red-500/20 text-red-400"
                 : "border-yellow-500/40 bg-yellow-500/20 text-yellow-400"
-          }
+          }`}
         >
           {fc.status}
         </Badge>
         {isExpanded ? (
-          <ChevronDown className="h-4 w-4 text-blue-400" />
+          <ChevronDown className="h-4 w-4 shrink-0 text-blue-400" />
         ) : (
-          <ChevronRight className="h-4 w-4 text-blue-400" />
+          <ChevronRight className="h-4 w-4 shrink-0 text-blue-400" />
         )}
       </div>
 
       {isExpanded && (
         <div className="mt-3 pt-3 border-t border-blue-500/20">
           {fc.type && (
-            <div className="text-xs text-muted-foreground mb-3">
+            <div className="min-w-0 text-xs text-muted-foreground mb-3">
               <span className="font-medium">Type:</span>
-              <span className="fc-value ml-2 px-2 py-1 bg-muted/30 rounded font-mono">
+              <span className="fc-value ml-2 break-all px-2 py-1 bg-muted/30 rounded font-mono">
                 {fc.type}
               </span>
             </div>
           )}
 
           {fc.id && (
-            <div className="text-xs text-muted-foreground mb-3">
+            <div className="min-w-0 text-xs text-muted-foreground mb-3">
               <span className="font-medium">ID:</span>
-              <span className="fc-value ml-2 px-2 py-1 bg-muted/30 rounded font-mono">
+              <span className="fc-value ml-2 break-all px-2 py-1 bg-muted/30 rounded font-mono">
                 {fc.id}
               </span>
             </div>

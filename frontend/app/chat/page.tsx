@@ -857,10 +857,10 @@ function ChatPage() {
 
       <StickToBottom.Content
         className={cn(
-          "flex flex-col min-h-full overflow-x-hidden px-3 py-4 sm:p-6",
+          "flex min-h-full min-w-0 max-w-full flex-col overflow-x-hidden px-3 py-4 sm:p-6",
         )}
       >
-        <div className="flex flex-col place-self-center space-y-6 max-w-content w-full mx-auto">
+        <div className="flex min-w-0 max-w-content w-full flex-col place-self-center space-y-6 mx-auto">
           {messages.length === 0 && !streamingMessage ? (
             <div className="flex items-center justify-center h-full text-muted-foreground">
               <div className="text-center">
@@ -990,7 +990,7 @@ function ChatPage() {
           )}
         </div>
       </StickToBottom.Content>
-      <div className="px-3 pt-0 pb-[max(0.75rem,env(safe-area-inset-bottom))] max-w-content mx-auto w-full sm:px-6 sm:pb-6">
+      <div className="min-w-0 max-w-content w-full px-3 pt-0 pb-[max(0.75rem,env(safe-area-inset-bottom))] mx-auto sm:px-6 sm:pb-6">
         {/* Input Area - Fixed at bottom */}
         <ChatInput
           ref={chatInputRef}
@@ -1051,14 +1051,14 @@ export default function ProtectedChatPage() {
     <ProtectedRoute>
       <div
         className={cn(
-          "flex w-full h-full overflow-hidden",
+          "flex min-w-0 max-w-full w-full h-full overflow-hidden",
           isCloudBrand && "ibm-chat-page",
           isCloudBrand &&
             "bg-[var(--chat-surface-bg)] [background-image:linear-gradient(0deg,var(--chat-surface-gradient),transparent_280px)]",
         )}
       >
         <StickToBottom
-          className="flex h-full flex-1 flex-col"
+          className="flex h-full min-w-0 max-w-full w-full flex-1 flex-col overflow-hidden"
           resize="smooth"
           initial="instant"
           mass={1}

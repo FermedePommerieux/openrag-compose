@@ -69,7 +69,7 @@ export const MarkdownRenderer = ({
   return (
     <div
       className={cn(
-        "markdown prose flex w-full max-w-full flex-col items-baseline text-base font-normal word-break-break-word dark:prose-invert",
+        "markdown prose flex min-w-0 w-full max-w-full flex-col items-baseline overflow-hidden text-base font-normal break-words [overflow-wrap:anywhere] dark:prose-invert",
         !chatMessage ? "text-muted-foreground" : "text-primary",
         className,
       )}

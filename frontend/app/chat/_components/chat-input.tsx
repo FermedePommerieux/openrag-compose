@@ -334,13 +334,13 @@ export function ChatInput({
   };
 
   return (
-    <div className="w-full">
-      <form onSubmit={onSubmit} className="relative">
+    <div className="min-w-0 max-w-full w-full">
+      <form onSubmit={onSubmit} className="relative min-w-0 max-w-full">
         {/* Outer container - flex-col to stack file preview above input */}
         <div
           {...getRootProps()}
           className={cn(
-            "flex flex-col w-full p-2 rounded-xl border transition-all",
+            "flex min-w-0 max-w-full w-full flex-col p-2 rounded-xl border transition-all",
             isCloudBrand
               ? "border-[color:var(--chat-input-border)]"
               : "border-input",
@@ -393,13 +393,13 @@ export function ChatInput({
           </AnimatePresence>
           {/* Main Input Container - flex-row or flex-col based on textarea height */}
           <div
-            className={`relative flex w-full gap-2 ${
+            className={`relative flex min-w-0 max-w-full w-full gap-2 ${
               isMultiline ? "flex-col" : "flex-row items-center"
             }`}
           >
             {/* Filter + Textarea Section */}
             <div
-              className={`flex items-center gap-2 ${isMultiline ? "w-full" : "flex-1"}`}
+              className={`flex min-w-0 items-center gap-2 ${isMultiline ? "w-full" : "flex-1"}`}
             >
               {!isMultiline &&
                 (selectedFilter ? (
@@ -431,7 +431,7 @@ export function ChatInput({
                     <Funnel className="h-4 w-4" />
                   </Button>
                 ))}
-              <div className="relative flex-1 flex items-center">
+              <div className="relative flex min-w-0 flex-1 items-center">
                 <TextareaAutosize
                   ref={inputRef}
                   value={input}
@@ -443,7 +443,7 @@ export function ChatInput({
                   placeholder="Ask a question..."
                   data-testid="chat-input"
                   disabled={loading}
-                  className={`w-full text-sm bg-transparent focus-visible:outline-none resize-none`}
+                  className="min-w-0 w-full text-sm bg-transparent focus-visible:outline-none resize-none"
                   rows={1}
                 />
               </div>

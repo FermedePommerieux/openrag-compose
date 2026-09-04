@@ -19,7 +19,7 @@ interface FunctionCallResultProps {
 export function FunctionCallResult({ result }: FunctionCallResultProps) {
   if (!Array.isArray(result)) {
     return (
-      <div className="text-xs text-muted-foreground">
+      <div className="min-w-0 max-w-full text-xs text-muted-foreground">
         <span className="font-medium">Result:</span>
         <pre className="mt-1 p-2 bg-muted/30 rounded text-xs overflow-x-auto">
           {JSON.stringify(result, null, 2)}
@@ -38,11 +38,14 @@ export function FunctionCallResult({ result }: FunctionCallResultProps) {
   ) as ToolResultItem[];
 
   return (
-    <div className="text-xs text-muted-foreground">
+    <div className="min-w-0 max-w-full text-xs text-muted-foreground">
       <span className="font-medium">Result:</span>
       <div className="mt-1 space-y-2">
         {items.map((item, idx) => (
-          <div key={idx} className="fc-result p-2 bg-muted/30 rounded">
+          <div
+            key={idx}
+            className="fc-result min-w-0 max-w-full break-words [overflow-wrap:anywhere] p-2 bg-muted/30 rounded"
+          >
             {(() => {
               const displayFilename = item.data?.file_path || item.filename;
               if (!displayFilename) return null;

@@ -33,7 +33,7 @@ export function CitationCards({
 
   return (
     <div
-      className="mt-4 flex flex-wrap gap-2.5 w-full select-none"
+      className="mt-4 flex min-w-0 max-w-full w-full flex-wrap gap-2.5 select-none"
       data-testid="citation-cards"
     >
       {citedSources.map(({ item, index }) => {
@@ -56,7 +56,7 @@ export function CitationCards({
         const hasUrl = interactive && !!item.source_url;
         const isActive = index === activeCardIndex;
 
-        const className = `group relative flex items-center px-3 py-2 rounded-lg border transition-all duration-200 shadow-sm text-left ${
+        const className = `group relative flex min-w-0 max-w-full items-center px-3 py-2 rounded-lg border transition-all duration-200 shadow-sm text-left ${
           interactive ? "cursor-pointer" : "cursor-default"
         } ${
           isActive
@@ -79,8 +79,8 @@ export function CitationCards({
             </div>
 
             {/* Document details */}
-            <div className="flex flex-col min-w-0 pr-1">
-              <span className="text-mmd text-foreground truncate max-w-[160px] leading-tight">
+            <div className="flex min-w-0 flex-1 flex-col pr-1">
+              <span className="max-w-full truncate text-mmd text-foreground leading-tight sm:max-w-[160px]">
                 {filename}
               </span>
               <span className="text-xxs text-muted-foreground mt-1 leading-none">

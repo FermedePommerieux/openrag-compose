@@ -30,7 +30,7 @@ export function FunctionCallsContainer({
   const showCards = !showGroupHeader || isGroupExpanded;
 
   return (
-    <div className="mb-3">
+    <div className="mb-3 min-w-0 max-w-full">
       {showGroupHeader && (
         <FunctionCallsHeader
           uniqueToolCount={uniqueToolCount}
