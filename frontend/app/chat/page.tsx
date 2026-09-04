@@ -856,7 +856,9 @@ function ChatPage() {
       )}
 
       <StickToBottom.Content
-        className={cn("flex flex-col min-h-full overflow-x-hidden p-6")}
+        className={cn(
+          "flex flex-col min-h-full overflow-x-hidden px-3 py-4 sm:p-6",
+        )}
       >
         <div className="flex flex-col place-self-center space-y-6 max-w-content w-full mx-auto">
           {messages.length === 0 && !streamingMessage ? (
@@ -965,7 +967,7 @@ function ChatPage() {
 
               {/* Waiting too long indicator */}
               {waitingTooLong && !streamingMessage && loading && (
-                <div className="pl-10 space-y-2">
+                <div className="pl-0 space-y-2 sm:pl-10">
                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
                     <Loader2 className="h-4 w-4 animate-spin" />
                     <span>The server is taking longer than expected...</span>
@@ -979,7 +981,7 @@ function ChatPage() {
             </>
           )}
           {!streamingMessage && (
-            <div className="pl-10">
+            <div className="pl-0 sm:pl-10">
               <Nudges
                 nudges={loading ? [] : (nudges as string[])}
                 handleSuggestionClick={handleSuggestionClick}
@@ -988,7 +990,7 @@ function ChatPage() {
           )}
         </div>
       </StickToBottom.Content>
-      <div className="p-6 pt-0 max-w-content mx-auto w-full">
+      <div className="px-3 pt-0 pb-[max(0.75rem,env(safe-area-inset-bottom))] max-w-content mx-auto w-full sm:px-6 sm:pb-6">
         {/* Input Area - Fixed at bottom */}
         <ChatInput
           ref={chatInputRef}

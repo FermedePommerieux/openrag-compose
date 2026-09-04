@@ -1,4 +1,4 @@
-import { ArrowRight, RefreshCw, Search, X } from "lucide-react";
+import { ArrowRight, BookOpenText, RefreshCw, Search, X } from "lucide-react";
 import { type ChangeEvent, type FormEvent, useCallback, useState } from "react";
 import { toast } from "sonner";
 import { useRefreshOpenragDocs } from "@/app/api/mutations/useRefreshOpenragDocs";
@@ -91,13 +91,13 @@ export const KnowledgeSearchBar = () => {
   }, [syncAllConnectorsMutation]);
 
   return (
-    <form onSubmit={handleSearch} className={"flex w-full items-stretch"}>
-      <div className="flex h-12 w-full overflow-hidden border border-border bg-card">
+    <form onSubmit={handleSearch} className="flex min-w-0 w-full items-stretch">
+      <div className="flex h-12 min-w-0 w-full overflow-hidden border border-border bg-card">
         {!!selectedFilter?.name && (
           <div
             title={selectedFilter.name}
             className={cn(
-              "flex h-full flex-shrink-0 items-center gap-1.5 border-r border-border px-2 max-w-[200px]",
+              "flex h-full flex-shrink-0 items-center gap-1.5 border-r border-border px-2 max-w-[30%] sm:max-w-[200px]",
               filterAccentClasses[parsedFilterData?.color || "zinc"],
             )}
           >
@@ -117,7 +117,7 @@ export const KnowledgeSearchBar = () => {
 
         <div className="flex h-full flex-shrink-0 items-center justify-center">
           <Search
-            className="h-4 w-4 m-4 text-[var(--icon-secondary)]"
+            className="hidden h-4 w-4 m-4 text-[var(--icon-secondary)] sm:block"
             strokeWidth={1.75}
           />
         </div>
@@ -170,7 +170,8 @@ export const KnowledgeSearchBar = () => {
           type="button"
           variant="ghost"
           disabled={refreshOpenragDocsMutation.isPending}
-          className="h-auto flex-shrink-0 rounded-none px-3 text-sm hover:bg-accent hover:text-foreground"
+          className="h-auto w-10 flex-shrink-0 rounded-none px-0 text-sm hover:bg-accent hover:text-foreground sm:w-auto sm:px-3"
+          aria-label="Fetch latest docs"
           onClick={async () => {
             try {
               toast.info("Refreshing OpenRAG docs...");
@@ -185,9 +186,12 @@ export const KnowledgeSearchBar = () => {
             }
           }}
         >
-          {refreshOpenragDocsMutation.isPending
-            ? "Refreshing docs..."
-            : "Fetch latest docs"}
+          <BookOpenText className="h-4 w-4 sm:hidden" />
+          <span className="hidden sm:inline">
+            {refreshOpenragDocsMutation.isPending
+              ? "Refreshing docs..."
+              : "Fetch latest docs"}
+          </span>
         </Button>
         <div className="ml-auto">
           <KnowledgeDropdown />

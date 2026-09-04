@@ -168,7 +168,7 @@ const WatsonxSettingsDialog = ({
         setOpen(o);
       }}
     >
-      <DialogContent autoFocus={false} className="max-w-2xl">
+      <DialogContent autoFocus={false} className="sm:max-w-2xl">
         <FormProvider {...methods}>
           <form onSubmit={handleSubmit(onSubmit)} className="grid gap-4">
             <DialogHeader className="mb-2">

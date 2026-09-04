@@ -29,6 +29,7 @@ interface ParsedQueryData {
 interface KnowledgeFilterListProps {
   selectedFilter: KnowledgeFilter | null;
   onFilterSelect: (filter: KnowledgeFilter | null) => void;
+  onNavigate?: () => void;
 }
 
 const parseQueryData = (queryData: string): ParsedQueryData => {
@@ -50,6 +51,7 @@ const parseQueryData = (queryData: string): ParsedQueryData => {
 export function KnowledgeFilterList({
   selectedFilter,
   onFilterSelect,
+  onNavigate,
 }: KnowledgeFilterListProps) {
   const { startCreateMode } = useKnowledgeFilter();
   const { closeMenu } = useTask();
@@ -65,11 +67,13 @@ export function KnowledgeFilterList({
     }
     closeMenu();
     onFilterSelect(filter);
+    onNavigate?.();
   };
 
   const handleCreateNew = () => {
     closeMenu();
     startCreateMode();
+    onNavigate?.();
   };
 
   return (
@@ -100,11 +104,12 @@ export function KnowledgeFilterList({
               </div>
             ) : (
               filters.map((filter) => (
-                <div
+                <button
+                  type="button"
                   key={filter.id}
                   onClick={() => handleFilterSelect(filter)}
                   className={cn(
-                    "flex items-center gap-3 px-3 py-2 w-full rounded-lg hover:bg-accent hover:text-accent-foreground cursor-pointer group transition-colors",
+                    "flex items-center gap-3 px-3 py-2 w-full rounded-lg text-left hover:bg-accent hover:text-accent-foreground cursor-pointer group transition-colors",
                     selectedFilter?.id === filter.id &&
                       "active bg-accent text-accent-foreground",
                   )}
@@ -163,7 +168,7 @@ export function KnowledgeFilterList({
                       </span>
                     </div>
                   </div>
-                </div>
+                </button>
               ))
             )}
           </div>

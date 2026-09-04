@@ -68,12 +68,14 @@ interface NavigationProps {
   conversations?: ChatConversation[];
   isConversationsLoading?: boolean;
   onNewConversation?: () => void;
+  onNavigate?: () => void;
 }
 
 export function Navigation({
   conversations = [],
   isConversationsLoading = false,
   onNewConversation,
+  onNavigate,
 }: NavigationProps = {}) {
   const isCloudBrand = useIsCloudBrand();
   const pathname = usePathname();
@@ -151,6 +153,7 @@ export function Navigation({
     if (typeof window !== "undefined") {
       window.dispatchEvent(new CustomEvent("newConversation"));
     }
+    onNavigate?.();
   };
 
   const handleDeleteConversation = (
@@ -351,7 +354,11 @@ export function Navigation({
                 {isDisabled ? (
                   <div className={tabClassName}>{tabContent}</div>
                 ) : (
-                  <Link href={route.href} className={tabClassName}>
+                  <Link
+                    href={route.href}
+                    className={tabClassName}
+                    onClick={onNavigate}
+                  >
                     {tabContent}
                   </Link>
                 )}
@@ -368,6 +375,7 @@ export function Navigation({
         <KnowledgeFilterList
           selectedFilter={selectedFilter}
           onFilterSelect={setSelectedFilter}
+          onNavigate={onNavigate}
         />
       )}
 
@@ -500,6 +508,7 @@ export function Navigation({
                           onClick={() => {
                             if (loading || isConversationsLoading) return;
                             loadConversation(conversation);
+                            onNavigate?.();
                             // Don't refresh - just loading an existing conversation
                           }}
                           disabled={loading || isConversationsLoading}
@@ -520,7 +529,8 @@ export function Navigation({
                                 asChild
                               >
                                 <div
-                                  className="opacity-0 group-hover:opacity-100 data-[state=open]:opacity-100 data-[state=open]:text-foreground transition-opacity p-1 hover:bg-accent rounded text-muted-foreground hover:text-foreground ml-2 flex-shrink-0 cursor-pointer"
+                                  aria-label="Conversation options"
+                                  className="opacity-100 md:opacity-0 md:group-hover:opacity-100 data-[state=open]:opacity-100 data-[state=open]:text-foreground transition-opacity p-1 hover:bg-accent rounded text-muted-foreground hover:text-foreground ml-2 flex-shrink-0 cursor-pointer"
                                   title="More options"
                                   onClick={(e) => {
                                     e.stopPropagation();

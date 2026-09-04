@@ -506,7 +506,7 @@ export function IngestSettingsSection() {
               </p>
             </div>
             <div
-              className="grid grid-cols-2 gap-3"
+              className="grid grid-cols-1 gap-3 sm:grid-cols-2"
               role="radiogroup"
               aria-label="Chunking strategy"
             >
@@ -536,7 +536,7 @@ export function IngestSettingsSection() {
                   indexed documents and normally requires reindexing existing
                   documents for a homogeneous corpus.
                 </p>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <LabelWrapper id="chunk-size" label="Chunk size">
                     <Input
                       id="chunk-size"
@@ -575,7 +575,7 @@ export function IngestSettingsSection() {
                   HybridChunker is unavailable; OpenRAG does not silently fall
                   back to Character.
                 </p>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <LabelWrapper
                     id="hybrid-max-tokens"
                     label="Hybrid max tokens"
@@ -649,7 +649,7 @@ export function IngestSettingsSection() {
               </p>
             </div>
             <div
-              className="grid grid-cols-3 gap-3"
+              className="grid grid-cols-1 gap-3 sm:grid-cols-3"
               role="radiogroup"
               aria-label="Ingestion concurrency mode"
             >
@@ -704,7 +704,7 @@ export function IngestSettingsSection() {
                   Follow live RQ workers subscribed to the Docling convert
                   queue. Disappearing workers never cancel active files.
                 </p>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <LabelWrapper
                     id="ingestion-worker-fallback"
                     label="Fallback workers"

@@ -9,13 +9,13 @@ export function SettingsShell({ children }: { children: React.ReactNode }) {
   return (
     <div
       className={cn(
-        "pb-6 w-full",
+        "min-w-0 pb-6 w-full",
         isCloudBrand && "font-ibm-plex-sans ibm-settings-page",
       )}
     >
       <h2
         className={cn(
-          "text-lg font-semibold mb-6",
+          "text-lg font-semibold mb-4 sm:mb-6",
           isCloudBrand && "ibm-section-title",
         )}
       >

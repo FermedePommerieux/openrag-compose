@@ -35,7 +35,7 @@ export function ConnectorsTab() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="bg-muted rounded-md p-4 font-mono text-sm">
+            <div className="overflow-x-auto whitespace-nowrap bg-muted rounded-md p-4 font-mono text-sm scrollbar-hide">
               <div className="text-muted-foreground">
                 <div>
                   <span className="mr-3 text-placeholder-foreground">27</span>

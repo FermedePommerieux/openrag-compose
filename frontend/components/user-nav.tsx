@@ -38,6 +38,7 @@ export function UserNav() {
       <button
         type="button"
         onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+        aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} theme`}
         className="flex justify-center items-center gap-2 h-8 w-8 mr-2 rounded-md  hover:bg-muted rounded-lg "
       >
         {theme === "dark" ? (

@@ -10,7 +10,14 @@ import {
   type ValueGetterParams,
 } from "ag-grid-community";
 import { AgGridReact, type CustomCellRendererProps } from "ag-grid-react";
-import { AlertTriangle, Cloud, FileIcon, Globe, RefreshCw } from "lucide-react";
+import {
+  AlertTriangle,
+  BookOpenText,
+  Cloud,
+  FileIcon,
+  Globe,
+  RefreshCw,
+} from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { KnowledgeDropdown } from "@/components/knowledge-dropdown";
@@ -1011,7 +1018,7 @@ function SearchPage() {
   return (
     <>
       <div className="flex flex-col h-full">
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center justify-between mb-4 sm:mb-6">
           <h2
             className={cn(
               "text-lg font-semibold",
@@ -1053,13 +1060,13 @@ function SearchPage() {
           </div>
         ) : (
           /* Search Input Area */
-          <div className="flex-1 flex items-center flex-shrink-0 flex-wrap-reverse gap-3 mb-6">
+          <div className="flex flex-shrink-0 flex-wrap items-center gap-2 mb-4 sm:gap-3 sm:mb-6">
             <KnowledgeSearchInput />
 
             <Button
               type="button"
               variant="outline"
-              className="rounded-lg flex-shrink-0"
+              className="rounded-lg flex-shrink-0 px-3 sm:px-4"
               disabled={
                 syncAllConnectorsMutation.isPending ||
                 syncAllPreviewMutation.isPending
@@ -1082,7 +1089,7 @@ function SearchPage() {
             <Button
               type="button"
               variant="outline"
-              className="rounded-lg flex-shrink-0"
+              className="rounded-lg flex-shrink-0 px-3 sm:px-4"
               disabled={refreshOpenragDocsMutation.isPending}
               onClick={async () => {
                 trackButton({
@@ -1104,9 +1111,17 @@ function SearchPage() {
               }}
             >
               {refreshOpenragDocsMutation.isPending ? (
-                <>Refreshing docs...</>
+                <>
+                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                  <span className="sm:hidden">Docs</span>
+                  <span className="hidden sm:inline">Refreshing docs...</span>
+                </>
               ) : (
-                <>Fetch latest docs</>
+                <>
+                  <BookOpenText className="h-4 w-4 mr-2" />
+                  <span className="sm:hidden">Docs</span>
+                  <span className="hidden sm:inline">Fetch latest docs</span>
+                </>
               )}
             </Button>
             {selectedRows.length > 0 && (
@@ -1226,7 +1241,7 @@ function SearchPage() {
             )}
           />
         )}
-        <div className="flex shrink-0 items-center justify-end gap-3 border-t px-3 py-2 text-sm text-muted-foreground">
+        <div className="flex shrink-0 flex-wrap items-center justify-center gap-2 border-t px-1 py-2 text-sm text-muted-foreground sm:justify-end sm:gap-3 sm:px-3">
           <label className="flex items-center gap-2">
             Rows
             <select

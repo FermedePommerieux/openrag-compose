@@ -16,10 +16,10 @@ export function ProgressBar({
   const progressPercentage = ((currentStep + 1) / totalSteps) * 100;
 
   return (
-    <div className="w-full flex items-center px-6 gap-4">
-      <div className="flex-1" />
-      <div className="flex items-center gap-3">
-        <div className="w-48 h-1 bg-background dark:bg-muted rounded-full overflow-hidden">
+    <div className="w-full flex items-center px-3 gap-2 sm:px-6 sm:gap-4">
+      <div className="hidden flex-1 sm:block" />
+      <div className="flex min-w-0 flex-1 items-center gap-2 sm:flex-none sm:gap-3">
+        <div className="h-1 min-w-0 flex-1 bg-background dark:bg-muted rounded-full overflow-hidden sm:w-48">
           <div
             className="h-full transition-all duration-300 ease-in-out"
             data-testid={`progress-bar-${currentStep}`}
@@ -33,7 +33,7 @@ export function ProgressBar({
           {currentStep + 1}/{totalSteps}
         </span>
       </div>
-      <div className="flex-1 flex justify-end">
+      <div className="flex shrink-0 justify-end sm:flex-1">
         {currentStep > 1 && onSkip && (
           <Button
             variant="link"
@@ -47,9 +47,10 @@ export function ProgressBar({
               });
               onSkip?.();
             }}
-            className="flex items-center gap-2 text-mmd !text-placeholder-foreground hover:!text-foreground hover:!no-underline"
+            className="flex items-center gap-1 px-2 text-mmd !text-placeholder-foreground hover:!text-foreground hover:!no-underline sm:gap-2 sm:px-3"
           >
-            Skip overview
+            <span className="sm:hidden">Skip</span>
+            <span className="hidden sm:inline">Skip overview</span>
             <ArrowRight className="w-4 h-4" />
           </Button>
         )}

@@ -150,7 +150,7 @@ export default function S3SettingsDialog({
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogContent
         autoFocus={false}
-        className="max-w-2xl max-h-[90vh] overflow-y-auto"
+        className="max-h-[90dvh] overflow-y-auto sm:max-w-2xl"
       >
         <FormProvider {...methods}>
           <form onSubmit={onSubmit} className="grid gap-4">

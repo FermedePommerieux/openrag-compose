@@ -46,7 +46,7 @@ function DoclingSetupDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className={cn("max-w-lg", className)}>
+      <DialogContent className={cn("sm:max-w-lg", className)}>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-base">
             <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" />

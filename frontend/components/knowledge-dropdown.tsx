@@ -8,6 +8,7 @@ import {
   FolderOpen,
   Loader2,
   PlugZap,
+  Plus,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -767,13 +768,16 @@ export function KnowledgeDropdown() {
       <div className="flex h-12 pointer-events-none">
         <Button
           variant="outline"
-          className="h-12 px-6 rounded-l-lg rounded-r-none border-r-0 text-[var(--icon-disabled)] cursor-not-allowed"
+          className="h-12 px-3 rounded-l-lg rounded-r-none border-r-0 text-[var(--icon-disabled)] cursor-not-allowed sm:px-6"
         >
-          <span>Add {isCloudBrand ? `knowledge` : `Knowledge`}</span>
+          <span className="sm:hidden">Add</span>
+          <span className="hidden sm:inline">
+            Add {isCloudBrand ? `knowledge` : `Knowledge`}
+          </span>
         </Button>
         <Button
           variant="outline"
-          className="h-12 w-12 flex-shrink-0 rounded-r-lg rounded-l-none border-l border-border text-[var(--icon-disabled)] cursor-not-allowed"
+          className="h-12 w-10 flex-shrink-0 rounded-r-lg rounded-l-none border-l border-border text-[var(--icon-disabled)] cursor-not-allowed sm:w-12"
           aria-label="Open add knowledge menu"
         >
           <ChevronDown className="h-5 w-5" />
@@ -796,10 +800,14 @@ export function KnowledgeDropdown() {
               <Button
                 type="button"
                 disabled={isLoading}
-                className="h-12 bg-blue-600 px-6 text-body-compact text-primary-foreground hover:bg-blue-700"
+                className="h-12 w-10 bg-blue-600 px-0 text-body-compact text-primary-foreground hover:bg-blue-700 sm:w-auto sm:px-6"
+                aria-label="Add knowledge"
               >
-                {isLoading && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
-                <span>
+                {isLoading && (
+                  <Loader2 className="h-4 w-4 animate-spin sm:mr-2" />
+                )}
+                {!isLoading && <Plus className="h-4 w-4 sm:hidden" />}
+                <span className="hidden sm:inline">
                   {isLoading
                     ? fileUploading
                       ? "Uploading..."
@@ -816,7 +824,7 @@ export function KnowledgeDropdown() {
                 variant="default"
                 size="icon"
                 disabled={isLoading}
-                className="h-12 w-12 flex-shrink-0 border-l border-placeholder bg-blue-600 text-primary-foreground hover:bg-blue-700"
+                className="h-12 w-10 flex-shrink-0 border-l border-placeholder bg-blue-600 text-primary-foreground hover:bg-blue-700 sm:w-12"
                 aria-label="Open add knowledge menu"
               >
                 {!isLoading && (
@@ -830,9 +838,14 @@ export function KnowledgeDropdown() {
               </Button>
             </div>
           ) : (
-            <Button disabled={isLoading} variant="outline">
+            <Button
+              disabled={isLoading}
+              variant="outline"
+              className="px-3 sm:px-4"
+            >
               {isLoading && <Loader2 className="h-4 w-4 animate-spin" />}
-              <span>
+              <span className="sm:hidden">Add</span>
+              <span className="hidden sm:inline">
                 {isLoading
                   ? fileUploading
                     ? "Uploading..."

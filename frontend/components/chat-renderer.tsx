@@ -33,9 +33,13 @@ import { cn } from "@/lib/utils";
 export function ChatRenderer({
   settings,
   children,
+  isMobileNavigationOpen,
+  onMobileNavigationClose,
 }: {
   settings: Settings | undefined;
   children: React.ReactNode;
+  isMobileNavigationOpen: boolean;
+  onMobileNavigationClose: () => void;
 }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -260,6 +264,16 @@ export function ChatRenderer({
   const translateY = showLayout ? "0px" : `-50vh`;
   const translateX = showLayout ? "0px" : `-50vw`;
 
+  useEffect(() => {
+    if (!isMobileNavigationOpen) return;
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onMobileNavigationClose();
+    };
+    window.addEventListener("keydown", handleEscape);
+    return () => window.removeEventListener("keydown", handleEscape);
+  }, [isMobileNavigationOpen, onMobileNavigationClose]);
+
   // Onboarding is admin-only. When the workspace still needs onboarding
   // (!showLayout) and RBAC is enforced, a non-admin must not see the wizard —
   // they get a "contact your administrator" screen instead. It renders inside
@@ -279,10 +293,26 @@ export function ChatRenderer({
   // For all other pages, render with Langflow-styled navigation and task menu
   return (
     <>
-      {/* Sidebar Navigation */}
-      <div
-        className="shrink-0 overflow-hidden"
-        style={{ width: SIDEBAR_WIDTH }}
+      {/* Mobile drawer backdrop */}
+      {showLayout && isMobileNavigationOpen && (
+        <button
+          type="button"
+          aria-label="Close navigation"
+          className="absolute inset-0 z-30 bg-black/40 backdrop-blur-[1px] md:hidden"
+          onClick={onMobileNavigationClose}
+        />
+      )}
+
+      {/* One navigation instance: a drawer on mobile, a sidebar on desktop. */}
+      <aside
+        id="mobile-navigation"
+        aria-label="Main navigation"
+        className={cn(
+          "absolute inset-y-0 left-0 z-40 w-[min(86vw,320px)] shrink-0 overflow-hidden border-r bg-background shadow-2xl transition-transform duration-200 ease-out md:relative md:inset-auto md:z-auto md:w-[280px] md:translate-x-0 md:border-r-0 md:shadow-none",
+          isMobileNavigationOpen
+            ? "visible translate-x-0"
+            : "invisible -translate-x-full md:visible md:translate-x-0",
+        )}
       >
         <AnimatedConditional
           isOpen={showLayout}
@@ -294,13 +324,14 @@ export function ChatRenderer({
               conversations={conversations}
               isConversationsLoading={isConversationsLoading}
               onNewConversation={handleNewConversation}
+              onNavigate={onMobileNavigationClose}
             />
           )}
         </AnimatedConditional>
-      </div>
+      </aside>
 
       {/* Main Content */}
-      <main className="overflow-hidden flex-1 flex items-center justify-center">
+      <main className="min-w-0 overflow-hidden flex-1 flex items-center justify-center">
         <motion.div
           initial={{
             width: showLayout ? "100%" : "100vw",
@@ -334,7 +365,7 @@ export function ChatRenderer({
           <div
             className={cn(
               "h-full bg-background w-full",
-              showLayout && !isOnChatPage && "p-6 container",
+              showLayout && !isOnChatPage && "p-3 sm:p-6 container",
               showLayout && isSmallWidthPath && "max-w-content mx-auto",
               !showLayout && "p-0 py-2",
             )}

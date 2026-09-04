@@ -266,7 +266,7 @@ export function OnboardingContent({
       initial="instant"
       mass={1}
     >
-      <StickToBottom.Content className="flex flex-col min-h-full overflow-x-hidden px-8 py-6">
+      <StickToBottom.Content className="flex flex-col min-h-full overflow-x-hidden px-3 py-4 sm:px-8 sm:py-6">
         <div
           className="flex flex-col place-self-center w-full space-y-6"
           data-testid="onboarding-content"

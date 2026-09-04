@@ -2,7 +2,7 @@
 
 import { AnimatePresence, motion } from "framer-motion";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
 import {
   DoclingHealthBanner,
@@ -32,7 +32,8 @@ import FailedTasksInfo from "./tasks_details";
 export function LayoutWrapper({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { tasks, isMenuOpen } = useTask();
+  const [isMobileNavigationOpen, setIsMobileNavigationOpen] = useState(false);
+  const { tasks, isMenuOpen, toggleMenu } = useTask();
   const isCloudBrand = useIsCloudBrand();
   const { isPanelOpen, panelMode, closePanelOnly } = useKnowledgeFilter();
   const failedTasks = tasks.filter(isFailureLikeTask);
@@ -43,8 +44,15 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (isMenuOpen) {
       closePanelOnly();
+      setIsMobileNavigationOpen(false);
     }
   }, [isMenuOpen, closePanelOnly]);
+
+  // Route changes always dismiss the mobile drawer so the destination is
+  // immediately visible, including browser back/forward navigation.
+  useEffect(() => {
+    if (pathname) setIsMobileNavigationOpen(false);
+  }, [pathname]);
 
   const { isLoading, isAuthenticated, isNoAuthMode, isIbmAuthMode, runMode } =
     useAuth();
@@ -104,7 +112,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
   return (
     <div
       className={cn(
-        "h-screen w-screen flex flex-col relative",
+        "h-dvh w-full max-w-full flex flex-col relative overflow-hidden",
         isCloudBrand ? "bg-background" : "bg-muted dark:bg-black",
       )}
     >
@@ -136,23 +144,51 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
         className="bg-background border-b shrink-0"
       >
         <div style={{ height: HEADER_HEIGHT }}>
-          <Header />
+          <Header
+            isMobileNavigationOpen={isMobileNavigationOpen}
+            onMobileNavigationToggle={() =>
+              setIsMobileNavigationOpen((open) => !open)
+            }
+          />
         </div>
       </AnimatedConditional>
 
       {/* Body row: nav + main content + right panel */}
-      <div className="flex-1 min-h-0 flex flex-row overflow-hidden">
-        <ChatRenderer settings={settings}>{children}</ChatRenderer>
+      <div className="relative flex-1 min-h-0 flex flex-row overflow-hidden">
+        <ChatRenderer
+          settings={settings}
+          isMobileNavigationOpen={isMobileNavigationOpen}
+          onMobileNavigationClose={() => setIsMobileNavigationOpen(false)}
+        >
+          {children}
+        </ChatRenderer>
 
-        {/* Right panel — slides in from the right, pushes main content */}
+        {/* Right panel overlays content on mobile and pushes it on desktop. */}
+        {isRightPanelOpen && (
+          <button
+            type="button"
+            aria-label="Close side panel"
+            className="absolute inset-0 z-30 bg-black/35 backdrop-blur-[1px] md:hidden"
+            onClick={() => {
+              if (isMenuOpen) {
+                toggleMenu();
+              } else {
+                closePanelOnly();
+              }
+            }}
+          />
+        )}
         <div
           className={cn(
-            "overflow-hidden bg-sidebar flex flex-row justify-end transition-[width] duration-200 ease-linear",
+            "absolute inset-y-0 right-0 z-40 overflow-hidden bg-sidebar flex flex-row justify-end transition-[width] duration-200 ease-linear md:relative md:inset-auto md:z-auto",
             isRightPanelOpen && "border-l border-sidebar-border",
+            isRightPanelOpen
+              ? "w-[min(92vw,360px)] md:w-[360px]"
+              : "w-0 pointer-events-none",
           )}
-          style={{ width: isRightPanelOpen ? "360px" : "0px" }}
+          aria-hidden={!isRightPanelOpen}
         >
-          <div className="w-[360px] h-full shrink-0">
+          <div className="w-[min(92vw,360px)] md:w-[360px] h-full shrink-0">
             <AnimatePresence mode="wait">
               {isMenuOpen && (
                 <motion.div

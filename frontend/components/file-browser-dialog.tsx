@@ -282,7 +282,7 @@ export function FileBrowserDialog({
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-2xl max-h-[80vh] flex flex-col">
+        <DialogContent className="max-h-[80dvh] flex flex-col sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>Browse Files</DialogTitle>
             <DialogDescription>

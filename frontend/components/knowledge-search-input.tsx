@@ -41,7 +41,7 @@ export const KnowledgeSearchInput = () => {
 
   return (
     <form
-      className="flex flex-1 max-w-[min(640px,100%)] min-w-[100px]"
+      className="flex min-w-[100px] max-w-[min(640px,100%)] flex-1 basis-full sm:basis-auto"
       onSubmit={handleSearch}
     >
       <div className="primary-input group/input min-h-10 !flex items-center flex-nowrap focus-within:border-foreground transition-colors !p-[0.3rem]">

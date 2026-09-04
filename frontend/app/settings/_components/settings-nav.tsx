@@ -65,10 +65,14 @@ export function SettingsNav() {
   }, [isLoading, permissionsResolved, tabIsVisible, fallbackTab, router]);
 
   return (
-    <Tabs value={currentTab}>
+    <Tabs value={currentTab} className="min-w-0 max-w-full">
       <TabsList
         variant={isCloudBrand ? "line" : "default"}
-        className={cn(!isCloudBrand && "mb-6 p-2 rounded-full")}
+        aria-label="Settings sections"
+        className={cn(
+          "max-w-full justify-start overflow-x-auto scrollbar-hide",
+          !isCloudBrand && "mb-6 p-2 rounded-full",
+        )}
       >
         {visibleTabs.map((tab) => (
           <TabsTrigger

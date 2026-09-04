@@ -16,13 +16,13 @@ export function Message({
   unstyledContent = false,
 }: MessageProps) {
   return (
-    <div className="flex gap-3">
+    <div className="flex min-w-0 gap-2 sm:gap-3">
       {icon}
       <div
         className={
           isAssistant && !unstyledContent
-            ? "px-5 py-4 bg-secondary/20 rounded-2xl flex-1"
-            : "flex-1"
+            ? "min-w-0 px-3 py-3 bg-secondary/20 rounded-2xl flex-1 sm:px-5 sm:py-4"
+            : "min-w-0 flex-1"
         }
       >
         <div className="flex-1 min-w-0">{children}</div>
