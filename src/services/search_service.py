@@ -1653,6 +1653,9 @@ class SearchService:
                 if self.models_service
                 else model
             )
+            native_openai = str(provider or "").strip().casefold() == "openai"
+            if native_openai:
+                formatted_model = formatted_model.removeprefix("openai/")
             request = build_responses_request(
                 provider=provider or None,
                 model=formatted_model,
@@ -1673,7 +1676,19 @@ class SearchService:
                     separators=(",", ":"),
                 ).encode("utf-8")
             ).hexdigest()
-            response = await clients.patched_llm_client.responses.create(**request)
+            if native_openai:
+                from openai.resources.responses import AsyncResponses
+
+                # The query-only planner needs no Agent/MCP tool registry.
+                # Reuse the configured client's credentials and transport, but
+                # let the native OpenAI SDK send the exact configured model.
+                # agentd's provider lookup rejects newer unqualified names and
+                # forwards openai/ prefixes unchanged to the native API.
+                response = await AsyncResponses.create(
+                    clients.patched_llm_client.responses, **request
+                )
+            else:
+                response = await clients.patched_llm_client.responses.create(**request)
             output_text = getattr(response, "output_text", None)
             if not isinstance(output_text, str) or not output_text.strip():
                 raise ValueError("Query planner response has no output_text")

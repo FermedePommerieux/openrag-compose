@@ -11,6 +11,8 @@ export interface UpdateSettingsRequest {
   // Agent settings
   llm_model?: string;
   llm_provider?: string;
+  planner_model?: string;
+  planner_provider?: string;
   system_prompt?: string;
 
   // Knowledge settings

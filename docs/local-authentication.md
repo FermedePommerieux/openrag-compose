@@ -249,6 +249,27 @@ It must be authorized for its destination before execution. Evidence contains
 canary IDs/results, never passwords. Remove its temporary DB/config/key artifacts
 after collecting evidence. It never runs the production occurrence migration.
 
+## Chat and search planning models
+
+In Settings → Langflow → Agent, **Language model** selects the model that
+generates chat responses. **Search planning model** selects the model that
+prepares search queries. A smaller planner can be selected from the configured
+providers independently of the chat model. Retrieval, DLS, document reading and
+coverage certification remain backend operations.
+
+**Use chat model** follows the chat provider/model, including future changes.
+The settings API returns the effective selection in `planner`. Set
+`planner_provider` and `planner_model` for a dedicated planner; send both as
+empty strings to clear the override. A partial clear is rejected. Model changes
+and resets require `config:write` and `providers:write` when RBAC is enforced.
+An unavailable model is kept until an explicit change is saved.
+
+For OpenAI, the query planner uses the native Responses SDK path with the exact
+configured model identifier. It reuses the configured client credentials and
+transport without agentd's model-registry lookup or MCP tool injection. Other
+providers continue through the existing adapter. Failed planning still produces
+incomplete coverage; this path does not relax coverage checks.
+
 ## Identity migration handoff
 
 GenerationHead belongs in `openrag_generation_control_v1`, outside every user

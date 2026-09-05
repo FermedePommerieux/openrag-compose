@@ -387,6 +387,7 @@ async def update_settings(
         ]
 
         should_validate = any(getattr(body, field) is not None for field in provider_fields)
+        reset_planner = body.planner_provider == "" and body.planner_model == ""
 
         # Provider changes are admin-only. The outer gate only requires
         # config:write; require providers:write specifically when any
@@ -444,7 +445,9 @@ async def update_settings(
                     )
                     logger.info(f"LLM provider validation successful for {llm_provider}")
 
-                if body.planner_provider is not None or body.planner_model is not None:
+                if not reset_planner and (
+                    body.planner_provider is not None or body.planner_model is not None
+                ):
                     planner_provider, planner_model, _ = resolve_planner_selection(current_config)
                     planner_provider = body.planner_provider or planner_provider
                     planner_model = body.planner_model or planner_model
@@ -549,8 +552,12 @@ async def update_settings(
 
         if body.planner_model is not None or body.planner_provider is not None:
             planner_provider, planner_model, _ = resolve_planner_selection(working_config)
-            working_config.agent.planner_provider = body.planner_provider or planner_provider
-            working_config.agent.planner_model = body.planner_model or planner_model
+            working_config.agent.planner_provider = (
+                "" if reset_planner else body.planner_provider or planner_provider
+            )
+            working_config.agent.planner_model = (
+                "" if reset_planner else body.planner_model or planner_model
+            )
             config_updated = True
 
         if body.system_prompt is not None:

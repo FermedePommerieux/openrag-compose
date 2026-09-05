@@ -85,10 +85,12 @@ async def validate(args):
     )
     from services.models_service import ModelsService
     from services.rbac_service import RBACService
+    from services.scope_coverage_contract import verify_scope_coverage_certificate
     from services.search_service import SearchService, register_search_service
     from services.workspace_config_service import WorkspaceConfigService
     from session_manager import SessionManager
     from utils.embedding_fields import get_embedding_field_name
+    from utils.langflow_utils import extract_source_citation_ids
 
     validate_auth_configuration()
     await run_alembic_upgrade_async()
@@ -159,16 +161,33 @@ async def validate(args):
             self.inner = inner
 
         async def __call__(self, scope, receive, send):
+            record = None
+            payload_bytes = bytearray()
+
             async def capture(message):
+                nonlocal record
                 if message["type"] == "http.response.start":
                     user = scope.get("state", {}).get("user")
-                    traces.append(
-                        {
-                            "path": scope["path"],
-                            "status": message["status"],
-                            "user_id": user.user_id if user else None,
-                        }
-                    )
+                    record = {
+                        "path": scope["path"],
+                        "status": message["status"],
+                        "user_id": user.user_id if user else None,
+                    }
+                    traces.append(record)
+                elif message["type"] == "http.response.body" and scope["path"].startswith(
+                    "/search"
+                ):
+                    payload_bytes.extend(message.get("body", b""))
+                    assert len(payload_bytes) <= 2 * 1024 * 1024
+                    if not message.get("more_body") and record is not None:
+                        payload = json.loads(payload_bytes)
+                        coverage = payload.get("coverage") or {}
+                        record["coverage"] = coverage
+                        record["coverage_verified"] = (
+                            verify_scope_coverage_certificate(coverage)
+                            if coverage.get("mode") == "scope_exhaustive"
+                            else None
+                        )
                 await send(message)
 
             await self.inner(scope, receive, capture)
@@ -205,6 +224,22 @@ async def validate(args):
     key_id = None
     lf_login_headers = None
     lf_http = httpx.AsyncClient(base_url=settings.LANGFLOW_URL, timeout=60)
+
+    def response_evidence(text, callbacks, side):
+        scope_calls = [
+            t for t in callbacks if t.get("coverage", {}).get("mode") == "scope_exhaustive"
+        ]
+        last = scope_calls[-1] if scope_calls else {}
+        return {
+            "marker_in_answer_text": f"GATE-EVIDENCE-{side}-{suffix[:12]}" in text,
+            "own_exact_citation": documents[side]["chunk_id"] in extract_source_citation_ids(text),
+            "scope_callback_count": len(scope_calls),
+            "last_scope_complete": last.get("coverage", {}).get("complete") is True,
+            "last_scope_certificate_valid": last.get("coverage_verified", {}).get("valid") is True,
+            "incomplete_scope_attempts": sum(
+                t.get("coverage", {}).get("complete") is not True for t in scope_calls
+            ),
+        }
 
     def passed(name, details=True):
         result["checks"][name] = details
@@ -303,10 +338,8 @@ async def validate(args):
         from datetime import UTC, datetime
 
         for side in ["A", "B"]:
-            code = f"LOCAL-AUTH-{side}-{suffix[:12]}"
-            content = (
-                f"Pommerieux local authentication validation. Private validation code: {code}."
-            )
+            code = f"GATE-EVIDENCE-{side}-{suffix[:12]}"
+            content = f"Pommerieux documentary isolation validation. Public synthetic test marker: {code}."
             digest = hashlib.sha256(content.encode()).hexdigest()
             document_id = f"local-auth-{suffix}-{side}"
             entity_id = f"urn:openrag:local-auth:{suffix}:{side}"
@@ -447,7 +480,7 @@ async def validate(args):
         await os_admin.index(
             index=control_index, id="head", body={"occurrence": "control-canary"}, refresh=True
         )
-        query = "Pommerieux local authentication validation"
+        query = "Pommerieux documentary isolation validation"
         original_mode = config.knowledge.retrieval_mode
         for side, hidden in [("A", "B"), ("B", "A")]:
             browser, os_user = local_clients[side], user_clients[side]
@@ -583,6 +616,27 @@ async def validate(args):
                 f"{side}_prov_o_isolation",
                 {"hidden_identifiers_absent": True, "coverage": payload.get("coverage")},
             )
+            response = await browser.post(
+                "/search",
+                json={
+                    "query": query,
+                    "evidenceMode": "scope_exhaustive",
+                    "multiQueryDiscovery": True,
+                },
+            )
+            response.raise_for_status()
+            coverage = response.json()["coverage"]
+            assert coverage["complete"] is True, coverage
+            assert verify_scope_coverage_certificate(coverage)["valid"] is True
+            assert coverage["requested_retrieval_profile"]["lanes"]["multi_query"] == "required"
+            assert (
+                other["document_id"] not in response.text
+                and other["source_entity_id"] not in response.text
+            )
+            passed(
+                f"{side}_multi_query_native_planner",
+                {"complete": True, "canonical_certificate_valid": True},
+            )
             try:
                 await os_user.search(index=control_index, body={"query": {"match_all": {}}})
                 raise AssertionError("User reached backend-only GenerationHead control index")
@@ -612,11 +666,11 @@ async def validate(args):
             for kind, prompt in [
                 (
                     "retrieval",
-                    "Find every document about Pommerieux local authentication validation. Read each visible document completely and quote its private validation code with citations.",
+                    "Find every document about Pommerieux documentary isolation validation. Read each visible document completely and quote its public synthetic test marker with citations.",
                 ),
                 (
                     "metadata",
-                    "Use the metadata search tool to find documents produced in September 2026 about Pommerieux local authentication validation. Read each matching document completely and quote its private validation code with citations.",
+                    "Use the metadata search tool to find documents produced in September 2026 about Pommerieux documentary isolation validation. Read each matching document completely and quote its public synthetic test marker with citations.",
                 ),
             ]:
                 before_trace = len(traces)
@@ -626,16 +680,25 @@ async def validate(args):
                     response.raise_for_status()
                     stream_text = "".join([part async for part in response.aiter_text()])
                 (scratch / f"stream-{side}-{kind}.txt").write_text(stream_text)
-                assert f"LOCAL-AUTH-{hidden}-{suffix[:12]}" not in stream_text
+                assert f"GATE-EVIDENCE-{hidden}-{suffix[:12]}" not in stream_text
                 assert documents[hidden]["source_entity_id"] not in stream_text
                 assert '"type": "response.completed"' in stream_text
                 callbacks = [t for t in traces[before_trace:] if t["path"].startswith("/search")]
                 assert all(t["user_id"] == user_ids[side] for t in callbacks), callbacks
+                events = [
+                    json.loads(line) for line in stream_text.splitlines() if line.startswith("{")
+                ]
+                answer = "".join(
+                    e.get("delta", {}).get("content", "")
+                    for e in events
+                    if isinstance(e.get("delta"), dict)
+                )
                 evidence = {
+                    **response_evidence(answer, callbacks, side),
                     "callback_count": len(callbacks),
                     "bytes": len(stream_text),
                     "sha256": hashlib.sha256(stream_text.encode()).hexdigest(),
-                    "own_evidence_present": f"LOCAL-AUTH-{side}-{suffix[:12]}" in stream_text,
+                    "own_evidence_present": f"GATE-EVIDENCE-{side}-{suffix[:12]}" in stream_text,
                     "callback_success": bool(callbacks)
                     and all(t["status"] == 200 for t in callbacks),
                     "metadata_callback": any(
@@ -646,6 +709,15 @@ async def validate(args):
                     evidence["own_evidence_present"]
                     and evidence["callback_success"]
                     and (kind != "metadata" or evidence["metadata_callback"])
+                    and all(
+                        evidence[k]
+                        for k in [
+                            "marker_in_answer_text",
+                            "own_exact_citation",
+                            "last_scope_complete",
+                            "last_scope_certificate_valid",
+                        ]
+                    )
                 ):
                     passed(f"{side}_agent_streaming_{kind}", evidence)
                 else:
@@ -657,26 +729,42 @@ async def validate(args):
             response = await local_clients[side].post(
                 "/langflow",
                 json={
-                    "prompt": "Read every visible document about Pommerieux local authentication validation and quote its private validation code with citations.",
+                    "prompt": "Read every visible document about Pommerieux documentary isolation validation and quote its public synthetic test marker with citations.",
                     "stream": False,
                 },
             )
             response.raise_for_status()
             (scratch / f"agent-{side}.json").write_text(response.text)
-            assert f"LOCAL-AUTH-{side}-{suffix[:12]}" in response.text
-            assert f"LOCAL-AUTH-{hidden}-{suffix[:12]}" not in response.text
+            assert f"GATE-EVIDENCE-{side}-{suffix[:12]}" in response.text
+            assert f"GATE-EVIDENCE-{hidden}-{suffix[:12]}" not in response.text
             assert documents[hidden]["source_entity_id"] not in response.text
             callbacks = [t for t in traces[before_trace:] if t["path"].startswith("/search")]
             assert callbacks and all(
                 t["user_id"] == user_ids[side] and t["status"] == 200 for t in callbacks
             )
-            passed(
-                f"{side}_agent_nonstream",
-                {
-                    "callback_count": len(callbacks),
-                    "response_sha256": hashlib.sha256(response.content).hexdigest(),
-                },
-            )
+            evidence = {
+                **response_evidence(response.json()["response"], callbacks, side),
+                "callback_count": len(callbacks),
+                "response_sha256": hashlib.sha256(response.content).hexdigest(),
+                "source_hydrated": any(
+                    s.get("chunk_id") == documents[side]["chunk_id"]
+                    for s in response.json()["sources"]
+                ),
+            }
+            if all(
+                evidence[k]
+                for k in [
+                    "marker_in_answer_text",
+                    "own_exact_citation",
+                    "last_scope_complete",
+                    "last_scope_certificate_valid",
+                    "source_hydrated",
+                ]
+            ):
+                passed(f"{side}_agent_nonstream", evidence)
+            else:
+                result.setdefault("failed_product_checks", {})[f"{side}_agent_nonstream"] = evidence
+                print("CHECK", f"{side}_agent_nonstream", "FAIL", flush=True)
         config.knowledge.index_name = source_index
         assert config.to_dict() == functional_before
         passed("RuntimeBehavior_functional_configuration_unchanged")

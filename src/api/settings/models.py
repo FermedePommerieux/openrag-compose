@@ -1,13 +1,11 @@
 """Pydantic request and response models for the settings/onboarding endpoints.
 
-Lifted verbatim from the original `src/api/settings.py` (lines 49–223). No
-shape changes — every external caller sees the same fields and validators
-they did before. See `src/api/settings/__init__.py` for re-exports.
+Shared API contracts, re-exported by `src/api/settings/__init__.py`.
 """
 
-from typing import Any
+from typing import Any, Self
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from services.docling_service import DoclingConfig
 
@@ -15,8 +13,9 @@ from services.docling_service import DoclingConfig
 class SettingsUpdateBody(BaseModel):
     llm_model: str | None = Field(None, min_length=1)
     llm_provider: str | None = Field(None, pattern="^(openai|anthropic|watsonx|ollama)$")
-    planner_model: str | None = Field(None, min_length=1)
-    planner_provider: str | None = Field(None, pattern="^(openai|anthropic|watsonx|ollama)$")
+    # Clear both fields together to follow the chat model, including future changes.
+    planner_model: str | None = None
+    planner_provider: str | None = Field(None, pattern="^(|openai|anthropic|watsonx|ollama)$")
     system_prompt: str | None = None
     chunk_size: int | None = Field(None, gt=0)
     chunk_overlap: int | None = Field(None, ge=0)
@@ -65,6 +64,16 @@ class SettingsUpdateBody(BaseModel):
     # embedding models are still in use by indexed documents. Without this,
     # the backend returns 409 and the frontend prompts the user.
     force_remove: bool | None = False
+
+    @model_validator(mode="after")
+    def validate_planner_reset(self) -> Self:
+        if self.planner_model is not None:
+            self.planner_model = self.planner_model.strip()
+        if (self.planner_model == "" or self.planner_provider == "") and not (
+            self.planner_model == "" and self.planner_provider == ""
+        ):
+            raise ValueError("Clear planner_model and planner_provider together to use the chat model")
+        return self
 
 
 class OnboardingBody(BaseModel):

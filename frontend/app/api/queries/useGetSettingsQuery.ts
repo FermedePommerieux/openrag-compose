@@ -11,6 +11,12 @@ export interface AgentSettings {
   system_prompt?: string;
 }
 
+export interface PlannerSettings {
+  llm_model?: string;
+  llm_provider?: string;
+  configured_source?: string;
+}
+
 export interface KnowledgeSettings {
   embedding_model?: string;
   embedding_provider?: string;
@@ -92,6 +98,7 @@ export interface Settings {
   providers?: ProviderSettings;
   knowledge?: KnowledgeSettings;
   agent?: AgentSettings;
+  planner?: PlannerSettings;
   archiving?: {
     available: boolean;
     enabled: boolean;

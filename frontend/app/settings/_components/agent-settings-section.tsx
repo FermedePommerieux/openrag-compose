@@ -25,6 +25,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/contexts/auth-context";
 import { useIsCloudBrand } from "@/contexts/brand-context";
+import { usePermissions } from "@/hooks/use-permissions";
 import { trackButton } from "@/lib/analytics";
 import { DEFAULT_AGENT_SETTINGS, UI_CONSTANTS } from "@/lib/constants";
 import { resolveLangflowEditUrl } from "@/lib/url-utils";
@@ -35,9 +36,11 @@ import { getModelLogo } from "../_helpers/model-helpers";
 import { LangflowIcon } from "./langflow-icon";
 
 const { MAX_SYSTEM_PROMPT_CHARS } = UI_CONSTANTS;
+const USE_CHAT_MODEL = "__use_chat_model__";
 
 export function AgentSettingsSection() {
   const isCloudBrand = useIsCloudBrand();
+  const { can, isLoading: permissionsLoading } = usePermissions();
   const { isAuthenticated, isNoAuthMode, isIbmAuthMode, runMode } = useAuth();
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -139,6 +142,25 @@ export function AgentSettingsSection() {
   const isLoadingAnyLlmModels =
     openaiLoading || anthropicLoading || ollamaLoading || watsonxLoading;
 
+  const groupedPlannerModels = useMemo(
+    () => [
+      {
+        group: "Default",
+        options: [{ value: USE_CHAT_MODEL, label: "Use chat model" }],
+      },
+      ...groupedLlmModels.map((group) => ({
+        ...group,
+        options: group.options.map((option) => ({
+          ...option,
+          value: `${option.provider}:${option.value}`,
+        })),
+      })),
+    ],
+    [groupedLlmModels],
+  );
+  const hasDedicatedPlanner =
+    settings.planner?.configured_source === "workspace_config.agent.planner";
+
   const updateSettingsMutation = useUpdateSettingsMutation({
     onSuccess: () => {
       toast.success("Settings updated successfully");
@@ -162,6 +184,23 @@ export function AgentSettingsSection() {
         });
       } else if (newModel) {
         updateSettingsMutation.mutate({ llm_model: newModel });
+      }
+    },
+    [updateSettingsMutation],
+  );
+
+  const handlePlannerModelChange = useCallback(
+    (value: string, provider?: string) => {
+      if (value === USE_CHAT_MODEL) {
+        updateSettingsMutation.mutate({
+          planner_model: "",
+          planner_provider: "",
+        });
+      } else if (value && provider) {
+        updateSettingsMutation.mutate({
+          planner_model: value.slice(provider.length + 1),
+          planner_provider: provider,
+        });
       }
     },
     [updateSettingsMutation],
@@ -350,6 +389,42 @@ export function AgentSettingsSection() {
                 defaultOpen={openLlmSelector}
               />
             </LabelWrapper>
+          </div>
+          <div className="space-y-2">
+            <LabelWrapper
+              label="Search planning model"
+              id="planner-model"
+              description="Use a smaller model to plan searches while keeping your preferred model for chat."
+            >
+              <ModelSelector
+                id="planner-model"
+                groupedOptions={groupedPlannerModels}
+                value={
+                  hasDedicatedPlanner
+                    ? `${settings.planner?.llm_provider}:${settings.planner?.llm_model}`
+                    : USE_CHAT_MODEL
+                }
+                onValueChange={handlePlannerModelChange}
+                disabled={
+                  !settings.planner ||
+                  permissionsLoading ||
+                  !can("config:write") ||
+                  !can("providers:write") ||
+                  updateSettingsMutation.isPending
+                }
+                noOptionsPlaceholder={
+                  isLoadingAnyLlmModels
+                    ? "Loading models..."
+                    : "No matching models"
+                }
+              />
+            </LabelWrapper>
+            {settings.planner?.llm_model && (
+              <p className="text-xs text-muted-foreground">
+                Currently: {settings.planner.llm_provider} /{" "}
+                {settings.planner.llm_model}
+              </p>
+            )}
           </div>
           <div className="space-y-2">
             <LabelWrapper label="Agent Instructions" id="system-prompt">

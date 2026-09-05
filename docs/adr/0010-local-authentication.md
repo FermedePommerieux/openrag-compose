@@ -122,10 +122,29 @@ The activation-gate follow-up closes the two observed product failures:
    metadata callbacks, citations and streaming successfully. Agent prompt/model
    and provider values are exactly preserved.
 
-The gate now passes all 26 live two-user checks and 2,067 unit tests. Two real
+The final gate passes all 28 live two-user checks and 2,075 unit tests. Two real
 archived/ingestion originals were also copied into isolated scratch storage;
 actual A/B DLS downloads, source-ID preservation and rollback pass. No source
 file or production ACL was modified.
+
+Final Agent validation checks the actual answer text, its exact own-source
+citation and the last canonical coverage certificate, independently of tool
+artifacts. The initial 26-check result was superseded: artifact markers could
+mask an unhelpful answer or incomplete multi-query coverage. Two subsequent
+failed runs exposed agentd/LiteLLM provider lookup and a rejected model prefix.
+The OpenAI query-only planner now reuses the configured client through the native
+Responses SDK method, sending the unchanged model name without MCP injection.
+Other providers retain their adapter. Both explicit multi-query checks and all
+six Agent responses pass with complete, verified coverage in the final run.
+Earlier failed runs remain in the private audit evidence.
+
+Settings → Langflow → Agent now exposes the search planning model separately
+from the chat model. The default follows the chat model; clearing both explicit
+planner fields persists that choice in SQL and survives subsequent chat changes.
+Six API tests cover persistence/reset/permissions and ambiguous updates; four
+browser tests cover selection, reload, unavailable models, permissions and save
+errors. TypeScript checking and the frontend build pass. This UI and the native
+planner repair are in the candidate; they have not been deployed to production.
 
 Production remains on its original images and anonymous mode. GitOps pins only
 the flow repair at 896f1361e1324d07cf888634501fff4ae8a81591, based directly on
