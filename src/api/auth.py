@@ -127,6 +127,11 @@ async def auth_me(
     from services.local_auth_onboarding import local_setup_status
 
     result.update(await local_setup_status(session))
+    from services.local_auth_service import password_change_identity
+
+    result["password_change_required"] = bool(
+        await password_change_identity(session, request.cookies.get("password_change_token"))
+    )
     result["version"] = OPENRAG_VERSION
     from utils.run_mode_utils import get_run_mode
 

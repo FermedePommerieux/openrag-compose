@@ -63,7 +63,9 @@ async def get_settings_endpoint(
     """Get current OpenRAG configuration (read-only). GET /v1/settings"""
     try:
         config = get_openrag_config()
-        local_archiving_available = is_no_auth_mode()
+        from config.auth_mode import local_auth_enabled
+
+        local_archiving_available = is_no_auth_mode() or local_auth_enabled()
         return SettingsResponse(
             agent=AgentSettings(
                 llm_provider=config.agent.llm_provider,

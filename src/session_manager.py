@@ -38,6 +38,7 @@ class User:
     db_user_id: str | None = None  # Internal OpenRAG users.id
     auth_subject: str | None = None  # Provider subject, distinct from authorization ID
     session_id: str | None = None  # Durable OpenRAG session, if issued by this version
+    must_change_password: bool = False
 
     def __post_init__(self):
         if self.created_at is None:

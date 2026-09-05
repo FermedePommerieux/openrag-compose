@@ -16,6 +16,7 @@ from db.models.session_ownership import SessionOwnership
 from db.models.user import User
 from db.models.user_preferences import UserPreferences
 from db.models.user_role import UserRole
+from db.models.user_storage import SourceArchiveLocation, UserStorage
 from db.models.workspace_config import WorkspaceConfig
 
 __all__ = [
@@ -32,5 +33,7 @@ __all__ = [
     "User",
     "UserPreferences",
     "UserRole",
+    "UserStorage",
+    "SourceArchiveLocation",
     "WorkspaceConfig",
 ]

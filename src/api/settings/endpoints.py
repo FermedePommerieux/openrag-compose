@@ -137,16 +137,24 @@ async def get_settings(
         archiving_config = None
         if show_archiving:
             from config.settings import is_no_auth_mode
+            from services.local_source_service import is_local_storage_available
 
-            local_archiving_available = is_no_auth_mode()
+            local_archiving_available = is_local_storage_available()
             archive_stats: dict[str, object] = {}
             if local_archiving_available:
                 from services.local_source_service import get_local_source_archive_stats
+
+                storage = None
+                if not is_no_auth_mode():
+                    from services.user_storage_service import get_user_storage
+
+                    storage = await get_user_storage(user.db_user_id or user.user_id)
 
                 archive_stats = dict(
                     await asyncio.to_thread(
                         get_local_source_archive_stats,
                         include_used_bytes=include_archiving_stats,
+                        **({"storage": storage} if storage else {}),
                     )
                 )
             archiving_config = ArchivingConfig.model_validate(
@@ -635,9 +643,9 @@ async def update_settings(
             )
 
         if body.archive_sources_enabled is not None:
-            from config.settings import is_no_auth_mode
+            from services.local_source_service import is_local_storage_available
 
-            if body.archive_sources_enabled and not is_no_auth_mode():
+            if body.archive_sources_enabled and not is_local_storage_available():
                 raise HTTPException(
                     status_code=422,
                     detail="Local source archiving is disabled in multi-user mode",

@@ -1258,7 +1258,9 @@ class DocumentFileProcessor(TaskProcessor):
             if self.archive_sources:
                 from services.local_source_service import local_source_url, stage_local_source
 
-                staged_source = await stage_local_source(item, file_hash, original_filename)
+                staged_source = await stage_local_source(
+                    item, file_hash, original_filename, owner_user_id=self.owner_user_id
+                )
                 processing_path = str(staged_source.archived_path)
                 source_url = source_url or local_source_url(staged_source.source_id)
 
@@ -2134,7 +2136,9 @@ class LangflowFileProcessor(TaskProcessor):
             if self.archive_sources:
                 from services.local_source_service import local_source_url, stage_local_source
 
-                staged_source = await stage_local_source(item, file_hash, original_filename)
+                staged_source = await stage_local_source(
+                    item, file_hash, original_filename, owner_user_id=self.owner_user_id
+                )
                 source_url = source_url or local_source_url(staged_source.source_id)
 
             # Build settings with fresh OCR/pictureDescriptions from live

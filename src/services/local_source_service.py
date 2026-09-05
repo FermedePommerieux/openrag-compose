@@ -72,9 +72,16 @@ def get_indexed_documents_path() -> Path:
 
 def is_source_archiving_enabled() -> bool:
     """Return the live workspace setting used when a request has no override."""
-    from config.settings import get_openrag_config, is_no_auth_mode
+    from config.settings import get_openrag_config
 
-    return bool(is_no_auth_mode() and get_openrag_config().archiving.enabled)
+    return bool(is_local_storage_available() and get_openrag_config().archiving.enabled)
+
+
+def is_local_storage_available() -> bool:
+    from config.auth_mode import local_auth_enabled
+    from config.settings import is_no_auth_mode
+
+    return is_no_auth_mode() or local_auth_enabled()
 
 
 def _nearest_existing_parent(path: Path) -> Path:
@@ -85,7 +92,9 @@ def _nearest_existing_parent(path: Path) -> Path:
     return candidate
 
 
-def get_local_source_archive_stats(*, include_used_bytes: bool = True) -> LocalSourceArchiveStats:
+def get_local_source_archive_stats(
+    *, include_used_bytes: bool = True, storage=None
+) -> LocalSourceArchiveStats:
     """Return archive paths and filesystem usage.
 
     Computing the retained byte count requires walking the entire archive, so
@@ -102,6 +111,14 @@ def get_local_source_archive_stats(*, include_used_bytes: bool = True) -> LocalS
     archive_root = get_indexed_documents_path()
     ingestion_host_path = get_documents_host_path()
     archive_host_path = get_indexed_documents_host_path()
+    if storage is not None:
+        ingestion_root = storage.ingestion
+        archive_root = storage.archive
+        archive_host_path = None
+        if ingestion_host_path:
+            host_root = Path(ingestion_host_path) / storage.directory
+            ingestion_host_path = str(host_root / "ingestion")
+            archive_host_path = str(host_root / "archives")
     if archive_host_path is None and ingestion_host_path:
         try:
             archive_relative_path = archive_root.relative_to(ingestion_root)
@@ -191,7 +208,9 @@ def _is_relative_to(path: Path, parent: Path) -> bool:
         return False
 
 
-def resolve_ingestion_path(requested_path: str | None = None) -> Path | None:
+def resolve_ingestion_path(
+    requested_path: str | None = None, *, ingestion_root: Path | None = None
+) -> Path | None:
     """Resolve a path inside the configured ingestion root.
 
     Public API clients may trigger ingestion for files written into the shared
@@ -200,7 +219,12 @@ def resolve_ingestion_path(requested_path: str | None = None) -> Path | None:
     """
     from config.settings import get_documents_path
 
-    ingestion_root = Path(get_documents_path()).expanduser().resolve()
+    if ingestion_root is None:
+        from config.settings import is_no_auth_mode
+
+        if not is_no_auth_mode():
+            return None
+        ingestion_root = Path(get_documents_path()).expanduser().resolve()
     candidate = Path(requested_path or ".").expanduser()
     if not candidate.is_absolute():
         candidate = ingestion_root / candidate
@@ -244,7 +268,9 @@ def _is_supported_local_ingest_file(path: Path) -> bool:
     job payload, so accepting arbitrary files also creates an avoidable queue
     memory-amplification vector.
     """
-    return not path.name.startswith(".") and path.suffix.lower() in SUPPORTED_LOCAL_INGEST_EXTENSIONS
+    return (
+        not path.name.startswith(".") and path.suffix.lower() in SUPPORTED_LOCAL_INGEST_EXTENSIONS
+    )
 
 
 def collect_ingest_files(directory: str | os.PathLike[str]) -> list[str]:
@@ -291,12 +317,11 @@ def build_local_file_provenance(
     without inventing content relationships.
     """
     from config.settings import get_documents_path
+
     source = Path(file_path).expanduser().resolve()
     point = Path(ingestion_point).expanduser().resolve()
     configured_root = Path(get_documents_path()).expanduser().resolve()
-    if not _is_relative_to(source, configured_root) or not _is_relative_to(
-        point, configured_root
-    ):
+    if not _is_relative_to(source, configured_root) or not _is_relative_to(point, configured_root):
         raise ValueError("Local provenance paths must stay inside OPENRAG_DOCUMENTS_PATH")
 
     if point.is_dir():
@@ -394,9 +419,7 @@ def _build_folder_member_provenance(
     )
 
 
-def with_local_relative_path(
-    provenance: SourceProvenance, relative_path: str
-) -> SourceProvenance:
+def with_local_relative_path(provenance: SourceProvenance, relative_path: str) -> SourceProvenance:
     """Add the selected local path while preserving caller-owned PROV links."""
     from models.source_provenance import SourceProvenance
 
@@ -462,6 +485,7 @@ class StagedLocalSource:
     archived_path: Path
     source_id: str
     committed: bool = False
+    owner_user_id: str | None = None
 
     def commit(self) -> None:
         """Mark the staged source as successfully indexed."""
@@ -481,6 +505,10 @@ class StagedLocalSource:
             )
 
         await asyncio.to_thread(_move_file, self.archived_path, destination)
+        if self.owner_user_id:
+            from services.user_storage_service import unregister_archive
+
+            await unregister_archive(self.source_id)
         try:
             self.archived_path.parent.rmdir()
         except OSError:
@@ -490,17 +518,27 @@ class StagedLocalSource:
         """Delete an uncommitted staged source that is no longer needed."""
         if self.committed:
             return False
+        if self.owner_user_id:
+            return await delete_local_source(self.source_id)
         return await asyncio.to_thread(_delete_local_source_directory, self.source_id)
 
 
 async def stage_local_source(
-    file_path: str | os.PathLike[str], document_id: str, filename: str
+    file_path: str | os.PathLike[str],
+    document_id: str,
+    filename: str,
+    *,
+    owner_user_id: str | None = None,
 ) -> StagedLocalSource:
     """Move a local source into the persistent archive, ready for indexing."""
     from config.settings import is_no_auth_mode
 
-    if not is_no_auth_mode():
-        raise ValueError("Local source archiving is disabled in multi-user mode")
+    if not is_local_storage_available():
+        raise ValueError("Local source archiving is unavailable")
+    if not is_no_auth_mode() and not owner_user_id:
+        raise ValueError("An authenticated storage owner is required")
+    if is_no_auth_mode():
+        owner_user_id = None
     if not DOCUMENT_ID_PATTERN.fullmatch(document_id):
         raise ValueError("Invalid document ID")
 
@@ -509,24 +547,39 @@ async def stage_local_source(
         raise ValueError("Local source must be a regular file")
 
     source_id = f"{document_id}.{uuid.uuid4().hex}"
-    archive_directory = get_indexed_documents_path() / source_id
+    archive_root = get_indexed_documents_path()
+    if owner_user_id:
+        from services.user_storage_service import get_user_storage
+
+        archive_root = (await get_user_storage(owner_user_id)).archive
+    archive_directory = archive_root / source_id
     destination = _unique_archive_path(archive_directory, filename)
     await asyncio.to_thread(_move_file, source, destination)
-    return StagedLocalSource(
+    staged = StagedLocalSource(
         original_path=source,
         archived_path=destination,
         source_id=source_id,
+        owner_user_id=owner_user_id,
     )
+    if owner_user_id:
+        from services.user_storage_service import register_archive
+
+        try:
+            await register_archive(source_id, owner_user_id)
+        except Exception:
+            await staged.rollback()
+            raise
+    return staged
 
 
-def find_local_source(source_id: str) -> Path | None:
+def find_local_source(source_id: str, *, archive_root: Path | None = None) -> Path | None:
     """Resolve an archived source without allowing traversal or symlink escapes."""
     if not SOURCE_ID_PATTERN.fullmatch(source_id):
         return None
 
-    archive_root = get_indexed_documents_path()
+    archive_root = archive_root or get_indexed_documents_path()
     document_directory = archive_root / source_id
-    if not document_directory.is_dir():
+    if document_directory.is_symlink() or not document_directory.is_dir():
         return None
 
     for candidate in sorted(document_directory.iterdir()):
@@ -582,7 +635,13 @@ async def resolve_local_source_download(
     if _total_hits(result) == 0:
         raise LocalSourceNotFoundError
 
-    source = find_local_source(source_id)
+    from config.settings import is_no_auth_mode
+    from services.user_storage_service import archive_root_for_source
+
+    archive_root = None if is_no_auth_mode() else await archive_root_for_source(source_id)
+    if not is_no_auth_mode() and archive_root is None:
+        raise LocalSourceNotFoundError
+    source = find_local_source(source_id, archive_root=archive_root)
     if source is None:
         raise LocalSourceNotFoundError
 
@@ -593,12 +652,12 @@ async def resolve_local_source_download(
     return ResolvedLocalSource(path=source, media_type=media_type)
 
 
-def _delete_local_source_directory(source_id: str) -> bool:
+def _delete_local_source_directory(source_id: str, *, archive_root: Path | None = None) -> bool:
     """Delete a validated source archive directory without path traversal."""
     if not SOURCE_ID_PATTERN.fullmatch(source_id):
         return False
 
-    archive_root = get_indexed_documents_path().resolve()
+    archive_root = (archive_root or get_indexed_documents_path()).resolve()
     source_directory = archive_root / source_id
     if source_directory.is_symlink() or not source_directory.is_dir():
         return False
@@ -613,4 +672,17 @@ def _delete_local_source_directory(source_id: str) -> bool:
 
 async def delete_local_source(source_id: str) -> bool:
     """Delete one validated backend-managed source archive directory."""
-    return await asyncio.to_thread(_delete_local_source_directory, source_id)
+    from config.settings import is_no_auth_mode
+    from services.user_storage_service import archive_root_for_source, unregister_archive
+
+    if is_no_auth_mode():
+        return await asyncio.to_thread(_delete_local_source_directory, source_id)
+    archive_root = await archive_root_for_source(source_id)
+    if archive_root is None:
+        return False
+    deleted = await asyncio.to_thread(
+        _delete_local_source_directory, source_id, archive_root=archive_root
+    )
+    if deleted:
+        await unregister_archive(source_id)
+    return deleted

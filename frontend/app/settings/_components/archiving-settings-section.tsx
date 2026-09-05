@@ -16,10 +16,12 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { useAuth } from "@/contexts/auth-context";
 import { formatFileSize } from "@/lib/file-format";
 
 /** Render controls and storage details for local source archiving. */
 export function ArchivingSettingsSection() {
+  const { isLocalAuthEnabled } = useAuth();
   const { data: settings, isError, isLoading } = useGetArchivingSettingsQuery();
   const serverEnabled = settings?.archiving?.enabled ?? false;
   const [draftEnabled, setDraftEnabled] = useState<boolean | null>(null);
@@ -44,7 +46,7 @@ export function ArchivingSettingsSection() {
             <CardTitle>Source archiving</CardTitle>
             <CardDescription className="mt-1">
               {archive?.available === false
-                ? "Local source storage is unavailable in multi-user mode."
+                ? "Local source storage is unavailable with this authentication configuration."
                 : "Keep successful local uploads as downloadable originals and add their authenticated URL to search and chat citations."}
             </CardDescription>
           </div>
@@ -97,7 +99,9 @@ export function ArchivingSettingsSection() {
               />
               <p className="text-xs text-muted-foreground">
                 Drop local files here, then start “Ingestion folder” from Add
-                Knowledge. Configure this path with OPENRAG_DOCUMENTS_PATH.
+                Knowledge.{" "}
+                {isLocalAuthEnabled &&
+                  "This ingestion folder belongs to your account."}
                 {archive?.ingestion_host_path && (
                   <> Container path: {archive.ingestion_path}.</>
                 )}
@@ -113,8 +117,9 @@ export function ArchivingSettingsSection() {
                 className="font-mono text-sm"
               />
               <p className="text-xs text-muted-foreground">
-                Configure the deployment path with
-                OPENRAG_INDEXED_DOCUMENTS_PATH.
+                {isLocalAuthEnabled
+                  ? "Your originals are stored in your account’s archive. Downloads follow the document’s access permissions."
+                  : "Successfully indexed originals are retained in this archive."}
                 {archive?.host_path && <> Container path: {archive.path}.</>}
               </p>
             </div>

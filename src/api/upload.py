@@ -78,13 +78,13 @@ async def upload_path(
 ):
     """Ingest local paths and consume each source after successful indexing."""
     from config.settings import is_no_auth_mode
+    from services.local_source_service import is_local_storage_available
 
-    if not is_no_auth_mode():
+    if not is_local_storage_available():
         return JSONResponse(
             {
                 "error": (
-                    "Local path ingestion is disabled in multi-user mode; "
-                    "use the multipart document ingestion API"
+                    "Local path ingestion is unavailable; use the multipart document ingestion API"
                 )
             },
             status_code=403,
@@ -97,10 +97,17 @@ async def upload_path(
         with_local_relative_path,
     )
 
-    resolved_path = resolve_ingestion_path(body.path)
+    storage = None
+    if not is_no_auth_mode():
+        from services.user_storage_service import get_user_storage
+
+        storage = await get_user_storage(user.db_user_id or user.user_id)
+    resolved_path = resolve_ingestion_path(
+        body.path, ingestion_root=storage.ingestion if storage else None
+    )
     if resolved_path is None or not resolved_path.exists():
         return JSONResponse(
-            {"error": "path must be inside OPENRAG_DOCUMENTS_PATH"},
+            {"error": "path must be inside your ingestion directory"},
             status_code=400,
         )
 
@@ -248,15 +255,22 @@ async def upload_options(
     aws_enabled = bool(os.getenv("AWS_ACCESS_KEY_ID") and os.getenv("AWS_SECRET_ACCESS_KEY"))
     from config.paths import get_documents_path
     from config.settings import UPLOAD_BATCH_SIZE, is_no_auth_mode
+    from services.local_source_service import is_local_storage_available
 
-    local_path_ingestion_enabled = is_no_auth_mode()
-    response = {
+    local_path_ingestion_enabled = is_local_storage_available()
+    response: dict[str, object] = {
         "aws": aws_enabled,
         "upload_batch_size": UPLOAD_BATCH_SIZE,
         "local_path_ingestion_enabled": local_path_ingestion_enabled,
     }
     if local_path_ingestion_enabled:
-        response["documents_path"] = str(os.path.abspath(get_documents_path()))
+        if is_no_auth_mode():
+            response["documents_path"] = str(os.path.abspath(get_documents_path()))
+        else:
+            from services.user_storage_service import get_user_storage
+
+            storage = await get_user_storage(user.db_user_id or user.user_id)
+            response["documents_path"] = str(storage.ingestion)
     return JSONResponse(response)
 
 

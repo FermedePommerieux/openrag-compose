@@ -10,6 +10,7 @@ class LocalCredential(SQLModel, table=True):
     login: str = Field(unique=True, index=True, max_length=64)
     password_hash: str = Field(max_length=512, repr=False)
     version: int = Field(default=1)
+    must_change_password: bool = Field(default=False)
 
 
 class AuthSession(SQLModel, table=True):

@@ -21,6 +21,7 @@ function LoginPageContent() {
     isGoogleAuthEnabled,
     loginLocal,
     localSetupAvailable,
+    passwordChangeRequired,
   } = useAuth();
   const [localLogin, setLocalLogin] = useState("");
   const [password, setPassword] = useState("");
@@ -38,6 +39,10 @@ function LoginPageContent() {
       : "/chat";
 
   useEffect(() => {
+    if (!isLoading && passwordChangeRequired) {
+      router.replace("/auth/change-password");
+      return;
+    }
     if (!isLoading && localSetupAvailable) {
       router.replace("/onboarding/account");
       return;
@@ -53,6 +58,7 @@ function LoginPageContent() {
     router,
     redirect,
     localSetupAvailable,
+    passwordChangeRequired,
   ]);
 
   if (isLoading || localSetupAvailable) {

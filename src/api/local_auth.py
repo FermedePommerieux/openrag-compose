@@ -21,6 +21,7 @@ from services.local_auth_service import (
     create_local_user,
     issue_session,
     login_local,
+    password_change_identity,
     reset_password,
     revoke_sessions,
     throttle_login,
@@ -78,6 +79,7 @@ def session_response(token: str, user_id: str, *, status_code: int = 200) -> JSO
         samesite="lax",
         max_age=SESSION_SECONDS,
     )
+    response.delete_cookie("password_change_token")
     return response
 
 
@@ -178,6 +180,53 @@ async def local_login(
         session, manager, body.login, body.password.get_secret_value()
     )
     await session.commit()
+    if principal.must_change_password:
+        response = JSONResponse(
+            {"authenticated": False, "password_change_required": True},
+            headers={"Cache-Control": "no-store"},
+        )
+        response.delete_cookie("auth_token")
+        response.set_cookie(
+            "password_change_token",
+            token,
+            httponly=True,
+            secure=secure_auth_cookie(),
+            samesite="lax",
+            max_age=900,
+        )
+        return response
+    return session_response(token, principal.user_id)
+
+
+@router.post("/auth/local/password/required")
+async def replace_temporary_password(
+    body: PasswordBody,
+    request: Request,
+    session: AsyncSession = Depends(get_db_session),
+    manager=Depends(get_session_manager),
+):
+    require_local_mode()
+    check_browser_origin(request)
+    throttle_login("first-password-change", request.client.host if request.client else "unknown")
+    identity = await password_change_identity(session, request.cookies.get("password_change_token"))
+    if identity is None:
+        raise HTTPException(401, "Password replacement expired; sign in again")
+    row, credential = identity
+    if await verify_password(body.password.get_secret_value(), credential.password_hash):
+        raise HTTPException(400, "Choose a different password")
+    try:
+        await reset_password(
+            session,
+            row.id,
+            body.password.get_secret_value(),
+            row.id,
+            expected_version=credential.version,
+        )
+        token, principal = await issue_session(session, manager, row)
+        await session.commit()
+    except ValueError as error:
+        await session.rollback()
+        raise HTTPException(400, str(error)) from None
     return session_response(token, principal.user_id)
 
 

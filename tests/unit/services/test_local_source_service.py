@@ -280,8 +280,8 @@ def test_api_ingestion_path_is_confined_to_documents_root(documents_path):
 
 
 @pytest.mark.asyncio
-async def test_multi_user_mode_disables_and_rejects_local_archiving(documents_path, monkeypatch):
-    """Disable and reject local source archiving in multi-user mode."""
+async def test_unsupported_auth_mode_rejects_local_archiving(documents_path, monkeypatch):
+    """External-only authentication retains its existing storage restriction."""
     source = documents_path / "message.eml"
     source.write_text("message")
     monkeypatch.setattr("config.settings.is_no_auth_mode", lambda: False)
@@ -291,6 +291,6 @@ async def test_multi_user_mode_disables_and_rejects_local_archiving(documents_pa
     )
 
     assert is_source_archiving_enabled() is False
-    with pytest.raises(ValueError, match="disabled in multi-user mode"):
+    with pytest.raises(ValueError, match="unavailable"):
         await stage_local_source(source, DOCUMENT_ID, source.name)
     assert source.exists()

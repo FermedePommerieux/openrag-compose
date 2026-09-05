@@ -3,17 +3,20 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import re
 import secrets
 import time
 import uuid
 from datetime import UTC, datetime, timedelta
+from typing import cast
 
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerificationError
 from cachetools import TTLCache
 from fastapi import HTTPException
 from sqlalchemy import delete, select, update
+from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import col
 
@@ -42,8 +45,12 @@ def validate_password(password: str) -> None:
         raise ValueError("Password must contain 12–1024 characters")
 
 
-async def hash_password(password: str) -> str:
-    validate_password(password)
+async def hash_password(password: str, *, temporary: bool = False) -> str:
+    if temporary:
+        if not 8 <= len(password) <= 1024:
+            raise ValueError("Temporary password must contain 8–1024 characters")
+    else:
+        validate_password(password)
     async with _HASH_SLOTS:
         return await asyncio.to_thread(PASSWORD_HASHER.hash, password)
 
@@ -90,18 +97,29 @@ async def create_local_user(
     password: str,
     role: str = "user",
     actor_id: str | None = None,
+    require_password_change: bool = False,
+    planned_user_id: str | None = None,
 ) -> User:
     login = normalize_login(login)
     role_row = await RoleRepo(session).get_by_name(role)
     if role_row is None:
         raise ValueError("Unknown workspace role")
-    encoded = await hash_password(password)
-    user_id = str(uuid.uuid4())
+    encoded = await hash_password(password, temporary=require_password_change)
+    if planned_user_id is not None and uuid.UUID(planned_user_id).version != 4:
+        raise ValueError("Planned user ID must be a random UUID v4")
+    user_id = str(uuid.UUID(planned_user_id)) if planned_user_id else str(uuid.uuid4())
     # oauth_subject remains immutable. The editable/login identifier lives only
     # on the method row; unverified local email aliases cannot grant document ACLs.
     row = User(id=user_id, oauth_provider="local", oauth_subject=user_id, display_name=login)
     await UserRepo(session).add(row)
-    session.add(LocalCredential(user_id=row.id, login=login, password_hash=encoded))
+    session.add(
+        LocalCredential(
+            user_id=row.id,
+            login=login,
+            password_hash=encoded,
+            must_change_password=require_password_change,
+        )
+    )
     await session.flush()
     await RoleRepo(session).assign_role(row.id, role_row.id, granted_by=actor_id)
     await AuditRepo(session).write(
@@ -120,6 +138,8 @@ async def issue_session(
     if not row.is_active:
         raise HTTPException(401, "Authentication required")
     credential = await session.get(LocalCredential, row.id)
+    if credential is not None and credential.must_change_password:
+        raise HTTPException(403, "Password replacement required")
     sid = str(uuid.uuid4())
     principal = principal_from_row(row)
     principal.session_id = sid
@@ -162,7 +182,7 @@ async def login_local(session: AsyncSession, manager, login: str, password: str)
         raise HTTPException(401, "Invalid login or password")
     if PASSWORD_HASHER.check_needs_rehash(credential.password_hash):
         # Do not overwrite an administrator reset racing with verification.
-        encoded = await hash_password(password)
+        encoded = await hash_password(password, temporary=credential.must_change_password)
         await session.execute(
             update(LocalCredential)
             .where(
@@ -171,6 +191,22 @@ async def login_local(session: AsyncSession, manager, login: str, password: str)
             )
             .values(password_hash=encoded)
         )
+    if credential.must_change_password:
+        # This opaque proof cannot authenticate to OpenSearch, APIs or tools.
+        # Only its hash is persisted, and only the replacement route accepts it.
+        proof = secrets.token_urlsafe(32)
+        principal = principal_from_row(row)
+        principal.must_change_password = True
+        session.add(
+            AuthSession(
+                id=hashlib.sha256(proof.encode()).hexdigest(),
+                user_id=row.id,
+                expires_at=int(time.time()) + 900,
+                credential_version=credential.version,
+            )
+        )
+        await session.flush()
+        return proof, principal
     return await issue_session(session, manager, row)
 
 
@@ -199,7 +235,11 @@ async def authenticate_session(manager, token: str) -> Principal | None:
             if not local_auth_enabled():
                 return None
             credential = await session.get(LocalCredential, row.id)
-            if credential is None or credential.version != record.credential_version:
+            if (
+                credential is None
+                or credential.must_change_password
+                or credential.version != record.credential_version
+            ):
                 return None
         elif row.oauth_provider == "google":
             if not google_login_enabled():
@@ -217,16 +257,31 @@ async def revoke_sessions(session: AsyncSession, user_id: str) -> None:
     await session.execute(delete(AuthSession).where(col(AuthSession.user_id) == user_id))
 
 
-async def reset_password(session: AsyncSession, user_id: str, password: str, actor_id: str) -> None:
+async def reset_password(
+    session: AsyncSession,
+    user_id: str,
+    password: str,
+    actor_id: str,
+    *,
+    require_password_change: bool = False,
+    expected_version: int | None = None,
+) -> None:
     credential = await session.get(LocalCredential, user_id)
     if credential is None:
         raise HTTPException(404, "Local account not found")
-    encoded = await hash_password(password)
-    await session.execute(
-        update(LocalCredential)
-        .where(col(LocalCredential.user_id) == user_id)
-        .values(password_hash=encoded, version=col(LocalCredential.version) + 1)
+    encoded = await hash_password(password, temporary=require_password_change)
+    statement = update(LocalCredential).where(col(LocalCredential.user_id) == user_id)
+    if expected_version is not None:
+        statement = statement.where(col(LocalCredential.version) == expected_version)
+    result = await session.execute(
+        statement.values(
+            password_hash=encoded,
+            version=col(LocalCredential.version) + 1,
+            must_change_password=require_password_change,
+        )
     )
+    if cast(CursorResult, result).rowcount != 1:
+        raise HTTPException(401, "Password replacement expired; sign in again")
     await revoke_sessions(session, user_id)
     await AuditRepo(session).write(
         event="user.password_reset",
@@ -234,3 +289,27 @@ async def reset_password(session: AsyncSession, user_id: str, password: str, act
         target_type="user",
         target_id=user_id,
     )
+
+
+async def password_change_identity(session: AsyncSession, proof: str | None):
+    """Validate the limited first-login proof without creating a request principal."""
+    from config.auth_mode import local_auth_enabled
+
+    if not local_auth_enabled():
+        return None
+    if not proof or len(proof) > 128:
+        return None
+    record = await session.get(AuthSession, hashlib.sha256(proof.encode()).hexdigest())
+    if record is None or record.expires_at <= time.time():
+        return None
+    row = await session.get(User, record.user_id)
+    credential = await session.get(LocalCredential, record.user_id)
+    if (
+        row is None
+        or not row.is_active
+        or credential is None
+        or not credential.must_change_password
+        or credential.version != record.credential_version
+    ):
+        return None
+    return row, credential

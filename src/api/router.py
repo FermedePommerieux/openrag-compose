@@ -112,9 +112,7 @@ def _folder_upload_provenances(
     """
     if not relative_paths:
         if collection_label:
-            raise ValueError(
-                "source_collection_label requires one source_relative_path per file"
-            )
+            raise ValueError("source_collection_label requires one source_relative_path per file")
         return explicit_provenances
     if len(relative_paths) != len(upload_files):
         raise ValueError(
@@ -123,9 +121,7 @@ def _folder_upload_provenances(
     if not collection_label:
         raise ValueError("source_collection_label is required for a folder upload")
     if any(provenance is not None for provenance in explicit_provenances):
-        raise ValueError(
-            "source_relative_path cannot be combined with source_provenance"
-        )
+        raise ValueError("source_relative_path cannot be combined with source_provenance")
 
     from services.local_source_service import build_browser_folder_provenance
 
@@ -193,15 +189,12 @@ async def upload_ingest_router(
     # public v1 wrapper for its other Form-defaulted parameters.
     source_urls = source_url if isinstance(source_url, list) else None
     source_provenances = source_provenance if isinstance(source_provenance, list) else None
-    source_relative_paths = (
-        source_relative_path if isinstance(source_relative_path, list) else None
-    )
-    collection_label = (
-        source_collection_label if isinstance(source_collection_label, str) else None
-    )
-    from config.settings import is_no_auth_mode
+    source_relative_paths = source_relative_path if isinstance(source_relative_path, list) else None
+    collection_label = source_collection_label if isinstance(source_collection_label, str) else None
 
-    if not is_no_auth_mode():
+    from services.local_source_service import is_local_storage_available
+
+    if not is_local_storage_available():
         if isinstance(archive_source, str) and archive_source.strip().lower() not in {
             "",
             "false",

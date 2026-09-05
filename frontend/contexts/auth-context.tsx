@@ -32,6 +32,7 @@ interface AuthContextType {
   isGoogleAuthEnabled: boolean;
   localSetupAvailable: boolean;
   localSetupCanSkip: boolean;
+  passwordChangeRequired: boolean;
   runMode: string | null;
   version: string | null;
   permissions: Set<string>;
@@ -86,6 +87,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [isGoogleAuthEnabled, setIsGoogleAuthEnabled] = useState(false);
   const [localSetupAvailable, setLocalSetupAvailable] = useState(false);
   const [localSetupCanSkip, setLocalSetupCanSkip] = useState(false);
+  const [passwordChangeRequired, setPasswordChangeRequired] = useState(false);
   const [version, setVersion] = useState<string | null>(null);
   const [runMode, setRunMode] = useState<string | null>(null);
 
@@ -106,6 +108,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       setIsLocalAuthEnabled(data.local_auth_enabled === true);
       setLocalSetupAvailable(data.local_setup_available === true);
       setLocalSetupCanSkip(data.local_setup_can_skip === true);
+      setPasswordChangeRequired(data.password_change_required === true);
       setIsGoogleAuthEnabled(
         data.google_auth_enabled ?? (!data.no_auth_mode && !data.ibm_auth_mode),
       );
@@ -366,6 +369,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     isGoogleAuthEnabled,
     localSetupAvailable,
     localSetupCanSkip,
+    passwordChangeRequired,
     version,
     permissions,
     roles,

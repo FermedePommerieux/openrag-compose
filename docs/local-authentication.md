@@ -55,7 +55,9 @@ Local usernames are case-insensitive ASCII identifiers, 3–64 characters, start
 with a letter/digit and otherwise allowing letters, digits, dots, `_` and `-`.
 They resolve to immutable random `users.id` UUIDs. Passwords are 12–1024
 characters, hashed with Argon2id (64 MiB, three iterations, parallelism four,
-random library-generated salt). No password or hash is returned by account APIs.
+random library-generated salt). No password or hash is returned by account APIs. Operator-issued temporary
+passwords may use 8–1024 characters only with `--require-password-change`; they
+cannot establish an authenticated workspace session before replacement.
 Local accounts have no unverified email alias that could grant document access.
 
 Local and newly issued Google sessions use the persisted internal ID in JWT
@@ -128,6 +130,63 @@ or resetting a password revokes that user's sessions. The screen prevents
 self-disable, and resetting one's own password signs the administrator out.
 The navigation, server-rendered page and backend enforce administration access.
 
+## Temporary credentials and personal source storage
+
+For an operator-created account that must choose its own password on first use:
+
+```sh
+OPENRAG_AUTH_MODE=local OPENRAG_RBAC_ENFORCE=true PYTHONPATH=src \
+  uv run python -m auth.local_admin bootstrap operator --require-password-change
+```
+
+`reset-password operator --require-password-change` applies the same rule during
+recovery. A migration can reserve an immutable random UUID v4 and pass it to
+bootstrap with `--user-id`; this is not an HTTP account-creation parameter.
+
+Alembic `0009_password_change` persists the requirement on the existing local
+credential. Successful temporary login returns a 15-minute opaque proof in a
+separate HttpOnly cookie; SQL stores only its SHA-256 digest. It is not a JWT
+and cannot authenticate to OpenSearch, product APIs or Langflow. The replacement
+page requires a different password of at least 12 characters, revokes all older
+sessions/proofs, and then issues the normal session. Disabled accounts, expired
+proofs, credential resets and concurrent proof reuse fail closed. A downgrade
+refuses while any temporary credential remains.
+
+In local and local-plus-external modes, each account has server-selected paths:
+
+```text
+OPENRAG_DOCUMENTS_PATH/<local-login>/ingestion/
+OPENRAG_DOCUMENTS_PATH/<local-login>/archives/<source-id>/<original-name>
+```
+
+External accounts coexisting with local login receive an opaque `user-<digest>`
+directory derived from their internal ID. The application database owns the
+`user_storage` mapping and `source_archive_locations` download locators (Alembic
+`0010_user_storage`). These describe file locations; existing user roles and
+OpenSearch document ACLs still decide access. The login identifier is immutable.
+
+The backend resolves folder-ingestion paths inside the authenticated account's
+root, rejects traversal and symlink escapes, and takes ownership from the
+validated principal. A new account cannot claim a pre-existing directory by
+choosing its name. Legacy data requires an explicit ownership migration first.
+Successful ingestion archives in that account's directory; failed processing
+restores the file or removes its staged copy and locator as appropriate.
+
+Existing source URLs retain their IDs. Download authorization still checks the
+exact source URL/document ID with the reader-scoped OpenSearch client before
+resolving the SQL locator, so shared readers follow the document's permissions.
+Legacy archives without migrated locators remain unavailable in authenticated
+mode. Archive byte counts describe only the current account; filesystem capacity
+remains an administrator-only setting. No-auth mode retains its existing paths.
+
+These are application accounts, not newly created Unix accounts. Managed folders
+are private to the backend service account. Host/SMB deposit access must use the
+existing service-compatible filesystem ACLs and be reviewed at migration;
+assigning an application role does not grant access to a network share.
+
+See [the Pommerieux migration plan](local-storage-migration.md). Do not downgrade
+storage while archive locators remain; restore files and their bindings first.
+
 ## Product API
 
 The browser uses the `/api` prefix; direct backend routes omit it. Administration
@@ -140,7 +199,8 @@ fresh-installation administrator choice; ordinary users cannot self-register.
 | GET `/auth/me` | Enabled login methods and `local_setup_available` / `local_setup_can_skip` flags |
 | POST `/auth/local/setup` | Fresh workspace only: `login`, `password`; atomically creates administrator/session and commits mandatory local login |
 | POST `/auth/local/setup/skip` | Fresh automatic-mode workspace only: permanently skip local enrollment, retaining existing auth selection |
-| POST `/auth/local/login` | `login`, `password`; creates HttpOnly, SameSite=Lax session cookie |
+| POST `/auth/local/login` | `login`, `password`; creates a session cookie, or an opaque password-replacement proof for a temporary credential |
+| POST `/auth/local/password/required` | `password`; accepts the limited HttpOnly proof, replaces the temporary password and creates the normal session |
 | GET `/users/me` | Internal `user_id`, authenticated state, provider, roles and workspace |
 | POST `/auth/logout` | Revokes durable session and clears cookie |
 | POST `/auth/local/password` | `current_password`, `password`; revokes all current account sessions |

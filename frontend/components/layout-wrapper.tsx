@@ -61,6 +61,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
     isIbmAuthMode,
     runMode,
     localSetupAvailable,
+    passwordChangeRequired,
   } = useAuth();
   const { isOnboardingComplete } = useChat();
 
@@ -69,10 +70,16 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
     "/auth/callback",
     "/unauthorized",
     "/onboarding/account",
+    "/auth/change-password",
   ];
   const isAuthPage = authPaths.includes(pathname);
 
   useEffect(() => {
+    if (!isLoading && passwordChangeRequired) {
+      if (pathname !== "/auth/change-password")
+        router.replace("/auth/change-password");
+      return;
+    }
     if (!isLoading && localSetupAvailable && pathname !== "/auth/callback") {
       if (pathname !== "/onboarding/account")
         router.replace("/onboarding/account");
@@ -93,6 +100,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
     pathname,
     router,
     localSetupAvailable,
+    passwordChangeRequired,
   ]);
 
   const { data: settings, isLoading: isSettingsLoading } = useGetSettingsQuery({
