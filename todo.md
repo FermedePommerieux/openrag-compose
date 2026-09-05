@@ -1,0 +1,27 @@
+# Multi-user production activation checklist
+
+- [x] Establish canonical, candidate, worktree and GitOps baselines.
+- [x] Prove candidate includes P0 coverage repair and excludes Identity v1 work.
+- [x] Create the isolated activation worktree and branch.
+- [x] Review candidate implementation against every production gate.
+- [x] Reconcile the managed metadata tool and runtime-value-preserving flow migration.
+- [x] Confirm the validated coverage, bounded inventory and activation safeguards.
+- [x] Run the full local static, unit, frontend and browser test gates.
+- [ ] Record production runtime, topology, auth, flow and artifact state before rollout.
+- [ ] Define and verify rollback plus database backup procedure.
+- [ ] Build and publish only required immutable artifacts.
+- [ ] Stage compatibility-capable artifacts without changing auth mode.
+- [ ] Verify pre-switch production health and RuntimeBehavior.
+- [ ] Apply and verify the additive auth/storage database migration.
+- [ ] Activate the validated local-plus-optional-external production mode.
+- [ ] Complete masked administrator bootstrap and mandatory password replacement.
+- [ ] Validate local-user lifecycle, RBAC and external-provider preservation.
+- [ ] Complete real two-user product-path DLS, provenance, metadata and streaming gates.
+- [ ] Recompute the bounded ownership inventory under a writer pause.
+- [ ] Stop unless UNKNOWN=0, CONFLICT=0 and all drift is explicitly reviewed.
+- [ ] Run migration canary, exact rollback, reapply and idempotency verification.
+- [ ] Execute the checkpointed full reviewed ownership migration.
+- [ ] Verify post-migration integrity and per-account archive separation.
+- [ ] Validate the backend-only GenerationHead control-index boundary without migration.
+- [ ] Update current production documentation and prepare canonical integration.
+- [ ] Produce the required A-Z activation report and stop.
