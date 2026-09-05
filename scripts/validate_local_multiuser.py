@@ -575,7 +575,10 @@ async def validate(args):
                 and other["source_entity_id"] not in response.text
             )
             assert own["document_id"] in response.text
-            # Preserve P0: an opaque target is not silently certified as a leaf.
+            # A backend-proven DLS boundary is outside this reader's closure.
+            # Missing provenance still fails closed in the P0 regression suite.
+            assert payload["coverage"]["complete"] is True, payload["coverage"]
+            assert payload["coverage"]["documents_discovered"] == 1
             passed(
                 f"{side}_prov_o_isolation",
                 {"hidden_identifiers_absent": True, "coverage": payload.get("coverage")},
@@ -594,7 +597,7 @@ async def validate(args):
             leaf["source_relation_target_ids"] = []
             leaf["source_relation_roles"] = []
             await os_admin.index(index=index, id=leaf["chunk_id"], body=leaf, refresh=True)
-        for side, hidden in [("A", "B"), ("B", "A")]:
+        for side in ["A", "B"]:
             response = await local_clients[side].post(
                 "/search", json={"query": query, "evidenceMode": "scope_exhaustive"}
             )
@@ -602,6 +605,10 @@ async def validate(args):
             payload = response.json()
             assert payload["coverage"]["complete"] is True, payload["coverage"]
             passed(f"{side}_accessible_leaf_coverage_complete", payload["coverage"])
+        # Exercise Agent and streaming with the actual cross-owner relations.
+        for document in documents.values():
+            await os_admin.index(index=index, id=document["chunk_id"], body=document, refresh=True)
+        for side, hidden in [("A", "B"), ("B", "A")]:
             for kind, prompt in [
                 (
                     "retrieval",
@@ -631,14 +638,45 @@ async def validate(args):
                     "own_evidence_present": f"LOCAL-AUTH-{side}-{suffix[:12]}" in stream_text,
                     "callback_success": bool(callbacks)
                     and all(t["status"] == 200 for t in callbacks),
+                    "metadata_callback": any(
+                        t["path"] == "/search/metadata-agent" for t in callbacks
+                    ),
                 }
-                if evidence["own_evidence_present"] and evidence["callback_success"]:
+                if (
+                    evidence["own_evidence_present"]
+                    and evidence["callback_success"]
+                    and (kind != "metadata" or evidence["metadata_callback"])
+                ):
                     passed(f"{side}_agent_streaming_{kind}", evidence)
                 else:
                     result.setdefault("failed_product_checks", {})[
                         f"{side}_agent_streaming_{kind}"
                     ] = evidence
                     print("CHECK", f"{side}_agent_streaming_{kind}", "FAIL", flush=True)
+            before_trace = len(traces)
+            response = await local_clients[side].post(
+                "/langflow",
+                json={
+                    "prompt": "Read every visible document about Pommerieux local authentication validation and quote its private validation code with citations.",
+                    "stream": False,
+                },
+            )
+            response.raise_for_status()
+            (scratch / f"agent-{side}.json").write_text(response.text)
+            assert f"LOCAL-AUTH-{side}-{suffix[:12]}" in response.text
+            assert f"LOCAL-AUTH-{hidden}-{suffix[:12]}" not in response.text
+            assert documents[hidden]["source_entity_id"] not in response.text
+            callbacks = [t for t in traces[before_trace:] if t["path"].startswith("/search")]
+            assert callbacks and all(
+                t["user_id"] == user_ids[side] and t["status"] == 200 for t in callbacks
+            )
+            passed(
+                f"{side}_agent_nonstream",
+                {
+                    "callback_count": len(callbacks),
+                    "response_sha256": hashlib.sha256(response.content).hexdigest(),
+                },
+            )
         config.knowledge.index_name = source_index
         assert config.to_dict() == functional_before
         passed("RuntimeBehavior_functional_configuration_unchanged")

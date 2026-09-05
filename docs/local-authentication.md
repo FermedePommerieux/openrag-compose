@@ -215,7 +215,12 @@ enabled state and credential version. Login attempts are bounded per process
 per account/client and globally. Browser cross-site credential mutations are
 rejected. API keys keep their existing independent lifecycle; in local mode they
 check the live account and delegate a five-minute revocable session for tool
-callbacks. Password reset does not revoke independent API keys. Account disable
+callbacks. Each OpenRAG API key stores the issuing user's `user_id` and acts
+under that account. Per-key role restrictions are not active in the current
+OpenSearch-backed key service: the key inherits the account's live roles. A key
+issued by an administrator therefore has that account's permissions. Changing
+a connector's key affects subsequent requests, not ownership of existing indexed
+documents. Password reset does not revoke independent API keys. Account disable
 blocks both keys and sessions. OpenSearch remains internal: it validates signed
 JWT expiry/DLS, while immediate session revocation is enforced at the backend.
 

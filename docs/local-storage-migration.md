@@ -31,7 +31,63 @@ Checksums, exact chunk ACL journals and metadata-generation consistency must be
 captured again before cutover. Do not move files just by changing a path setting:
 ownerless indexed documents and metadata must cross the same authorization boundary.
 
-## Bounded read-only planner
+## Completed streaming inventory and explicit owner decisions
+
+The replacement `scripts/inventory_local_storage_stream.py` ran in a separate
+256 MiB maintenance pod with all production volumes mounted read-only. File
+hashing uses 1 MiB blocks; the chunk journal uses projected scroll pages of 250
+and a 2 MiB response limit. It completed 406 files, 652,386 unique chunk IDs and
+53,224 indexed documents. A supplemental bounded scan captured all 47,133 rows
+of `documents-metadata-filter-current` while verifying its generation remained
+`documents-metadata-filter-v1-20260903t070247z`.
+
+The user explicitly assigned all legacy physical files to `eloiprimaux`. The
+52,945 indexed documents outside those files were initially UNKNOWN; the user
+then confirmed that they come from the OpenArchiver connector and explicitly
+assigned all of them to `eloiprimaux`. That human resolution supersedes the
+initial ownership decision, while preserving the immutable observation journal.
+All 53,224 document owners and 47,133 existing metadata owners are now assigned;
+remaining UNKNOWN count is zero. Of the metadata rows, 46,854 belong to the
+connector and 279 to physical local documents. Metadata absence for other
+indexed documents does not authorize fabricating a projection.
+
+The reserved target UUID is `453bb5fb-1a2b-4f5b-8d83-fc83976c64c8`.
+The target account has not been created in production. Do not change
+`connector_type`, source URLs, entity IDs, document/chunk IDs or PROV-O to make
+connector documents look like local uploads. The observed legacy connector_type
+was `local`; the user's origin confirmation supplies the migration decision,
+not permission to rewrite historical provenance. No physical move is planned
+for the 52,945 connector documents lacking files in this inventory.
+
+The capture was not quiesced. At actual cutover, revalidate file hashes/stats,
+chunk sequence/primary-term guards, owner decisions and metadata generation.
+New or changed documents need an explicit decision; this assignment is not a
+blanket rule for future UNKNOWN documents.
+
+## Canary prepared and exercised on copies
+
+`scripts/validate_local_storage_canary.py` consumes a private manifest and the
+isolated two-user validation DB. It refuses production database paths and
+requires the original volumes to be read-only. The prepared manifest selects
+one ingestion file and one archive, totaling 23,493 bytes. Only `/tmp` copies,
+one dedicated OpenSearch index and temporary user/principal state are changed.
+
+The live rehearsal passed SHA-256/source-stat checks, original archive source-ID
+and URL preservation, real owner download, denial to the other real reader,
+per-user ingestion/archive placement, locator rollback and unchanged originals.
+Copies and the canary index were removed. This is a canary rehearsal, not the
+production transfer or a full immutable-metadata generation rebuild.
+
+At cutover the connector must use a dedicated OpenRAG API key created by the
+activated `eloiprimaux` account. Update its effective configuration/secret in the
+same maintenance window; do not assume editing its bootstrap environment alone
+replaces the persisted key. The deployed connector uses multipart API ingestion,
+so retain its existing source URLs and provenance. If path ingestion is later
+selected, point it inside `eloiprimaux/ingestion/` and verify deposit permissions.
+Keys currently inherit the account's roles; per-key restricted scopes are not
+active. Key rotation does not transfer the 52,945 existing document ACLs.
+
+## Earlier bounded planner
 
 `scripts/plan_local_storage_migration.py` creates a JSON plan with file hashes,
 size/mtime/mode information, a reserved target UUID, proposed chunk ACL changes,
@@ -71,8 +127,8 @@ It is a preparation tool, not an automatic migration executor.
 ## Coordinated cutover
 
 1. Resolve every plan blocker and all original multi-user production gates.
-   Coverage for cross-user provenance and the deployed Agent metadata-tool
-   contract are still blockers from the earlier auth validation. Keep identity
+   Cross-user provenance and the deployed Agent metadata-tool contract now pass
+   the isolated two-user gate. This does not execute the cutover. Keep identity
    occurrence/generation v1 and the unrelated 652k-chunk identity migration off.
 2. Put ingress behind maintenance access. Pause uploads, connectors, reindexing
    and every other writer. Take a consistent application SQL backup and an
@@ -135,8 +191,6 @@ inventory. This was an operational incident despite the command being read-only.
 
 Subsequent checks showed the backend Ready/Running, one restart, legacy no-auth
 still selected and RuntimeBehavior MATCH. No account, file move, index ACL,
-metadata alias or deployment activation was applied by this attempt. The full
-migration manifest was not produced. Bulk production inventory was suspended;
-the replacement planner's response, page, process and row bounds were tested
-locally. Complete the remaining journal capture in the separate maintenance
-environment described above before any migration.
+metadata alias or deployment activation was applied by this attempt. That attempt did not produce a complete manifest. The separate bounded
+streaming capture described above subsequently completed successfully. Keep the
+incident evidence; do not rerun a bulk inventory in a serving pod.

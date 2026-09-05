@@ -36,7 +36,13 @@ _LEGACY_RETRIEVAL_COMPONENT = (
     "ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra"
 )
 _BACKEND_RETRIEVAL_COMPONENT = "ext:openrag:OpenRAGBackendRetrievalComponent@extra"
-_RETRIEVAL_FLOW_MIGRATION_VERSION = 18
+_RETRIEVAL_FLOW_MIGRATION_VERSION = 19
+# Exact v18 managed graph whose two outgoing Tool ports did not both reach
+# the Agent under Langflow Tool Mode. Only the native two-action Toolset repair
+# is authorized; settings-owned model/provider/prompt values remain unchanged.
+_PREVIOUS_SPLIT_METADATA_TOOL_MANAGED_GRAPH_SHA256 = (
+    "b61fba43ac10febb0014eb26222a49e06a0c4ddd07f1b29ba477db31af64eec3"
+)
 _LEGACY_SYSTEM_FLOW_ID = "1098eea1-6649-4e1d-aed1-b77249fb8dd0"
 # These fields are rewritten by OpenRAG's settings synchronization and by
 # Langflow's provider refresh endpoint. Their values and option lists are
@@ -1696,6 +1702,17 @@ class FlowsService:
                 self._managed_behavior_normalized_graph_fingerprint(flow_data)
                 == _PREVIOUS_COVERAGE_TRANSPORT_GRAPH_SHA256
             )
+        if marker == 18:
+            return (
+                self._managed_behavior_normalized_graph_fingerprint(flow_data)
+                in {
+                    _PREVIOUS_SPLIT_METADATA_TOOL_MANAGED_GRAPH_SHA256,
+                    # Native-toolkit repair applied at marker 18 while the
+                    # existing backend image remains deployed. Exact code and
+                    # wiring only; no custom graph is admitted.
+                    "c07018af89fd0a2a0359d615873f5d207406f37be7ef1fcd42efeb6ff0099375",
+                }
+            )
         if marker not in {6, 7, 8, 9, 10, 11, 12}:
             return exact_match
         expected_runtime = (
@@ -1779,7 +1796,7 @@ class FlowsService:
         self._preserve_runtime_managed_retrieval_fields(
             graph,
             migrated_graph,
-            preserve_system_prompt=graph.get("openrag_retrieval_version") in {16, 17},
+            preserve_system_prompt=graph.get("openrag_retrieval_version") in {16, 17, 18},
         )
         migrated["data"] = migrated_graph
         # Stored with the graph so repeated startups can identify the installed

@@ -13,6 +13,8 @@ import types
 from pathlib import Path
 from unittest.mock import MagicMock
 
+import pytest
+
 from utils.langflow_utils import parse_knowledge_chunks
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -44,9 +46,9 @@ def test_default_agent_uses_only_backend_retrieval_tool():
         for edge in tool_edges
     )
     retrieval_edges = [edge for edge in tool_edges if edge.get("source") == retrieval["id"]]
-    assert {
-        edge["data"]["sourceHandle"]["name"] for edge in retrieval_edges
-    } == {"component_as_tool", "metadata_search_tool"}
+    assert {edge["data"]["sourceHandle"]["name"] for edge in retrieval_edges} == {
+        "component_as_tool"
+    }
 
 
 def test_default_agent_uses_versioned_documentalist_prompt():
@@ -670,3 +672,17 @@ def test_ambiguous_plan_runs_neither_normal_nor_metadata_search(monkeypatch):
 
     assert json.loads(normal_content)["metadata_agent"]["status"] == "AMBIGUOUS"
     assert json.loads(metadata_content)["metadata_agent"]["status"] == "AMBIGUOUS"
+
+
+@pytest.mark.asyncio
+async def test_native_toolkit_exposes_both_actions_for_one_agent_edge(monkeypatch):
+    module = _load_component_with_langflow_stubs(monkeypatch)
+    component = module.OpenRAGBackendRetrievalComponent()
+    component.openrag_retrieval_url = "http://fixture/search"
+    component.jwt_token = "fixture"
+    component.filter_expression = "{}"
+    component.metadata_plan = ""
+    component.number_of_results = 10
+    tools = await component._get_tools()
+    assert [tool["name"] for tool in tools] == ["search_documents", "document_search_with_metadata"]
+    assert not inspect.signature(tools[1]["func"]).parameters

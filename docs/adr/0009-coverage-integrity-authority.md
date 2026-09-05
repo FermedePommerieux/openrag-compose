@@ -42,8 +42,11 @@ by the existing DLS client, not by requiring the reader to equal the owner.
 Invalid envelopes never become empty leaves. Diagnostics identify the visible
 document and invalid field category without exposing hidden relation targets.
 An asserted documentary target without a visible representative prevents
-certification. An email-thread grouping identity is closed through the
-existing typed reverse query, without asserting a separately readable document.
+certification unless the backend-only, count-only classifier proves DLS
+exclusion under [ADR 0011](0011-reader-visible-provenance-closure.md). Reader
+absence alone never proves exclusion. An email-thread grouping identity is
+closed through the existing typed reverse query, without asserting a separately
+readable document.
 
 Direct reads pin document identity, ingestion generation, expected chunk count,
 content digest, occurrence fields where present, owner and filename. These

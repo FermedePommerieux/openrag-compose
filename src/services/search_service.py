@@ -386,7 +386,21 @@ class SearchService:
     def __init__(self, session_manager=None, models_service=None):
         self.session_manager = session_manager
         self.models_service = models_service
+        self._provenance_hidden_targets = self._resolve_hidden_provenance_targets
         self._configure_provider_env()
+
+    async def _resolve_hidden_provenance_targets(self, reader, targets: list[str]) -> set[str]:
+        from services.provenance_visibility import resolve_dls_hidden_targets
+
+        control = clients.create_index_admin_opensearch_client()
+        if control is None:
+            return set()
+        try:
+            return await resolve_dls_hidden_targets(
+                reader, control, index=get_index_name(), targets=targets
+            )
+        finally:
+            await control.close()
 
     def _configure_provider_env(self):
         """Set provider env vars once at init time."""
@@ -2502,6 +2516,7 @@ class SearchService:
         invalid_provenance_seed_documents = set(seed_documents) - (valid_provenance_seed_documents)
 
         user_client = self.session_manager.get_user_opensearch_client(user_id, jwt_token)
+        hidden_resolver = getattr(self, "_provenance_hidden_targets", None)
         graph_failed = False
         try:
             graph = await expand_provenance_graph(
@@ -2514,6 +2529,11 @@ class SearchService:
                 max_entities=settings.max_entities,
                 max_documents=settings.max_documents,
                 filter_clauses=self._scope_filter_clauses(filters),
+                hidden_target_resolver=(
+                    (lambda targets: hidden_resolver(user_client, targets))
+                    if hidden_resolver
+                    else None
+                ),
             )
         except Exception as exc:
             logger.warning("Scope provenance traversal failed", error=str(exc))

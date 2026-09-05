@@ -15,7 +15,7 @@ import math
 import re
 import unicodedata
 from base64 import urlsafe_b64decode, urlsafe_b64encode
-from collections.abc import Iterable
+from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass
 from typing import Any
 
@@ -964,6 +964,7 @@ async def expand_provenance_graph(
     max_entities: int = 500,
     max_documents: int = 250,
     filter_clauses: Iterable[dict[str, Any]] = (),
+    hidden_target_resolver: Callable[[list[str]], Awaitable[set[str]]] | None = None,
 ) -> dict[str, Any]:
     """Close the DLS-visible documentary graph under a declared typed policy.
 
@@ -1569,15 +1570,28 @@ async def expand_provenance_graph(
         }
 
     remaining_frontier = sorted(remaining_identifiers())
-    # An asserted documentary target with no visible representative is opaque:
-    # never fetch it globally or turn the unresolved branch into a valid leaf.
-    # email_thread is a grouping identity closed by the typed reverse query;
-    # it does not assert a separately readable document.
-    if any(
-        not identifier_owners.get(target) and identifier_types.get(target) != {"email_thread"}
+    # Reader absence alone never proves a DLS boundary. The optional backend
+    # classifier sees existence counts only; it cannot contribute hidden
+    # records, identities, edges or counts to this reader's public projection.
+    unresolved_targets = {
+        target
         for _, _, target in pending_edges
-    ):
+        if not identifier_owners.get(target) and identifier_types.get(target) != {"email_thread"}
+    }
+    hidden_targets: set[str] = set()
+    if unresolved_targets and hidden_target_resolver is not None and not limit_reached:
+        try:
+            hidden_targets = await hidden_target_resolver(sorted(unresolved_targets))
+            if not hidden_targets <= unresolved_targets:
+                raise ValueError("Unexpected provenance visibility classification")
+        except Exception:
+            hidden_targets = set()
+            execution_failures.add("provenance_visibility_unverified")
+    if unresolved_targets - hidden_targets:
         execution_failures.add("provenance_target_unresolved")
+    if hidden_targets:
+        for name, values in accounting.items():
+            accounting[name] = {value for value in values if value[-1] not in hidden_targets}
     if execution_failures and stop_reason == "frontier_empty":
         stop_reason = "graph_execution_incomplete"
 

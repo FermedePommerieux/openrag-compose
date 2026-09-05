@@ -108,23 +108,30 @@ pagination/counts, shared-filter reader counts (ASTRA-020), direct reads,
 citations, ordinary leaf coverage and retrieval streaming. Each user-scoped
 client receives 403 querying the separate backend-only control index.
 
-Full multi-user activation remains **PARTIAL** with two observed gates:
+The activation-gate follow-up closes the two observed product failures:
 
-1. A valid typed `email_message → reply_to → email_message` relation toward
-   the other reader's hidden document exposes neither target nor edge, but the
-   existing P0 validator records `provenance_target_unresolved` and refuses
-   complete coverage (`graph_traversal_failed`, `profile_invalid`). The same
-   readers obtain complete certificates after removal of the canary cross-edge.
-   This branch deliberately preserves that deployed P0 rule. Resolving the
-   conflict with a complete reader-accessible closure requires an explicit
-   provenance/ACL contract; suppressing the failure would weaken P0, and querying
-   the hidden target globally would violate the current traversal contract.
-2. The existing managed Agent flow can retrieve, read and cite with the local
-   principal, but a request requiring metadata produces `METADATA_TOOL_REQUIRED`
-   without a metadata tool/callback. This occurs for both readers. A direct
-   metadata-filtered backend search succeeds. No managed flow, model or prompt
-   has been changed to conceal this missing path.
+1. Cross-owner typed provenance now distinguishes backend-proven DLS exclusion
+   from genuinely unresolved references under [ADR 0011](0011-reader-visible-provenance-closure.md).
+   Both real readers obtain complete certificates without exposing the other
+   reader's identifiers, edges or counts. Missing and malformed provenance still
+   fails the P0 regressions.
+2. The metadata implementation and wiring already existed, but Langflow native
+   Tool Mode did not expose both outputs of the same upstream component. One
+   `component_as_tool` output now returns both StructuredTools via `_get_tools()`.
+   The live managed flow was repaired and re-locked; both readers exercise real
+   metadata callbacks, citations and streaming successfully. Agent prompt/model
+   and provider values are exactly preserved.
 
-Production remains on its original images and anonymous mode. RuntimeBehavior
-is MATCH; identity v1 remains blocked. External-provider coexistence is code/
-configuration validated; no live Google, Microsoft or OIDC login was performed.
+The gate now passes all 26 live two-user checks and 2,067 unit tests. Two real
+archived/ingestion originals were also copied into isolated scratch storage;
+actual A/B DLS downloads, source-ID preservation and rollback pass. No source
+file or production ACL was modified.
+
+Production remains on its original images and anonymous mode. GitOps pins only
+the flow repair at 896f1361e1324d07cf888634501fff4ae8a81591, based directly on
+the deployed P0 commit. The current backend recognizes repaired marker 18 on
+restart; the auth candidate recognizes both exact v18 graphs and migrates them
+to v19. RuntimeBehavior remains MATCH. General activation, administrator
+creation, connector-key rotation and data migration have not been executed.
+Identity v1 remains blocked. External-provider coexistence is code/configuration
+validated; no live Google, Microsoft or OIDC login was performed.

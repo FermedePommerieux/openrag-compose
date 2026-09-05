@@ -46,10 +46,11 @@ PARTIAL = [
 ]
 
 
-async def scope(client, seed, monkeypatch):
+async def scope(client, seed, monkeypatch, hidden_resolver=None):
     monkeypatch.setattr("services.search_service.get_index_name", lambda: "documents")
     service = SearchService.__new__(SearchService)
     service.session_manager = SimpleNamespace(get_user_opensearch_client=lambda *_: client)
+    service._provenance_hidden_targets = hidden_resolver
     service.search_tool = AsyncMock(return_value=_successful_retrieval([seed["_source"]]))
 
     async def read(document_id, **kwargs):
@@ -448,7 +449,7 @@ def test_011_embedded_authority_is_exact_source_in_component_and_flow():
 
 
 @pytest.mark.asyncio
-async def test_dls_hidden_document_does_not_certify_visible_branch(monkeypatch):
+async def test_unproven_reader_absence_does_not_certify_visible_branch(monkeypatch):
     a, b = _record("A", relations=[("reply_to", "B")]), _record("B")
     result = await scope(_GraphClient([a, b], accessible={"A"}), a, monkeypatch)
     assert {d["document_id"] for d in result["documents"]} == {"doc-A"}
@@ -571,7 +572,7 @@ def test_011_managed_migration_preserves_prompt_and_model(source_sha, version):
     service = FlowsService()
     migrated = service._migrate_known_legacy_retrieval_flow(flow)
     assert migrated is not None
-    assert migrated["data"]["openrag_retrieval_version"] == 18
+    assert migrated["data"]["openrag_retrieval_version"] == 19
     updated = next(
         n["data"]["node"]
         for n in migrated["data"]["nodes"]
@@ -633,3 +634,41 @@ def test_011_incomplete_transport_preserves_nulls_and_canonical_failure_order(mo
     assert not _snapshot(
         [_user(), _ai("a", "fixture"), _tool("a", coverage=state)]
     ).exhaustive_scope_satisfied
+
+
+@pytest.mark.asyncio
+async def test_proven_dls_boundary_certifies_only_accessible_graph(monkeypatch):
+    from services.provenance_visibility import resolve_dls_hidden_targets
+    from tests.unit.test_provenance_visibility import CountClient
+
+    a, b = _record("A", relations=[("reply_to", "B")]), _record("B")
+
+    async def classify(reader, targets):
+        return await resolve_dls_hidden_targets(
+            CountClient({"A": 1}), CountClient({"A": 1, "B": 1}), index="documents", targets=targets
+        )
+
+    result = await scope(_GraphClient([a, b], accessible={"A"}), a, monkeypatch, classify)
+    assert result["coverage"]["complete"] is True
+    assert result["coverage"]["documents_discovered"] == 1
+    assert result["coverage"]["relations_traversed"]["total"] == 0
+    assert result["graph"]["entities"] == ["A"]
+    assert result["graph"]["edges"] == []
+    assert verify_scope_coverage_certificate(result["coverage"])["valid"]
+
+
+@pytest.mark.asyncio
+async def test_missing_target_still_fails_with_working_visibility_classifier(monkeypatch):
+    from services.provenance_visibility import resolve_dls_hidden_targets
+    from tests.unit.test_provenance_visibility import CountClient
+
+    a = _record("A", relations=[("reply_to", "missing")])
+
+    async def classify(reader, targets):
+        return await resolve_dls_hidden_targets(
+            CountClient({"A": 1}), CountClient({"A": 1}), index="documents", targets=targets
+        )
+
+    result = await scope(_GraphClient([a]), a, monkeypatch, classify)
+    assert result["coverage"]["complete"] is False
+    assert "provenance_target_unresolved" in result["coverage"]["graph_execution_failure_codes"]

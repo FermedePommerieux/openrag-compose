@@ -345,14 +345,7 @@ class OpenRAGBackendRetrievalComponent(LCToolComponent):
         Output(
             display_name="Toolset",
             name="component_as_tool",
-            method="build_tool",
-            types=["Tool"],
-            tool_mode=True,
-        ),
-        Output(
-            display_name="Metadata Search Tool",
-            name="metadata_search_tool",
-            method="build_metadata_tool",
+            method="to_toolkit",
             types=["Tool"],
             tool_mode=True,
         ),
@@ -539,6 +532,15 @@ class OpenRAGBackendRetrievalComponent(LCToolComponent):
         """Scope-exhaustive search used by component previews."""
         payload = self._retrieve_payload(search_query)
         return [Data(**item) for item in payload["results"]]
+
+    async def _get_tools(self) -> list[StructuredTool]:
+        """Expose both signed retrieval paths through Langflow's native Toolset.
+
+        Tool Mode replaces the reserved component_as_tool output with to_toolkit.
+        Providing the toolkit explicitly keeps both actions available through
+        one edge instead of relying on two outputs of the same upstream vertex.
+        """
+        return [self.build_tool(), self.build_metadata_tool()]
 
     def build_tool(self) -> StructuredTool:
         filters, limit, score_threshold = self._request_context()
