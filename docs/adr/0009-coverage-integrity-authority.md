@@ -69,3 +69,5 @@ functional ownership; GitOps only selects deployment artifacts.
 
 No retrieval default, limit, PROV-O policy rule, metadata planner, occurrence
 identity design, OpenArchiver behavior or model selection changes are included.
+
+Certificate transport preserves present empty lists and null facts, as well as canonical failure-code order. Differential regressions include the actual Retrieval component JSON projection and Agent state projection. Managed flow v18 migrates only exact known v16/v17 graphs while retaining WorkspaceConfig-owned prompt and model values.

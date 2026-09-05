@@ -27,6 +27,7 @@ from tests.unit.test_langflow_agent_retrieval_guard import (
     _tool,
     _user,
 )
+from tests.unit.test_langflow_retrieval_v2_contract import _load_component_with_langflow_stubs
 from tests.unit.test_retrieval_fail_closed import _run_rrf_search
 from tests.unit.test_scope_exhaustive_retrieval import (
     _graph_direction,
@@ -539,20 +540,27 @@ def test_002_optional_owner_projection_uses_dls_boundary():
         validate_provenance_representative({**source, "owner": owner})
 
 
-def test_011_managed_v16_migration_preserves_prompt_and_model():
+@pytest.mark.parametrize(
+    "source_sha,version",
+    [
+        ("6e8b8a095928739a9acade2ca017a6a405edb19e", 16),
+        ("5147fc3e210cad165cec18cb24239578f3ce539e", 17),
+    ],
+)
+def test_011_managed_migration_preserves_prompt_and_model(source_sha, version):
     import subprocess
 
     from services.flows_service import FlowsService
 
     flow = json.loads(
         subprocess.check_output(
-            ["git", "show", "6e8b8a095928739a9acade2ca017a6a405edb19e:flows/openrag_agent.json"],
+            ["git", "show", f"{source_sha}:flows/openrag_agent.json"],
             cwd=Path(__file__).resolve().parents[2],
         )
     )
     flow["id"] = "1098eea1-6649-4e1d-aed1-b77249fb8dd0"
     flow["locked"] = True
-    flow["data"]["openrag_retrieval_version"] = 16
+    flow["data"]["openrag_retrieval_version"] = version
     agent = next(
         n["data"]["node"]
         for n in flow["data"]["nodes"]
@@ -563,7 +571,7 @@ def test_011_managed_v16_migration_preserves_prompt_and_model():
     service = FlowsService()
     migrated = service._migrate_known_legacy_retrieval_flow(flow)
     assert migrated is not None
-    assert migrated["data"]["openrag_retrieval_version"] == 17
+    assert migrated["data"]["openrag_retrieval_version"] == 18
     updated = next(
         n["data"]["node"]
         for n in migrated["data"]["nodes"]
@@ -576,3 +584,52 @@ def test_011_managed_v16_migration_preserves_prompt_and_model():
     )
     agent["template"]["code"]["value"] += "\n# custom code"
     assert service._migrate_known_legacy_retrieval_flow(flow) is None
+
+
+@pytest.mark.parametrize("mutation", [None, *MUTATIONS])
+def test_011_certificate_survives_actual_tool_and_guard_transport(monkeypatch, mutation):
+    module = _load_component_with_langflow_stubs(monkeypatch)
+    coverage = _complete_coverage()
+    coverage["graph_execution_complete"] = True
+    if mutation:
+        coverage[mutation[0]] = mutation[1]
+    transported = module._model_payload({"results": [], "coverage": coverage})
+    # Include JSON serialization and both real projections in the differential
+    # path. Empty failure lists are essential to a valid positive certificate.
+    state = GUARD["_coverage_state"](json.loads(json.dumps(transported)))
+    assert state == coverage
+    assert (
+        GUARD["_uses_canonical_coverage_certificate"](state)
+        == verify_scope_coverage_certificate(coverage)["valid"]
+        == (mutation is None)
+    )
+    assert _snapshot(
+        [_user(), _ai("a", "fixture"), _tool("a", coverage=state)]
+    ).exhaustive_scope_satisfied == (mutation is None)
+
+
+def test_011_incomplete_transport_preserves_nulls_and_canonical_failure_order(monkeypatch):
+    module = _load_component_with_langflow_stubs(monkeypatch)
+    coverage = _complete_coverage()
+    for field, value in (
+        ("graph_frontier_empty", False),
+        ("graph_stop_reason", None),
+        ("graph_failed", True),
+        ("documents_complete", 0),
+    ):
+        coverage[field] = value
+        coverage["certification"]["facts"][field] = value
+    coverage.update(
+        GUARD["certify_scope_coverage"](
+            GUARD["ScopeCertificationFacts"](**coverage["certification"]["facts"])
+        )
+    )
+    assert len(coverage["failure_codes"]) > 1
+    transported = module._model_payload({"results": [], "coverage": coverage})
+    state = GUARD["_coverage_state"](json.loads(json.dumps(transported)))
+    assert state == coverage
+    assert verify_scope_coverage_certificate(state)["valid"]
+    assert GUARD["_uses_canonical_coverage_certificate"](state)
+    assert not _snapshot(
+        [_user(), _ai("a", "fixture"), _tool("a", coverage=state)]
+    ).exhaustive_scope_satisfied

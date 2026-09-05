@@ -89,6 +89,7 @@ MODEL_COVERAGE_FIELDS = (
     "graph_limit_reached",
     "graph_stop_reason",
     "graph_failed",
+    "graph_execution_complete",
     "graph_error",
     "graph_forward_hits",
     "graph_reverse_hits",
@@ -244,7 +245,9 @@ def _model_payload(payload: dict[str, Any]) -> dict[str, Any]:
         compact["coverage"] = _present_fields(
             coverage,
             MODEL_COVERAGE_FIELDS,
-            keep_null=("next_cursor",),
+            # Empty lists and nulls are measured certificate facts. Dropping
+            # them changes the signed decision before the Agent verifies it.
+            keep_null=MODEL_COVERAGE_FIELDS,
         )
     discovery = payload.get("discovery")
     if isinstance(discovery, dict):
@@ -599,7 +602,7 @@ class OpenRAGBackendRetrievalComponent(LCToolComponent):
             if blocked is not None:
                 return json.dumps(blocked, ensure_ascii=False), []
             if plan is None:
-                payload = {
+                payload: dict[str, Any] = {
                     "metadata_agent": {
                         "status": "INVALID",
                         "error": "NO_METADATA_CONSTRAINT",

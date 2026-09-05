@@ -296,9 +296,9 @@ def verify_scope_coverage_certificate(coverage: dict[str, Any]) -> dict[str, Any
         "total_chunks",
         "unclassified_relations",
     )
-    if any(type(raw_facts.get(field)) is not bool for field in bool_fields):
+    if any(type(raw_facts.get(fact_name)) is not bool for fact_name in bool_fields):
         failures.append("certification_facts_invalid")
-    if any(type(raw_facts.get(field)) is not int for field in int_fields):
+    if any(type(raw_facts.get(fact_name)) is not int for fact_name in int_fields):
         failures.append("certification_facts_invalid")
     if raw_facts.get("graph_stop_reason") is not None and not isinstance(
         raw_facts.get("graph_stop_reason"), str
@@ -308,8 +308,8 @@ def verify_scope_coverage_certificate(coverage: dict[str, Any]) -> dict[str, Any
         raw_facts.get("seed_failure_code"), str
     ):
         failures.append("certification_facts_invalid")
-    for field in ("document_failure_codes", "retrieval_failure_codes"):
-        values = raw_facts.get(field)
+    for fact_name in ("document_failure_codes", "retrieval_failure_codes"):
+        values = raw_facts.get(fact_name)
         if not isinstance(values, list) or any(not isinstance(value, str) for value in values):
             failures.append("certification_facts_invalid")
     if "certification_facts_invalid" in failures:
@@ -334,12 +334,12 @@ def verify_scope_coverage_certificate(coverage: dict[str, Any]) -> dict[str, Any
         }
     )
     expected = certify_scope_coverage(facts)
-    for field in ("complete", "status_code", "status_message", "failure_codes"):
+    for fact_name in ("complete", "status_code", "status_message", "failure_codes"):
         if (
-            type(coverage.get(field)) is not type(expected[field])
-            or coverage.get(field) != expected[field]
+            type(coverage.get(fact_name)) is not type(expected[fact_name])
+            or coverage.get(fact_name) != expected[fact_name]
         ):
-            failures.append(f"certified_decision_mismatch:{field}")
+            failures.append(f"certified_decision_mismatch:{fact_name}")
 
     public_fact_fields = (
         "seed_discovery_complete",
@@ -352,12 +352,12 @@ def verify_scope_coverage_certificate(coverage: dict[str, Any]) -> dict[str, Any
         "covered_chunks",
         "total_chunks",
     )
-    for field in public_fact_fields:
+    for fact_name in public_fact_fields:
         if (
-            type(coverage.get(field)) is not type(canonical_facts[field])
-            or coverage.get(field) != canonical_facts[field]
+            type(coverage.get(fact_name)) is not type(canonical_facts[fact_name])
+            or coverage.get(fact_name) != canonical_facts[fact_name]
         ):
-            failures.append(f"certified_public_fact_mismatch:{field}")
+            failures.append(f"certified_public_fact_mismatch:{fact_name}")
     public_graph_fields = {
         "graph_frontier_empty": "graph_frontier_empty",
         "graph_limit_reached": "graph_limit_reached",

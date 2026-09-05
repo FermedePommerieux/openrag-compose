@@ -8,7 +8,7 @@ import unicodedata
 import uuid
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, cast
 
 from langchain.agents import create_agent
@@ -20,7 +20,6 @@ from langchain.agents.middleware import (
 from langchain.agents.middleware.types import AgentMiddleware
 from langchain_core.messages import ToolMessage
 from langgraph.types import Command
-
 from lfx.components.models_and_agents.agent_helpers.graph_event_adapter import (
     adapt_graph_events_to_executor_shape,
 )
@@ -34,14 +33,19 @@ from lfx.components.models_and_agents.agent_helpers.single_tool_call_middleware 
     SingleToolCallMiddleware,
 )
 from lfx.components.models_and_agents.agent_helpers.tool_approval import ToolApprovalMixin
-from lfx.components.models_and_agents.agent_helpers.tool_call_id_middleware import ToolCallIDMiddleware
-from lfx.components.models_and_agents.memory import MemoryComponent, _safe_graph_user_id, aget_agent_chat_history
+from lfx.components.models_and_agents.agent_helpers.tool_call_id_middleware import (
+    ToolCallIDMiddleware,
+)
+from lfx.components.models_and_agents.memory import (
+    MemoryComponent,
+    _safe_graph_user_id,
+    aget_agent_chat_history,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
     from langchain_core.tools import Tool
-
     from lfx.schema.log import OnTokenFunctionType, SendMessageFunctionType
 
 from lfx.base.agents.agent import LCToolsAgentComponent
@@ -72,7 +76,6 @@ from lfx.schema.dotdict import dotdict
 from lfx.schema.message import Message
 from lfx.schema.table import EditMode
 from lfx.utils.constants import MESSAGE_SENDER_AI
-
 
 # BEGIN GENERATED SCOPE COVERAGE CONTRACT
 SCOPE_COVERAGE_MESSAGES = {
@@ -363,9 +366,9 @@ def verify_scope_coverage_certificate(coverage: dict[str, Any]) -> dict[str, Any
         "total_chunks",
         "unclassified_relations",
     )
-    if any(type(raw_facts.get(field)) is not bool for field in bool_fields):
+    if any(type(raw_facts.get(fact_name)) is not bool for fact_name in bool_fields):
         failures.append("certification_facts_invalid")
-    if any(type(raw_facts.get(field)) is not int for field in int_fields):
+    if any(type(raw_facts.get(fact_name)) is not int for fact_name in int_fields):
         failures.append("certification_facts_invalid")
     if raw_facts.get("graph_stop_reason") is not None and not isinstance(
         raw_facts.get("graph_stop_reason"), str
@@ -375,8 +378,8 @@ def verify_scope_coverage_certificate(coverage: dict[str, Any]) -> dict[str, Any
         raw_facts.get("seed_failure_code"), str
     ):
         failures.append("certification_facts_invalid")
-    for field in ("document_failure_codes", "retrieval_failure_codes"):
-        values = raw_facts.get(field)
+    for fact_name in ("document_failure_codes", "retrieval_failure_codes"):
+        values = raw_facts.get(fact_name)
         if not isinstance(values, list) or any(not isinstance(value, str) for value in values):
             failures.append("certification_facts_invalid")
     if "certification_facts_invalid" in failures:
@@ -401,12 +404,12 @@ def verify_scope_coverage_certificate(coverage: dict[str, Any]) -> dict[str, Any
         }
     )
     expected = certify_scope_coverage(facts)
-    for field in ("complete", "status_code", "status_message", "failure_codes"):
+    for fact_name in ("complete", "status_code", "status_message", "failure_codes"):
         if (
-            type(coverage.get(field)) is not type(expected[field])
-            or coverage.get(field) != expected[field]
+            type(coverage.get(fact_name)) is not type(expected[fact_name])
+            or coverage.get(fact_name) != expected[fact_name]
         ):
-            failures.append(f"certified_decision_mismatch:{field}")
+            failures.append(f"certified_decision_mismatch:{fact_name}")
 
     public_fact_fields = (
         "seed_discovery_complete",
@@ -419,12 +422,12 @@ def verify_scope_coverage_certificate(coverage: dict[str, Any]) -> dict[str, Any
         "covered_chunks",
         "total_chunks",
     )
-    for field in public_fact_fields:
+    for fact_name in public_fact_fields:
         if (
-            type(coverage.get(field)) is not type(canonical_facts[field])
-            or coverage.get(field) != canonical_facts[field]
+            type(coverage.get(fact_name)) is not type(canonical_facts[fact_name])
+            or coverage.get(fact_name) != canonical_facts[fact_name]
         ):
-            failures.append(f"certified_public_fact_mismatch:{field}")
+            failures.append(f"certified_public_fact_mismatch:{fact_name}")
     public_graph_fields = {
         "graph_frontier_empty": "graph_frontier_empty",
         "graph_limit_reached": "graph_limit_reached",
@@ -690,8 +693,6 @@ def _coverage_state(payload: dict[str, Any]) -> dict[str, Any]:
         for field in _RETRIEVAL_COVERAGE_FIELDS
         if field in coverage
     }
-    if isinstance(state.get("failure_codes"), list):
-        state["failure_codes"] = sorted(str(code) for code in state["failure_codes"])
     return state
 
 
@@ -1483,7 +1484,7 @@ class AgentComponent(ToolApprovalMixin, ToolCallingAgentComponent):
         if not prompt:
             return prompt
         replacements = {
-            "{current_date}": datetime.now(tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
+            "{current_date}": datetime.now(tz=UTC).strftime("%Y-%m-%d %H:%M:%S UTC"),
             "{model_name}": self._get_resolved_model_name(),
             "{optional_user_context}": "",
         }
@@ -1813,7 +1814,11 @@ class AgentComponent(ToolApprovalMixin, ToolCallingAgentComponent):
         must instead retry at the model-call boundary to avoid repeating tool
         side effects.
         """
-        from lfx.base.models.model_remediation import apply_overrides_to_model, find_remediation, remember
+        from lfx.base.models.model_remediation import (
+            apply_overrides_to_model,
+            find_remediation,
+            remember,
+        )
 
         provider, model_name, connected_model = self._selected_model_remediation_context()
         applied: set[str] = set()

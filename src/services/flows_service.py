@@ -36,7 +36,7 @@ _LEGACY_RETRIEVAL_COMPONENT = (
     "ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra"
 )
 _BACKEND_RETRIEVAL_COMPONENT = "ext:openrag:OpenRAGBackendRetrievalComponent@extra"
-_RETRIEVAL_FLOW_MIGRATION_VERSION = 17
+_RETRIEVAL_FLOW_MIGRATION_VERSION = 18
 _LEGACY_SYSTEM_FLOW_ID = "1098eea1-6649-4e1d-aed1-b77249fb8dd0"
 # These fields are rewritten by OpenRAG's settings synchronization and by
 # Langflow's provider refresh endpoint. Their values and option lists are
@@ -240,6 +240,10 @@ _PREMATURE_VERSIONED_OPT_IN_EXHAUSTIVE_MANAGED_GRAPH_SHA256 = (
 # Exact managed v16 graph before canonical coverage verification.
 _PREVIOUS_COVERAGE_GUARD_GRAPH_SHA256 = (
     "e0ce6c8123f9d43d435752ee9c9eed56521fe4ab2cfb76bafd6e3dac47fa323c"
+)
+# Exact v17 graph before empty certificate facts survived tool transport.
+_PREVIOUS_COVERAGE_TRANSPORT_GRAPH_SHA256 = (
+    "af5109f1b3ea9343d2efecc53cb8a5fe2c46bb8728a46aeacc095a482131d7ac"
 )
 
 
@@ -1687,6 +1691,11 @@ class FlowsService:
                 _PREMATURE_VERSIONED_OPT_IN_EXHAUSTIVE_MANAGED_GRAPH_SHA256,
                 _PREVIOUS_COVERAGE_GUARD_GRAPH_SHA256,
             }
+        if marker == 17:
+            return (
+                self._managed_behavior_normalized_graph_fingerprint(flow_data)
+                == _PREVIOUS_COVERAGE_TRANSPORT_GRAPH_SHA256
+            )
         if marker not in {6, 7, 8, 9, 10, 11, 12}:
             return exact_match
         expected_runtime = (
@@ -1770,7 +1779,7 @@ class FlowsService:
         self._preserve_runtime_managed_retrieval_fields(
             graph,
             migrated_graph,
-            preserve_system_prompt=graph.get("openrag_retrieval_version") == 16,
+            preserve_system_prompt=graph.get("openrag_retrieval_version") in {16, 17},
         )
         migrated["data"] = migrated_graph
         # Stored with the graph so repeated startups can identify the installed

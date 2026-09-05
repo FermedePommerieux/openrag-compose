@@ -692,7 +692,7 @@ async def test_migrate_unversioned_retrieval_v2_flow_synchronized_by_gitops():
     assert result["status"] == "migrated"
     assert result["backup_path"] == "/tmp/flow.json"
     assert transport.flow["locked"] is True
-    assert transport.flow["data"]["openrag_retrieval_version"] == 17
+    assert transport.flow["data"]["openrag_retrieval_version"] == 18
     agent_node = next(
         node
         for node in transport.flow["data"]["nodes"]
@@ -727,7 +727,7 @@ async def test_migrate_exact_deployed_v5_graph_to_scope_exhaustive_v8():
         result = await service.migrate_persisted_retrieval_flow()
 
     assert result["status"] == "migrated"
-    assert transport.flow["data"]["openrag_retrieval_version"] == 17
+    assert transport.flow["data"]["openrag_retrieval_version"] == 18
     assert transport.flow["locked"] is True
 
 
@@ -757,7 +757,7 @@ def test_exact_repository_owned_version_6_graph_is_migration_eligible():
 def test_migrated_graph_accepts_runtime_managed_prompt_but_rejects_code_edits():
     service = FlowsService()
     flow = _unversioned_retrieval_v2_flow()
-    flow["data"]["openrag_retrieval_version"] = 17
+    flow["data"]["openrag_retrieval_version"] = 18
     language_model = next(
         node
         for node in flow["data"]["nodes"]
@@ -836,7 +836,7 @@ def test_version_6_migration_preserves_settings_managed_model_values():
     assert migrated_template["api_key"]["value"] == "OPENAI_API_KEY"
     assert migrated_template["api_key"]["load_from_db"] is True
     assert migrated_template["model"]["value"][0]["name"] == "text-embedding-3-large"
-    assert migrated["data"]["openrag_retrieval_version"] == 17
+    assert migrated["data"]["openrag_retrieval_version"] == 18
 
 
 def test_exact_repository_owned_version_7_graph_is_migration_eligible():
@@ -870,7 +870,7 @@ async def test_migrate_exact_version_7_graph_to_scope_exhaustive_v10():
 
     assert result["status"] == "migrated"
     assert transport.flow["locked"] is True
-    assert transport.flow["data"]["openrag_retrieval_version"] == 17
+    assert transport.flow["data"]["openrag_retrieval_version"] == 18
 
 
 def test_exact_phase1_version_8_graph_is_migration_eligible():
@@ -904,7 +904,7 @@ async def test_migrate_exact_phase1_version_8_to_artifact_boundary_v10():
 
     assert result["status"] == "migrated"
     assert transport.flow["locked"] is True
-    assert transport.flow["data"]["openrag_retrieval_version"] == 17
+    assert transport.flow["data"]["openrag_retrieval_version"] == 18
     retrieval = next(
         node
         for node in transport.flow["data"]["nodes"]
@@ -952,7 +952,7 @@ async def test_migrate_exact_runtime_safe_version_9_to_policy_certificate_v10():
 
     assert result["status"] == "migrated"
     assert transport.flow["locked"] is True
-    assert transport.flow["data"]["openrag_retrieval_version"] == 17
+    assert transport.flow["data"]["openrag_retrieval_version"] == 18
     retrieval = next(
         node
         for node in transport.flow["data"]["nodes"]
@@ -1002,7 +1002,7 @@ async def test_migrate_exact_phase2_version_10_to_current_retrieval_v12():
 
     assert result["status"] == "migrated"
     assert transport.flow["locked"] is True
-    assert transport.flow["data"]["openrag_retrieval_version"] == 17
+    assert transport.flow["data"]["openrag_retrieval_version"] == 18
     agent = next(
         node
         for node in transport.flow["data"]["nodes"]
@@ -1052,7 +1052,7 @@ async def test_migrate_exact_agent_guard_version_11_to_multi_query_v12():
 
     assert result["status"] == "migrated"
     assert transport.flow["locked"] is True
-    assert transport.flow["data"]["openrag_retrieval_version"] == 17
+    assert transport.flow["data"]["openrag_retrieval_version"] == 18
     retrieval = next(
         node
         for node in transport.flow["data"]["nodes"]
@@ -1093,7 +1093,7 @@ async def test_migrate_exact_multi_query_version_12_to_current_version_14():
 
     assert result["status"] == "migrated"
     assert transport.flow["locked"] is True
-    assert transport.flow["data"]["openrag_retrieval_version"] == 17
+    assert transport.flow["data"]["openrag_retrieval_version"] == 18
     retrieval = next(
         node
         for node in transport.flow["data"]["nodes"]
@@ -1141,7 +1141,7 @@ async def test_migrate_exact_fail_closed_version_13_to_audit_closeout_version_14
 
     assert result["status"] == "migrated"
     assert transport.flow["locked"] is True
-    assert transport.flow["data"]["openrag_retrieval_version"] == 17
+    assert transport.flow["data"]["openrag_retrieval_version"] == 18
     agent = next(
         node
         for node in transport.flow["data"]["nodes"]
@@ -1219,7 +1219,7 @@ async def test_migrate_exact_version_14_to_bounded_metadata_tool_version_15():
 
     assert result["status"] == "migrated"
     assert transport.flow["locked"] is True
-    assert transport.flow["data"]["openrag_retrieval_version"] == 17
+    assert transport.flow["data"]["openrag_retrieval_version"] == 18
     retrieval = next(
         node
         for node in transport.flow["data"]["nodes"]
@@ -1401,7 +1401,7 @@ async def test_migrate_exact_version_15_to_mandatory_exhaustive_version_16():
 
     assert result["status"] == "migrated"
     assert transport.flow["locked"] is True
-    assert transport.flow["data"]["openrag_retrieval_version"] == 17
+    assert transport.flow["data"]["openrag_retrieval_version"] == 18
     retrieval = next(
         node
         for node in transport.flow["data"]["nodes"]
@@ -1504,7 +1504,7 @@ async def test_migrate_role_evidence_prompt_revision():
         result = await service.migrate_persisted_retrieval_flow()
 
     assert result["status"] == "migrated"
-    assert transport.flow["data"]["openrag_retrieval_version"] == 17
+    assert transport.flow["data"]["openrag_retrieval_version"] == 18
 
 
 @pytest.mark.asyncio
@@ -1535,7 +1535,7 @@ async def test_migrate_evidence_first_prompt_revision():
         result = await service.migrate_persisted_retrieval_flow()
 
     assert result["status"] == "migrated"
-    assert transport.flow["data"]["openrag_retrieval_version"] == 17
+    assert transport.flow["data"]["openrag_retrieval_version"] == 18
 
 
 @pytest.mark.asyncio
@@ -1697,7 +1697,7 @@ async def test_migrate_retrieval_flow_fails_closed_when_lock_cannot_be_restored(
     assert result["error"]
     assert result["lock_error"]
     assert result["flow_id"]
-    assert result["version"] == 17
+    assert result["version"] == 18
     assert result["flow_state"]["known_state"] in {"unlocked", "missing"}
 
 
