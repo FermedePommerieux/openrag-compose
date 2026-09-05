@@ -59,6 +59,9 @@ def _should_load_persisted_connections() -> bool:
 
 async def initialize_services():
     """Initialize all services and their dependencies"""
+    from config.auth_mode import validate_auth_configuration
+
+    validate_auth_configuration()
     await TelemetryClient.send_event(Category.SERVICE_INITIALIZATION, MessageId.ORB_SVC_INIT_START)
     from config.settings import IBM_AUTH_ENABLED
 

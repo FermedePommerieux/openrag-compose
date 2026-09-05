@@ -92,13 +92,16 @@ async def auth_callback(
             jwt_value = result["jwt_token"]
             if jwt_value.startswith("Bearer "):
                 jwt_value = jwt_value[len("Bearer ") :]
+            from config.auth_mode import secure_auth_cookie
+            from services.local_auth_service import SESSION_SECONDS
+
             response.set_cookie(
                 key="auth_token",
                 value=jwt_value,
                 httponly=True,
-                secure=False,
+                secure=secure_auth_cookie(),
                 samesite="lax",
-                max_age=7 * 24 * 60 * 60,  # 7 days
+                max_age=SESSION_SECONDS,
             )
             return response
         else:
@@ -117,6 +120,9 @@ async def auth_me(
 ):
     """Get current user information"""
     result = await auth_service.get_user_info(request)
+    from config.auth_mode import public_auth_configuration
+
+    result.update(public_auth_configuration())
     result["version"] = OPENRAG_VERSION
     from utils.run_mode_utils import get_run_mode
 
@@ -125,11 +131,22 @@ async def auth_me(
 
 
 async def auth_logout(
+    request: Request,
     auth_service=Depends(get_auth_service),
     user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db_session),
 ):
     """Logout user by clearing auth cookie(s)"""
+    from api.local_auth import check_browser_origin
     from config.settings import IBM_AUTH_ENABLED, IBM_SESSION_COOKIE_NAME
+    from db.models import AuthSession
+
+    check_browser_origin(request)
+    if user.session_id:
+        record = await session.get(AuthSession, user.session_id)
+        if record is not None and record.user_id == user.user_id:
+            await session.delete(record)
+            await session.commit()
 
     await TelemetryClient.send_event(Category.AUTHENTICATION, MessageId.ORB_AUTH_LOGOUT)
 

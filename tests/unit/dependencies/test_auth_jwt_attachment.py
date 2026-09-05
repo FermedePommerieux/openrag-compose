@@ -19,6 +19,9 @@ class FakeSessionManager:
         self.users: dict[str, User] = {}
         self.effective_token_calls: list[tuple[str, str | None]] = []
 
+    def verify_token(self, token):
+        return {}  # Legacy Google session without a durable-session claim.
+
     def get_effective_jwt_token(self, user_id: str, jwt_token: str | None) -> str:
         self.effective_token_calls.append((user_id, jwt_token))
         return jwt_token or "Bearer generated-anonymous-token"

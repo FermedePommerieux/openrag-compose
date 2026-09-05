@@ -7,6 +7,7 @@ Alembic autogenerate can see them.
 from db.models.api_key import ApiKey
 from db.models.audit_log import AuditLog
 from db.models.conversation import Conversation
+from db.models.local_credential import AuthSession, LocalCredential
 from db.models.migration_status import MigrationStatus
 from db.models.permission import Permission
 from db.models.role import Role
@@ -19,6 +20,8 @@ from db.models.workspace_config import WorkspaceConfig
 
 __all__ = [
     "ApiKey",
+    "AuthSession",
+    "LocalCredential",
     "AuditLog",
     "Conversation",
     "MigrationStatus",

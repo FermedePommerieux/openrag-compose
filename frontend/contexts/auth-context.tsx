@@ -28,6 +28,8 @@ interface AuthContextType {
   isAuthenticated: boolean;
   isNoAuthMode: boolean;
   isIbmAuthMode: boolean;
+  isLocalAuthEnabled: boolean;
+  isGoogleAuthEnabled: boolean;
   runMode: string | null;
   version: string | null;
   permissions: Set<string>;
@@ -51,6 +53,7 @@ interface AuthContextType {
   onboardingStep: number | string | null;
   can: (perm: string) => boolean;
   login: () => void;
+  loginLocal: (login: string, password: string) => Promise<void>;
   loginWithIbm: (username: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   refreshAuth: () => Promise<void>;
@@ -77,6 +80,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [isNoAuthMode, setIsNoAuthMode] = useState(false);
   const [isIbmAuthMode, setIsIbmAuthMode] = useState(false);
+  const [isLocalAuthEnabled, setIsLocalAuthEnabled] = useState(false);
+  const [isGoogleAuthEnabled, setIsGoogleAuthEnabled] = useState(false);
   const [version, setVersion] = useState<string | null>(null);
   const [runMode, setRunMode] = useState<string | null>(null);
 
@@ -94,6 +99,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
       const data = await response.json();
       if (data.version) setVersion(data.version);
       if (data.run_mode) setRunMode(data.run_mode);
+      setIsLocalAuthEnabled(data.local_auth_enabled === true);
+      setIsGoogleAuthEnabled(
+        data.google_auth_enabled ?? (!data.no_auth_mode && !data.ibm_auth_mode),
+      );
 
       // Check auth mode flags
       if (data.ibm_auth_mode) {
@@ -177,6 +186,22 @@ export function AuthProvider({ children }: AuthProviderProps) {
       .catch((error) => {
         console.error("Login failed:", error);
       });
+  };
+
+  const loginLocal = async (login: string, password: string) => {
+    const response = await fetch("/api/auth/local/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ login, password }),
+    });
+    if (!response.ok) {
+      throw new Error(
+        response.status === 429
+          ? "Too many sign-in attempts. Try again in five minutes."
+          : "Unable to sign in. Check your login and password.",
+      );
+    }
+    await checkAuth();
   };
 
   const loginWithIbm = async (username: string, password: string) => {
@@ -324,6 +349,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
     isNoAuthMode,
     isIbmAuthMode,
     runMode,
+    isLocalAuthEnabled,
+    isGoogleAuthEnabled,
     version,
     permissions,
     roles,
@@ -334,6 +361,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     onboardingStep,
     can,
     login,
+    loginLocal,
     loginWithIbm,
     logout,
     refreshAuth,

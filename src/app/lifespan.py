@@ -150,6 +150,9 @@ async def run_startup(app: FastAPI):
     `app.state.background_tasks` to be set by the factory.
     """
     services = app.state.services
+    from config.auth_mode import validate_auth_configuration
+
+    validate_auth_configuration()
     mcp_lifespan_ctx = getattr(app.state, "mcp_lifespan_ctx", None)
 
     # Hard-fail if the operator has configured multiple workers. The

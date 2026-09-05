@@ -709,7 +709,12 @@ DOCLING_ERROR_DETAIL_MAX_LENGTH = get_env_int("DOCLING_ERROR_DETAIL_MAX_LENGTH",
 
 
 def is_no_auth_mode():
-    """Check if we're running in no-auth mode (OAuth credentials missing)"""
+    """Explicit modes fail closed; auto retains legacy development behavior."""
+    from config.auth_mode import get_auth_mode
+
+    mode = get_auth_mode()
+    if mode != "auto":
+        return mode == "no_auth"
     if IBM_AUTH_ENABLED:
         return False  # IBM cookie auth is a valid auth mode (variable name kept for now as per instructions)
     result = not (GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET)

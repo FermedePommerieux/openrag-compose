@@ -21,18 +21,21 @@ class KnowledgeFilterService:
             raise RuntimeError("Backend OpenSearch write client is unavailable")
         return clients.opensearch
 
-    async def _attach_active_source_counts(self, filters: list[dict[str, Any]]) -> None:
+    async def _attach_active_source_counts(
+        self, filters: list[dict[str, Any]], user_id: str = None, jwt_token: str = None
+    ) -> None:
         """Annotate each filter with active_source_count (mutates filters in place).
 
         Counts how many of each filter's configured data sources still have indexed
         documents, via a single batched terms aggregation against the documents index
-        using the admin client (so the count is the same for every viewer of a shared
-        filter, not DLS-scoped per user). Filters scoped to "*" are skipped.
+        using the same reader-scoped client as filter search. A shared filter
+        grants no visibility on its referenced documents. Filters scoped to "*"
+        are skipped. Failures leave the count unknown, never a global fallback.
         """
         try:
             import json
 
-            from config.settings import clients, get_index_name
+            from config.settings import get_index_name
             from utils.logging_config import get_logger
             from utils.opensearch_queries import build_existing_filenames_agg_body
 
@@ -55,10 +58,10 @@ class KnowledgeFilterService:
                 data_sources_by_filter.append(data_sources)
                 all_filenames.update(data_sources)
 
-            if not all_filenames or clients.opensearch is None:
+            if not all_filenames:
                 return
 
-            existence_result = await clients.opensearch.search(
+            existence_result = await self._user_client(user_id, jwt_token).search(
                 index=get_index_name(),
                 body=build_existing_filenames_agg_body(list(all_filenames)),
             )
@@ -163,7 +166,7 @@ class KnowledgeFilterService:
                 knowledge_filter["score"] = hit.get("_score")
                 filters.append(knowledge_filter)
 
-            await self._attach_active_source_counts(filters)
+            await self._attach_active_source_counts(filters, user_id, jwt_token)
 
             return {"success": True, "filters": filters}
 

@@ -39,14 +39,18 @@ def _redact_header(name: str, value: str) -> str:
 async def _attach_db_user_id(request: Request, user: User | None) -> User | None:
     """Attach the internal SQL users.id to the request user.
 
-    `User.user_id` remains the external auth subject used in JWT/OpenSearch
-    flows. `User.db_user_id` is the OpenRAG owner id used by SQL-backed
-    RBAC and ownership tables.
+    Durable local/Google sessions use the immutable SQL ID throughout.
+    Legacy/upstream adapters retain their existing subject mapping; db_user_id
+    resolves the OpenRAG owner used by SQL-backed RBAC and ownership tables.
     """
     if user is None:
         request.state.db_user_id = None
         request.state.user = None
         return None
+    if user.session_id and user.db_user_id:
+        request.state.db_user_id = user.db_user_id
+        request.state.user = user
+        return user
     jwt_roles = getattr(request.state, "jwt_roles", None)
     from config.settings import is_dev_role_toggle_enabled
 
@@ -432,7 +436,7 @@ async def resolve_current_user(request: Request, session_manager) -> User:
     if not auth_token:
         raise HTTPException(status_code=401, detail="Authentication required")
 
-    user = session_manager.get_user_from_token(auth_token)
+    user = await _resolve_oss_session(session_manager, auth_token)
     if not user:
         raise HTTPException(status_code=401, detail="Authentication required")
 
@@ -469,7 +473,7 @@ async def resolve_optional_user(request: Request, session_manager) -> User | Non
         request.state.user = None
         return None
 
-    user = session_manager.get_user_from_token(auth_token)
+    user = await _resolve_oss_session(session_manager, auth_token)
     if user:
         return await _attach_request_user(
             request,
@@ -480,6 +484,22 @@ async def resolve_optional_user(request: Request, session_manager) -> User | Non
     request.state.user = None
     request.state.db_user_id = None
     return None
+
+
+async def _resolve_oss_session(session_manager, token: str) -> User | None:
+    from config.auth_mode import get_auth_mode
+    from services.local_auth_service import authenticate_session
+
+    claims = session_manager.verify_token(token)
+    if claims and isinstance(claims, dict) and claims.get("sid"):
+        return await authenticate_session(session_manager, token)
+    # LOCAL_ONLY cannot accept an old Google session or synthetic anonymous JWT.
+    if get_auth_mode() == "local":
+        return None
+    user = session_manager.get_user_from_token(token)
+    if user and (user.provider == "local" or user.user_id == "anonymous"):
+        return None
+    return user
 
 
 def _oss_request_token(request: Request) -> str | None:
@@ -502,6 +522,21 @@ def _oss_request_token(request: Request) -> str | None:
 
 async def resolve_api_key_user(request: Request, api_key_service, session_manager) -> User:
     """Require API key or upstream authentication and attach request identity state."""
+    from config.auth_mode import local_auth_enabled
+
+    # Local JWTs are verified with local keys, never via external issuer discovery.
+    # The original session remains revocable on SDK, retrieval and streaming hops.
+    if local_auth_enabled():
+        authorization = request.headers.get("authorization", "")
+        if authorization.lower().startswith("bearer ") and not authorization[7:].startswith(
+            "orag_"
+        ):
+            user = await _resolve_oss_session(session_manager, authorization)
+            if not user:
+                raise HTTPException(401, "Authentication required")
+            return await _attach_request_user(
+                request, user, session_manager, token_hint=authorization
+            )
     # ── JWT-in-header path ───────────────────────────────────────────────
     # An upstream gateway may forward the end-user's JWT in a configurable
     # header. Its signature is verified by discovering the issuer's keys from
@@ -538,6 +573,8 @@ async def resolve_api_key_user(request: Request, api_key_service, session_manage
     if not (raw_jwt and raw_jwt.strip()):
         jwt_header = get_api_jwt_header()
         raw_jwt = request.headers.get(jwt_header, "")
+    if local_auth_enabled():
+        raw_jwt = ""  # Remaining local requests are API keys, never external JWT discovery.
     logger.debug(
         "[AUTH] API-key path JWT header lookup",
         header_name=jwt_header,
@@ -708,6 +745,28 @@ async def resolve_api_key_user(request: Request, api_key_service, session_manage
         picture=None,
         provider="api_key",
     )
+
+    if local_auth_enabled():
+        from config.auth_mode import google_login_enabled
+        from db import engine
+        from db.models import User as UserRow
+        from services.local_auth_service import issue_session
+
+        engine.init_engine()
+        assert engine.SessionLocal is not None
+        async with engine.SessionLocal() as session:
+            row = await session.get(UserRow, user.user_id)
+            if row is None or not row.is_active or row.oauth_provider == "none":
+                raise HTTPException(401, "Authentication required")
+            if row.oauth_provider != "local" and not google_login_enabled():
+                raise HTTPException(401, "Authentication required")
+            # The verified API key delegates a short, revocable request session.
+            # Langflow callbacks then use the identical DB-backed principal path.
+            delegated_token, user = await issue_session(
+                session, session_manager, row, ttl_seconds=300
+            )
+            await session.commit()
+            user.jwt_token = delegated_token
 
     # Register the API key user so get_effective_jwt_token can find them
     if user.user_id not in session_manager.users:

@@ -99,6 +99,30 @@ async function proxyRequest(request: NextRequest, params: { path: string[] }) {
       headers.set(key, value);
     }
     headers.set("x-request-id", requestId);
+    // Validate the browser origin before translating it to the backend origin.
+    // fetch may replace Host, so forwarding the public Origin unchanged would
+    // reject a legitimate login when frontend and backend use different ports.
+    if (path.startsWith("auth/") || path.startsWith("users/local")) {
+      const origin = request.headers.get("origin");
+      if (origin) {
+        let originHost: string;
+        try {
+          originHost = new URL(origin).host;
+        } catch {
+          return NextResponse.json(
+            { detail: "Invalid origin" },
+            { status: 403 },
+          );
+        }
+        if (originHost !== request.headers.get("host")) {
+          return NextResponse.json(
+            { detail: "Cross-site authentication request" },
+            { status: 403 },
+          );
+        }
+        headers.set("origin", new URL(backendUrl).origin);
+      }
+    }
 
     const init: RequestInit = {
       method: request.method,
@@ -133,7 +157,8 @@ async function proxyRequest(request: NextRequest, params: { path: string[] }) {
     for (const [key, value] of response.headers.entries()) {
       if (
         !key.toLowerCase().startsWith("transfer-encoding") &&
-        !key.toLowerCase().startsWith("connection")
+        !key.toLowerCase().startsWith("connection") &&
+        key.toLowerCase() !== "set-cookie"
       ) {
         responseHeaders.set(key, value);
       }

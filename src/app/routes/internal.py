@@ -484,9 +484,11 @@ def register_internal_routes(app: FastAPI):
 
     # ===== Users Endpoints (JWT auth) =====
     from api import config as config_api
+    from api import local_auth
     from api import users as users_api
 
     app.include_router(users_api.router)
+    app.include_router(local_auth.router)
     # Public — must work pre-auth so the onboarding wizard can render.
     app.include_router(config_api.router)
 

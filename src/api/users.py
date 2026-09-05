@@ -47,6 +47,8 @@ router = APIRouter(prefix="/users", tags=["users"])
 
 class MeResponse(BaseModel):
     user_id: str
+    authenticated: bool = True
+    workspace: str = "default"
     email: str
     name: str
     picture: str | None = None
@@ -80,7 +82,8 @@ async def get_me(
     perms = await _effective_permissions(rbac, db_id, session)
 
     return MeResponse(
-        user_id=user.user_id,
+        user_id=user.db_user_id or db_id,
+        authenticated=user.provider != "none",
         email=user.email or "",
         name=user.name or "",
         picture=user.picture,

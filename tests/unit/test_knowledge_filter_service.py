@@ -23,11 +23,11 @@ def _filter(filter_id, data_sources=None, query_data=None):
 
 
 def _setup_search(monkeypatch, filters, existing_filenames):
-    """Service whose user client returns `filters` from search, and whose
-    admin client's existence-check aggregation returns `existing_filenames`.
-    """
+    """Both filter visibility and document existence belong to the reader."""
 
     async def user_search(*, index, body):
+        if index != KNOWLEDGE_FILTERS_INDEX_NAME:
+            return await admin_search(index=index, body=body)
         return {"hits": {"hits": [{"_source": f, "_score": 1.0} for f in filters]}}
 
     admin_client = SimpleNamespace(search_calls=[])
@@ -46,7 +46,13 @@ def _setup_search(monkeypatch, filters, existing_filenames):
         def get_user_opensearch_client(self, user_id, jwt_token):
             return SimpleNamespace(search=user_search)
 
-    monkeypatch.setattr("config.settings.clients", SimpleNamespace(opensearch=admin_client))
+    async def forbidden_admin_search(**kwargs):
+        raise AssertionError("ASTRA-020: user counts must never query the admin client")
+
+    monkeypatch.setattr(
+        "config.settings.clients",
+        SimpleNamespace(opensearch=SimpleNamespace(search=forbidden_admin_search)),
+    )
     monkeypatch.setattr("config.settings.get_index_name", lambda: "documents")
 
     return KnowledgeFilterService(SessionManager()), admin_client
@@ -191,3 +197,36 @@ async def test_search_knowledge_filters_dedups_shared_filenames_in_one_query(mon
     assert admin_client.search_calls[0]["query"]["terms"]["filename"] == ["shared.pdf"]
     assert result["filters"][0]["active_source_count"] == 1
     assert result["filters"][1]["active_source_count"] == 1
+
+
+@pytest.mark.asyncio
+async def test_astra_020_shared_filter_count_uses_each_readers_identity(monkeypatch):
+    from unittest.mock import AsyncMock
+
+    seen = []
+    shared = _filter("shared", data_sources=["a.txt", "b.txt"])
+
+    class Manager:
+        def get_user_opensearch_client(self, user_id, jwt_token):
+            assert jwt_token == f"Bearer {user_id}"
+
+            async def search(*, index, body):
+                seen.append((user_id, index))
+                if index == KNOWLEDGE_FILTERS_INDEX_NAME:
+                    return {"hits": {"hits": [{"_source": dict(shared)}]}}
+                return {"aggregations": {"filenames": {"buckets": [{"key": f"{user_id}.txt"}]}}}
+
+            return SimpleNamespace(search=search)
+
+    global_search = AsyncMock(side_effect=AssertionError("Global count is forbidden"))
+    monkeypatch.setattr(
+        "config.settings.clients", SimpleNamespace(opensearch=SimpleNamespace(search=global_search))
+    )
+    monkeypatch.setattr("config.settings.get_index_name", lambda: "documents")
+    service = KnowledgeFilterService(Manager())
+    for reader in ["a", "b"]:
+        response = await service.search_knowledge_filters("", reader, f"Bearer {reader}")
+        assert response["filters"][0]["active_source_count"] == 1
+        assert (reader, "documents") in seen
+        assert (reader, KNOWLEDGE_FILTERS_INDEX_NAME) in seen
+    global_search.assert_not_called()

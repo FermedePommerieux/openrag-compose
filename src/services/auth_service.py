@@ -52,7 +52,11 @@ class AuthService:
         user_id: str = None,
     ) -> dict:
         """Initialize OAuth flow for authentication or data source connection"""
+        from config.auth_mode import google_login_enabled
         from config.settings import IBM_AUTH_ENABLED
+
+        if purpose == "app_auth" and not google_login_enabled():
+            raise HTTPException(409, "Google application login is not enabled")
 
         # IBM auth mode — Google OAuth login is not used
         if IBM_AUTH_ENABLED and purpose == "app_auth":
@@ -390,12 +394,13 @@ class AuthService:
             }
 
             if user_info and user_info.get("id"):
+                principal = self.session_manager.get_user_from_token(jwt_token)
                 # Convert the temporary auth connection to a persistent OAuth connection
                 await self.connector_service.connection_manager.update_connection(
                     connection_id=connection_id,
                     connector_type="google_drive",
                     name=f"Google Drive ({user_info.get('email', 'Unknown')})",
-                    user_id=user_info.get("id"),
+                    user_id=principal.user_id if principal else user_info.get("id"),
                     config={
                         **connection_config.config,
                         "purpose": "data_source",

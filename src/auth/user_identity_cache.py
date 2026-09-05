@@ -116,6 +116,8 @@ async def _resolve_db_user_id(user: User, jwt_roles: list[str] | None = None) ->
     """Translate an authenticated `User` to the SQL ``users.id`` used by RBAC."""
     if not user or not user.user_id:
         return ""
+    if user.session_id and user.db_user_id:
+        return user.db_user_id
     if jwt_roles is None:
         cached = _ENSURED_USER_IDS.get(_user_cache_key(user))
         if cached is not None:

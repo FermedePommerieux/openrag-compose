@@ -36,6 +36,8 @@ class User:
     opensearch_username: str | None = None
     opensearch_credentials: str | None = None  # Raw base64 credentials (without "Basic " prefix)
     db_user_id: str | None = None  # Internal OpenRAG users.id
+    auth_subject: str | None = None  # Provider subject, distinct from authorization ID
+    session_id: str | None = None  # Durable OpenRAG session, if issued by this version
 
     def __post_init__(self):
         if self.created_at is None:
@@ -196,14 +198,17 @@ class SessionManager:
             provider="google",
         )
 
-        # Update last login if user exists
-        if user_id in self.users:
-            self.users[user_id].last_login = datetime.now()
-        else:
-            self.users[user_id] = user
+        from db import engine
+        from services.local_auth_service import issue_session
+        from services.user_service import ensure_user_row
 
-        # Create JWT token using the shared method
-        return self.create_jwt_token(user)
+        engine.init_engine()
+        assert engine.SessionLocal is not None
+        async with engine.SessionLocal() as session:
+            row = await ensure_user_row(session, user)
+            token, _ = await issue_session(session, self, row)
+            await session.commit()
+            return token
 
     def _get_oidc_issuer(self) -> str:
         # Use OpenSearch-compatible issuer for OIDC validation
@@ -233,13 +238,21 @@ class SessionManager:
             "auth_time": int(now.timestamp()),  # Authentication time
             # Custom claims
             "user_id": user.user_id,  # Keep for backward compatibility
-            "email": user.email,
+            "email": user.user_id if user.provider == "local" else user.email,
             "name": user.name,
             "preferred_username": user.email,
-            "email_verified": True,
+            "email_verified": user.provider != "local",
             "roles": roles,  # Backend roles for OpenSearch
-            "user_roles": roles + ["all_access"],  # compatible with OpenSearch's roles_key
+            "user_roles": roles,  # Never grant an administrative OpenSearch role.
         }
+        if user.session_id:
+            token_payload.update(
+                {
+                    "sid": user.session_id,
+                    "provider": user.provider,
+                    "token_use": "session",
+                }
+            )
 
         if self.private_key is None:
             logger.error("JWT signing requested but signing is disabled")
@@ -353,7 +366,7 @@ class SessionManager:
             return jwt_token
 
         # No token — create one
-        if is_no_auth_mode() or user_id in (None, AnonymousUser().user_id):
+        if is_no_auth_mode():
             # No anonymous JWT concept when local signing is disabled.
             if self.private_key is None:
                 return None
@@ -367,7 +380,7 @@ class SessionManager:
         if user:
             return self.create_jwt_token(user)
 
-        return None
+        raise ValueError("Authenticated OpenSearch request requires a user credential")
 
     def _create_anonymous_jwt(self) -> str:
         """Create JWT token for anonymous user in no-auth mode"""
