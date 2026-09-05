@@ -73,7 +73,10 @@ class _DlsSideIndexClient:
         assert "filter.projection_sha256" in str(body["query"])
         if "search_after" not in body:
             return {
+                "timed_out": False,
+                "_shards": {"total": 1, "successful": 1, "failed": 0},
                 "hits": {
+                    "total": {"value": 2, "relation": "eq"},
                     "hits": [
                         {
                             "_source": {"source_entity_id": "visible-b"},
@@ -83,10 +86,14 @@ class _DlsSideIndexClient:
                             "_source": {"source_entity_id": "visible-a"},
                             "sort": ["visible-a", "doc-a", "projection-a"],
                         },
-                    ]
-                }
+                    ],
+                },
             }
-        return {"hits": {"hits": []}}
+        return {
+            "timed_out": False,
+            "_shards": {"total": 1, "successful": 1, "failed": 0},
+            "hits": {"total": {"value": 2, "relation": "eq"}, "hits": []},
+        }
 
 
 @pytest.mark.asyncio

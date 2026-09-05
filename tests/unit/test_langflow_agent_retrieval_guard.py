@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import ast
 import hashlib
+import hmac
 import json
 import re
 import unicodedata
@@ -43,6 +44,11 @@ class _FakeLogger:
 def _load_guard_namespace() -> dict[str, Any]:
     tree = ast.parse(AGENT_SOURCE.read_text(encoding="utf-8"))
     functions = {
+        "_scope_certification_facts_payload",
+        "_scope_certification_facts_sha256",
+        "certify_scope_coverage",
+        "verify_scope_coverage_certificate",
+        "retrieval_execution_complete",
         "_canonical_hash",
         "_normalize_retrieval_intent",
         "_message_value",
@@ -65,6 +71,7 @@ def _load_guard_namespace() -> dict[str, Any]:
         "_compute_agent_recursion_budget",
     }
     classes = {
+        "ScopeCertificationFacts",
         "_RetrievalRecord",
         "_RetrievalGuardSnapshot",
         "OpenRAGRetrievalGuardMiddleware",
@@ -74,7 +81,7 @@ def _load_guard_namespace() -> dict[str, Any]:
         if isinstance(node, (ast.Assign, ast.AnnAssign)):
             targets = node.targets if isinstance(node, ast.Assign) else [node.target]
             names = [target.id for target in targets if isinstance(target, ast.Name)]
-            if any(name.startswith("_RETRIEVAL_") for name in names):
+            if any(name.startswith(("_RETRIEVAL_", "SCOPE_COVERAGE_")) for name in names):
                 selected.append(node)
         elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name in functions:
             selected.append(node)
@@ -88,6 +95,7 @@ def _load_guard_namespace() -> dict[str, Any]:
         "dataclass": dataclass,
         "field": field,
         "hashlib": hashlib,
+        "hmac": hmac,
         "json": json,
         "logger": _FakeLogger(),
         "re": re,
@@ -171,6 +179,9 @@ def _complete_coverage():
         "mode": "scope_exhaustive",
         "complete": True,
         "status_code": "complete",
+        "status_message": GUARD["SCOPE_COVERAGE_MESSAGES"]["complete"],
+        "relations_unclassified": {"total": 0},
+        "retrieval_failure_codes": [],
         "failure_codes": [],
         **{
             field: facts[field]
@@ -288,6 +299,8 @@ def test_guard_rejects_false_complete_when_retrieval_execution_is_degraded():
                     "mode": "scope_exhaustive",
                     "complete": True,
                     "status_code": "complete",
+                    "status_message": GUARD["SCOPE_COVERAGE_MESSAGES"]["complete"],
+                    "relations_unclassified": {"total": 0},
                     "failure_codes": [],
                     "retrieval_execution_complete": False,
                     "retrieval_failure_codes": ["retrieval_dense_lane_failed"],
@@ -426,6 +439,9 @@ def test_invoice_regression_stalls_after_repeated_evidence_then_preserves_calcul
                 "complete": True,
                 "retrieval_execution_complete": True,
                 "status_code": "complete",
+                "status_message": GUARD["SCOPE_COVERAGE_MESSAGES"]["complete"],
+                "relations_unclassified": {"total": 0},
+                "retrieval_failure_codes": [],
                 "failure_codes": [],
             },
         ),

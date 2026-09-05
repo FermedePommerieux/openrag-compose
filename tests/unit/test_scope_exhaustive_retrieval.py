@@ -237,6 +237,8 @@ class _GraphClient:
 
         hits = hits[: int(body["size"])]
         return {
+            "timed_out": False,
+            "_shards": {"total": 1, "successful": 1, "skipped": 0, "failed": 0},
             "hits": {
                 "total": {"value": matched_total, "relation": "eq"},
                 "hits": hits,
@@ -1053,7 +1055,7 @@ async def test_rfc5322_identifier_reconstructs_reference_chain():
 
 
 @pytest.mark.asyncio
-async def test_unknown_relation_closes_graph_but_fails_policy_certifiability():
+async def test_unknown_relation_fails_versioned_provenance_validation():
     result = await expand_provenance_graph(
         _GraphClient([_record("A", relations=[("new_relation", "B")])]),
         index_name="documents",
@@ -1062,8 +1064,9 @@ async def test_unknown_relation_closes_graph_but_fails_policy_certifiability():
 
     assert result["coverage"]["frontier_empty"] is True
     assert result["coverage"]["limit_reached"] is False
-    assert result["coverage"]["relations_unclassified"]["total"] == 2
-    assert result["documents"][0]["source_entity_id"] == "A"
+    assert result["coverage"]["execution_complete"] is False
+    assert "provenance_invalid" in result["coverage"]["execution_failure_codes"]
+    assert result["documents"] == []
 
 
 @pytest.mark.asyncio
@@ -1999,9 +2002,7 @@ def test_empty_frontier_with_non_natural_stop_reason_never_certifies():
         ),
     ],
 )
-def test_required_lane_planner_frontier_and_limit_sabotage_fail_closed(
-    mutation, expected_code
-):
+def test_required_lane_planner_frontier_and_limit_sabotage_fail_closed(mutation, expected_code):
     decision = certify_scope_coverage(replace(_complete_certification_facts(), **mutation))
 
     assert decision["complete"] is False

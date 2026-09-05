@@ -374,6 +374,8 @@ async def test_exhaustive_read_paginates_one_immutable_snapshot(monkeypatch):
                 "chunk_id": f"logical-{index}",
                 "chunk_content_sha256": hashlib.sha256(text.encode()).hexdigest(),
                 "document_id": "document-1",
+                "document_profile_version": 1,
+                "ingest_run_id": "run-1",
                 "document_content_sha256": snapshot,
                 "document_order_verified": True,
                 "document_chunk_count": 3,
@@ -393,6 +395,10 @@ async def test_exhaustive_read_paginates_one_immutable_snapshot(monkeypatch):
             },
         }
 
+    from services.retrieval_service import document_content_sha256_from_chunks
+
+    snapshot = document_content_sha256_from_chunks([evidence_hit(i)["_source"] for i in range(3)])
+
     class OpenSearchClient:
         bodies: list[dict] = []
 
@@ -404,6 +410,8 @@ async def test_exhaustive_read_paginates_one_immutable_snapshot(monkeypatch):
                 else [evidence_hit(0), evidence_hit(1)]
             )
             return {
+                "timed_out": False,
+                "_shards": {"total": 1, "successful": 1, "skipped": 0, "failed": 0},
                 "hits": {"total": {"value": 3, "relation": "eq"}, "hits": page},
                 "aggregations": {"snapshots": {"buckets": [{"key": snapshot, "doc_count": 3}]}},
             }
@@ -462,6 +470,8 @@ async def test_exhaustive_read_rejects_missing_corrupt_or_noncontiguous_chunk(
         "chunk_id": "logical-0",
         "chunk_content_sha256": hashlib.sha256(text.encode()).hexdigest(),
         "document_id": "document-1",
+        "document_profile_version": 1,
+        "ingest_run_id": "run-1",
         "document_content_sha256": snapshot,
         "document_order_verified": True,
         "document_chunk_count": 1,
@@ -474,9 +484,11 @@ async def test_exhaustive_read_rejects_missing_corrupt_or_noncontiguous_chunk(
     class OpenSearchClient:
         async def search(self, *, index, body, params):
             return {
+                "timed_out": False,
+                "_shards": {"total": 1, "successful": 1, "skipped": 0, "failed": 0},
                 "hits": {
                     "total": {"value": 1, "relation": "eq"},
-                    "hits": [{"_id": "physical-0", "sort": [0], "_source": source}],
+                    "hits": [{"_id": "physical-0", "sort": [0, 1, "logical-0"], "_source": source}],
                 },
                 "aggregations": {"snapshots": {"buckets": [{"key": snapshot, "doc_count": 1}]}},
             }
@@ -486,8 +498,9 @@ async def test_exhaustive_read_rejects_missing_corrupt_or_noncontiguous_chunk(
     session_manager.get_user_opensearch_client.return_value = OpenSearchClient()
     service = SearchService(session_manager=session_manager)
 
-    with pytest.raises(RuntimeError, match=message):
-        await service.read_document_chunks("document-1", user_id="user-1", jwt_token="jwt")
+    result = await service.read_document_chunks("document-1", user_id="user-1", jwt_token="jwt")
+    assert result["coverage"]["complete"] is False
+    assert message in result["error"]
 
 
 def test_settings_normalize_invalid_or_unbounded_values():
@@ -591,7 +604,12 @@ async def test_search_service_rrf_fuses_lanes_preserves_provenance_and_emits_deb
             should = body.get("query", {}).get("bool", {}).get("should", [])
             is_vector = bool(should and "dis_max" in should[0])
             hits = [shared, vector_same_document] if is_vector else [lexical_only, shared]
-            return {"hits": {"hits": hits}, "aggregations": {"data_sources": {"buckets": []}}}
+            return {
+                "timed_out": False,
+                "_shards": {"total": 1, "successful": 1, "skipped": 0, "failed": 0},
+                "hits": {"hits": hits},
+                "aggregations": {"data_sources": {"buckets": []}},
+            }
 
     embedding_response = SimpleNamespace(data=[SimpleNamespace(embedding=[0.1, 0.2])])
     monkeypatch.setattr(
@@ -705,6 +723,8 @@ async def test_document_search_paginates_collapsed_results_with_server_total(mon
                     }
                 }
             return {
+                "timed_out": False,
+                "_shards": {"total": 1, "successful": 1, "skipped": 0, "failed": 0},
                 "hits": {
                     "hits": [
                         {

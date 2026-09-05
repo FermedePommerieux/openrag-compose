@@ -27,6 +27,7 @@ from services.metadata_filter_projection import (
     MetadataProjectionQueryBoundary,
     compile_metadata_filter_to_opensearch,
 )
+from services.opensearch_response import validate_search_progress, validate_search_response
 
 METADATA_FILTER_PROJECTION_ALIAS = "documents-metadata-filter-current"
 METADATA_CANDIDATE_PAGE_SIZE = 512
@@ -163,6 +164,11 @@ async def resolve_metadata_candidates(
         if search_after is not None:
             body["search_after"] = search_after
         response = await client.search(index=projection_alias, body=body)
+        execution_failures = validate_search_response(response, exact_total=True)
+        if execution_failures:
+            raise RuntimeError(
+                "metadata candidate execution incomplete: " + ", ".join(execution_failures)
+            )
         pages += 1
         hits = response.get("hits", {}).get("hits", [])
         for hit in hits:
@@ -177,6 +183,7 @@ async def resolve_metadata_candidates(
         cursor = hits[-1].get("sort")
         if not isinstance(cursor, list):
             raise RuntimeError("metadata candidate pagination has no stable cursor")
+        validate_search_progress(search_after, cursor, width=3)
         search_after = cursor
     ordered = tuple(sorted(ids))
     return MetadataCandidateRestriction(
@@ -315,6 +322,13 @@ def _merge_lane_responses(
         else:
             total += int(response_total or 0)
     return {
+        "_execution_failures": sorted(
+            {
+                code
+                for response in responses
+                for code in response.get("_execution_failures", validate_search_response(response))
+            }
+        ),
         "hits": {
             "hits": ordered,
             "total": {"value": total, "relation": total_relation},

@@ -19,7 +19,15 @@ def _hit(chunk_id: str, document_id: str, text: str) -> dict:
     }
 
 
-async def _run_rrf_search(monkeypatch, *, mode: str, embed_fails: bool, failed_lane: str = ""):
+async def _run_rrf_search(
+    monkeypatch,
+    *,
+    mode: str,
+    embed_fails: bool,
+    failed_lane: str = "",
+    partial_lane: str = "",
+    partial_response=None,
+):
     from services import search_service
 
     knowledge = SimpleNamespace(
@@ -63,7 +71,13 @@ async def _run_rrf_search(monkeypatch, *, mode: str, embed_fails: bool, failed_l
             if failed_lane == lane:
                 raise RuntimeError(f"forced {lane} failure")
             hit = _hit(f"{lane}-chunk", f"{lane}-document", f"{lane} evidence")
-            return {"hits": {"hits": [hit]}, "aggregations": {}}
+            return {
+                "timed_out": False,
+                "_shards": {"total": 1, "successful": 1, "skipped": 0, "failed": 0},
+                "hits": {"hits": [hit]},
+                "aggregations": {},
+                **(partial_response if lane == partial_lane else {}),
+            }
 
     embedding_create = AsyncMock(
         side_effect=(RuntimeError("forced embedding failure") if embed_fails else None),

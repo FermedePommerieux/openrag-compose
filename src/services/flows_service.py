@@ -36,7 +36,7 @@ _LEGACY_RETRIEVAL_COMPONENT = (
     "ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra"
 )
 _BACKEND_RETRIEVAL_COMPONENT = "ext:openrag:OpenRAGBackendRetrievalComponent@extra"
-_RETRIEVAL_FLOW_MIGRATION_VERSION = 16
+_RETRIEVAL_FLOW_MIGRATION_VERSION = 17
 _LEGACY_SYSTEM_FLOW_ID = "1098eea1-6649-4e1d-aed1-b77249fb8dd0"
 # These fields are rewritten by OpenRAG's settings synchronization and by
 # Langflow's provider refresh endpoint. Their values and option lists are
@@ -234,6 +234,12 @@ _PREVIOUS_VERSIONED_OPT_IN_EXHAUSTIVE_MANAGED_GRAPH_SHA256 = (
 # settings-normalized state so startup can replace it with the real v16 graph.
 _PREMATURE_VERSIONED_OPT_IN_EXHAUSTIVE_MANAGED_GRAPH_SHA256 = (
     "a63ca2452f4e56d5aebd8d2bfbe4bd9929fb8e4e51c9834d47847923594406d6"
+)
+
+
+# Exact managed v16 graph before canonical coverage verification.
+_PREVIOUS_COVERAGE_GUARD_GRAPH_SHA256 = (
+    "e0ce6c8123f9d43d435752ee9c9eed56521fe4ab2cfb76bafd6e3dac47fa323c"
 )
 
 
@@ -1503,7 +1509,10 @@ class FlowsService:
 
     @staticmethod
     def _preserve_runtime_managed_retrieval_fields(
-        source_graph: dict[str, Any], target_graph: dict[str, Any]
+        source_graph: dict[str, Any],
+        target_graph: dict[str, Any],
+        *,
+        preserve_system_prompt: bool = False,
     ) -> None:
         """Carry settings-owned provider fields into a verified replacement graph."""
         source_nodes = source_graph.get("nodes", [])
@@ -1535,9 +1544,10 @@ class FlowsService:
             target_template = target_component.get("template", {})
             if not isinstance(source_template, dict) or not isinstance(target_template, dict):
                 continue
-            for field in _RUNTIME_MANAGED_RETRIEVAL_FIELDS.intersection(
-                source_template, target_template
-            ):
+            fields = set(_RUNTIME_MANAGED_RETRIEVAL_FIELDS)
+            if preserve_system_prompt and display_name == AGENT_COMPONENT_DISPLAY_NAME:
+                fields.add("system_prompt")
+            for field in fields.intersection(source_template, target_template):
                 target_template[field] = copy.deepcopy(source_template[field])
 
     def _is_known_legacy_retrieval_flow(self, flow_data: dict[str, Any]) -> bool:
@@ -1663,23 +1673,20 @@ class FlowsService:
                 == _PREVIOUS_VERSIONED_METADATA_BASELINE_MANAGED_GRAPH_SHA256
             )
         if marker == 15:
-            return (
-                self._managed_behavior_normalized_graph_fingerprint(flow_data)
-                in {
-                    _PREMATURE_VERSIONED_METADATA_BASELINE_MANAGED_GRAPH_SHA256,
-                    _PREVIOUS_VERSIONED_METADATA_TOOL_MANAGED_GRAPH_SHA256,
-                    _PREVIOUS_VERSIONED_METADATA_TOOL_REBUILD_MANAGED_GRAPH_SHA256,
-                    _PREVIOUS_VERSIONED_METADATA_TOOL_ANNOTATION_MANAGED_GRAPH_SHA256,
-                    _PREVIOUS_VERSIONED_METADATA_TOOL_EAGER_MANAGED_GRAPH_SHA256,
-                    _PREVIOUS_VERSIONED_SIGNED_METADATA_TOOL_MANAGED_GRAPH_SHA256,
-                    _PREVIOUS_VERSIONED_OPT_IN_EXHAUSTIVE_MANAGED_GRAPH_SHA256,
-                }
-            )
+            return self._managed_behavior_normalized_graph_fingerprint(flow_data) in {
+                _PREMATURE_VERSIONED_METADATA_BASELINE_MANAGED_GRAPH_SHA256,
+                _PREVIOUS_VERSIONED_METADATA_TOOL_MANAGED_GRAPH_SHA256,
+                _PREVIOUS_VERSIONED_METADATA_TOOL_REBUILD_MANAGED_GRAPH_SHA256,
+                _PREVIOUS_VERSIONED_METADATA_TOOL_ANNOTATION_MANAGED_GRAPH_SHA256,
+                _PREVIOUS_VERSIONED_METADATA_TOOL_EAGER_MANAGED_GRAPH_SHA256,
+                _PREVIOUS_VERSIONED_SIGNED_METADATA_TOOL_MANAGED_GRAPH_SHA256,
+                _PREVIOUS_VERSIONED_OPT_IN_EXHAUSTIVE_MANAGED_GRAPH_SHA256,
+            }
         if marker == 16:
-            return (
-                self._managed_behavior_normalized_graph_fingerprint(flow_data)
-                == _PREMATURE_VERSIONED_OPT_IN_EXHAUSTIVE_MANAGED_GRAPH_SHA256
-            )
+            return self._managed_behavior_normalized_graph_fingerprint(flow_data) in {
+                _PREMATURE_VERSIONED_OPT_IN_EXHAUSTIVE_MANAGED_GRAPH_SHA256,
+                _PREVIOUS_COVERAGE_GUARD_GRAPH_SHA256,
+            }
         if marker not in {6, 7, 8, 9, 10, 11, 12}:
             return exact_match
         expected_runtime = (
@@ -1760,7 +1767,11 @@ class FlowsService:
         # credential/endpoint references written by OpenRAG settings. Preserve
         # them exactly; recognizing those fields must never imply resetting
         # them to the bundled template defaults.
-        self._preserve_runtime_managed_retrieval_fields(graph, migrated_graph)
+        self._preserve_runtime_managed_retrieval_fields(
+            graph,
+            migrated_graph,
+            preserve_system_prompt=graph.get("openrag_retrieval_version") == 16,
+        )
         migrated["data"] = migrated_graph
         # Stored with the graph so repeated startups can identify the installed
         # known version without relying on timestamps or an in-memory cache.

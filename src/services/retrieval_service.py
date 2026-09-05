@@ -21,6 +21,32 @@ from typing import Any
 
 import httpx
 
+from models.source_provenance import validate_provenance_representative
+from services.opensearch_response import validate_search_progress, validate_search_response
+from services.scope_coverage_contract import (
+    SCOPE_COVERAGE_CODE_ORDER as SCOPE_COVERAGE_CODE_ORDER,
+)
+from services.scope_coverage_contract import (
+    SCOPE_COVERAGE_CONTRACT_ID as SCOPE_COVERAGE_CONTRACT_ID,
+)
+from services.scope_coverage_contract import (
+    SCOPE_COVERAGE_CONTRACT_VERSION as SCOPE_COVERAGE_CONTRACT_VERSION,
+)
+from services.scope_coverage_contract import (
+    SCOPE_COVERAGE_MESSAGES as SCOPE_COVERAGE_MESSAGES,
+)
+from services.scope_coverage_contract import (
+    ScopeCertificationFacts as ScopeCertificationFacts,
+)
+from services.scope_coverage_contract import (
+    certify_scope_coverage as certify_scope_coverage,
+)
+from services.scope_coverage_contract import (
+    retrieval_execution_complete as retrieval_execution_complete,
+)
+from services.scope_coverage_contract import (
+    verify_scope_coverage_certificate as verify_scope_coverage_certificate,
+)
 from services.scope_traversal_policy import (
     DEFAULT_SCOPE_TRAVERSAL_POLICY,
     ScopeRelationSemantics,
@@ -47,363 +73,40 @@ DISCOVERY_QUERY_KINDS = frozenset(
     }
 )
 
-SCOPE_COVERAGE_MESSAGES = {
-    "complete": (
-        "The accessible provenance-connected scope discovered from the ranked seeds "
-        "was closed and every discovered document snapshot was read and verified."
-    ),
-    "incomplete_seed_discovery": "Ranked seed discovery did not complete.",
-    "search_error": "Ranked seed discovery failed with a search error.",
-    "retrieval_execution_incomplete": (
-        "The requested retrieval profile was not executed completely."
-    ),
-    "multi_query_planner_failed": "The requested multi-query planner did not complete.",
-    "multi_query_query_failed": "At least one planned discovery query did not complete.",
-    "retrieval_lexical_lane_failed": "The required lexical retrieval lane did not complete.",
-    "retrieval_dense_lane_failed": "The required dense retrieval lane did not complete.",
-    "retrieval_fusion_failed": "The required retrieval fusion did not complete.",
-    "no_provenance_seed": "No valid provenance-bearing seed document was discovered.",
-    "seed_missing_provenance": (
-        "At least one discovered seed document has missing or invalid provenance."
-    ),
-    "graph_limit_reached": "A provenance graph traversal limit stopped closure.",
-    "graph_traversal_failed": "Provenance graph traversal failed before closure.",
-    "scope_policy_unclassified_relation": (
-        "At least one visible provenance relation could not be classified by the "
-        "declared documentary scope policy."
-    ),
-    "document_limit_reached": "The document discovery limit stopped closure.",
-    "document_read_incomplete": "At least one discovered document was not read completely.",
-    "legacy_document": "At least one document has no verifiable ingestion profile.",
-    "snapshot_changed": "At least one document snapshot changed while it was being read.",
-    "cursor_invalid": "At least one document continuation cursor was invalid.",
-    "access_error": "At least one discovered document could not be read in this access scope.",
-    "profile_invalid": "At least one document verification profile or coverage counter is invalid.",
-    "identity_ambiguous": (
-        "A provenance alternate identifier resolves to more than one accessible entity."
-    ),
-}
 
-SCOPE_COVERAGE_CODE_ORDER = tuple(SCOPE_COVERAGE_MESSAGES)
-SCOPE_COVERAGE_CONTRACT_ID = "openrag.scope-coverage"
-SCOPE_COVERAGE_CONTRACT_VERSION = 1
-
-
-@dataclass(frozen=True)
-class ScopeCertificationFacts:
-    """Measured facts consumed by the sole scope certification decision.
-
-    Counts and ratios describe work performed; they never certify coverage by
-    themselves. Completion additionally requires valid seeds, natural graph
-    closure and verified complete reads for every accessible discovered
-    document.
-    """
-
-    seed_discovery_complete: bool
-    seed_documents: int
-    valid_provenance_seed_documents: int
-    invalid_provenance_seed_documents: int
-    graph_frontier_empty: bool
-    graph_limit_reached: bool
-    graph_stop_reason: str | None
-    graph_failed: bool
-    retrieval_execution_complete: bool
-    documents_discovered: int
-    documents_complete: int
-    covered_chunks: int
-    total_chunks: int
-    document_failure_codes: tuple[str, ...] = ()
-    seed_failure_code: str | None = None
-    unclassified_relations: int = 0
-    retrieval_failure_codes: tuple[str, ...] = ()
-
-
-def _scope_certification_facts_payload(facts: ScopeCertificationFacts) -> dict[str, Any]:
-    """Return the canonical JSON-safe inputs to the scope certifier."""
+def verified_chunk_manifest(chunk: dict[str, Any]) -> dict[str, Any]:
+    """Verify text once, retaining digest facts safe to carry in a signed cursor."""
+    text = chunk.get("text")
+    chunk_digest = chunk.get("chunk_content_sha256")
+    if not chunk.get("chunk_id") or not isinstance(text, str) or not isinstance(chunk_digest, str):
+        raise ValueError("Document evidence contains an unverifiable source chunk")
+    if not hmac.compare_digest(hashlib.sha256(text.encode("utf-8")).hexdigest(), chunk_digest):
+        raise ValueError("Document evidence contains a chunk text digest mismatch")
     return {
-        "seed_discovery_complete": facts.seed_discovery_complete,
-        "seed_documents": facts.seed_documents,
-        "valid_provenance_seed_documents": facts.valid_provenance_seed_documents,
-        "invalid_provenance_seed_documents": facts.invalid_provenance_seed_documents,
-        "graph_frontier_empty": facts.graph_frontier_empty,
-        "graph_limit_reached": facts.graph_limit_reached,
-        "graph_stop_reason": facts.graph_stop_reason,
-        "graph_failed": facts.graph_failed,
-        "retrieval_execution_complete": facts.retrieval_execution_complete,
-        "documents_discovered": facts.documents_discovered,
-        "documents_complete": facts.documents_complete,
-        "covered_chunks": facts.covered_chunks,
-        "total_chunks": facts.total_chunks,
-        "document_failure_codes": list(facts.document_failure_codes),
-        "seed_failure_code": facts.seed_failure_code,
-        "unclassified_relations": facts.unclassified_relations,
-        "retrieval_failure_codes": list(facts.retrieval_failure_codes),
+        key: chunk.get(key) for key in ("chunk_id", "chunk_content_sha256", "chunk_index", "page")
     }
 
 
-def _scope_certification_facts_sha256(payload: dict[str, Any]) -> str:
-    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
-    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
-
-
-def certify_scope_coverage(facts: ScopeCertificationFacts) -> dict[str, Any]:
-    """Return one deterministic, fail-closed scope coverage decision."""
-    failures: set[str] = set()
-    if facts.seed_failure_code:
-        failures.add(
-            facts.seed_failure_code
-            if facts.seed_failure_code in SCOPE_COVERAGE_MESSAGES
-            and facts.seed_failure_code != "complete"
-            else "search_error"
-        )
-    elif not facts.seed_discovery_complete:
-        failures.add("incomplete_seed_discovery")
-
-    recognized_retrieval_failures = {
-        code
-        for code in facts.retrieval_failure_codes
-        if code in SCOPE_COVERAGE_MESSAGES and code != "complete"
-    }
-    failures.update(recognized_retrieval_failures)
-    if not facts.retrieval_execution_complete and not recognized_retrieval_failures:
-        failures.add("retrieval_execution_incomplete")
-    if facts.retrieval_execution_complete and facts.retrieval_failure_codes:
-        failures.add("profile_invalid")
-
-    if facts.seed_discovery_complete:
-        if facts.seed_documents <= 0 or facts.valid_provenance_seed_documents <= 0:
-            failures.add("no_provenance_seed")
-        elif (
-            facts.invalid_provenance_seed_documents > 0
-            or facts.valid_provenance_seed_documents != facts.seed_documents
-        ):
-            failures.add("seed_missing_provenance")
-
-        if facts.graph_failed:
-            failures.add("graph_traversal_failed")
-        if facts.graph_limit_reached:
-            if facts.graph_stop_reason == "max_documents":
-                failures.add("document_limit_reached")
-            elif facts.graph_stop_reason == "ambiguous_alternate_id":
-                failures.add("identity_ambiguous")
-            else:
-                failures.add("graph_limit_reached")
-        elif not facts.graph_frontier_empty:
-            failures.add("graph_traversal_failed")
-        elif facts.graph_stop_reason != "frontier_empty":
-            # An empty frontier is a measured state, not by itself proof that
-            # traversal stopped naturally.  A contradictory stop reason must
-            # never be upgraded to a complete certificate.
-            failures.add("profile_invalid")
-        if facts.unclassified_relations > 0:
-            failures.add("scope_policy_unclassified_relation")
-
-        recognized_document_failures = {
-            code
-            for code in facts.document_failure_codes
-            if code in SCOPE_COVERAGE_MESSAGES and code != "complete"
-        }
-        failures.update(recognized_document_failures)
-        if facts.document_failure_codes and not recognized_document_failures:
-            failures.add("document_read_incomplete")
-        if (
-            facts.documents_complete < facts.documents_discovered
-            and not facts.document_failure_codes
-        ):
-            failures.add("document_read_incomplete")
-        if facts.covered_chunks < facts.total_chunks and not facts.document_failure_codes:
-            failures.add("document_read_incomplete")
-    if (
-        min(
-            facts.seed_documents,
-            facts.valid_provenance_seed_documents,
-            facts.invalid_provenance_seed_documents,
-            facts.documents_discovered,
-            facts.documents_complete,
-            facts.covered_chunks,
-            facts.total_chunks,
-            facts.unclassified_relations,
-        )
-        < 0
-        or facts.valid_provenance_seed_documents + facts.invalid_provenance_seed_documents
-        != facts.seed_documents
-        or facts.documents_complete > facts.documents_discovered
-        or facts.covered_chunks > facts.total_chunks
-    ):
-        failures.add("profile_invalid")
-
-    ordered_failures = [code for code in SCOPE_COVERAGE_CODE_ORDER if code in failures]
-    complete = not ordered_failures
-    status_code = "complete" if complete else ordered_failures[0]
-    fact_payload = _scope_certification_facts_payload(facts)
-    return {
-        "complete": complete,
-        "status_code": status_code,
-        "status_message": SCOPE_COVERAGE_MESSAGES[status_code],
-        "failure_codes": ordered_failures,
-        "certification": {
-            "contract_id": SCOPE_COVERAGE_CONTRACT_ID,
-            "contract_version": SCOPE_COVERAGE_CONTRACT_VERSION,
-            "facts": fact_payload,
-            "facts_sha256": _scope_certification_facts_sha256(fact_payload),
-        },
-    }
-
-
-def verify_scope_coverage_certificate(coverage: dict[str, Any]) -> dict[str, Any]:
-    """Re-run the canonical certifier over a transported scope certificate.
-
-    Product and benchmark consumers use this verifier instead of rebuilding a
-    second completion contract.  It detects missing canonical provenance,
-    edited facts, edited decisions, and disagreement between public counters
-    and the facts that were actually certified.
-    """
-    failures: list[str] = []
-    certification = coverage.get("certification")
-    if not isinstance(certification, dict):
-        return {"valid": False, "failure_codes": ["canonical_certification_missing"]}
-    if certification.get("contract_id") != SCOPE_COVERAGE_CONTRACT_ID:
-        failures.append("coverage_contract_id_invalid")
-    if certification.get("contract_version") != SCOPE_COVERAGE_CONTRACT_VERSION:
-        failures.append("coverage_contract_version_invalid")
-
-    raw_facts = certification.get("facts")
-    if not isinstance(raw_facts, dict):
-        return {
-            "valid": False,
-            "failure_codes": sorted({*failures, "certification_facts_invalid"}),
-        }
-    expected_fact_keys = set(_scope_certification_facts_payload(
-        ScopeCertificationFacts(
-            seed_discovery_complete=False,
-            seed_documents=0,
-            valid_provenance_seed_documents=0,
-            invalid_provenance_seed_documents=0,
-            graph_frontier_empty=False,
-            graph_limit_reached=False,
-            graph_stop_reason=None,
-            graph_failed=False,
-            retrieval_execution_complete=False,
-            documents_discovered=0,
-            documents_complete=0,
-            covered_chunks=0,
-            total_chunks=0,
-        )
-    ))
-    if set(raw_facts) != expected_fact_keys:
-        failures.append("certification_facts_invalid")
-
-    bool_fields = (
-        "seed_discovery_complete",
-        "graph_frontier_empty",
-        "graph_limit_reached",
-        "graph_failed",
-        "retrieval_execution_complete",
-    )
-    int_fields = (
-        "seed_documents",
-        "valid_provenance_seed_documents",
-        "invalid_provenance_seed_documents",
-        "documents_discovered",
-        "documents_complete",
-        "covered_chunks",
-        "total_chunks",
-        "unclassified_relations",
-    )
-    if any(type(raw_facts.get(field)) is not bool for field in bool_fields):
-        failures.append("certification_facts_invalid")
-    if any(type(raw_facts.get(field)) is not int for field in int_fields):
-        failures.append("certification_facts_invalid")
-    if raw_facts.get("graph_stop_reason") is not None and not isinstance(
-        raw_facts.get("graph_stop_reason"), str
-    ):
-        failures.append("certification_facts_invalid")
-    if raw_facts.get("seed_failure_code") is not None and not isinstance(
-        raw_facts.get("seed_failure_code"), str
-    ):
-        failures.append("certification_facts_invalid")
-    for field in ("document_failure_codes", "retrieval_failure_codes"):
-        values = raw_facts.get(field)
-        if not isinstance(values, list) or any(not isinstance(value, str) for value in values):
-            failures.append("certification_facts_invalid")
-    if "certification_facts_invalid" in failures:
-        return {"valid": False, "failure_codes": sorted(set(failures))}
-
-    canonical_facts = dict(raw_facts)
-    supplied_digest = certification.get("facts_sha256")
-    expected_digest = _scope_certification_facts_sha256(canonical_facts)
-    if not isinstance(supplied_digest, str) or not hmac.compare_digest(
-        supplied_digest, expected_digest
-    ):
-        failures.append("certification_facts_digest_mismatch")
-
-    facts = ScopeCertificationFacts(
-        **{
-            **canonical_facts,
-            "document_failure_codes": tuple(canonical_facts["document_failure_codes"]),
-            "retrieval_failure_codes": tuple(canonical_facts["retrieval_failure_codes"]),
-        }
-    )
-    expected = certify_scope_coverage(facts)
-    for field in ("complete", "status_code", "status_message", "failure_codes"):
-        if coverage.get(field) != expected[field]:
-            failures.append(f"certified_decision_mismatch:{field}")
-
-    public_fact_fields = (
-        "seed_discovery_complete",
-        "seed_documents",
-        "valid_provenance_seed_documents",
-        "invalid_provenance_seed_documents",
-        "retrieval_execution_complete",
-        "documents_discovered",
-        "documents_complete",
-        "covered_chunks",
-        "total_chunks",
-    )
-    for field in public_fact_fields:
-        if coverage.get(field) != canonical_facts[field]:
-            failures.append(f"certified_public_fact_mismatch:{field}")
-    public_graph_fields = {
-        "graph_frontier_empty": "graph_frontier_empty",
-        "graph_limit_reached": "graph_limit_reached",
-        "graph_stop_reason": "graph_stop_reason",
-        "graph_failed": "graph_failed",
-    }
-    for public_field, fact_field in public_graph_fields.items():
-        if coverage.get(public_field) != canonical_facts[fact_field]:
-            failures.append(f"certified_public_fact_mismatch:{public_field}")
-    unclassified = coverage.get("relations_unclassified")
-    public_unclassified = (
-        unclassified.get("total") if isinstance(unclassified, dict) else None
-    )
-    if public_unclassified != canonical_facts["unclassified_relations"]:
-        failures.append("certified_public_fact_mismatch:unclassified_relations")
-    if coverage.get("retrieval_failure_codes") != canonical_facts["retrieval_failure_codes"]:
-        failures.append("certified_public_fact_mismatch:retrieval_failure_codes")
-
-    return {"valid": not failures, "failure_codes": sorted(set(failures))}
-
-
-def document_content_sha256_from_chunks(chunks: Iterable[dict[str, Any]]) -> str:
-    """Recompute the canonical ingestion digest from ordered verified chunks."""
+def document_manifest_sha256(manifest: Iterable[dict[str, Any]]) -> str:
+    """Canonical ingestion digest over already verified, ordered chunk facts."""
     digest = hashlib.sha256()
-    for expected_index, chunk in enumerate(chunks):
+    seen: set[str] = set()
+    for expected_index, chunk in enumerate(manifest):
         chunk_id = chunk.get("chunk_id")
         chunk_digest = chunk.get("chunk_content_sha256")
         chunk_index = chunk.get("chunk_index")
-        text = chunk.get("text")
         if (
             not isinstance(chunk_id, str)
             or not chunk_id
+            or chunk_id in seen
             or not isinstance(chunk_digest, str)
             or len(chunk_digest) != 64
+            or any(c not in "0123456789abcdef" for c in chunk_digest)
+            or type(chunk_index) is not int
             or chunk_index != expected_index
-            or not isinstance(text, str)
         ):
             raise ValueError("Document evidence cannot reproduce the ingestion profile")
-        recalculated = hashlib.sha256(text.encode("utf-8")).hexdigest()
-        if not hmac.compare_digest(recalculated, chunk_digest):
-            raise ValueError("Document evidence contains a chunk digest mismatch")
+        seen.add(chunk_id)
         digest.update(chunk_id.encode("utf-8"))
         digest.update(b"\0")
         digest.update(chunk_digest.encode("ascii"))
@@ -414,6 +117,29 @@ def document_content_sha256_from_chunks(chunks: Iterable[dict[str, Any]]) -> str
         digest.update(str(page if page is not None else "").encode("utf-8"))
         digest.update(b"\n")
     return digest.hexdigest()
+
+
+def document_content_sha256_from_chunks(chunks: Iterable[dict[str, Any]]) -> str:
+    """Recompute the canonical ingestion digest from ordered verified chunks."""
+    return document_manifest_sha256(verified_chunk_manifest(chunk) for chunk in chunks)
+
+
+def verify_complete_document(
+    manifest: list[dict[str, Any]], *, expected_count: Any, expected_snapshot: Any
+) -> None:
+    """The sole final document completeness check for direct and scope reads.
+
+    Entries must have been text-verified locally or authenticated in the
+    continuation cursor. The expected count/digest come from the pinned
+    ingestion profile, never the current OpenSearch hit count.
+    """
+    if type(expected_count) is not int or expected_count <= 0 or len(manifest) != expected_count:
+        raise ValueError("Document evidence count does not match its profile")
+    if not isinstance(expected_snapshot, str) or len(expected_snapshot) != 64:
+        raise ValueError("Document verification profile has no snapshot digest")
+    recalculated = document_manifest_sha256(manifest)
+    if not hmac.compare_digest(recalculated, expected_snapshot):
+        raise ValueError("Document snapshot digest mismatch")
 
 
 @dataclass(frozen=True)
@@ -521,20 +247,6 @@ def requested_retrieval_profile(
             ),
         },
     }
-
-
-def retrieval_execution_complete(requested: dict[str, Any], effective: dict[str, Any]) -> bool:
-    """Return True only when every required retrieval capability succeeded."""
-
-    requested_lanes = requested.get("lanes", {})
-    effective_lanes = effective.get("lanes", {})
-    for lane, requirement in requested_lanes.items():
-        if requirement != "required":
-            continue
-        lane_status = effective_lanes.get(lane, {})
-        if not isinstance(lane_status, dict) or lane_status.get("status") != "succeeded":
-            return False
-    return True
 
 
 @dataclass(frozen=True)
@@ -982,6 +694,8 @@ def encode_exhaustive_cursor(
     search_after: list[Any],
     covered_chunks: int,
     scope_sha256: str,
+    document_profile: dict[str, Any] | None = None,
+    verified_manifest: list[dict[str, Any]] | None = None,
 ) -> str:
     """Encode an authenticated cursor bound to a snapshot and access scope.
 
@@ -997,6 +711,11 @@ def encode_exhaustive_cursor(
             "search_after": search_after,
             "covered_chunks": covered_chunks,
             "scope_sha256": scope_sha256,
+            **(
+                {"document_profile": document_profile, "verified_manifest": verified_manifest}
+                if document_profile is not None
+                else {}
+            ),
         },
         sort_keys=True,
         separators=(",", ":"),
@@ -1070,21 +789,15 @@ def _provenance_record(hit: dict[str, Any]) -> dict[str, Any] | None:
     """Project one representative OpenSearch hit into a graph record."""
     source = hit.get("_source")
     if not isinstance(source, dict):
-        return None
-    document_id = source.get("document_id")
-    provenance = source.get("source_provenance")
-    entity = provenance.get("entity") if isinstance(provenance, dict) else None
-    entity_id = source.get("source_entity_id")
-    if not isinstance(entity_id, str) and isinstance(entity, dict):
-        entity_id = entity.get("id")
-    if not isinstance(document_id, str) or not document_id.strip():
-        return None
-    if not isinstance(entity_id, str) or not entity_id.strip():
-        return None
-    alternate_ids = source.get("source_entity_alternate_ids", [])
-    if not isinstance(alternate_ids, list):
-        alternate_ids = []
-    generated_at_time = entity.get("generated_at_time") if isinstance(entity, dict) else None
+        raise ValueError("provenance_invalid: missing representative source")
+    profile = validate_provenance_representative(source)
+    source = {**source, **profile.index_fields()}
+    document_id = source["document_id"]
+    provenance = source["source_provenance"]
+    entity = provenance["entity"]
+    entity_id = profile.entity.id
+    alternate_ids = profile.entity.alternate_ids
+    generated_at_time = entity.get("generated_at_time")
     return {
         "document_id": document_id.strip(),
         "filename": source.get("filename"),
@@ -1213,6 +926,9 @@ def _graph_query_body(
             "source_entity_type",
             "source_entity_system",
             "source_entity_alternate_ids",
+            "source_relation_roles",
+            "source_relation_target_ids",
+            "owner",
             "source_relative_path",
             "source_path_ancestors",
             # Included both for stability verification and to make the total
@@ -1294,6 +1010,22 @@ async def expand_provenance_graph(
     depth = 0
     stop_reason = "frontier_empty"
     limit_reached = False
+
+    execution_failures: set[str] = set()
+    provenance_failures: list[dict[str, str]] = []
+
+    def validated_record(hit: dict[str, Any]) -> dict[str, Any] | None:
+        try:
+            return _provenance_record(hit)
+        except ValueError as exc:
+            execution_failures.add("provenance_invalid")
+            provenance_failures.append(
+                {
+                    "document_id": str((hit.get("_source") or {}).get("document_id") or ""),
+                    "reason": str(exc),
+                }
+            )
+            return None
 
     def add_intent(
         identifier: object,
@@ -1531,7 +1263,7 @@ async def expand_provenance_graph(
     for identifier in seed_entity_ids:
         add_intent(identifier, forward=True, reverse=False)
     for document in seed_document_values:
-        record = _provenance_record({"_source": document})
+        record = validated_record({"_source": document})
         if record is not None:
             add_record(record, set(), discovery_depth=0)
 
@@ -1582,6 +1314,7 @@ async def expand_provenance_graph(
                     body=page_body,
                     params={"terminate_after": 0},
                 )
+                execution_failures.update(validate_search_response(response, exact_total=True))
                 pages += 1
                 pagination_pages += 1
 
@@ -1631,6 +1364,11 @@ async def expand_provenance_graph(
                     )
                     if sort_key in seen_sort_keys:
                         raise RuntimeError("Provenance traversal sort key is not unique")
+                    validate_search_progress(
+                        search_after if not canonical_hits else canonical_hits[-1]["sort"],
+                        sort_values,
+                        width=len(base_body["sort"]),
+                    )
                     seen_sort_keys.add(sort_key)
 
                     source = hit.get("_source")
@@ -1643,7 +1381,7 @@ async def expand_provenance_graph(
                             "_source": source,
                         }
                     )
-                    record = _provenance_record(hit)
+                    record = validated_record(hit)
                     if record is not None:
                         observed_records.append(record)
 
@@ -1831,6 +1569,17 @@ async def expand_provenance_graph(
         }
 
     remaining_frontier = sorted(remaining_identifiers())
+    # An asserted documentary target with no visible representative is opaque:
+    # never fetch it globally or turn the unresolved branch into a valid leaf.
+    # email_thread is a grouping identity closed by the typed reverse query;
+    # it does not assert a separately readable document.
+    if any(
+        not identifier_owners.get(target) and identifier_types.get(target) != {"email_thread"}
+        for _, _, target in pending_edges
+    ):
+        execution_failures.add("provenance_target_unresolved")
+    if execution_failures and stop_reason == "frontier_empty":
+        stop_reason = "graph_execution_incomplete"
 
     def depth_distribution(values: Iterable[int]) -> list[dict[str, int]]:
         counts: dict[int, int] = {}
@@ -1875,6 +1624,9 @@ async def expand_provenance_graph(
         "edges": [visible_edges[key] for key in sorted(visible_edges)],
         "context_edges": [context_edges[key] for key in sorted(context_edges)],
         "coverage": {
+            "execution_complete": not execution_failures,
+            "execution_failure_codes": sorted(execution_failures),
+            "provenance_failures": provenance_failures,
             "scope_policy_id": policy.policy_id,
             "scope_policy_version": policy.version,
             "entities_visited": len(primary_entities),

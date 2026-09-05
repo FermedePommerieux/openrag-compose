@@ -1,7 +1,6 @@
 import asyncio
 import copy
 import hashlib
-import hmac
 import json
 import os
 import re
@@ -14,7 +13,7 @@ from auth_context import get_auth_context
 from config.embedding_constants import get_declared_default_embedding_model
 from config.settings import clients, get_embedding_model, get_index_name, get_openrag_config
 from models.metadata_filter import MetadataFilter
-from models.source_provenance import parse_source_provenance
+from models.source_provenance import validate_provenance_representative
 from models.structured_document_query import MetadataCandidateRestriction
 from services.metadata_candidate_restriction import (
     execute_metadata_restricted_lane,
@@ -25,6 +24,7 @@ from services.model_capabilities import (
     model_capability_profile,
     resolve_planner_selection,
 )
+from services.opensearch_response import validate_search_progress, validate_search_response
 from services.retrieval_service import (
     EXHAUSTIVE_BATCH_MAX,
     EXHAUSTIVE_PROFILE_VERSION,
@@ -39,7 +39,7 @@ from services.retrieval_service import (
     decode_exhaustive_cursor,
     discovery_plan_audit,
     discovery_query_prompt,
-    document_content_sha256_from_chunks,
+    document_manifest_sha256,
     encode_exhaustive_cursor,
     exhaustive_scope_sha256,
     expand_provenance_graph,
@@ -49,6 +49,8 @@ from services.retrieval_service import (
     reciprocal_rank_fusion,
     requested_retrieval_profile,
     retrieval_execution_complete,
+    verified_chunk_manifest,
+    verify_complete_document,
 )
 from services.scope_traversal_policy import DEFAULT_SCOPE_TRAVERSAL_POLICY
 from utils.container_utils import transform_localhost_url
@@ -169,8 +171,7 @@ def _ranked_lane_diagnostic(
     """Fingerprint one ranked lane without exposing caller-visible identities."""
     identities = [hit_identity(hit) for hit in hits]
     ranked_scores = [
-        [identity, hit.get(score_field)]
-        for identity, hit in zip(identities, hits, strict=True)
+        [identity, hit.get(score_field)] for identity, hit in zip(identities, hits, strict=True)
     ]
     return {
         "candidates": len(hits),
@@ -1144,6 +1145,7 @@ class SearchService:
                 response = await opensearch_client.search(
                     index=index_name, body=body, params=search_params
                 )
+                response["_execution_failures"] = validate_search_response(response)
                 return response, {
                     "initial_request_sha256": initial_fingerprint,
                     "executed_request_sha256": initial_fingerprint,
@@ -1168,11 +1170,10 @@ class SearchService:
                         response = await opensearch_client.search(
                             index=get_index_name(), body=fallback_body, params=search_params
                         )
+                        response["_execution_failures"] = validate_search_response(response)
                         return response, {
                             "initial_request_sha256": initial_fingerprint,
-                            "executed_request_sha256": _retrieval_diagnostic_sha256(
-                                fallback_body
-                            ),
+                            "executed_request_sha256": _retrieval_diagnostic_sha256(fallback_body),
                             "compatibility_retry_without_num_candidates": True,
                         }
                     except RequestError as retry_error:
@@ -1230,16 +1231,10 @@ class SearchService:
             lane_request_diagnostics[label] = {
                 "initial_request_sha256": _retrieval_diagnostic_sha256(body),
                 "metadata_restricted": True,
-                "metadata_filter_sha256": (
-                    _metadata_restriction.diagnostics.filter_sha256
-                ),
-                "eligible_occurrences": (
-                    _metadata_restriction.diagnostics.eligible_count
-                ),
+                "metadata_filter_sha256": (_metadata_restriction.diagnostics.filter_sha256),
+                "eligible_occurrences": (_metadata_restriction.diagnostics.eligible_count),
                 "partitions": len(partition_diagnostics),
-                "partition_requests_sha256": _retrieval_diagnostic_sha256(
-                    partition_diagnostics
-                ),
+                "partition_requests_sha256": _retrieval_diagnostic_sha256(partition_diagnostics),
                 "compatibility_retry_without_num_candidates": any(
                     item["compatibility_retry_without_num_candidates"]
                     for item in partition_diagnostics
@@ -1276,6 +1271,19 @@ class SearchService:
                 retrieval_results[lane] = lane_result
                 candidate_count = len(lane_result.get("hits", {}).get("hits", []))
                 lane_execution["candidates"] = candidate_count
+                response_failures = lane_result.get("_execution_failures", [])
+                if response_failures:
+                    lane_execution.update(
+                        {"status": "failed", "error": ", ".join(response_failures)}
+                    )
+                    execution_warnings.append(
+                        {
+                            "code": _RETRIEVAL_LANE_FAILURE_CODES[contract_lane],
+                            "lane": contract_lane,
+                            "message": ", ".join(response_failures),
+                        }
+                    )
+                    continue
                 # A successful vector request cannot repair missing/failed
                 # embeddings for another model in the requested dense lane.
                 if contract_lane != "dense" or (
@@ -1307,6 +1315,13 @@ class SearchService:
                 if not failed_models and not embedding_detection_error:
                     effective_profile["lanes"]["dense"]["status"] = "succeeded"
                     effective_profile["lanes"]["dense"].pop("error", None)
+
+        if not retrieval_results and results.get("_execution_failures"):
+            for lane in ("lexical", "dense"):
+                if effective_profile["lanes"][lane]["requested"]:
+                    effective_profile["lanes"][lane].update(
+                        {"status": "failed", "error": ", ".join(results["_execution_failures"])}
+                    )
 
         raw_hits = results.get("hits", {}).get("hits", [])
         retrieval_diagnostics: dict[str, Any] | None = None
@@ -1377,9 +1392,7 @@ class SearchService:
                     }
             public_lane_diagnostics = {
                 ("dense" if lane == "vector" else lane): {
-                    **_ranked_lane_diagnostic(
-                        lane_result.get("hits", {}).get("hits", [])
-                    ),
+                    **_ranked_lane_diagnostic(lane_result.get("hits", {}).get("hits", [])),
                     "request": lane_request_diagnostics.get(lane),
                 }
                 for lane, lane_result in retrieval_results.items()
@@ -2014,7 +2027,16 @@ class SearchService:
         if snapshot_sha256:
             filter_clauses.append({"term": {"document_content_sha256": snapshot_sha256}})
 
+        pinned_profile = cursor_payload.get("document_profile")
+        if isinstance(pinned_profile, dict):
+            for field in ("ingest_run_id", "source_entity_id", "occurrence_id"):
+                if pinned_profile.get(field) is not None:
+                    filter_clauses.append({"term": {field: pinned_profile[field]}})
+
         source_fields = [
+            "document_profile_version",
+            "ingest_run_id",
+            "occurrence_id",
             "chunk_id",
             "chunk_content_sha256",
             "document_id",
@@ -2072,117 +2094,130 @@ class SearchService:
         response = await client.search(
             index=get_index_name(), body=body, params={"terminate_after": 0}
         )
+        failures = validate_search_response(response, exact_total=True)
         raw_hits = response.get("hits", {}).get("hits", [])
-        total_value = response.get("hits", {}).get("total", 0)
-        if isinstance(total_value, dict) and total_value.get("relation", "eq") != "eq":
-            raise RuntimeError("Exhaustive retrieval requires an exact snapshot chunk count")
-        total_chunks = int(
-            total_value.get("value", 0) if isinstance(total_value, dict) else total_value or 0
+        raw_hits = raw_hits if isinstance(raw_hits, list) else []
+        current_total = response.get("hits", {}).get("total")
+        current_total = (
+            current_total.get("value") if isinstance(current_total, dict) else current_total
         )
-        snapshot_buckets = response.get("aggregations", {}).get("snapshots", {}).get("buckets", [])
-        snapshots = [
-            str(bucket.get("key"))
-            for bucket in snapshot_buckets
-            if isinstance(bucket, dict) and bucket.get("key")
-        ]
-        if not snapshot_sha256:
-            if not snapshots:
-                return {
-                    "results": [],
-                    "error": (
-                        "The document has no verifiable ingestion profile; "
-                        "reindex it before exhaustive retrieval"
-                    ),
-                    "coverage": {
-                        "mode": "exhaustive",
-                        "document_id": resolved_document_id,
-                        "complete": False,
-                        "covered_chunks": 0,
-                        "total_chunks": total_chunks,
-                    },
-                }
-            if len(snapshots) != 1:
-                return {
-                    "results": [],
-                    "error": (
-                        "The document changed during exhaustive retrieval; "
-                        "restart after ingestion completes"
-                    ),
-                    "coverage": {
-                        "mode": "exhaustive",
-                        "document_id": resolved_document_id,
-                        "complete": False,
-                        "covered_chunks": 0,
-                        "total_chunks": total_chunks,
-                    },
-                }
-            snapshot_sha256 = snapshots[0]
-
         chunks: list[dict[str, Any]] = []
-        document_filename: str | None = None
-        for hit in raw_hits:
-            source = hit.get("_source", {})
-            if source.get("document_content_sha256") != snapshot_sha256:
-                raise RuntimeError("Exhaustive retrieval mixed document snapshots")
-            if source.get("document_order_verified") is not True:
-                raise RuntimeError("Exhaustive retrieval encountered an unverified document order")
-            chunk_digest = source.get("chunk_content_sha256")
-            text = source.get("text")
+        profile_fields = (
+            "document_id",
+            "document_profile_version",
+            "document_order_verified",
+            "document_content_sha256",
+            "document_chunk_count",
+            "ingest_run_id",
+            "source_entity_id",
+            "occurrence_id",
+            "owner",
+            "filename",
+        )
+        profile = pinned_profile
+        manifest = cursor_payload.get("verified_manifest", [])
+        if not isinstance(manifest, list):
+            manifest = []
+            failures.append("cursor_invalid: missing verified chunk manifest")
+        if cursor_payload and (not isinstance(profile, dict) or len(manifest) != covered_before):
+            failures.append("cursor_invalid: missing immutable document profile")
+        previous_sort = cursor_payload.get("search_after")
+        try:
+            if raw_hits and profile is None:
+                source = raw_hits[0].get("_source", {})
+                profile = {key: source.get(key) for key in profile_fields}
+            if not isinstance(profile, dict):
+                raise ValueError("The document has no verifiable ingestion profile")
+            expected_count = profile.get("document_chunk_count")
+            snapshot_sha256 = profile.get("document_content_sha256")
             if (
-                not source.get("chunk_id")
-                or not isinstance(chunk_digest, str)
-                or len(chunk_digest) != 64
-                or not isinstance(text, str)
+                profile.get("document_id") != resolved_document_id
+                or profile.get("document_profile_version") != EXHAUSTIVE_PROFILE_VERSION
+                or profile.get("document_order_verified") is not True
+                or type(expected_count) is not int
+                or expected_count <= 0
+                or not isinstance(profile.get("ingest_run_id"), str)
+                or not profile["ingest_run_id"]
+                or not isinstance(snapshot_sha256, str)
+                or len(snapshot_sha256) != 64
             ):
-                raise RuntimeError("Exhaustive retrieval encountered an unverifiable source chunk")
-            recalculated_digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
-            if not hmac.compare_digest(recalculated_digest, chunk_digest):
-                raise RuntimeError("Exhaustive retrieval detected a chunk text digest mismatch")
-            expected_chunk_index = covered_before + len(chunks)
-            if source.get("chunk_index") != expected_chunk_index:
-                raise RuntimeError("Exhaustive retrieval encountered a non-contiguous source order")
-            filename = source.get("filename")
-            if isinstance(filename, str) and filename.strip():
-                if document_filename is None:
-                    document_filename = filename.strip()
-                elif document_filename != filename.strip():
-                    raise RuntimeError("Exhaustive retrieval mixed document filenames")
-            chunks.append(
-                {
-                    **source,
-                    "id": hit.get("_id"),
-                    "score": None,
-                    "evidence_order": covered_before + len(chunks) + 1,
-                }
-            )
-
-        covered_chunks = covered_before + len(chunks)
-        if covered_chunks > total_chunks:
-            raise RuntimeError("Exhaustive retrieval coverage exceeded snapshot size")
-        complete = covered_chunks == total_chunks
-        next_cursor: str | None = None
-        if not complete:
-            if not raw_hits or not raw_hits[-1].get("sort"):
-                raise RuntimeError("Exhaustive retrieval stopped before complete coverage")
+                raise ValueError("Document verification profile is invalid")
+            snapshots = response.get("aggregations", {}).get("snapshots", {}).get("buckets", [])
+            if len(snapshots) != 1 or snapshots[0].get("key") != snapshot_sha256:
+                failures.append("snapshot_changed: document snapshot cannot be proven stable")
+            if current_total != expected_count:
+                failures.append("Document evidence count does not match its profile")
+            if len(raw_hits) > resolved_batch_size:
+                failures.append("Document page exceeded requested size")
+            for hit in raw_hits:
+                source = hit.get("_source", {})
+                if {key: source.get(key) for key in profile_fields} != profile:
+                    raise ValueError(
+                        "snapshot_changed: document identity, generation or profile changed"
+                    )
+                if source.get("chunk_index") != len(manifest):
+                    raise ValueError(
+                        "Exhaustive retrieval encountered a non-contiguous source order"
+                    )
+                validate_search_progress(previous_sort, hit.get("sort"), width=3)
+                entry = verified_chunk_manifest(source)
+                if entry["chunk_id"] in {item.get("chunk_id") for item in manifest}:
+                    raise ValueError("Document evidence contains a duplicate chunk identity")
+                manifest.append(entry)
+                previous_sort = hit["sort"]
+                chunks.append(
+                    {**source, "id": hit.get("_id"), "score": None, "evidence_order": len(manifest)}
+                )
+            # Validate the prefix even before final digest verification.
+            document_manifest_sha256(manifest)
+            if len(manifest) > expected_count:
+                raise ValueError("Exhaustive retrieval coverage exceeded snapshot size")
+            if len(manifest) == expected_count:
+                verify_complete_document(
+                    manifest, expected_count=expected_count, expected_snapshot=snapshot_sha256
+                )
+            elif not raw_hits or len(raw_hits) < resolved_batch_size:
+                raise ValueError("Exhaustive retrieval stopped before complete coverage")
+        except (ValueError, TypeError, KeyError) as exc:
+            failures.append(str(exc))
+        profile = profile if isinstance(profile, dict) else {}
+        total_chunks = profile.get("document_chunk_count")
+        total_chunks = total_chunks if type(total_chunks) is int and total_chunks > 0 else 0
+        covered_chunks = len(manifest)
+        complete = not failures and covered_chunks == total_chunks and total_chunks > 0
+        next_cursor = None
+        if not failures and not complete:
             next_cursor = encode_exhaustive_cursor(
                 document_id=resolved_document_id,
                 snapshot_sha256=snapshot_sha256,
-                search_after=raw_hits[-1]["sort"],
+                search_after=previous_sort,
                 covered_chunks=covered_chunks,
                 scope_sha256=scope_sha256,
+                document_profile=profile,
+                verified_manifest=manifest,
             )
         coverage = {
             "mode": "exhaustive",
             "document_id": resolved_document_id,
-            "filename": document_filename,
+            "filename": profile.get("filename"),
             "snapshot_sha256": snapshot_sha256,
+            "ingest_run_id": profile.get("ingest_run_id"),
             "covered_chunks": covered_chunks,
             "total_chunks": total_chunks,
-            "coverage_ratio": 1.0 if total_chunks == 0 else covered_chunks / total_chunks,
+            "coverage_ratio": covered_chunks / total_chunks if total_chunks else 0.0,
             "complete": complete,
+            "retrieval_execution_complete": not validate_search_response(
+                response, exact_total=True
+            ),
+            "failure_codes": sorted(set(failures)),
             "next_cursor": next_cursor,
         }
-        return {"results": chunks, "total": len(chunks), "coverage": coverage}
+        return {
+            "results": chunks,
+            "total": len(chunks),
+            "coverage": coverage,
+            **({"error": "; ".join(sorted(set(failures)))} if failures else {}),
+        }
 
     @staticmethod
     def _scope_seed_manifest(result: dict[str, Any]) -> dict[str, Any]:
@@ -2195,6 +2230,7 @@ class SearchService:
                 "mimetype",
                 "source_url",
                 "connector_file_id",
+                "owner",
                 "source_provenance",
                 "source_entity_id",
                 "source_entity_type",
@@ -2397,6 +2433,18 @@ class SearchService:
             ):
                 if field in seed_response:
                     failure_coverage[field] = seed_response[field]
+            # Re-certify the actual execution facts after their transport
+            # projection; never retain a decision over the pre-projection facts.
+            failure_facts = dict(failure_coverage["certification"]["facts"])
+            failure_facts["retrieval_execution_complete"] = failure_coverage[
+                "retrieval_execution_complete"
+            ]
+            failure_facts["retrieval_failure_codes"] = tuple(
+                failure_coverage["retrieval_failure_codes"]
+            )
+            failure_coverage.update(
+                certify_scope_coverage(ScopeCertificationFacts(**failure_facts))
+            )
             return {
                 "results": [],
                 "documents": [],
@@ -2415,6 +2463,7 @@ class SearchService:
         seed_entities: set[str] = set()
         seed_primary_entities: set[str] = set()
         seed_provenance_validity: dict[str, bool] = {}
+        seed_provenance_failures: list[dict[str, str]] = []
         seed_entity_ids_by_document: dict[str, set[str]] = {}
         for result in seed_results:
             document_id = result.get("document_id")
@@ -2423,21 +2472,15 @@ class SearchService:
             normalized_document_id = document_id.strip()
             seed_documents.setdefault(normalized_document_id, self._scope_seed_manifest(result))
             try:
-                provenance = parse_source_provenance(result.get("source_provenance"))
-            except ValueError:
+                provenance = validate_provenance_representative(result)
+            except ValueError as exc:
+                seed_provenance_failures.append(
+                    {"document_id": normalized_document_id, "reason": str(exc)}
+                )
                 provenance = None
             observation_valid = provenance is not None
             if provenance is not None:
-                flattened_entity_id = result.get("source_entity_id")
-                if flattened_entity_id not in (None, "", provenance.entity.id):
-                    observation_valid = False
-                flattened_alternates = result.get("source_entity_alternate_ids")
-                if isinstance(flattened_alternates, list) and {
-                    str(value) for value in flattened_alternates
-                } != set(provenance.entity.alternate_ids):
-                    observation_valid = False
-                if observation_valid:
-                    seed_documents[normalized_document_id].update(provenance.index_fields())
+                seed_documents[normalized_document_id].update(provenance.index_fields())
             seed_provenance_validity[normalized_document_id] = (
                 seed_provenance_validity.get(normalized_document_id, True) and observation_valid
             )
@@ -2569,14 +2612,11 @@ class SearchService:
 
             if read_error is None and final_coverage.get("complete") is True:
                 try:
-                    expected_snapshot = final_coverage.get("snapshot_sha256")
-                    if not isinstance(expected_snapshot, str) or len(expected_snapshot) != 64:
-                        raise ValueError("Document verification profile has no snapshot digest")
-                    if len(document_evidence) != int(final_coverage.get("total_chunks", -1)):
-                        raise ValueError("Document evidence count does not match its profile")
-                    recalculated_snapshot = document_content_sha256_from_chunks(document_evidence)
-                    if not hmac.compare_digest(recalculated_snapshot, expected_snapshot):
-                        raise ValueError("Document snapshot digest mismatch")
+                    verify_complete_document(
+                        [verified_chunk_manifest(chunk) for chunk in document_evidence],
+                        expected_count=final_coverage.get("total_chunks"),
+                        expected_snapshot=final_coverage.get("snapshot_sha256"),
+                    )
                 except (TypeError, ValueError) as exc:
                     read_error = str(exc)
 
@@ -2616,6 +2656,7 @@ class SearchService:
             )
 
         graph_coverage = graph["coverage"]
+        graph_failed = graph_failed or graph_coverage.get("execution_complete") is False
         seed_provenance_complete = bool(seed_documents) and not (invalid_provenance_seed_documents)
         incomplete_documents = len(documents) - complete_documents
         decision = certify_scope_coverage(
@@ -2661,6 +2702,7 @@ class SearchService:
             "valid_provenance_seed_documents": len(valid_provenance_seed_documents),
             "invalid_provenance_seed_documents": len(invalid_provenance_seed_documents),
             "seed_provenance_complete": seed_provenance_complete,
+            "seed_provenance_failures": seed_provenance_failures,
             "requested_retrieval_profile": seed_response.get("requested_retrieval_profile"),
             "effective_retrieval_profile": seed_response.get("effective_retrieval_profile"),
             "retrieval_execution_complete": (
@@ -2677,6 +2719,9 @@ class SearchService:
             "graph_stop_reason": graph_coverage.get("stop_reason"),
             "graph_failed": graph_failed,
             "graph_error": graph_coverage.get("error"),
+            "graph_execution_complete": not graph_failed,
+            "graph_execution_failure_codes": graph_coverage.get("execution_failure_codes", []),
+            "provenance_failures": graph_coverage.get("provenance_failures", []),
             "graph_forward_hits": graph_coverage.get("forward_hits", 0),
             "graph_reverse_hits": graph_coverage.get("reverse_hits", 0),
             "graph_forward_pages": graph_coverage.get("forward_pages", 0),
@@ -2839,7 +2884,9 @@ class SearchService:
         if evidence_mode not in {"focused", "exhaustive", "scope_exhaustive"}:
             raise ValueError("evidence_mode must be 'focused', 'exhaustive', or 'scope_exhaustive'")
         if metadata_filter is not None and evidence_mode == "exhaustive":
-            raise ValueError("metadata_filter is not supported for direct exhaustive document reads")
+            raise ValueError(
+                "metadata_filter is not supported for direct exhaustive document reads"
+            )
         if metadata_filter is not None and group_by_document:
             raise ValueError("metadata_filter is not supported for paginated document browsing")
         if metadata_filter is not None and not query.strip():

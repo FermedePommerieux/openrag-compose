@@ -423,3 +423,42 @@ def source_attachment_mapping() -> dict[str, Any]:
             "connector_version": {"type": "keyword"},
         }
     }
+
+
+def validate_provenance_representative(source: dict[str, Any]) -> SourceProvenance:
+    """Validate every DLS-visible representative against the versioned envelope.
+
+    The caller must obtain the source with its DLS-scoped client. Owner is an
+    access-control field, not a PROV-O identity; validate its shape when present
+    without incorrectly requiring it to equal the reader (shared ACLs exist).
+    Flattened fields are optional indexed projections, never semantic authority.
+    """
+    document_id = source.get("document_id")
+    if not isinstance(document_id, str) or not document_id.strip():
+        raise ValueError("provenance_invalid: missing document identity")
+    if source.get("owner") is not None and not isinstance(source["owner"], str):
+        raise ValueError("provenance_invalid: invalid owner context")
+    raw = source.get("source_provenance")
+    if not isinstance(raw, dict) or "schema_version" not in raw:
+        raise ValueError("provenance_invalid: missing versioned envelope")
+    try:
+        provenance = SourceProvenance.model_validate(raw)
+    except ValueError as exc:
+        # Do not expose raw target identities or owner data in diagnostics.
+        raise ValueError("provenance_invalid: invalid versioned envelope") from exc
+    projection = provenance.index_fields()
+    for name, expected in projection.items():
+        if name == "source_provenance" or source.get(name) is None:
+            continue
+        actual = source[name]
+        if isinstance(expected, list):
+            matches = (
+                isinstance(actual, list)
+                and all(isinstance(v, str) for v in actual)
+                and sorted(actual) == sorted(expected)
+            )
+        else:
+            matches = actual == expected
+        if not matches:
+            raise ValueError(f"provenance_invalid: indexed projection mismatch ({name})")
+    return provenance
