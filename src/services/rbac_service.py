@@ -12,11 +12,9 @@ Permissions are cached per-process for `OPENRAG_PERM_CACHE_TTL` seconds
 from __future__ import annotations
 
 import os
-from typing import Optional
 
 from cachetools import TTLCache
 from fastapi import HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.repositories import AuditRepo, RoleRepo
 from session_manager import User
@@ -45,6 +43,11 @@ def is_rbac_enforced() -> bool:
     on for multi-user deployments. Available in all ``OPENRAG_RUN_MODE``
     values; operators own the trade-off.
     """
+    from config.auth_mode import onboarding_local_auth_active
+
+    # Choosing local accounts in automatic mode also chooses workspace RBAC.
+    if onboarding_local_auth_active():
+        return True
     raw = os.getenv("OPENRAG_RBAC_ENFORCE", "false").strip().lower()
     return raw in ("true", "1", "yes", "on")
 
@@ -52,16 +55,14 @@ def is_rbac_enforced() -> bool:
 class RBACService:
     def __init__(self, session_factory) -> None:
         self._session_factory = session_factory
-        self._cache: TTLCache[str, frozenset[str]] = TTLCache(
-            maxsize=1024, ttl=_cache_ttl()
-        )
+        self._cache: TTLCache[str, frozenset[str]] = TTLCache(maxsize=1024, ttl=_cache_ttl())
 
     # ---------------- public API ---------------------------------------
 
     async def get_user_permissions(
         self,
         user_id: str,
-        role_override: Optional[list[str]] = None,
+        role_override: list[str] | None = None,
     ) -> set[str]:
         """Resolve the permission set for a user.
 
@@ -88,17 +89,17 @@ class RBACService:
         self,
         user_id: str,
         perm: str,
-        role_override: Optional[list[str]] = None,
+        role_override: list[str] | None = None,
     ) -> bool:
         return perm in await self.get_user_permissions(user_id, role_override)
 
     async def assert_owner_or_perm(
         self,
         user: User,
-        owner_id: Optional[str],
+        owner_id: str | None,
         owned_perm: str,
         any_perm: str,
-        role_override: Optional[list[str]] = None,
+        role_override: list[str] | None = None,
     ) -> None:
         """Self-or-elevated check used by /delete:own etc. Raises 403 on miss.
 
@@ -120,7 +121,7 @@ class RBACService:
             detail={"error": "permission_denied", "required": [owned_perm, any_perm]},
         )
 
-    async def audit_denied(self, user_id: Optional[str], required: str) -> None:
+    async def audit_denied(self, user_id: str | None, required: str) -> None:
         try:
             async with self._session_factory() as session:
                 audit = AuditRepo(session)

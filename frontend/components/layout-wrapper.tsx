@@ -54,14 +54,30 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
     if (pathname) setIsMobileNavigationOpen(false);
   }, [pathname]);
 
-  const { isLoading, isAuthenticated, isNoAuthMode, isIbmAuthMode, runMode } =
-    useAuth();
+  const {
+    isLoading,
+    isAuthenticated,
+    isNoAuthMode,
+    isIbmAuthMode,
+    runMode,
+    localSetupAvailable,
+  } = useAuth();
   const { isOnboardingComplete } = useChat();
 
-  const authPaths = ["/login", "/auth/callback", "/unauthorized"];
+  const authPaths = [
+    "/login",
+    "/auth/callback",
+    "/unauthorized",
+    "/onboarding/account",
+  ];
   const isAuthPage = authPaths.includes(pathname);
 
   useEffect(() => {
+    if (!isLoading && localSetupAvailable && pathname !== "/auth/callback") {
+      if (pathname !== "/onboarding/account")
+        router.replace("/onboarding/account");
+      return;
+    }
     if (isLoading || isAuthenticated || isNoAuthMode || isAuthPage) return;
     if (isIbmAuthMode) {
       router.push("/unauthorized");
@@ -76,10 +92,12 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
     isAuthPage,
     pathname,
     router,
+    localSetupAvailable,
   ]);
 
   const { data: settings, isLoading: isSettingsLoading } = useGetSettingsQuery({
-    enabled: !isAuthPage && (isAuthenticated || isNoAuthMode),
+    enabled:
+      !isAuthPage && !localSetupAvailable && (isAuthenticated || isNoAuthMode),
   });
 
   const { isUnhealthy: isDoclingUnhealthy } = useDoclingHealth();
@@ -93,6 +111,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
 
   if (
     isLoading ||
+    localSetupAvailable ||
     (!isAuthenticated && !isNoAuthMode) ||
     (isSettingsLoadingOrError && (isNoAuthMode || isAuthenticated))
   ) {

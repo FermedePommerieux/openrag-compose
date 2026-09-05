@@ -62,7 +62,7 @@ OpenRAG support is PARTIAL: reuse its user DB, role catalog, signer, cookie and
 request dependencies. Add a local credential as a method referencing `users.id`,
 and revocable SQL session records. Do not federate Langflow technical accounts
 or introduce another credential database. Local login identifiers are separate
-from user IDs and emails; local IDs are random UUIDs. No public registration or
+from user IDs and emails; local IDs are random UUIDs. No general public registration or
 email-based linking; no local password is automatically attached to an external
 account. Existing external IDs and historical ownership remain unchanged.
 
@@ -70,8 +70,14 @@ Deployment mode is explicit (`auto` for legacy compatibility, `local`,
 `local_plus_external`, `external`, `no_auth`). Explicit authenticated modes fail
 closed; local modes require RBAC and exclude the incompatible IBM gateway mode.
 Optional Google login in mixed mode and Microsoft connector capabilities remain.
-The first local administrator is created by an explicit operator CLI using a
-password prompt; thereafter actual authenticated admin APIs manage local users.
+The first local administrator can be created by an explicit operator CLI using
+a password prompt, or by opting into local login in the first browser onboarding
+of a fresh installation. In automatic mode this commits mandatory local login
+and RBAC in the existing SQL store before publishing the runtime policy. The
+choice survives restart; explicit deployment modes retain priority. Skipping
+or upgrading an already configured installation permanently closes browser
+enrollment, including across provider-onboarding resets. Thereafter authenticated
+admin APIs and Settings → Local users manage accounts using the existing roles.
 
 ## GenerationHead handoff (design only)
 

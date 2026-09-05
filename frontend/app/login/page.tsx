@@ -20,6 +20,7 @@ function LoginPageContent() {
     isLocalAuthEnabled,
     isGoogleAuthEnabled,
     loginLocal,
+    localSetupAvailable,
   } = useAuth();
   const [localLogin, setLocalLogin] = useState("");
   const [password, setPassword] = useState("");
@@ -37,6 +38,10 @@ function LoginPageContent() {
       : "/chat";
 
   useEffect(() => {
+    if (!isLoading && localSetupAvailable) {
+      router.replace("/onboarding/account");
+      return;
+    }
     if (!isLoading && (isAuthenticated || isNoAuthMode || isIbmAuthMode)) {
       router.push(redirect);
     }
@@ -47,9 +52,10 @@ function LoginPageContent() {
     isIbmAuthMode,
     router,
     redirect,
+    localSetupAvailable,
   ]);
 
-  if (isLoading) {
+  if (isLoading || localSetupAvailable) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="flex flex-col items-center gap-4">

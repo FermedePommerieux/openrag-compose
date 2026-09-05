@@ -22,6 +22,7 @@ const TABS = [
   // Local-source archiving settings write workspace config (admin-only).
   { value: "archiving", label: "Archiving", perm: "config:write" },
   { value: "api-keys", label: "API Keys", apiKeysTab: true },
+  { value: "local-users", label: "Local users" },
   {
     value: "connector-access",
     label: "Connector Settings",
@@ -38,6 +39,8 @@ export function SettingsNav() {
     isIbmAuthMode,
     isLoading,
     permissionsResolved,
+    permissions,
+    isLocalAuthEnabled,
   } = useAuth();
   const isCloudBrand = useIsCloudBrand();
   const tabAccess = useSettingsTabAccess();
@@ -45,6 +48,14 @@ export function SettingsNav() {
   const currentTab = pathname.split("/").pop() ?? "connectors";
 
   const visibleTabs = TABS.filter((tab) => {
+    if (tab.value === "local-users") {
+      return (
+        isAuthenticated &&
+        isLocalAuthEnabled &&
+        permissions.has("users:invite") &&
+        permissions.has("roles:assign")
+      );
+    }
     if (tab.value === "connector-access") {
       return canAccessConnectorAccessTab(tabAccess);
     }

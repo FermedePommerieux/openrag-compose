@@ -117,17 +117,21 @@ async def auth_me(
     request: Request,
     auth_service=Depends(get_auth_service),
     user: User | None = Depends(get_optional_user),
+    session: AsyncSession = Depends(get_db_session),
 ):
     """Get current user information"""
     result = await auth_service.get_user_info(request)
     from config.auth_mode import public_auth_configuration
 
     result.update(public_auth_configuration())
+    from services.local_auth_onboarding import local_setup_status
+
+    result.update(await local_setup_status(session))
     result["version"] = OPENRAG_VERSION
     from utils.run_mode_utils import get_run_mode
 
     result["run_mode"] = get_run_mode()
-    return JSONResponse(result)
+    return JSONResponse(result, headers={"Cache-Control": "no-store"})
 
 
 async def auth_logout(

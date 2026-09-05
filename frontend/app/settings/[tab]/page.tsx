@@ -14,6 +14,7 @@ import { ConnectorAccessSection } from "../_components/connector-access-section"
 import { ConnectorsTab } from "../_components/connectors-tab";
 import { IngestSettingsSection } from "../_components/ingest-settings-section";
 import { LangflowUpdatesBanner } from "../_components/langflow-updates-banner";
+import { LocalUsersSection } from "../_components/local-users-section";
 import ModelProviders from "../_components/model-providers";
 import { RetrievalSettingsSection } from "../_components/retrieval-settings-section";
 
@@ -25,6 +26,7 @@ const VALID_TABS = [
   "archiving",
   "api-keys",
   "connector-access",
+  "local-users",
 ] as const;
 
 type Tab = (typeof VALID_TABS)[number];
@@ -56,6 +58,7 @@ async function getTabAuthContext() {
     isNoAuthMode: Boolean(authData.no_auth_mode),
     isIbmAuthMode: Boolean(authData.ibm_auth_mode),
     isAuthenticated: Boolean(authData.authenticated),
+    isLocalAuthEnabled: Boolean(authData.local_auth_enabled),
     permissions,
     rbacEnforced,
     cloudContext,
@@ -77,6 +80,7 @@ export default async function SettingsTabPage({
     isNoAuthMode,
     isIbmAuthMode,
     isAuthenticated,
+    isLocalAuthEnabled,
     permissions,
     rbacEnforced,
     cloudContext,
@@ -90,6 +94,16 @@ export default async function SettingsTabPage({
     permissions,
     useClientBrandPolicy: false,
   });
+
+  if (
+    tab === "local-users" &&
+    (!isAuthenticated ||
+      !isLocalAuthEnabled ||
+      !permissions.has("users:invite") ||
+      !permissions.has("roles:assign"))
+  ) {
+    redirect("/settings/connectors");
+  }
 
   if (
     tab === "api-keys" &&
@@ -157,6 +171,7 @@ export default async function SettingsTabPage({
       {tab === "archiving" && <ArchivingSettingsSection />}
       {tab === "api-keys" && <ApiKeysSection />}
       {tab === "connector-access" && <ConnectorAccessSection />}
+      {tab === "local-users" && <LocalUsersSection />}
     </HydrationBoundary>
   );
 }

@@ -1,5 +1,6 @@
-"""Local login and minimal administrative operations; no public registration."""
+"""Local login, first-run administrator setup, and account administration."""
 
+import asyncio
 from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -11,13 +12,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import col
 
 from config.auth_mode import local_auth_enabled, secure_auth_cookie
-from db.models import LocalCredential
+from db.models import LocalCredential, MigrationStatus, Role
 from db.models import User as UserRow
 from db.repositories import AuditRepo, RoleRepo
 from dependencies import get_current_user, get_db_session, get_session_manager
 from services.local_auth_service import (
     SESSION_SECONDS,
     create_local_user,
+    issue_session,
     login_local,
     reset_password,
     revoke_sessions,
@@ -27,6 +29,7 @@ from services.local_auth_service import (
 from session_manager import User
 
 router = APIRouter(tags=["local authentication"])
+_SETUP_LOCK = asyncio.Lock()
 
 
 def require_local_mode() -> None:
@@ -62,6 +65,74 @@ class ChangePasswordBody(PasswordBody):
 
 class ActiveBody(BaseModel):
     enabled: bool
+
+
+def session_response(token: str, user_id: str, *, status_code: int = 200) -> JSONResponse:
+    response = JSONResponse({"authenticated": True, "user_id": user_id}, status_code=status_code)
+    response.headers["Cache-Control"] = "no-store"
+    response.set_cookie(
+        "auth_token",
+        token.removeprefix("Bearer "),
+        httponly=True,
+        secure=secure_auth_cookie(),
+        samesite="lax",
+        max_age=SESSION_SECONDS,
+    )
+    return response
+
+
+@router.post("/auth/local/setup", status_code=201)
+async def setup_local_administrator(
+    body: LoginBody,
+    request: Request,
+    session: AsyncSession = Depends(get_db_session),
+    manager=Depends(get_session_manager),
+):
+    from auth.local_admin import bootstrap_admin
+    from config.auth_mode import set_onboarding_local_auth
+    from services.local_auth_onboarding import SETUP_MARKER, local_setup_status
+
+    check_browser_origin(request)
+    throttle_login("first-run-setup", request.client.host if request.client else "unknown")
+    async with _SETUP_LOCK:
+        if not (await local_setup_status(session))["local_setup_available"]:
+            raise HTTPException(409, "Initial account setup is no longer available")
+        try:
+            row = await bootstrap_admin(session, body.login, body.password.get_secret_value())
+            session.add(MigrationStatus(name=SETUP_MARKER, notes="local"))
+            token, principal = await issue_session(session, manager, row)
+            await session.commit()
+        except (ValueError, IntegrityError) as error:
+            await session.rollback()
+            raise HTTPException(
+                409 if isinstance(error, IntegrityError) else 400,
+                "Initial account setup is no longer available"
+                if isinstance(error, IntegrityError)
+                else str(error),
+            ) from None
+        set_onboarding_local_auth(True)
+    return session_response(token, principal.user_id, status_code=201)
+
+
+@router.post("/auth/local/setup/skip")
+async def skip_local_administrator_setup(
+    request: Request,
+    session: AsyncSession = Depends(get_db_session),
+):
+    from services.local_auth_onboarding import SETUP_MARKER, local_setup_status
+
+    check_browser_origin(request)
+    async with _SETUP_LOCK:
+        status = await local_setup_status(session)
+        if not status["local_setup_available"] or not status["local_setup_can_skip"]:
+            raise HTTPException(409, "Initial account setup cannot be skipped")
+        session.add(MigrationStatus(name=SETUP_MARKER, notes="skipped"))
+        try:
+            await session.commit()
+        except IntegrityError:
+            await session.rollback()
+            raise HTTPException(409, "Initial account setup is no longer available") from None
+    return JSONResponse({"status": "skipped"}, headers={"Cache-Control": "no-store"})
 
 
 async def account_view(session: AsyncSession, row: UserRow) -> dict:
@@ -107,17 +178,7 @@ async def local_login(
         session, manager, body.login, body.password.get_secret_value()
     )
     await session.commit()
-    response = JSONResponse({"authenticated": True, "user_id": principal.user_id})
-    response.headers["Cache-Control"] = "no-store"
-    response.set_cookie(
-        "auth_token",
-        token.removeprefix("Bearer "),
-        httponly=True,
-        secure=secure_auth_cookie(),
-        samesite="lax",
-        max_age=SESSION_SECONDS,
-    )
-    return response
+    return session_response(token, principal.user_id)
 
 
 @router.post("/auth/local/password")
@@ -166,7 +227,11 @@ async def list_local_users(
         .scalars()
         .all()
     )
-    return {"users": [await account_view(session, row) for row in rows]}
+    roles = (await session.execute(select(Role).order_by(col(Role.name)))).scalars().all()
+    return {
+        "users": [await account_view(session, row) for row in rows],
+        "available_roles": [role.name for role in roles],
+    }
 
 
 @router.post("/users/local", status_code=201)

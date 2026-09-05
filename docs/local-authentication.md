@@ -14,12 +14,16 @@ records the deployed P0 baseline and the separate identity-migration dependency.
 | `local_plus_external` | Local login plus configured Google app login; local login works if Google is absent/unavailable |
 | `external` | Existing Google or IBM gateway authentication; fails startup without a configured adapter |
 | `no_auth` | Explicit legacy anonymous development behavior |
-| `auto` (default) | Existing Google/IBM/implicit anonymous selection for compatibility |
+| `auto` (default) | Existing Google/IBM/implicit anonymous selection, unless local login was chosen during first-run onboarding |
 
 Local modes require `OPENRAG_RBAC_ENFORCE=true`, `IBM_AUTH_ENABLED=false`, SQL echo
 off, and the development role toggle off. Invalid authenticated configuration
 fails startup; it never falls back to anonymous access. Use `local` for the
 proposed Pommerieux authenticated deployment after all gates pass.
+
+In `auto`, choosing a local administrator during first-run onboarding durably
+enables local login **and RBAC**, even when the legacy RBAC environment default
+is false. Explicit deployment modes retain priority over this choice.
 
 `OPENRAG_AUTH_COOKIE_SECURE=true` is the default. Set it to `false` only for an
 isolated HTTP development deployment; production must use HTTPS. The frontend
@@ -69,6 +73,29 @@ same reader-scoped client. Shared filters do not grant document visibility;
 
 ## Bootstrap and recovery
 
+On a fresh installation, the browser opens `/onboarding/account` before the
+existing model/provider assistant. The user can create a local administrator
+with a username and confirmed password, or continue without a local account.
+The form explains that creating the account makes sign-in mandatory. Creation
+signs the new administrator in immediately; subsequent visitors see the login
+page. Configured Google login remains available in automatic mode.
+
+The choice is committed in the existing application database alongside the
+first administrator and its session, using a one-time `migration_status` marker
+(`local_auth_browser_setup_v1`). The backend loads it before initializing auth
+services, so a restart retains both mandatory login and RBAC. A database error
+or invalid saved choice fails startup. Password validation failure rolls back
+the whole enrollment, and concurrent claims cannot create two first admins.
+
+The browser offer requires a fresh workspace: no real identity, local credential,
+prior bootstrap/choice, or started/edited onboarding. Existing installations
+are marked closed at startup so resetting the provider assistant cannot reopen
+enrollment. Choosing to skip also closes the offer permanently. Use operator
+bootstrap below to enable local accounts later. Explicit `local` and
+`local_plus_external` allow initial administrator creation without anonymous
+skip; explicit `no_auth`, `external`, IBM gateway, development role-toggle and
+SQL-echo configurations do not offer browser enrollment.
+
 Use the same working directory, environment, persistent database and signing/
 encryption keys as the backend. Back up the database before a version upgrade.
 For a checkout, run from its root (in a container use its installed Python):
@@ -94,19 +121,30 @@ does not change its immutable ID, role, or enabled state. An authorized active
 administrator can re-enable another account through the API. An administrator
 cannot disable their own current account through that API.
 
+Administrators can open **Settings → Local users** to list accounts and their
+immutable IDs, workspace roles and enabled state; create a user with an existing
+workspace role; enable/disable accounts; and reset passwords. Disabling a user
+or resetting a password revokes that user's sessions. The screen prevents
+self-disable, and resetting one's own password signs the administrator out.
+The navigation, server-rendered page and backend enforce administration access.
+
 ## Product API
 
 The browser uses the `/api` prefix; direct backend routes omit it. Administration
 requires both existing `users:invite` and `roles:assign` permissions, even when
-the legacy RBAC bypass is set. There is no public registration route.
+the legacy RBAC bypass is set. Public enrollment is limited to the one-time
+fresh-installation administrator choice; ordinary users cannot self-register.
 
 | Method and backend route | JSON request / behavior |
 |---|---|
+| GET `/auth/me` | Enabled login methods and `local_setup_available` / `local_setup_can_skip` flags |
+| POST `/auth/local/setup` | Fresh workspace only: `login`, `password`; atomically creates administrator/session and commits mandatory local login |
+| POST `/auth/local/setup/skip` | Fresh automatic-mode workspace only: permanently skip local enrollment, retaining existing auth selection |
 | POST `/auth/local/login` | `login`, `password`; creates HttpOnly, SameSite=Lax session cookie |
 | GET `/users/me` | Internal `user_id`, authenticated state, provider, roles and workspace |
 | POST `/auth/logout` | Revokes durable session and clears cookie |
 | POST `/auth/local/password` | `current_password`, `password`; revokes all current account sessions |
-| GET `/users/local` | Admin list with limit/offset pagination; no hashes |
+| GET `/users/local` | Admin list with limit/offset pagination and `available_roles` from the existing role catalog; no hashes |
 | POST `/users/local` | Admin create: `login`, `password`, optional existing `role` (default `user`) |
 | PATCH `/users/local/{user_id}` | Admin `enabled`: true/false; invalidates existing sessions |
 | POST `/users/local/{user_id}/password` | Admin reset: `password`; invalidates target sessions |

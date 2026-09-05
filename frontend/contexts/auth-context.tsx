@@ -30,6 +30,8 @@ interface AuthContextType {
   isIbmAuthMode: boolean;
   isLocalAuthEnabled: boolean;
   isGoogleAuthEnabled: boolean;
+  localSetupAvailable: boolean;
+  localSetupCanSkip: boolean;
   runMode: string | null;
   version: string | null;
   permissions: Set<string>;
@@ -82,6 +84,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [isIbmAuthMode, setIsIbmAuthMode] = useState(false);
   const [isLocalAuthEnabled, setIsLocalAuthEnabled] = useState(false);
   const [isGoogleAuthEnabled, setIsGoogleAuthEnabled] = useState(false);
+  const [localSetupAvailable, setLocalSetupAvailable] = useState(false);
+  const [localSetupCanSkip, setLocalSetupCanSkip] = useState(false);
   const [version, setVersion] = useState<string | null>(null);
   const [runMode, setRunMode] = useState<string | null>(null);
 
@@ -100,6 +104,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
       if (data.version) setVersion(data.version);
       if (data.run_mode) setRunMode(data.run_mode);
       setIsLocalAuthEnabled(data.local_auth_enabled === true);
+      setLocalSetupAvailable(data.local_setup_available === true);
+      setLocalSetupCanSkip(data.local_setup_can_skip === true);
       setIsGoogleAuthEnabled(
         data.google_auth_enabled ?? (!data.no_auth_mode && !data.ibm_auth_mode),
       );
@@ -317,6 +323,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
   }, [fetchOnboardingStatus]);
 
   useEffect(() => {
+    // Keep tab guards pending until authentication and its permissions have
+    // both loaded; an empty initial set is not an authorization decision.
+    if (isLoading) {
+      setPermissionsResolved(false);
+      return;
+    }
     if (user || isNoAuthMode || isIbmAuthMode) {
       setPermissionsResolved(false);
       void fetchPermissions();
@@ -325,6 +337,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       setPermissionsResolved(true);
     }
   }, [
+    isLoading,
     user,
     isNoAuthMode,
     isIbmAuthMode,
@@ -351,6 +364,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
     runMode,
     isLocalAuthEnabled,
     isGoogleAuthEnabled,
+    localSetupAvailable,
+    localSetupCanSkip,
     version,
     permissions,
     roles,
